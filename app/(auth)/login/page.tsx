@@ -40,7 +40,7 @@ export default function LoginPage() {
                 id="password"
                 name="password"
                 placeholder="********"
-                className="outline-none w-full pr-8"
+                className="outline-none w-[93%] mr-8 flex-1"
                 required
               />
               <span
@@ -62,6 +62,7 @@ export default function LoginPage() {
             Login
           </button>
         </form>
+        <p className="text-blue-500 text-sm mt-2 text-center w-full cursor-pointer hover:text-blue-600 transition-all duration-200">Forgot password</p>
       </div>
     </div>
   );
