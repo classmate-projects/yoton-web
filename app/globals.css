@@ -24,3 +24,7 @@ body {
   color: var(--foreground); */
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.theme-blue {
+  background-color: #00288E;
+}

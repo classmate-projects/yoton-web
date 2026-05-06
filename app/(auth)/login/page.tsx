@@ -6,6 +6,7 @@ import { useState } from "react";
 
 // icons
 import { LuEye, LuEyeClosed  } from "react-icons/lu";
+import Link from "next/link";
 
 export default function LoginPage() {
 
@@ -56,13 +57,13 @@ export default function LoginPage() {
             </div>
           </div>
           <button
-            className="bg-blue-500 py-2 text-white rounded-xl text-xl hover:bg-blue-600 transition-all duration-200 cursor-pointer mt-4"
+            className="theme-blue py-2 text-white rounded-xl text-xl hover:bg-blue-600 transition-all duration-200 cursor-pointer mt-4"
             type="submit"
           >
             Login
           </button>
         </form>
-        <p className="text-blue-500 text-sm mt-2 text-center w-full cursor-pointer hover:text-blue-600 transition-all duration-200">Forgot password</p>
+        <Link href="/forgot-password" className="text-blue-500 text-sm mt-2 text-center w-full cursor-pointer hover:text-blue-600 transition-all duration-200">Forgot password</Link>
       </div>
     </div>
   );
