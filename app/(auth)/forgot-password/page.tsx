@@ -13,7 +13,7 @@ export default function ForgotPasswordPage() {
           </p>
         </div>
 
-        <form className="flex flex-col gap-4 items-center w-full mt-12">
+        <form className="flex flex-col gap-4 items-center w-full mt-10">
           <div className="w-full flex flex-col gap-2 mb-4">
             <label htmlFor="email" className="text-sm opacity-70 font-bold">
               Email Address
@@ -29,7 +29,7 @@ export default function ForgotPasswordPage() {
         </form>
           <p className="text-sm opacity-50 ">We will never share your email with anyone else.</p>
 
-          <button className="bg-[#00288E] text-white font-bold flex items-center justify-center gap-2 w-full p-4 rounded-xl mt-10 cursor-pointer hover:bg-[#00288E]/80 transition-all duration-200">Send Reset Link <HiOutlineArrowSmRight /> </button>
+          <button className="theme-blue text-white font-bold flex items-center justify-center gap-2 w-full p-4 rounded-xl mt-10 cursor-pointer hover:bg-[#00288E]/80 transition-all duration-200">Send Reset Link <HiOutlineArrowSmRight /> </button>
 
           <Link href="/login" className="text-center flex justify-center items-center gap-2 mt-4 text-blue-600 hover:text-blue-500 transition-all duration-200 cursor-pointer"><HiOutlineArrowSmRight className=" rotate-180" /> Return to Login</Link>
       </div>

@@ -27,4 +27,9 @@ body {
 
 .theme-blue {
   background-color: #00288E;
+  transition: all 0.2s ease-in-out;
+}
+
+.theme-blue:hover {
+  background-color: #001F6B;
 }

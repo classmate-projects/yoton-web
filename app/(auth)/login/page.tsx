@@ -1,7 +1,5 @@
 'use client'
 
-import Image from "next/image";
-import logo from "@/public/yoton_logo.png";
 import { useState } from "react";
 
 // icons
@@ -14,10 +12,9 @@ export default function LoginPage() {
 
   return (
     <div className="h-dvh w-full bg-gray-100 flex justify-center items-center">
-      <div className="h-dvh sm:h-fit w-full px-4 sm:px-12 py-8 rounded-2xl shadow-lg border-t border-gray-200 bg-white max-w-125 flex flex-col gap-4 justify-start items-center">
+      <div className="h-dvh sm:h-fit w-full px-4 sm:px-16 py-8 rounded-xl shadow-xl border-t border-gray-200 bg-white max-w-150 flex flex-col gap-4 justify-center items-center">
         <div className=" flex flex-col items-center gap-1 pb-10">
-          <Image src={logo} alt="logo" width={150} height={150} />
-          <h1 className="text-3xl font-bold text-blue-500 text-center">
+          <h1 className="text-4xl font-bold text-black text-center">
             Login Page
           </h1>
           <p className="text-sm text-black/60">Welcome back to Yoton</p>
@@ -31,11 +28,11 @@ export default function LoginPage() {
                 id="email"
                 name="email"
                 placeholder="username@yoton.to"
-                className="outline-none w-full px-4 py-2 rounded-xl shadow-md border-t border-gray-200/70"
+                className="bg-gray-100 outline-0 p-4 rounded-xl ring ring-gray-400/40 w-full"
                 required
               />
             </div>
-            <div className="relative w-full px-4 py-2 rounded-xl shadow-md border-t border-gray-200/70"> 
+            <div className="relative bg-gray-100 outline-0 p-4 rounded-xl ring ring-gray-400/40 w-full"> 
               <input
                 type={showPassword ? "text" : "password"}
                 id="password"
@@ -57,13 +54,13 @@ export default function LoginPage() {
             </div>
           </div>
           <button
-            className="theme-blue py-2 text-white rounded-xl text-xl hover:bg-blue-600 transition-all duration-200 cursor-pointer mt-4"
+            className="theme-blue text-white font-bold flex items-center justify-center gap-2 w-full p-4 rounded-xl mt-4 cursor-pointer hover:bg-[#00288E]/80 transition-all duration-200"
             type="submit"
           >
             Login
           </button>
         </form>
-        <Link href="/forgot-password" className="text-blue-500 text-sm mt-2 text-center w-full cursor-pointer hover:text-blue-600 transition-all duration-200">Forgot password</Link>
+        <Link href="/forgot-password" className="text-center flex justify-center items-center gap-2 text-blue-600 hover:text-blue-500 transition-all duration-200 cursor-pointer">Forgot password?</Link>
       </div>
     </div>
   );
