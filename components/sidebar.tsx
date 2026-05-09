@@ -5,6 +5,7 @@ import Image from "next/image";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import pkg from "@/package.json";
 
 
 export default function Sidebar() {
@@ -15,7 +16,7 @@ export default function Sidebar() {
 
   return (
     <div
-      className="sidebar h-dvh min-w-72 p-4 border-r shadow-2xl"
+      className="sidebar h-dvh min-w-72 p-4 border-r shadow-2xl relative"
       style={{ borderColor: "var(--color-border)" }}
     >
       {/* header section */}
@@ -56,6 +57,7 @@ export default function Sidebar() {
                 })}
             </ul>
         </div>
+        <p className="text-center text-sm absolute bottom-2 left-0 right-0">Version: {pkg.version}</p>
     </div>
   );
 }
