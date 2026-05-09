@@ -11,13 +11,13 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false)
 
   return (
-    <div className="h-dvh w-full bg-gray-100 flex justify-center items-center">
-      <div className="h-dvh sm:h-fit w-full px-4 sm:px-16 py-8 rounded-xl shadow-xl border-t border-gray-200 bg-white max-w-150 flex flex-col gap-4 justify-center items-center">
+    <div className="h-dvh w-full flex justify-center items-center" style={{backgroundColor: 'var(--color-bg)'}}>
+      <div className="h-dvh sm:h-fit w-full px-4 sm:px-16 py-8 rounded-xl shadow-xl border-t max-w-150 flex flex-col gap-4 justify-center items-center card">
         <div className=" flex flex-col items-center gap-1 pb-10">
-          <h1 className="text-4xl font-bold text-black text-center">
+          <h1 className="text-4xl font-bold text-center" style={{color: 'var(--color-text)'}}>
             Login Page
           </h1>
-          <p className="text-sm text-black/60">Welcome back to Yoton</p>
+          <p className="text-sm" style={{color: 'var(--color-text-muted)'}}>Welcome back to Yoton</p>
         </div>
 
         <form className=" w-full flex flex-col justify-center gap-6 ">
@@ -28,17 +28,19 @@ export default function LoginPage() {
                 id="email"
                 name="email"
                 placeholder="username@yoton.to"
-                className="bg-gray-100 outline-0 p-4 rounded-xl ring ring-gray-400/40 w-full"
+                className="outline-0 p-4 rounded-xl w-full"
+                style={{backgroundColor: 'var(--color-highlight)', border: '1px solid var(--color-border)', color: 'var(--color-text)'}}
                 required
               />
             </div>
-            <div className="relative bg-gray-100 outline-0 p-4 rounded-xl ring ring-gray-400/40 w-full"> 
+            <div className="relative outline-0 p-4 rounded-xl w-full" style={{backgroundColor: 'var(--color-highlight)', border: '1px solid var(--color-border)'}}> 
               <input
                 type={showPassword ? "text" : "password"}
                 id="password"
                 name="password"
                 placeholder="********"
-                className="outline-none w-[93%] mr-8 flex-1"
+                className="outline-none w-[93%] mr-8 flex-1 bg-transparent"
+                style={{color: 'var(--color-text)'}}
                 required
               />
               <span
@@ -60,7 +62,7 @@ export default function LoginPage() {
             Login
           </button>
         </form>
-        <Link href="/forgot-password" className="text-center flex justify-center items-center gap-2 text-blue-600 hover:text-blue-500 transition-all duration-200 cursor-pointer">Forgot password?</Link>
+        <Link href="/forgot-password" className="text-center flex justify-center items-center gap-2 transition-all duration-200 cursor-pointer" style={{color: 'var(--color-accent)'}} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--color-accent-hover)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-accent)'}>Forgot password?</Link>
       </div>
     </div>
   );

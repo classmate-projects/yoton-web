@@ -1,35 +1,85 @@
 @import "tailwindcss";
 
-/* :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* White theme palette */
+:root {
+  --color-bg: #FAFAFA;            /* Main background */
+  --color-sidebar: #F5F5F5;       /* Sidebar / navigation */
+  --color-card: #FFFFFF;          /* Cards / panels */
+  --color-button: #F0F0F0;        /* Button base */
+  --color-button-hover: #EAEAEA;  /* Button hover */
+  --color-border: #E0E0E0;        /* Borders / dividers */
+  --color-highlight: #FDFDFD;     /* Input fields / highlights */
+  --color-disabled: #DADADA;      /* Disabled elements */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* Text */
+  --color-text: #333333;          /* Primary text */
+  --color-text-muted: #666666;    /* Secondary text */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-} */
+  /* Accent colors */
+  --color-accent: #0066CC;        /* Primary accent (links, CTAs) */
+  --color-accent-hover: #005BB5;
+  --color-success: #2E7D32;       /* Success/confirmation */
+  --color-error: #D32F2F;         /* Errors/alerts */
+}
 
 body {
-  /* background: var(--background);
-  color: var(--foreground); */
+  background: var(--color-bg);
+  color: var(--color-text);
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Ensure HTML and body take full height */
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Sidebar */
+.sidebar {
+  background-color: var(--color-sidebar);
+}
+
+/* Cards */
+.card {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* Buttons */
+button {
+  background-color: var(--color-button);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  transition: all 0.2s ease-in-out;
+}
+
+button:hover {
+  background-color: var(--color-button-hover);
+}
+
+/* Inputs */
+input {
+  background-color: var(--color-highlight);
+  border: 1px solid var(--color-border);
+}
+
+input:disabled {
+  background-color: var(--color-disabled);
+}
+
+/* Accent utility */
 .theme-blue {
-  background-color: #00288E;
+  background-color: var(--color-accent);
+  color: #fff;
   transition: all 0.2s ease-in-out;
 }
 
 .theme-blue:hover {
-  background-color: #001F6B;
+  background-color: var(--color-accent-hover);
 }
