@@ -1,18 +1,21 @@
+'use client'
+
 import logo from "@/public/yoton_logo.png";
 import Image from "next/image";
-import { sidebarMenuItems } from "./helpers/sidebaritems";
+import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 
 export default function Sidebar() {
-
-    const currentUserRole = "admin"; // This should be dynamically set based on the logged-in user's role
+    const pathname = usePathname();
+    const currentUserRole = "receptionist"; // This should be dynamically set based on the logged-in user's role
     console.log("Sidebar rendered with role:", currentUserRole);
 
 
   return (
     <div
-      className="sidebar h-dvh min-w-72 p-4 border-r"
+      className="sidebar h-dvh min-w-72 p-4 border-r shadow-2xl"
       style={{ borderColor: "var(--color-border)" }}
     >
       {/* header section */}
@@ -29,12 +32,21 @@ export default function Sidebar() {
 
         {/* menu section */}
         <div className="mt-14">
-            <ul>
+            <ul className="flex flex-col gap-4">
                 {sidebarMenuItems.map((item) => {
                     if (item.roles.includes(currentUserRole)) {
+                        const isActive = pathname === item.navLink;
                         return (
                             <li key={item.id}>
-                                <Link href={item.navLink} className="block py-2 px-4 hover:bg-blue-200/20 rounded-xl transition-colors duration-200 border-l-4 border-transparent hover:border-l-4 hover:border-blue-500">
+                                <Link 
+                                    href={item.navLink} 
+                                    className={`flex items-center gap-3 text-lg py-2 px-4 rounded-lg transition-colors duration-200 border-l-4 ${
+                                        isActive 
+                                            ? 'bg-blue-100 border-l-blue-500 font-semibold' 
+                                            : 'border-transparent hover:bg-blue-300/15 hover:border-l-blue-400/50'
+                                    }`}
+                                >
+                                    <span className="text-2xl"><item.icon /></span>
                                     {item.name}
                                 </Link>
                             </li>

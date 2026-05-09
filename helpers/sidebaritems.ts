@@ -1,8 +1,11 @@
+import { appointmentsIcon, contactsIcon, dashboardIcon, registrationIcon } from "@/public/icons";
+
 interface SidebarMenuItem {
     id: number;
     name: string;
     navLink: string;
     roles: string[];
+    icon: React.ComponentType; // Assuming icons are React components
 }
 
 export const sidebarMenuItems: SidebarMenuItem[] = [
@@ -11,13 +14,15 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Dashboard",
         navLink: "/",
         roles: ["admin", "doctor", "nurse", "receptionist"],
+        icon: dashboardIcon
     },
 
     {
         id: 2,
         name: "Registration",
         navLink: "/registration",
-        roles: ["receptionist"]
+        roles: ["receptionist"],
+        icon: registrationIcon
     },
 
     {
@@ -25,6 +30,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Appointments",
         navLink: "/appointments",
         roles: ["admin", "doctor", "nurse", "receptionist"],
+        icon: appointmentsIcon
     },
 
     {
@@ -32,5 +38,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Patient Records",
         navLink: "/patient-records",
         roles: ["admin", "doctor", "nurse"],
+        icon: contactsIcon
     }
 ]
