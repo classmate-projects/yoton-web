@@ -19,8 +19,8 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
 
     {
         id: 2,
-        name: "Registration",
-        navLink: "/registration",
+        name: "Patient Entry",
+        navLink: "/patient-entry",
         roles: ["receptionist"],
         icon: registrationIcon
     },

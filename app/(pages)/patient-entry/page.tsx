@@ -1,18 +1,25 @@
-export default function Registration() {
+import { MdOutlinePersonOutline } from "react-icons/md";
+
+
+export default function PatientEntryPage() {
   return (
-    <div className="flex flex-col h-dvh py-16 px-20 gap-4">
+    <div className="flex flex-col h-dvh py-8 px-10 gap-4">
       <div className="flex flex-col gap-1">
-        <h1 className="text-4xl font-semibold">Simplified Registration</h1>
+        <h1 className="text-4xl font-semibold">New Patient Entry</h1>
         <p className="text-sm text-gray-500">
-          Quickly register a new patient by providing the essential informations
-          required for immediate triage.
+          Please fill in the patient details accurately to ensure correct record keeping.
         </p>
       </div>
 
       <div className="card rounded-xl shadow-2xl border-t p-8 mt-8 ">
+        <span className="flex items-center gap-2 text-2xl font-semibold mb-6">
+          <MdOutlinePersonOutline className="text-blue-500" size={30} />
+          <h2>Personal Information</h2>
+        </span>
+        <hr className="text-neutral-400/50 mb-6" />
         <form className="flex flex-col gap-6">
           <div>
-            <label htmlFor="fullname">Full Name</label>
+            <label htmlFor="fullname" className="font-bold">Full Name</label>
             <input
               type="text"
               id="fullname"
@@ -30,7 +37,7 @@ export default function Registration() {
 
           <div className="flex items-center gap-4 justify-center w-full">
             <div className="w-full">
-              <label htmlFor="age">Age</label>
+              <label htmlFor="age" className="font-bold">Age</label>
               <input
                 type="number"
                 id="age"
@@ -47,7 +54,7 @@ export default function Registration() {
               />
             </div>
             <div className="w-full">
-              <label htmlFor="gender">Gender</label>
+              <label htmlFor="gender" className="font-bold">Gender</label>
               <select
                 name="gender"
                 id="gender"
@@ -69,7 +76,7 @@ export default function Registration() {
 
           <div className="flex items-center gap-4 justify-center w-full">
             <div className="w-full">
-              <label htmlFor="phone">Phone Number</label>
+              <label htmlFor="phone" className="font-bold">Phone Number</label>
               <input
               type="tel"
               id="phone"
@@ -86,7 +93,7 @@ export default function Registration() {
             </div>
 
             <div className="w-full">
-                <label htmlFor="assign-doctor">Assign Doctor</label>
+                <label htmlFor="assign-doctor" className="font-bold"  >Assign Doctor</label>
                 <select
                   name="assign-doctor"
                   id="assign-doctor"

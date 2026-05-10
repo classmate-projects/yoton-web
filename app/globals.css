@@ -3,7 +3,7 @@
 /* White theme palette */
 :root {
   --color-bg: #FAFAFA;            /* Main background */
-  --color-sidebar: #F5F5F5;       /* Sidebar / navigation */
+  --color-sidebar: #F2F2F2;       /* Sidebar / navigation */
   --color-card: #FFFFFF;          /* Cards / panels */
   --color-button: #F0F0F0;        /* Button base */
   --color-button-hover: #EAEAEA;  /* Button hover */
