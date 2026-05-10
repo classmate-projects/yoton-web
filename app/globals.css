@@ -71,3 +71,14 @@ input:disabled {
 .theme-blue:hover {
   background-color: var(--color-accent-hover);
 }
+
+/* global.css */
+
+/* Add red asterisk to all required labels */
+label.required::after {
+  content: "*";
+  color: #dc2626; /* Tailwind red-600 */
+  font-weight: normal;
+  margin-left: 2px;
+  font-size: 20px;
+}
