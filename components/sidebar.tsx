@@ -16,7 +16,7 @@ export default function Sidebar() {
 
   return (
     <div
-      className="sidebar h-dvh min-w-72 p-1.5 border-r border-neutral-400/50 relative"
+      className="sidebar fixed left-0 top-0 h-dvh overflow-hidden min-w-72 p-1.5 border-r border-neutral-400/50 z-10"
     >
       {/* header section */}
       <div className="flex items-center gap-3">
