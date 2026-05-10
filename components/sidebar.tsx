@@ -10,7 +10,7 @@ import pkg from "@/package.json";
 
 export default function Sidebar() {
     const pathname = usePathname();
-    const currentUserRole = "receptionist"; // This should be dynamically set based on the logged-in user's role
+    const currentUserRole = "admin"; // This should be dynamically set based on the logged-in user's role
     console.log("Sidebar rendered with role:", currentUserRole);
 
 
@@ -32,7 +32,7 @@ export default function Sidebar() {
 
         {/* menu section */}
         <div className="mt-14">
-            <ul className="flex flex-col">
+            <ul className="flex flex-col gap-2">
                 {sidebarMenuItems.map((item) => {
                     if (item.roles.includes(currentUserRole)) {
                         const isActive = pathname === item.navLink;
