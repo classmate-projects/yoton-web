@@ -10,14 +10,13 @@ import pkg from "@/package.json";
 
 export default function Sidebar() {
     const pathname = usePathname();
-    const currentUserRole = "receptionist"; // This should be dynamically set based on the logged-in user's role
+    const currentUserRole = "admin"; // This should be dynamically set based on the logged-in user's role
     console.log("Sidebar rendered with role:", currentUserRole);
 
 
   return (
     <div
-      className="sidebar h-dvh min-w-72 p-4 border-r shadow-2xl relative"
-      style={{ borderColor: "var(--color-border)" }}
+      className="sidebar fixed left-0 top-0 h-dvh overflow-hidden min-w-72 p-1.5 border-r border-neutral-400/50 z-10"
     >
       {/* header section */}
       <div className="flex items-center gap-3">
@@ -33,7 +32,7 @@ export default function Sidebar() {
 
         {/* menu section */}
         <div className="mt-14">
-            <ul className="flex flex-col gap-4">
+            <ul className="flex flex-col gap-2">
                 {sidebarMenuItems.map((item) => {
                     if (item.roles.includes(currentUserRole)) {
                         const isActive = pathname === item.navLink;
@@ -41,13 +40,13 @@ export default function Sidebar() {
                             <li key={item.id}>
                                 <Link 
                                     href={item.navLink} 
-                                    className={`flex items-center gap-3 text-lg py-2 px-4 rounded-lg transition-colors duration-200 border-l-4 ${
+                                    className={`flex items-center gap-3 text-lg py-2 px-4 rounded-lg transition-colors duration-200 ${
                                         isActive 
-                                            ? 'bg-blue-100 border-l-blue-500 font-semibold' 
-                                            : 'border-transparent hover:bg-blue-300/15 hover:border-l-blue-400/50'
+                                            ? 'bg-neutral-300 font-semibold' 
+                                            : 'hover:bg-neutral-200'
                                     }`}
                                 >
-                                    <span className="text-2xl"><item.icon /></span>
+                                    <span className="text-3xl"><item.icon /></span>
                                     {item.name}
                                 </Link>
                             </li>
