@@ -3,7 +3,7 @@
 /* White theme palette */
 :root {
   --color-bg: #FAFAFA;            /* Main background */
-  --color-sidebar: #F5F5F5;       /* Sidebar / navigation */
+  --color-sidebar: #F2F2F2;       /* Sidebar / navigation */
   --color-card: #FFFFFF;          /* Cards / panels */
   --color-button: #F0F0F0;        /* Button base */
   --color-button-hover: #EAEAEA;  /* Button hover */
@@ -70,4 +70,15 @@ input:disabled {
 
 .theme-blue:hover {
   background-color: var(--color-accent-hover);
+}
+
+/* global.css */
+
+/* Add red asterisk to all required labels */
+label.required::after {
+  content: "*";
+  color: #dc2626; /* Tailwind red-600 */
+  font-weight: normal;
+  margin-left: 2px;
+  font-size: 20px;
 }

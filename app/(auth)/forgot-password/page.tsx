@@ -1,3 +1,5 @@
+'use client';
+
 import Link from "next/link";
 import { HiOutlineArrowSmRight } from "react-icons/hi";
 
@@ -32,7 +34,7 @@ export default function ForgotPasswordPage() {
 
           <button className="theme-blue text-white font-bold flex items-center justify-center gap-2 w-full p-4 rounded-xl mt-10 cursor-pointer transition-all duration-200">Send Reset Link <HiOutlineArrowSmRight /> </button>
 
-          <Link href="/login" className="text-center flex justify-center items-center gap-2 mt-4 transition-all duration-200 cursor-pointer" style={{color: 'var(--color-accent)'}} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--color-accent-hover)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-accent)'}>><HiOutlineArrowSmRight className=" rotate-180" /> Return to Login</Link>
+          <Link href="/login" className="text-center flex justify-center items-center gap-2 mt-4 transition-all duration-200 cursor-pointer" style={{color: 'var(--color-accent)'}} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--color-accent-hover)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-accent)'}><HiOutlineArrowSmRight className=" rotate-180" /> Return to Login</Link>
       </div>
     </div>
   );
