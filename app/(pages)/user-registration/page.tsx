@@ -74,7 +74,7 @@ export default function UserRegistrationPage() {
 
           <div className="flex items-center gap-4">
             <div className="w-full">
-              <label htmlFor="phone" className="phone">
+              <label htmlFor="phone" className="font-bold">
                 Phone Number
               </label>
               <input
