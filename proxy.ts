@@ -23,5 +23,6 @@ export const config = {
      "/create-account/:path*",
      "/patient-entry/:path*",
      "/patient-records/:path*",
-     "/user-registration/:path*"
+     "/user-registration/:path*",
+      "/user-management/:path*",
 ]};

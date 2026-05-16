@@ -23,7 +23,7 @@ export default function Sidebar() {
     <div className="sidebar fixed left-0 top-0 h-dvh overflow-hidden min-w-72 p-1.5 border-r border-neutral-400/50 z-10">
       {/* header section */}
       <div className="flex items-center gap-3">
-        <Image src={logo} alt="logo" height={70} width={70} />
+        <Image src={logo} alt="logo" height={70} width={70} loading="eager" />
         <div>
           <h1 className="text-xl font-bold text-[#1AAFBE]">Yoton Health</h1>
           <p className="text-sm text-black/50">
@@ -49,7 +49,7 @@ export default function Sidebar() {
                         : "hover:bg-neutral-200"
                     }`}
                   >
-                    <span className="text-3xl">
+                    <span className="text-2xl">
                       <item.icon />
                     </span>
                     {item.name}
