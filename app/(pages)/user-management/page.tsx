@@ -19,47 +19,50 @@ import { useEffect, useState } from "react";
 export default function UserManagement() {
   const [users, setUsers] = useState<getAllResponse[]>([]);
 
-  useEffect(() => {
-    const fetchAllUsers = async () => {
-      try {
-        const res = await fetch("/api/users");
-        const data = await res.json();
-        setUsers(data);
+  const fetchAllUsers = async () => {
+    try {
+      const res = await fetch("/api/users");
+      const data = await res.json();
+      setUsers(data.users);
+      console.log("Fetched users:", data);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
+  };
 
-        console.log("Fetched users:", data);
-      } catch (error) {
-        console.error("Error fetching users:", error);
-      }
+  useEffect(() => {
+    const loadUser = async () => {
+      await fetchAllUsers();
     };
 
-    fetchAllUsers();
+    loadUser();
   }, []);
 
- const getTime = (time?: string) => {
-  if (!time) return "N/A";
+  const getTime = (time?: string) => {
+    if (!time) return "N/A";
+    const formattedTime = time.replace(/\.(\d{3})\d*Z$/, ".$1Z");
 
-  // Trim fractional seconds to milliseconds
-  const formattedTime = time.replace(
-    /\.(\d{3})\d*Z$/,
-    ".$1Z"
-  );
+    return new Date(formattedTime).toLocaleString("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  };
 
-  return new Date(formattedTime).toLocaleString("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-};
-
-const handleDeleteUser  = async (id: number) => {
+  const handleDeleteUser = async (id: number) => {
     try {
-        const data = await fetch(`/api/users/${id}`)
-        const res = await data.json();
+      const data = await fetch(`/api/users`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const res = await data.json();
 
-        console.log("delete response: ", res)
+      console.log("delete response: ", res);
+      fetchAllUsers();
     } catch {
-        
+      console.log("Error: error with deleting user");
     }
-}
+  };
 
   return (
     <div className="p-6">
@@ -135,20 +138,41 @@ const handleDeleteUser  = async (id: number) => {
             </tr>
           </thead>
 
-          <tbody>
-            {users.map((user) => (
-              <tr key={user.id} className="bg-neutral-100 ring">
-                <td className="px-4 py-3">{user.fullName}</td>
-                <td className="px-4 py-3">{user.username}</td>
-                <td className="px-4 py-3">{user.email}</td>
-                <td className="px-4 py-3">{user.role}</td>
-                <td className="px-4 py-3">{user.phone}</td>
-                <td className="px-4 py-3">{getTime(user.lastLogin)}</td>
-                <td className="px-4 py-3">{getTime(user.createdAt)}</td>
-                <td onClick={() => handleDeleteUser(user.id)} className="flex h-12 items-center justify-center"><RiDeleteBinLine size={20} className="text-red-400 hover:text-red-600 transition-all duration-200 cursor-pointer"/> </td>
+          {users.length > 0 ? (
+            <tbody>
+              {users.map((user) => (
+                <tr key={user.id} className="bg-neutral-100 ring">
+                  <td className="px-4 py-3">{user.fullName}</td>
+                  <td className="px-4 py-3">{user.username}</td>
+                  <td className="px-4 py-3">{user.email}</td>
+                  <td className="px-4 py-3">{user.role}</td>
+                  <td className="px-4 py-3">{user.phone}</td>
+                  <td className="px-4 py-3">{getTime(user.lastLogin)}</td>
+                  <td className="px-4 py-3">{getTime(user.createdAt)}</td>
+                  <td
+                    onClick={() => handleDeleteUser(user.id)}
+                    className="flex h-12 items-center justify-center"
+                  >
+                    <RiDeleteBinLine
+                      size={20}
+                      className="text-red-400 hover:text-red-600 transition-all duration-200 cursor-pointer"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          ) : (
+            <tbody>
+              <tr>
+                <td
+                  colSpan={8}
+                  className="text-center py-20 text-gray-600"
+                >
+                  No users found
+                </td>
               </tr>
-            ))}
-          </tbody>
+            </tbody>
+          )}
         </table>
       </div>
     </div>
