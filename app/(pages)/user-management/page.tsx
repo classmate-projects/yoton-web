@@ -48,8 +48,12 @@ export default function UserManagement() {
     });
   };
 
-  const handleDeleteUser = async (id: number) => {
+  const handleDeleteUser = async (id: number, fullname: string) => {
+
     try {
+      const deleteConfirmation = confirm(`Do you want to delete user "${fullname}" ?`)
+      if(!deleteConfirmation) return; 
+
       const data = await fetch(`/api/users`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -150,7 +154,7 @@ export default function UserManagement() {
                   <td className="px-4 py-3">{getTime(user.lastLogin)}</td>
                   <td className="px-4 py-3">{getTime(user.createdAt)}</td>
                   <td
-                    onClick={() => handleDeleteUser(user.id)}
+                    onClick={() => handleDeleteUser(user.id, user.fullName)}
                     className="flex h-12 items-center justify-center"
                   >
                     <RiDeleteBinLine
