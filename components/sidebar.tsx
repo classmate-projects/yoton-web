@@ -12,7 +12,6 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const currentUserRole = "admin"; // This should be dynamically set based on the logged-in user's role
-  console.log("Sidebar rendered with role:", currentUserRole);
 
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
