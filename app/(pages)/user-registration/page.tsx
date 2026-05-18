@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 
 
 export default function UserRegistrationPage() {
@@ -15,8 +16,6 @@ export default function UserRegistrationPage() {
   const router = useRouter();
 
   const handleUserReg = async () => {
-    console.log("form submitted");
-    console.log({ fullname, username, password, email, role, phone });
     try {
       if (!fullname || !username || !password || !email || !role || !phone) {
         alert("Please fill the form first")
@@ -49,6 +48,8 @@ export default function UserRegistrationPage() {
       setPhone("");
       setPassword("");
       setRole("");
+
+      toast.success(data.message)
 
       router.push("/user-management");
     } catch (error) {
