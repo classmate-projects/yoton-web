@@ -24,7 +24,6 @@ export default function RoleManagementPage() {
       setIsLoading(true);
       const res = await fetch("/api/role");
       const data = await res.json();
-      console.log("data: ", data)
       setRoles(data.body);
     } catch (error) {
       console.error("Failed to fetch roles", error);
@@ -63,7 +62,8 @@ export default function RoleManagementPage() {
         setDescription("");
         fetchRoles();
       } else {
-        toast.error(data.message || data.error || "Failed to create role");
+        toast.warning(data.message || data.error || "Failed to create role");
+        setRoleName("")
       }
     } catch (error) {
       console.error(error);
@@ -77,10 +77,6 @@ export default function RoleManagementPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-
-      const res = await data.json();
-
-      console.log("delete response: ", res);
       fetchRoles();
     } catch {
       console.log("Error: error with deleting role");

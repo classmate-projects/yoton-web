@@ -28,8 +28,6 @@ export default function UserRegistrationPage() {
       try {
         const res = await fetch("/api/role");
         const data = await res.json()
-
-        console.log(data)
         setAvailableRoles(data.body)
       } catch (error) {
         console.error("Error fetching roles: ", error)
@@ -66,7 +64,6 @@ export default function UserRegistrationPage() {
 
       const data = await res.json()
 
-      console.log("data:", data)
       setEmail("");
       setFullname("");
       setUsername("");

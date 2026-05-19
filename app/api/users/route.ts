@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 export async function GET() {
     try {
         const data = await apiFetch("/api/user");
-        console.log("Fetched users:", data);
 
         return Response.json(data);
     } catch  {

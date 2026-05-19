@@ -29,9 +29,6 @@ export default function LoginPage() {
         throw new Error("Login failed");
       }
 
-      const data = await res.json();
-      console.log("Login successful:", data);
-
       router.push("/");
     } catch (error) {
       console.error("Login failed:", error);
