@@ -52,18 +52,18 @@ export default function RoleManagementPage() {
         }),
       });
 
-      const data = await res.json()
+      const data = await res.json();
 
-      console.log("data: ", data)
+      console.log("data: ", data);
 
       if (res.ok) {
-        toast.success(data.message)
+        toast.success(data.message);
         setRoleName("");
         setDescription("");
         fetchRoles();
       } else {
         toast.warning(data.message || data.error || "Failed to create role");
-        setRoleName("")
+        setRoleName("");
       }
     } catch (error) {
       console.error(error);
@@ -72,7 +72,7 @@ export default function RoleManagementPage() {
 
   const handleRoleDelete = async (id: number) => {
     try {
-      const data = await fetch("/api/role", {
+      await fetch("/api/role", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -86,13 +86,15 @@ export default function RoleManagementPage() {
   const RequestDeleteRole = (id: number, name: string) => {
     toast(
       <span>
-        Delete role: <b className="text-red-500 ml-1">{name}</b>
+        Are you sure you want to delete the role <b className="text-red-500 ml-1">{name}</b>?
       </span>,
       {
         action: {
           label: "Delete",
           onClick: () => handleRoleDelete(id),
         },
+        duration:10000,
+        closeButton:true,
       },
     );
   };
@@ -110,7 +112,10 @@ export default function RoleManagementPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="card p-6 rounded-xl shadow-lg border-t">
-          <h2 className="text-2xl font-semibold mb-4">System Roles</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-semibold">System Roles</h2>
+            <span><b>Total:</b> {roles.length}</span>
+          </div>
           <hr className="text-neutral-400/50 mb-4" />
 
           {isLoading ? (

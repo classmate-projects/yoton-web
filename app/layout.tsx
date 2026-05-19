@@ -30,7 +30,12 @@ export default function RootLayout({
     >
       <body className="min-h-full">
         {children}
-        <Toaster position="bottom-right" richColors duration={3000} />
+        <Toaster
+          position="bottom-right"
+          richColors
+          duration={3000}
+          visibleToasts={2}
+        />
       </body>
     </html>
   );
