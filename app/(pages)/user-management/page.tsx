@@ -12,6 +12,8 @@ interface getAllResponse {
   lastLogin: string;
 }
 
+import { IoPersonAddSharp } from "react-icons/io5";
+import { FaGear } from "react-icons/fa6";
 import { RiDeleteBinLine } from "react-icons/ri";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -53,14 +55,11 @@ export default function UserManagement() {
       // const deleteConfirmation = confirm(`Do you want to delete user "${fullname}" ?`)
       // if(!deleteConfirmation) return;
 
-      const data = await fetch(`/api/users`, {
+      await fetch(`/api/users`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const res = await data.json();
-
-      console.log("delete response: ", res);
       fetchAllUsers();
     } catch {
       console.log("Error: error with deleting user");
@@ -69,15 +68,19 @@ export default function UserManagement() {
 
   const handleDelete = (id: number, fullname: string) => {
     toast(
-      <span>Are you sure, you want to delete <b className="text-red-500 ml-1">{fullname}</b></span>
-      , {
-      action: {
-        label: "Confirm",
-        onClick: () => {
-          handleDeleteUser(id);
+      <span>
+        Are you sure, you want to delete{" "}
+        <b className="text-red-500 ml-1">{fullname}</b>
+      </span>,
+      {
+        action: {
+          label: "Delete",
+          onClick: () => {
+            handleDeleteUser(id);
+          },
         },
       },
-    });
+    );
   };
 
   return (
@@ -90,12 +93,20 @@ export default function UserManagement() {
             permissions.
           </p>
         </div>
-        <Link
-          href={"/user-registration"}
-          className="bg-blue-500 text-xl px-4 py-2 rounded-md text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
-        >
-          Add User
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            href={"/role-management"}
+            className="bg-green-500 text-xl p-4 rounded-md text-white hover:bg-green-600 transition-all duration-200 cursor-pointer"
+          >
+            <FaGear />
+          </Link>
+          <Link
+            href={"/user-registration"}
+            className="bg-blue-500 text-xl p-4 rounded-md text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
+          >
+            <IoPersonAddSharp />
+          </Link>
+        </div>
       </div>
 
       <div className="mt-8 flex items-center w-full justify-between gap-6">

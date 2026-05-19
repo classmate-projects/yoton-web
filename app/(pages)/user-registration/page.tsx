@@ -1,7 +1,14 @@
 "use client";
 
+interface AvailableRolesType {
+  id: number;
+  name: string;
+  description: string;
+  userRoles: null
+}
+
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 
@@ -12,8 +19,25 @@ export default function UserRegistrationPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("");
   const [phone, setPhone] = useState("");
+  const [availableRoles, setAvailableRoles] = useState<AvailableRolesType[]>([])
 
   const router = useRouter();
+
+  useEffect(() => {
+    const fetchAvailableRoles = async () => {
+      try {
+        const res = await fetch("/api/role");
+        const data = await res.json()
+
+        console.log(data)
+        setAvailableRoles(data)
+      } catch (error) {
+        console.error("Error fetching roles: ", error)
+      }
+    }
+
+    fetchAvailableRoles()
+  }, [])
 
   const handleUserReg = async () => {
     try {
@@ -41,7 +65,6 @@ export default function UserRegistrationPage() {
       }
 
       const data = await res.json()
-      console.log("data: ", data)
       setEmail("");
       setFullname("");
       setUsername("");
@@ -135,9 +158,11 @@ export default function UserRegistrationPage() {
                 <option value="" disabled>
                   Select Role
                 </option>
-                <option value="doctor">Doctor</option>
-                <option value="nurse">Nurse</option>
-                <option value="receptionist">Receptionist</option>
+                {
+                  availableRoles.map((role) => (
+                    <option key={role.id} value={role.name}>{role.name.toUpperCase()}</option>
+                  ))
+                }
               </select>
             </div>
 

@@ -45,14 +45,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
 
     {
         id: 5,
-        name: "User Registration",
-        navLink: "/user-registration",
-        roles: ["admin"],
-        icon: registrationIcon
-    },
-
-    {
-        id: 6,
         name: "User Management",
         navLink: "/user-management",
         roles: ["admin"],
