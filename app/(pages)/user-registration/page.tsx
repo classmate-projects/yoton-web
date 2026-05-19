@@ -30,7 +30,7 @@ export default function UserRegistrationPage() {
         const data = await res.json()
 
         console.log(data)
-        setAvailableRoles(data)
+        setAvailableRoles(data.body)
       } catch (error) {
         console.error("Error fetching roles: ", error)
       }
@@ -65,6 +65,8 @@ export default function UserRegistrationPage() {
       }
 
       const data = await res.json()
+
+      console.log("data:", data)
       setEmail("");
       setFullname("");
       setUsername("");
@@ -72,7 +74,7 @@ export default function UserRegistrationPage() {
       setPassword("");
       setRole("");
 
-      toast.success(data.message)
+      toast.success(data.body.message)
 
       router.push("/user-management");
     } catch (error) {

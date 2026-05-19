@@ -24,7 +24,8 @@ export default function RoleManagementPage() {
       setIsLoading(true);
       const res = await fetch("/api/role");
       const data = await res.json();
-      setRoles(Array.isArray(data) ? data : []);
+      console.log("data: ", data)
+      setRoles(data.body);
     } catch (error) {
       console.error("Failed to fetch roles", error);
     } finally {
@@ -52,13 +53,17 @@ export default function RoleManagementPage() {
         }),
       });
 
+      const data = await res.json()
+
+      console.log("data: ", data)
+
       if (res.ok) {
-        alert("Role created successfully");
+        toast.success(data.message)
         setRoleName("");
         setDescription("");
         fetchRoles();
       } else {
-        alert("Failed to create role");
+        toast.error(data.message || data.error || "Failed to create role");
       }
     } catch (error) {
       console.error(error);
@@ -70,18 +75,17 @@ export default function RoleManagementPage() {
       const data = await fetch("/api/role", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id })
-      })
+        body: JSON.stringify({ id }),
+      });
 
       const res = await data.json();
 
-      console.log("delete response: ", res)
+      console.log("delete response: ", res);
       fetchRoles();
     } catch {
-      console.log("Error: error with deleting role")
+      console.log("Error: error with deleting role");
     }
-  }
-
+  };
 
   const RequestDeleteRole = (id: number, name: string) => {
     toast(
@@ -91,11 +95,11 @@ export default function RoleManagementPage() {
       {
         action: {
           label: "Delete",
-          onClick: () => handleRoleDelete(id)
-        }
-      }
-    )
-  }
+          onClick: () => handleRoleDelete(id),
+        },
+      },
+    );
+  };
 
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
@@ -114,9 +118,13 @@ export default function RoleManagementPage() {
           <hr className="text-neutral-400/50 mb-4" />
 
           {isLoading ? (
-            <p>Loading...</p>
+            <div className="h-80 flex justify-center items-center">
+              <p>Loading...</p>
+            </div>
           ) : roles.length === 0 ? (
-            <p className="text-gray-500">No roles configured.</p>
+            <div className="h-80 flex justify-center items-center">
+              <p className="text-gray-500">No roles configured.</p>
+            </div>
           ) : (
             <div className="flex flex-col gap-3 h-[60dvh] overflow-y-scroll">
               {roles.map((role) => (
@@ -125,19 +133,22 @@ export default function RoleManagementPage() {
                   className="p-4 border rounded-lg bg-gray-50 hover:shadow-sm transition-shadow"
                 >
                   <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-lg text-gray-800">
+                    <span className="font-bold text-lg text-gray-800 capitalize">
                       {role.name}
                     </span>
                     <span className="text-xs font-mono text-gray-500">
                       ID: {role.id}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <p className="text-sm text-gray-600">
                       {role.description || "No description provided."}
                     </p>
                     <button>
-                      <RiDeleteBinLine onClick={() => RequestDeleteRole(role.id, role.name)} className="text-red-400 cursor-pointer hover:text-red-500 hover:scale-110 transition-all duration-150 text-xl" />
+                      <RiDeleteBinLine
+                        onClick={() => RequestDeleteRole(role.id, role.name)}
+                        className="text-red-400 cursor-pointer hover:text-red-500 hover:scale-110 transition-all duration-150 text-xl"
+                      />
                     </button>
                   </div>
                 </div>
@@ -154,7 +165,7 @@ export default function RoleManagementPage() {
 
           <form onSubmit={handleCreateRole} className="flex flex-col gap-4">
             <div>
-              <label className="text-sm font-bold text-gray-700">
+              <label className="text-sm font-bold text-gray-700 required">
                 Role Name
               </label>
               <input
@@ -171,17 +182,16 @@ export default function RoleManagementPage() {
                 Description
               </label>
               <textarea
-                required
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe role responsibilities"
-                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) min-h-25"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) min-h-25 max-h-25"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full mt-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-lg transition-colors"
+              className="w-full mt-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer"
             >
               Save Role
             </button>

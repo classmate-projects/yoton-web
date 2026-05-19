@@ -29,3 +29,24 @@ export async function DELETE(req: Request) {
         )
     }
 }
+
+export async function POST(req: Request) {
+    const { name, description } = await req.json();
+    try {
+        const data = await apiFetch("/api/role", {
+            method: "POST",
+            headers: {
+                "Content-Type" : "application/json"
+            },
+            body: JSON.stringify({name, description})
+        })
+
+        return Response.json(data.body, {
+            status: data.status,
+        });
+    } catch {
+        return Response.json({
+            error: "Role creation failed"
+        })
+    }
+}
