@@ -15,6 +15,7 @@ interface getAllResponse {
 import { RiDeleteBinLine } from "react-icons/ri";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 export default function UserManagement() {
   const [users, setUsers] = useState<getAllResponse[]>([]);
@@ -24,7 +25,6 @@ export default function UserManagement() {
       const res = await fetch("/api/users");
       const data = await res.json();
       setUsers(data.users);
-      console.log("Fetched users:", data);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
@@ -48,11 +48,10 @@ export default function UserManagement() {
     });
   };
 
-  const handleDeleteUser = async (id: number, fullname: string) => {
-
+  const handleDeleteUser = async (id: number) => {
     try {
-      const deleteConfirmation = confirm(`Do you want to delete user "${fullname}" ?`)
-      if(!deleteConfirmation) return; 
+      // const deleteConfirmation = confirm(`Do you want to delete user "${fullname}" ?`)
+      // if(!deleteConfirmation) return;
 
       const data = await fetch(`/api/users`, {
         method: "DELETE",
@@ -66,6 +65,19 @@ export default function UserManagement() {
     } catch {
       console.log("Error: error with deleting user");
     }
+  };
+
+  const handleDelete = (id: number, fullname: string) => {
+    toast(
+      <span>Are you sure, you want to delete <b className="text-red-500 ml-1">{fullname}</b></span>
+      , {
+      action: {
+        label: "Confirm",
+        onClick: () => {
+          handleDeleteUser(id);
+        },
+      },
+    });
   };
 
   return (
@@ -154,7 +166,7 @@ export default function UserManagement() {
                   <td className="px-4 py-3">{getTime(user.lastLogin)}</td>
                   <td className="px-4 py-3">{getTime(user.createdAt)}</td>
                   <td
-                    onClick={() => handleDeleteUser(user.id, user.fullName)}
+                    onClick={() => handleDelete(user.id, user.fullName)}
                     className="flex h-12 items-center justify-center"
                   >
                     <RiDeleteBinLine
@@ -168,10 +180,7 @@ export default function UserManagement() {
           ) : (
             <tbody>
               <tr>
-                <td
-                  colSpan={8}
-                  className="text-center py-20 text-gray-600"
-                >
+                <td colSpan={8} className="text-center py-20 text-gray-600">
                   No users found
                 </td>
               </tr>

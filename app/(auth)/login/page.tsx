@@ -92,7 +92,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="********"
-                className="outline-none w-[93%] mr-8 flex-1 bg-transparent"
+                className="outline-none w-[93%] mr-8 flex-1 bg-transparent border-0"
                 style={{ color: "var(--color-text)" }}
                 required
               />
