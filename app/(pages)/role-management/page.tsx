@@ -86,15 +86,16 @@ export default function RoleManagementPage() {
   const RequestDeleteRole = (id: number, name: string) => {
     toast(
       <span>
-        Are you sure you want to delete the role <b className="text-red-500 ml-1">{name}</b>?
+        Are you sure you want to delete the role{" "}
+        <b className="text-red-500 ml-1">{name}</b>?
       </span>,
       {
         action: {
           label: "Delete",
           onClick: () => handleRoleDelete(id),
         },
-        duration:10000,
-        closeButton:true,
+        duration: 10000,
+        closeButton: true,
       },
     );
   };
@@ -114,7 +115,9 @@ export default function RoleManagementPage() {
         <div className="card p-6 rounded-xl shadow-lg border-t">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-semibold">System Roles</h2>
-            <span><b>Total:</b> {roles.length}</span>
+            <span>
+              <b>Total:</b> {roles.length}
+            </span>
           </div>
           <hr className="text-neutral-400/50 mb-4" />
 
@@ -131,27 +134,22 @@ export default function RoleManagementPage() {
               {roles.map((role) => (
                 <div
                   key={role.id}
-                  className="p-4 border rounded-lg bg-gray-50 hover:shadow-sm transition-shadow"
+                  className="p-4 flex justify-between items-center shadow-md rounded-lg border border-neutral-500/20 mr-2"
                 >
-                  <div className="flex justify-between items-center mb-1">
+                  <div className="flex flex-col justify-between mb-1">
                     <span className="font-bold text-lg text-gray-800 capitalize">
                       {role.name}
                     </span>
-                    <span className="text-xs font-mono text-gray-500">
-                      ID: {role.id}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-gray-400">
                       {role.description || "No description provided."}
                     </p>
-                    <button>
-                      <RiDeleteBinLine
-                        onClick={() => RequestDeleteRole(role.id, role.name)}
-                        className="text-red-400 cursor-pointer hover:text-red-500 hover:scale-110 transition-all duration-150 text-xl"
-                      />
-                    </button>
                   </div>
+                  <button>
+                    <RiDeleteBinLine
+                      onClick={() => RequestDeleteRole(role.id, role.name)}
+                      className="text-red-400 cursor-pointer hover:text-red-500 hover:scale-110 transition-all duration-150 text-xl"
+                    />
+                  </button>
                 </div>
               ))}
             </div>

@@ -146,7 +146,7 @@ export default function UserRegistrationPage() {
                 id="role"
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
-                className="outline-0 p-4 rounded-xl w-full mt-2"
+                className="outline-0 p-4 rounded-xl w-full mt-2 capitalize"
                 style={{
                   backgroundColor: "var(--color-highlight)",
                   border: "1px solid var(--color-border)",
@@ -159,7 +159,7 @@ export default function UserRegistrationPage() {
                 </option>
                 {
                   availableRoles.map((role) => (
-                    <option key={role.id} value={role.name}>{role.name.toUpperCase()}</option>
+                    <option key={role.id} value={role.name}>{role.name}</option>
                   ))
                 }
               </select>
