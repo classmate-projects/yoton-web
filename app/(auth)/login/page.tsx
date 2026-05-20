@@ -17,6 +17,8 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    console.log("Login btn clicked");
+
     try {
       const res = await fetch("/api/login", {
         method: "POST",
@@ -29,12 +31,14 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.message || "Login failed")
+        throw new Error(data.message || "Login failed");
       }
 
       router.push("/");
     } catch (error) {
-      console.error("Login failed:", error);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      }
     }
   };
 
