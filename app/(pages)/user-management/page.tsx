@@ -18,9 +18,11 @@ import { RiDeleteBinLine } from "react-icons/ri";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import SelectRole from "@/components/selectRole";
 
 export default function UserManagement() {
   const [users, setUsers] = useState<getAllResponse[]>([]);
+  const [role, setRole] = useState("");
 
   const fetchAllUsers = async () => {
     try {
@@ -117,17 +119,7 @@ export default function UserManagement() {
             className="border flex-1 border-neutral-600/50 px-4 py-2 rounded-md outline-0"
           />
           <div className="flex items-center justify-between gap-4">
-            <select
-              name="role"
-              id="role"
-              className="border border-neutral-500 px-4 py-2 rounded-md outline-0"
-            >
-              <option value="">All Roles</option>
-              <option value="admin">Admin</option>
-              <option value="doctor">Doctor</option>
-              <option value="nurse">Nurse</option>
-              <option value="receptionist">Receptionist</option>
-            </select>
+            <SelectRole role={role} setRole={setRole} allRole={true} selectRole={false} />
 
             <select
               name="date"
@@ -140,7 +132,7 @@ export default function UserManagement() {
               <option value="last_month">Last Month</option>
             </select>
 
-            <button className="border border-neutral-500 px-4 py-2 rounded-md bg-neutral-300/80 hover:bg-neutral-300 transition-all duration-200 cursor-pointer">
+            <button className="border border-neutral-500 px-4 py-1.25 rounded-md bg-neutral-300/80 hover:bg-neutral-300 transition-all duration-200 cursor-pointer">
               Clear
             </button>
           </div>

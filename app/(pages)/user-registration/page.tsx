@@ -1,14 +1,8 @@
 "use client";
 
-interface AvailableRolesType {
-  id: number;
-  name: string;
-  description: string;
-  userRoles: null
-}
-
+import SelectRole from "@/components/selectRole";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 
@@ -19,23 +13,9 @@ export default function UserRegistrationPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("");
   const [phone, setPhone] = useState("");
-  const [availableRoles, setAvailableRoles] = useState<AvailableRolesType[]>([])
+  
 
   const router = useRouter();
-
-  useEffect(() => {
-    const fetchAvailableRoles = async () => {
-      try {
-        const res = await fetch("/api/role");
-        const data = await res.json()
-        setAvailableRoles(data.body)
-      } catch (error) {
-        console.error("Error fetching roles: ", error)
-      }
-    }
-
-    fetchAvailableRoles()
-  }, [])
 
   const handleUserReg = async () => {
     try {
@@ -137,32 +117,11 @@ export default function UserRegistrationPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="w-full">
+            <div className="w-full flex flex-col gap-2">
               <label htmlFor="role" className="font-bold required">
                 Role
               </label>
-              <select
-                name="role"
-                id="role"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="outline-0 p-4 rounded-xl w-full mt-2 capitalize"
-                style={{
-                  backgroundColor: "var(--color-highlight)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
-                }}
-                required
-              >
-                <option value="" disabled>
-                  Select Role
-                </option>
-                {
-                  availableRoles.map((role) => (
-                    <option key={role.id} value={role.name}>{role.name}</option>
-                  ))
-                }
-              </select>
+              <SelectRole role={role} setRole={setRole} allRole={false} selectRole={true} />
             </div>
 
             <div className="w-full">
