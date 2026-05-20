@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 // icons
 import { LuEye, LuEyeClosed } from "react-icons/lu";
 import Link from "next/link";
+import { toast } from "sonner";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,8 +26,10 @@ export default function LoginPage() {
         body: JSON.stringify({ emailOrUserName, password }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        throw new Error("Login failed");
+        toast.error(data.message || "Login failed")
       }
 
       router.push("/");
