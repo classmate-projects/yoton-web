@@ -29,6 +29,7 @@ export default function UserManagement() {
       const res = await fetch("/api/users");
       const data = await res.json();
       setUsers(data.body.users);
+      console.log("data: ", data);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
@@ -44,19 +45,19 @@ export default function UserManagement() {
 
   const getTime = (time?: string) => {
     if (!time) return "N/A";
-    const formattedTime = time.replace(/\.(\d{3})\d*Z$/, ".$1Z");
 
-    return new Date(formattedTime).toLocaleString("en-IN", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
+    return new Date(`${time}Z`)
+      .toLocaleString("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        hour12: true,
+      })
+      .replace("am", "AM")
+      .replace("pm", "PM");
   };
 
   const handleDeleteUser = async (id: number) => {
     try {
-      // const deleteConfirmation = confirm(`Do you want to delete user "${fullname}" ?`)
-      // if(!deleteConfirmation) return;
-
       await fetch(`/api/users`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -119,7 +120,12 @@ export default function UserManagement() {
             className="border flex-1 border-neutral-600/50 px-4 py-2 rounded-md outline-0"
           />
           <div className="flex items-center justify-between gap-4">
-            <SelectRole role={role} setRole={setRole} allRole={true} selectRole={false} />
+            <SelectRole
+              role={role}
+              setRole={setRole}
+              allRole={true}
+              selectRole={false}
+            />
 
             <select
               name="date"
