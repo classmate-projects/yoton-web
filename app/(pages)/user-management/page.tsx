@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
+import DeleteIcon from "@/public/icons/deleteIcon";
 
 export default function UserManagement() {
   const [users, setUsers] = useState<getAllResponse[]>([]);
@@ -252,7 +253,7 @@ export default function UserManagement() {
                 .slice()
                 .sort((a, b) => b.id - a.id)
                 .map((user) => (
-                  <tr key={user.id} className={`bg-neutral-100 ring ${!user.isActive ? "bg-red-100" : "" }`}>
+                  <tr key={user.id} className={`bg-neutral-100 ring ${!user.isActive ? "bg-red-100/80" : "" }`}>
                     <td className="px-4 py-3">{user.fullName}</td>
                     <td className="px-4 py-3">{user.username}</td>
                     <td className="px-4 py-3">{user.email}</td>
@@ -268,11 +269,12 @@ export default function UserManagement() {
                           onChange={() => handleToggleUser(user.id, user.fullName, user.email, user.role, user.phone, user.isActive,)}
                         />
 
-                        <RiDeleteBinLine
-                          size={20}
-                          onClick={() => handleDelete(user.id, user.fullName)}
-                          className="text-red-400 hover:text-red-600 transition-all duration-200 cursor-pointer"
-                        />
+                        <button 
+                        onClick={() => handleDelete(user.id, user.fullName)}
+                        className="hover:bg-red-100 p-2 rounded transition-colors cursor-pointer"
+                        >
+                          <DeleteIcon color="red"/>
+                        </button>
 
                       </div>
                     </td>

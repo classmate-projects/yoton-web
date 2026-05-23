@@ -1,7 +1,9 @@
 "use client";
 
+import DeleteIcon from "@/public/icons/deleteIcon";
 import { useEffect, useState } from "react";
 import { MdContacts, MdSearch, MdDelete } from "react-icons/md";
+import { toast } from "sonner";
 
 interface Patient {
   id: number;
@@ -21,7 +23,7 @@ export default function PatientRecordsPage() {
       setIsLoading(true);
       const res = await fetch("/api/patient");
       const data = await res.json();
-      setPatients(Array.isArray(data) ? data : []);
+      setPatients(data);
     } catch (error) {
       console.error("Failed to fetch patients", error);
     } finally {
@@ -30,24 +32,44 @@ export default function PatientRecordsPage() {
   };
 
   useEffect(() => {
-    fetchPatients();
+    const callFetchPatientApi = () => {
+      fetchPatients();
+    }
+
+    callFetchPatientApi()
   }, []);
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this patient record?")) return;
     try {
-      const res = await fetch(`/api/patient/${id}`, {
+      const res = await fetch(`/api/patient`, {
         method: "DELETE",
+        body: JSON.stringify({ id })
+
       });
       if (res.ok) {
         fetchPatients();
       } else {
-        alert("Failed to delete patient");
+        toast.error("Failed to delete patient");
       }
     } catch (error) {
       console.error("Failed to delete patient", error);
     }
   };
+
+  const confirmDelete = (id: number, name: string) => {
+    toast(
+      <span>
+        Are you sure you want to delete {" "}
+        <b className="text-red-500 ml-1">{name}</b>
+      </span>,
+      {
+        action: {
+          label: "Delete",
+          onClick: () => handleDelete(id)
+        }
+      }
+    )
+  }
 
   const filteredPatients = patients.filter(
     (p) =>
@@ -77,7 +99,7 @@ export default function PatientRecordsPage() {
               placeholder="Search patients..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)] focus:outline-none focus:border-blue-500"
+              className="w-full pl-10 pr-4 py-2 rounded-lg bg-(--color-highlight) border border-(--color-border) focus:outline-none focus:border-blue-500"
             />
           </div>
         </div>
@@ -92,7 +114,6 @@ export default function PatientRecordsPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-100">
-                  <th className="p-3 border-b">ID</th>
                   <th className="p-3 border-b">Full Name</th>
                   <th className="p-3 border-b">Email</th>
                   <th className="p-3 border-b">Phone</th>
@@ -103,18 +124,17 @@ export default function PatientRecordsPage() {
               <tbody>
                 {filteredPatients.map((patient) => (
                   <tr key={patient.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="p-3 border-b text-gray-500 font-medium">#{patient.id}</td>
                     <td className="p-3 border-b font-semibold text-gray-800">{patient.fullName}</td>
                     <td className="p-3 border-b">{patient.email}</td>
                     <td className="p-3 border-b">{patient.phone}</td>
                     <td className="p-3 border-b text-sm text-gray-600 truncate max-w-xs">{patient.address || "N/A"}</td>
                     <td className="p-3 border-b text-center">
                       <button 
-                        onClick={() => handleDelete(patient.id)}
-                        className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors"
+                        onClick={() => confirmDelete(patient.id, patient.fullName)}
+                        className="hover:bg-red-50 p-2 rounded transition-colors cursor-pointer"
                         title="Delete Patient"
                       >
-                        <MdDelete size={20} />
+                        <DeleteIcon color="red" />
                       </button>
                     </td>
                   </tr>
