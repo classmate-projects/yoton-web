@@ -1,18 +1,21 @@
 "use client";
 
+import ToggleButton from "@/components/ToggleButton";
 import { useEffect, useState } from "react";
 import { MdAdminPanelSettings, MdAdd } from "react-icons/md";
 import { RiDeleteBinLine } from "react-icons/ri";
 import { toast } from "sonner";
 
-interface Role {
+interface FetchedRoles {
   id: number;
   name: string;
   description: string;
+  isEditable: boolean;
+  isActive: boolean;
 }
 
 export default function RoleManagementPage() {
-  const [roles, setRoles] = useState<Role[]>([]);
+  const [roles, setRoles] = useState<FetchedRoles[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // New Role Form
@@ -25,6 +28,7 @@ export default function RoleManagementPage() {
       const res = await fetch("/api/role");
       const data = await res.json();
       setRoles(data.body);
+      console.log("Fetched roles:", data.body);
     } catch (error) {
       console.error("Failed to fetch roles", error);
     } finally {
@@ -53,8 +57,6 @@ export default function RoleManagementPage() {
       });
 
       const data = await res.json();
-
-      console.log("data: ", data);
 
       if (res.ok) {
         toast.success(data.message);
@@ -100,6 +102,10 @@ export default function RoleManagementPage() {
     );
   };
 
+  const handleToggleRole = async (id: number) => {
+    console.log(id);
+  }
+
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
       <div className="flex flex-col gap-1 mb-8">
@@ -131,7 +137,7 @@ export default function RoleManagementPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3 h-[60dvh] overflow-y-scroll">
-              {roles.map((role) => (
+              {roles.slice().reverse().map((role) => (
                 <div
                   key={role.id}
                   className="p-4 flex justify-between items-center shadow-md rounded-lg border border-neutral-500/20 mr-2"
@@ -144,12 +150,17 @@ export default function RoleManagementPage() {
                       {role.description || "No description provided."}
                     </p>
                   </div>
-                  <button>
-                    <RiDeleteBinLine
-                      onClick={() => RequestDeleteRole(role.id, role.name)}
-                      className="text-red-400 cursor-pointer hover:text-red-500 hover:scale-110 transition-all duration-150 text-xl"
-                    />
-                  </button>
+                  <div className="flex flex-col gap-3 items-center">
+                  <ToggleButton checked={role.isActive} onChange={() => handleToggleRole(role.id)} />
+                    {role.isEditable && (
+                      <button>
+                        <RiDeleteBinLine
+                          onClick={() => RequestDeleteRole(role.id, role.name)}
+                          className="text-red-400 cursor-pointer hover:text-red-500 hover:scale-110 transition-all duration-150 text-xl"
+                        />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

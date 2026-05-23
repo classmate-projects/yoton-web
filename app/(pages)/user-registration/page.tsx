@@ -194,6 +194,7 @@ export default function UserRegistrationPage() {
         <div className="mt-6 flex justify-end gap-4">
           <button
             type="reset"
+            onClick={() => router.push("/user-management")}
             className="px-6 py-3 rounded-md border border-neutral-400 hover:bg-neutral-200/50 transition-all duration-200 cursor-pointer"
           >
             Cancel
