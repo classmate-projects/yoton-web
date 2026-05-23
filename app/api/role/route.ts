@@ -9,6 +9,24 @@ export async function GET() {
   }
 }
 
+export async function PUT(req: Request) {
+  try {
+    const { id, name, description, isActive } = await req.json();
+
+    const data = await apiFetch(`/api/role/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, description, isActive }),
+    });
+
+    return Response.json(data);
+  } catch {
+    return Response.json({ error: "Role update failed" }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: Request) {
   try {
     const { id } = await req.json();

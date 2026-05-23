@@ -1,9 +1,9 @@
 "use client";
 
 import ToggleButton from "@/components/ToggleButton";
+import DeleteIcon from "@/public/icons/deleteIcon";
 import { useEffect, useState } from "react";
 import { MdAdminPanelSettings, MdAdd } from "react-icons/md";
-import { RiDeleteBinLine } from "react-icons/ri";
 import { toast } from "sonner";
 
 interface FetchedRoles {
@@ -102,9 +102,35 @@ export default function RoleManagementPage() {
     );
   };
 
-  const handleToggleRole = async (id: number) => {
-    console.log(id);
-  }
+  const handleToggleRole = async (role: FetchedRoles) => {
+    const nextIsActive = !role.isActive;
+
+    try {
+      const res = await fetch("/api/role", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: role.id,
+          name: role.name,
+          description: role.description,
+          isActive: nextIsActive,
+        }),
+      });
+
+      if (!res.ok) {
+        toast.warning("Failed to update role status");
+        return;
+      }
+
+      setRoles((prev) =>
+        prev.map((r) =>
+          r.id === role.id ? { ...r, isActive: nextIsActive } : r,
+        ),
+      );
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
@@ -151,13 +177,16 @@ export default function RoleManagementPage() {
                     </p>
                   </div>
                   <div className="flex flex-col gap-3 items-center">
-                  <ToggleButton checked={role.isActive} onChange={() => handleToggleRole(role.id)} />
+                  <ToggleButton
+                    checked={role.isActive}
+                    onChange={() => handleToggleRole(role)}
+                  />
                     {role.isEditable && (
-                      <button>
-                        <RiDeleteBinLine
-                          onClick={() => RequestDeleteRole(role.id, role.name)}
-                          className="text-red-400 cursor-pointer hover:text-red-500 hover:scale-110 transition-all duration-150 text-xl"
-                        />
+                      <button onClick={() => RequestDeleteRole(role.id, role.name)}
+                      className="cursor-pointer hover:bg-red-100 ring ring-transparent hover:ring-red-200 p-2 rounded-full transition-all duration-200"
+                      title={`Delete ${role.name}`}
+                      >
+                        <DeleteIcon color="red" />
                       </button>
                     )}
                   </div>
