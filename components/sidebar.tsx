@@ -6,13 +6,13 @@ interface CurrentUserType {
 }
 
 import logo from "@/public/yoton_logo.png";
-import { MdLogout } from "react-icons/md";
 import Image from "next/image";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import pkg from "@/package.json";
 import { useEffect, useState } from "react";
+import LogoutIcon from "@/public/icons/LogoutIcon";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -92,7 +92,7 @@ export default function Sidebar() {
           className="border-2 border-neutral-400 px-4 py-2 rounded-md cursor-pointer hover:bg-neutral-300 transition-all duration-200 flex items-center gap-3"
         >
           Logout
-          <MdLogout size={20} />
+          <LogoutIcon />
         </button>
       </div>
     </div>

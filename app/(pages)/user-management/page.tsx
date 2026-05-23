@@ -21,6 +21,8 @@ import { toast } from "sonner";
 import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
 import DeleteIcon from "@/public/icons/deleteIcon";
+import SettingsIcon from "@/public/icons/SettingsIcon";
+import AddUserIcon from "@/public/icons/AddUserIcon";
 
 export default function UserManagement() {
   const [users, setUsers] = useState<getAllResponse[]>([]);
@@ -163,18 +165,20 @@ export default function UserManagement() {
             permissions.
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 shadow-lg px-4 py-2 rounded-full">
           <Link
             href={"/role-management"}
-            className="bg-green-500 text-xl p-4 rounded-md text-white hover:bg-green-600 transition-all duration-200 cursor-pointer"
+            title="Manage Roles"
+            className="text-xl p-4 rounded-full text-white hover:bg-gray-200 transition-all duration-200 cursor-pointer"
           >
-            <FaGear />
+            <SettingsIcon size={20}/>
           </Link>
           <Link
             href={"/user-registration"}
-            className="bg-blue-500 text-xl p-4 rounded-md text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
+            title="User Registration"
+            className=" text-xl p-4 rounded-full text-white hover:bg-gray-200 transition-all duration-200 cursor-pointer"
           >
-            <IoPersonAddSharp />
+           <AddUserIcon size={20}/>
           </Link>
         </div>
       </div>
@@ -221,6 +225,7 @@ export default function UserManagement() {
             <button
               type="button"
               onClick={clearFilters}
+              title="Clear filters"
               className="border border-neutral-500 px-4 py-1.25 rounded-md bg-neutral-300/80 hover:bg-neutral-300 transition-all duration-200 cursor-pointer"
             >
               Clear
@@ -271,6 +276,7 @@ export default function UserManagement() {
 
                         <button 
                         onClick={() => handleDelete(user.id, user.fullName)}
+                        title="Delete User"
                         className="hover:bg-red-100 p-2 rounded transition-colors cursor-pointer"
                         >
                           <DeleteIcon color="red"/>
