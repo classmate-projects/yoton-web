@@ -25,6 +25,7 @@ export default function UserManagement() {
   const [users, setUsers] = useState<getAllResponse[]>([]);
   const [role, setRole] = useState("allRole");
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeStatus, setActiveStatus] = useState("all");
 
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -38,13 +39,19 @@ export default function UserManagement() {
       const matchesRole =
         !role || role === "allRole" || user.role.toLowerCase() === role.toLowerCase();
 
-      return matchesSearch && matchesRole;
+      const matchesActiveStatus =
+        activeStatus === "all" ||
+        (activeStatus === "active" && user.isActive) ||
+        (activeStatus === "inactive" && !user.isActive);
+
+      return matchesSearch && matchesRole && matchesActiveStatus;
     });
-  }, [users, searchQuery, role]);
+  }, [users, searchQuery, role, activeStatus]);
 
   const clearFilters = () => {
     setSearchQuery("");
     setRole("allRole");
+    setActiveStatus("all");
   };
 
   const fetchAllUsers = async () => {
@@ -198,6 +205,17 @@ export default function UserManagement() {
               <option value="this_month">This Month</option>
               <option value="last_month">Last Month</option>
             </select> */}
+
+            <select
+              name="isActive"
+              id="isActive"
+              value={activeStatus}
+              onChange={(e) => setActiveStatus(e.target.value)}
+              className="border border-neutral-500 px-4 py-2 rounded-md outline-0">
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
 
             <button
               type="button"
