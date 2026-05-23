@@ -1,9 +1,11 @@
 "use client";
 
+import AddUserIcon from "@/public/icons/AddUserIcon";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { MdContacts, MdSearch, MdDelete } from "react-icons/md";
+import { MdContacts } from "react-icons/md";
 import { toast } from "sonner";
 
 interface Patient {
@@ -81,13 +83,17 @@ export default function PatientRecordsPage() {
 
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
-      <div className="flex flex-col gap-1 mb-8">
-        <h1 className="text-4xl font-semibold flex items-center gap-3">
-          <MdContacts className="text-blue-500" /> Patient Records
-        </h1>
-        <p className="text-sm text-gray-500">
-          View, search, and manage all registered patients in the system.
-        </p>
+      <div className="flex justify-between items-center gap-1 mb-8">
+        <div>
+          <h1 className="text-4xl font-semibold flex items-center gap-3">
+            <MdContacts className="text-blue-500" /> Patient Records
+          </h1>
+          <p className="text-sm text-gray-500">
+            View, search, and manage all registered patients in the system.
+          </p>
+        </div>
+        <Link href={"/patient-entry"} className="bg-blue-500 px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:bg-blue-600 transition duration-150">
+          Add Patient</Link>
       </div>
 
       <div className="card p-6 rounded-xl shadow-lg border-t">
@@ -108,32 +114,34 @@ export default function PatientRecordsPage() {
           </div>
         </div>
         <hr className="text-neutral-400/50 mb-4" />
-        
-        {isLoading ? (
-          <p>Loading records...</p>
-        ) : filteredPatients.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No patients found.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="p-3 border-b">Full Name</th>
-                  <th className="p-3 border-b">Email</th>
-                  <th className="p-3 border-b">Phone</th>
-                  <th className="p-3 border-b">Address</th>
-                  <th className="p-3 border-b text-center">Actions</th>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left rounded-xl overflow-hidden border border-neutral-400 border-separate border-spacing-0">
+            <thead>
+              <tr className="bg-neutral-300">
+                <th className="px-4 py-3 text-left">Full Name</th>
+                <th className="px-4 py-3 text-left">Email</th>
+                <th className="px-4 py-3 text-left">Phone</th>
+                <th className="px-4 py-3 text-left">Address</th>
+                <th className="px-4 py-3 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-20 text-center text-gray-500">
+                    Loading records...
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {filteredPatients.map((patient) => (
-                  <tr key={patient.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="p-3 border-b font-semibold text-gray-800">{patient.fullName}</td>
-                    <td className="p-3 border-b">{patient.email}</td>
-                    <td className="p-3 border-b">{patient.phone}</td>
-                    <td className="p-3 border-b text-sm text-gray-600 truncate max-w-xs">{patient.address || "N/A"}</td>
-                    <td className="p-3 border-b text-center">
-                      <button 
+              ) : filteredPatients.length > 0 ? (
+                filteredPatients.map((patient) => (
+                  <tr key={patient.id} className="bg-white hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 font-semibold text-gray-800">{patient.fullName}</td>
+                    <td className="px-4 py-3">{patient.email}</td>
+                    <td className="px-4 py-3">{patient.phone}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-xs">{patient.address || "N/A"}</td>
+                    <td className="px-4 py-3 text-center">
+                      <button
                         onClick={() => confirmDelete(patient.id, patient.fullName)}
                         className="hover:bg-red-50 p-2 rounded transition-colors cursor-pointer"
                         title="Delete Patient"
@@ -142,11 +150,17 @@ export default function PatientRecordsPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="px-4 py-20 text-center text-gray-500">
+                    No patients found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
