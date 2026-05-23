@@ -31,13 +31,12 @@ export default function LoginPage() {
 
       const data = await res.json();
 
-      const yoton_user_detail = { role: data.body.role, name: data.body.name };
-
-      localStorage.setItem("yoton_user_detail", JSON.stringify(yoton_user_detail));
-
       if (!res.ok) {
         throw new Error(data.message || "Login failed");
       }
+
+      const yoton_user_detail = { role: data.body.role, name: data.body.name };
+      localStorage.setItem("yoton_user_detail", JSON.stringify(yoton_user_detail));
 
       router.push("/");
     } catch (error) {
@@ -46,8 +45,6 @@ export default function LoginPage() {
       }
     } finally {
       setLoading(false);
-      setEmailOrUserName("")
-      setPassword("")
     }
   };
 
