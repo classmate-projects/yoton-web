@@ -19,6 +19,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import SelectRole from "@/components/selectRole";
+import ToggleButton from "@/components/ToggleButton";
 
 export default function UserManagement() {
   const [users, setUsers] = useState<getAllResponse[]>([]);
@@ -51,7 +52,6 @@ export default function UserManagement() {
       const res = await fetch("/api/users");
       const data = await res.json();
       setUsers(data.body.users);
-      console.log("data: ", data);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
@@ -107,6 +107,43 @@ export default function UserManagement() {
       },
     );
   };
+
+  const handleToggleUser = async (
+    id: number,
+    fullName: string,
+    email: string,
+    role: string,
+    phone: string,
+    isActive: boolean,
+  ) => {
+
+    const payload = {
+      id,
+      isActive: !isActive,
+      fullName,
+      email,
+      role,
+      phone,
+    }
+
+    try {
+      await fetch(`/api/users`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === id
+            ? { ...user, isActive: !isActive }
+            : user
+        )
+      );
+    } catch {
+      console.log("Error: error with toggling user");
+    }
+  }
 
   return (
     <div className="p-6">
@@ -193,26 +230,36 @@ export default function UserManagement() {
 
           {filteredUsers.length > 0 ? (
             <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id} className="bg-neutral-100 ring">
-                  <td className="px-4 py-3">{user.fullName}</td>
-                  <td className="px-4 py-3">{user.username}</td>
-                  <td className="px-4 py-3">{user.email}</td>
-                  <td className="px-4 py-3 capitalize">{user.role}</td>
-                  <td className="px-4 py-3">{user.phone}</td>
-                  <td className="px-4 py-3">{getTime(user.lastLogin)}</td>
-                  <td className="px-4 py-3">{getTime(user.createdAt)}</td>
-                  <td
-                    onClick={() => handleDelete(user.id, user.fullName)}
-                    className="flex h-12 items-center justify-center"
-                  >
-                    <RiDeleteBinLine
-                      size={20}
-                      className="text-red-400 hover:text-red-600 transition-all duration-200 cursor-pointer"
-                    />
-                  </td>
-                </tr>
-              ))}
+              {filteredUsers
+                .slice()
+                .sort((a, b) => b.id - a.id)
+                .map((user) => (
+                  <tr key={user.id} className="bg-neutral-100 ring">
+                    <td className="px-4 py-3">{user.fullName}</td>
+                    <td className="px-4 py-3">{user.username}</td>
+                    <td className="px-4 py-3">{user.email}</td>
+                    <td className="px-4 py-3 capitalize">{user.role}</td>
+                    <td className="px-4 py-3">{user.phone}</td>
+                    <td className="px-4 py-3">{getTime(user.lastLogin)}</td>
+                    <td className="px-4 py-3">{getTime(user.createdAt)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-4">
+
+                        <ToggleButton
+                          checked={user.isActive}
+                          onChange={() => handleToggleUser(user.id, user.fullName, user.email, user.role, user.phone, user.isActive,)}
+                        />
+
+                        <RiDeleteBinLine
+                          size={20}
+                          onClick={() => handleDelete(user.id, user.fullName)}
+                          className="text-red-400 hover:text-red-600 transition-all duration-200 cursor-pointer"
+                        />
+
+                      </div>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           ) : (
             <tbody>

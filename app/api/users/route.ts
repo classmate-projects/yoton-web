@@ -6,7 +6,7 @@ export async function GET() {
         const data = await apiFetch("/api/user");
 
         return Response.json(data);
-    } catch  {
+    } catch {
         return Response.json({ error: "Failed to fetch users" }, { status: 500 });
     }
 }
@@ -15,14 +15,14 @@ export async function GET() {
 export async function DELETE(req: Request) {
     try {
         const { id } = await req.json();
-        const data = await apiFetch(`/api/user/${id}`, { method: "DELETE"});
+        const data = await apiFetch(`/api/user/${id}`, { method: "DELETE" });
 
         return Response.json(data);
 
     } catch {
         return Response.json(
-            {success: false},
-            {status: 500}
+            { success: false },
+            { status: 500 }
         )
     }
 }
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
         const data = await apiFetch("/api/user", {
             method: "POST",
             headers: {
-                "Content-Type" : "application/json"
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({
                 fullName: fullname,
@@ -52,5 +52,35 @@ export async function POST(request: Request) {
         return Response.json({
             error: "User regestration failed"
         })
+    }
+}
+
+
+export async function PUT(req: Request) {
+    try {
+        const payload = await req.json();
+        const { id, isActive, fullName, email, role, phone } = payload;
+
+        const payloadforApi = {
+            isActive,
+            fullName,
+            email,
+            role,
+            phone,
+        }
+        
+        const data = await apiFetch(`/api/user/${id}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payloadforApi),
+        });
+
+        return Response.json(data);
+    } catch {
+        return Response.json({
+            error: "User toggle failed"
+        }, { status: 500 });
     }
 }
