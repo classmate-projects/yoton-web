@@ -264,7 +264,7 @@ export default function UserManagement() {
                 .slice()
                 .sort((a, b) => b.id - a.id)
                 .map((user) => (
-                  <tr key={user.id} className={`bg-neutral-100 ring ${!user.isActive ? "bg-red-100/80" : ""}`}>
+                  <tr key={user.id} className={`ring transition-all duration-150 ${!user.isActive ? "bg-red-100/80 text-gray-500" : "bg-white"}`}>
                     <td className="px-4 py-3">{user.fullName}</td>
                     <td className="px-4 py-3">{user.username}</td>
                     <td className="px-4 py-3">{user.email}</td>

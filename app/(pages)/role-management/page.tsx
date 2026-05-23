@@ -163,35 +163,38 @@ export default function RoleManagementPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3 h-[60dvh] overflow-y-scroll">
-              {roles.slice().reverse().map((role) => (
-                <div
-                  key={role.id}
-                  className="p-4 flex justify-between items-center shadow-md rounded-lg border border-neutral-500/20 mr-2"
-                >
-                  <div className="flex flex-col justify-between mb-1">
-                    <span className="font-bold text-lg text-gray-800 capitalize">
-                      {role.name}
-                    </span>
-                    <p className="text-sm text-gray-400">
-                      {role.description || "No description provided."}
-                    </p>
+              {roles
+                .slice()
+                .sort((a, b) => b.id - a.id)
+                .map((role) => (
+                  <div
+                    key={role.id}
+                    className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-200" : ""}`}
+                  >
+                    <div className="flex flex-col justify-between mb-1">
+                      <span className={`font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : "text-gray-800"}`}>
+                        {role.name}
+                      </span>
+                      <p className={`text-sm text-gray-500 ${!role.isActive ? "text-gray-100" : "text-gray-500"}`}>
+                        {role.description || "No description provided."}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-3 items-center">
+                      <ToggleButton
+                        checked={role.isActive}
+                        onChange={() => handleToggleRole(role)}
+                      />
+                      {role.isEditable && (
+                        <button onClick={() => RequestDeleteRole(role.id, role.name)}
+                          className="cursor-pointer hover:bg-red-100 ring ring-transparent hover:ring-red-200 p-2 rounded-full transition-all duration-200"
+                          title={`Delete ${role.name}`}
+                        >
+                          <DeleteIcon color="red" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-3 items-center">
-                  <ToggleButton
-                    checked={role.isActive}
-                    onChange={() => handleToggleRole(role)}
-                  />
-                    {role.isEditable && (
-                      <button onClick={() => RequestDeleteRole(role.id, role.name)}
-                      className="cursor-pointer hover:bg-red-100 ring ring-transparent hover:ring-red-200 p-2 rounded-full transition-all duration-200"
-                      title={`Delete ${role.name}`}
-                      >
-                        <DeleteIcon color="red" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
           )}
         </div>
