@@ -1,6 +1,7 @@
 "use client";
 
 import DeleteIcon from "@/public/icons/deleteIcon";
+import SearchIcon from "@/public/icons/SearchIcon";
 import { useEffect, useState } from "react";
 import { MdContacts, MdSearch, MdDelete } from "react-icons/md";
 import { toast } from "sonner";
@@ -93,7 +94,10 @@ export default function PatientRecordsPage() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-semibold">Patient Directory</h2>
           <div className="relative w-64">
-            <MdSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            {/* <MdSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} /> */}
+            <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
+              <SearchIcon color="#555" />
+            </span>
             <input
               type="text"
               placeholder="Search patients..."

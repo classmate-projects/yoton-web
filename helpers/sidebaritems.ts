@@ -1,4 +1,4 @@
-import { appointmentsIcon, contactsIcon, dashboardIcon, registrationIcon } from "@/public/icons";
+import { appointmentsIcon, RecordsIcon, dashboardIcon, registrationIcon, multipleUsers } from "@/public/icons/icons";
 
 interface SidebarMenuItem {
     id: number;
@@ -40,7 +40,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Patient Records",
         navLink: "/patient-records",
         roles: ["doctor", "nurse", "receptionist", "Admin"],
-        icon: contactsIcon
+        icon: RecordsIcon
     },
 
     {
@@ -48,6 +48,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "User Management",
         navLink: "/user-management",
         roles: ["Admin"],
-        icon: contactsIcon
+        icon: multipleUsers
     }
 ]

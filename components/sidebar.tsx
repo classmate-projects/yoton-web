@@ -52,7 +52,7 @@ export default function Sidebar() {
 
       {/* menu section */}
       <div className="mt-14">
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-1">
           {sidebarMenuItems.map((item) => {
             if (item.roles.includes(currentUser?.role ?? "")) {
               const isActive = pathname === item.navLink;
@@ -60,15 +60,12 @@ export default function Sidebar() {
                 <li key={item.id}>
                   <Link
                     href={item.navLink}
-                    className={`flex items-center gap-3 text-lg py-2 px-4 rounded-lg transition-colors duration-200 ${
-                      isActive
+                    className={`flex items-center gap-3 text-lg py-1.5 px-2.5 rounded-xl transition-colors duration-200 ${isActive
                         ? "bg-neutral-300 font-semibold"
                         : "hover:bg-neutral-200"
-                    }`}
+                      }`}
                   >
-                    <span className="text-2xl">
-                      <item.icon />
-                    </span>
+                    <item.icon />
                     {item.name}
                   </Link>
                 </li>

@@ -23,6 +23,7 @@ import ToggleButton from "@/components/ToggleButton";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import SettingsIcon from "@/public/icons/SettingsIcon";
 import AddUserIcon from "@/public/icons/AddUserIcon";
+import SearchIcon from "@/public/icons/SearchIcon";
 
 export default function UserManagement() {
   const [users, setUsers] = useState<getAllResponse[]>([]);
@@ -171,27 +172,32 @@ export default function UserManagement() {
             title="Manage Roles"
             className="text-xl p-4 rounded-full text-white hover:bg-gray-200 transition-all duration-200 cursor-pointer"
           >
-            <SettingsIcon size={20}/>
+            <SettingsIcon size={20} />
           </Link>
           <Link
             href={"/user-registration"}
             title="User Registration"
             className=" text-xl p-4 rounded-full text-white hover:bg-gray-200 transition-all duration-200 cursor-pointer"
           >
-           <AddUserIcon size={20}/>
+            <AddUserIcon size={20} />
           </Link>
         </div>
       </div>
 
       <div className="mt-8 flex items-center w-full justify-between gap-6">
         <div className="card flex-1 px-6 py-4 rounded-xl flex items-center justify-between gap-6">
-          <input
-            type="search"
-            placeholder="Filter by name or username"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="border flex-1 border-neutral-600/50 px-4 py-2 rounded-md outline-0"
-          />
+          <div className=" flex-1 relative">
+            <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
+              <SearchIcon />
+            </span>
+            <input
+              type="text"
+              placeholder="Filter by name or username"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="border w-full border-neutral-600/50 px-4 pl-10 py-2 rounded-md outline-0"
+            />
+          </div>
           <div className="flex items-center justify-between gap-4">
             <SelectRole
               role={role}
@@ -258,7 +264,7 @@ export default function UserManagement() {
                 .slice()
                 .sort((a, b) => b.id - a.id)
                 .map((user) => (
-                  <tr key={user.id} className={`bg-neutral-100 ring ${!user.isActive ? "bg-red-100/80" : "" }`}>
+                  <tr key={user.id} className={`bg-neutral-100 ring ${!user.isActive ? "bg-red-100/80" : ""}`}>
                     <td className="px-4 py-3">{user.fullName}</td>
                     <td className="px-4 py-3">{user.username}</td>
                     <td className="px-4 py-3">{user.email}</td>
@@ -274,12 +280,12 @@ export default function UserManagement() {
                           onChange={() => handleToggleUser(user.id, user.fullName, user.email, user.role, user.phone, user.isActive,)}
                         />
 
-                        <button 
-                        onClick={() => handleDelete(user.id, user.fullName)}
-                        title="Delete User"
-                        className="hover:bg-red-100 p-2 rounded transition-colors cursor-pointer"
+                        <button
+                          onClick={() => handleDelete(user.id, user.fullName)}
+                          title="Delete User"
+                          className="hover:bg-red-100 p-2 rounded transition-colors cursor-pointer"
                         >
-                          <DeleteIcon color="red"/>
+                          <DeleteIcon color="red" />
                         </button>
 
                       </div>
