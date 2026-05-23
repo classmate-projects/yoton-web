@@ -12,9 +12,6 @@ interface getAllResponse {
   lastLogin: string;
 }
 
-import { IoPersonAddSharp } from "react-icons/io5";
-import { FaGear } from "react-icons/fa6";
-import { RiDeleteBinLine } from "react-icons/ri";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
