@@ -1,5 +1,4 @@
 import { apiFetch } from "@/lib/api";
-import { NextRequest } from "next/server";
 
 export async function GET() {
   try {

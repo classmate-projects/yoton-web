@@ -17,7 +17,6 @@ import { useEffect, useState } from "react";
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const currentUserRole = "admin"; // This should be dynamically set based on the logged-in user's role
 
   const [currentUser, setCurrentUser] = useState<CurrentUserType | null>(null);
 
@@ -55,7 +54,7 @@ export default function Sidebar() {
       <div className="mt-14">
         <ul className="flex flex-col gap-2">
           {sidebarMenuItems.map((item) => {
-            if (item.roles.includes(currentUserRole)) {
+            if (item.roles.includes(currentUser?.role ?? "")) {
               const isActive = pathname === item.navLink;
               return (
                 <li key={item.id}>

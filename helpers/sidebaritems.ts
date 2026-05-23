@@ -8,7 +8,7 @@ interface SidebarMenuItem {
     icon: React.ComponentType; // Assuming icons are React components
 }
 
-const allRoles = ["admin", "doctor", "nurse", "receptionist"];
+const allRoles = ["Admin", "doctor", "nurse", "receptionist"];
 
 export const sidebarMenuItems: SidebarMenuItem[] = [
     {
@@ -23,7 +23,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 2,
         name: "Patient Entry",
         navLink: "/patient-entry",
-        roles: ["receptionist"],
+        roles: ["receptionist", "Admin"],
         icon: registrationIcon
     },
 
@@ -39,7 +39,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 4,
         name: "Patient Records",
         navLink: "/patient-records",
-        roles: ["doctor", "nurse", "receptionist"],
+        roles: ["doctor", "nurse", "receptionist", "Admin"],
         icon: contactsIcon
     },
 
@@ -47,7 +47,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 5,
         name: "User Management",
         navLink: "/user-management",
-        roles: ["admin"],
+        roles: ["Admin"],
         icon: contactsIcon
     }
 ]

@@ -1,9 +1,63 @@
+'use client'
+import React, { useState } from "react";
 import { MdOutlinePersonOutline } from "react-icons/md";
+import { toast } from "sonner";
 
 export default function PatientEntryPage() {
+
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+
+
+  const handlePatientEntry = async (e: React.SubmitEvent) => {
+    e.preventDefault();
+    console.log("Clicked")
+    try {
+      const payload = {
+        fullName,
+        email,
+        phone,
+        address,
+        dateOfBirth
+      }
+      const res = await fetch("/api/reception/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await res.json();
+      console.log("Data from patient enty: ", data)
+
+      if(!res.ok) {
+        throw new Error(data.message || "Patient registration failed");
+      }
+
+      toast.success(data.message)
+      resetForm()
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+      }
+    }
+  }
+
+  const resetForm = () => {
+    setFullName("");
+    setEmail("");
+    setPhone("");
+    setAddress("");
+    setDateOfBirth("");
+  };
+
   return (
     <>
-      <form className="flex flex-col py-8 px-10 gap-4">
+      <form onSubmit={handlePatientEntry} className="flex flex-col py-8 px-10 gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-4xl font-semibold">New Patient Entry</h1>
           <p className="text-sm text-gray-500">
@@ -28,6 +82,8 @@ export default function PatientEntryPage() {
                   type="text"
                   id="fullname"
                   name="fullname"
+                  value={fullName}
+                  onChange={e => setFullName(e.target.value)}
                   required
                   placeholder="Johnathan Doe"
                   className="outline-0 p-4 rounded-xl w-full mt-2"
@@ -41,16 +97,16 @@ export default function PatientEntryPage() {
 
               <div className="flex items-center gap-4 justify-center w-full">
                 <div className="w-full">
-                  <label htmlFor="age" className="font-bold required">
-                    Age
+                  <label htmlFor="dateOfBirth" className="font-bold required">
+                    Date of Birth
                   </label>
                   <input
-                    type="number"
-                    id="age"
-                    name="age"
+                    type="date"
+                    id="dateOfBirth"
+                    name="dateOfBirth"
+                    value={dateOfBirth}
+                    onChange={e => setDateOfBirth(e.target.value)}
                     required
-                    placeholder="30"
-                    max={200}
                     className="outline-0 p-4 rounded-xl w-full mt-2"
                     style={{
                       backgroundColor: "var(--color-highlight)",
@@ -59,8 +115,8 @@ export default function PatientEntryPage() {
                     }}
                   />
                 </div>
-                <div className="w-full">
-                  <label htmlFor="gender" className="font-bold required">
+                {/* <div className="w-full">
+                  <label htmlFor="gender" className="font-bold">
                     Gender
                   </label>
                   <select
@@ -72,14 +128,14 @@ export default function PatientEntryPage() {
                       border: "1px solid var(--color-border)",
                       color: "var(--color-text)",
                     }}
-                    required
+                  // required
                   >
                     <option value="">Select Gender</option>
                     <option value="male">Male</option>
                     <option value="female">Female</option>
                     <option value="other">Other</option>
                   </select>
-                </div>
+                </div> */}
               </div>
             </div>
 
@@ -92,6 +148,8 @@ export default function PatientEntryPage() {
                   type="tel"
                   id="phone"
                   name="phone"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
                   placeholder="+1 234 567 890"
                   className="outline-0 p-4 rounded-xl w-full mt-2"
                   style={{
@@ -111,6 +169,8 @@ export default function PatientEntryPage() {
                   type="email"
                   id="email"
                   name="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
                   placeholder="john.doe@example.com"
                   className="outline-0 p-4 rounded-xl w-full mt-2"
                   style={{
@@ -121,7 +181,7 @@ export default function PatientEntryPage() {
                 />
               </div>
 
-              <div className="w-full">
+              {/* <div className="w-full">
                 <label htmlFor="assign-doctor" className="font-bold">
                   Assign Doctor
                 </label>
@@ -141,15 +201,42 @@ export default function PatientEntryPage() {
                   <option value="dr-johnson">Dr. Johnson</option>
                   <option value="dr-williams">Dr. Williams</option>
                 </select>
-              </div>
+              </div> */}
+            </div>
+
+            <div className="w-full">
+              <label htmlFor="address" className="font-bold required">
+                Address
+              </label>
+              <textarea
+                id="address"
+                name="address"
+                required
+                rows={3}
+                value={address}
+                onChange={e => setAddress(e.target.value)}
+                placeholder="Street, city, state, postal code"
+                className="outline-0 p-4 rounded-xl w-full mt-2 resize-y min-h-[100px]"
+                style={{
+                  backgroundColor: "var(--color-highlight)",
+                  border: "1px solid var(--color-border)",
+                  color: "var(--color-text)",
+                }}
+              />
             </div>
           </div>
         </div>
         <div className="flex justify-end gap-8 mt-6">
-          <button className="px-6 py-3 rounded-md border border-neutral-400/50 hover:bg-neutral-300/50 transition-all duration-200 cursor-pointer text-lg">
+          <button
+            type="button"
+            onClick={resetForm}
+            className="px-6 py-3 rounded-md border border-neutral-400/50 hover:bg-neutral-300/50 transition-all duration-200 cursor-pointer text-lg">
             Cancel
           </button>
-          <button className="px-6 py-3 rounded-md border border-transparent  bg-blue-500 hover:bg-blue-600 transition-all duration-200 cursor-pointer text-lg text-white">
+          <button
+            type="submit"
+
+            className="px-6 py-3 rounded-md border border-transparent  bg-blue-500 hover:bg-blue-600 transition-all duration-200 cursor-pointer text-lg text-white">
             Save Patient
           </button>
         </div>
