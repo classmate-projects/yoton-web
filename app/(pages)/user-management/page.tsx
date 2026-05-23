@@ -16,13 +16,35 @@ import { IoPersonAddSharp } from "react-icons/io5";
 import { FaGear } from "react-icons/fa6";
 import { RiDeleteBinLine } from "react-icons/ri";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import SelectRole from "@/components/selectRole";
 
 export default function UserManagement() {
   const [users, setUsers] = useState<getAllResponse[]>([]);
-  const [role, setRole] = useState("");
+  const [role, setRole] = useState("allRole");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredUsers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return users.filter((user) => {
+      const matchesSearch =
+        !query ||
+        user.fullName.toLowerCase().includes(query) ||
+        user.username.toLowerCase().includes(query);
+
+      const matchesRole =
+        !role || role === "allRole" || user.role.toLowerCase() === role.toLowerCase();
+
+      return matchesSearch && matchesRole;
+    });
+  }, [users, searchQuery, role]);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setRole("allRole");
+  };
 
   const fetchAllUsers = async () => {
     try {
@@ -117,6 +139,8 @@ export default function UserManagement() {
           <input
             type="search"
             placeholder="Filter by name or username"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="border flex-1 border-neutral-600/50 px-4 py-2 rounded-md outline-0"
           />
           <div className="flex items-center justify-between gap-4">
@@ -127,7 +151,7 @@ export default function UserManagement() {
               selectRole={false}
             />
 
-            <select
+            {/* <select
               name="date"
               id="date"
               className="border border-neutral-500 px-4 py-2 rounded-md outline-0"
@@ -136,9 +160,13 @@ export default function UserManagement() {
               <option value="this_week">This Week</option>
               <option value="this_month">This Month</option>
               <option value="last_month">Last Month</option>
-            </select>
+            </select> */}
 
-            <button className="border border-neutral-500 px-4 py-1.25 rounded-md bg-neutral-300/80 hover:bg-neutral-300 transition-all duration-200 cursor-pointer">
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="border border-neutral-500 px-4 py-1.25 rounded-md bg-neutral-300/80 hover:bg-neutral-300 transition-all duration-200 cursor-pointer"
+            >
               Clear
             </button>
           </div>
@@ -163,9 +191,9 @@ export default function UserManagement() {
             </tr>
           </thead>
 
-          {users.length > 0 ? (
+          {filteredUsers.length > 0 ? (
             <tbody>
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <tr key={user.id} className="bg-neutral-100 ring">
                   <td className="px-4 py-3">{user.fullName}</td>
                   <td className="px-4 py-3">{user.username}</td>
