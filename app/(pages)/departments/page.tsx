@@ -3,7 +3,9 @@
 import ToggleButton from "@/components/ToggleButton";
 import BuildingIcon from "@/public/icons/BuildingIcon";
 import { MdAdd } from "react-icons/md";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import DeleteIcon from "@/public/icons/deleteIcon";
 
 interface Department {
   id: number;
@@ -12,17 +14,8 @@ interface Department {
   isActive: boolean;
 }
 
-const dummyDepartments: Department[] = [
-  {
-    id: 1,
-    name: "Cardiology",
-    description: "Heart and cardiovascular care unit.",
-    isActive: true,
-  },
-];
-
 export default function DepartmentsPage() {
-  const [departments, setDepartments] = useState<Department[]>(dummyDepartments);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -35,9 +28,45 @@ export default function DepartmentsPage() {
     setDescription("");
   };
 
-  const handleSaveDepartment = (e: React.FormEvent) => {
+  const fetchDepartments = async () => {
+    try {
+        const res = await fetch("/api/department")
+        const data = await res.json();
+
+        if(!res.ok) throw new Error(data.message || "Failed to fetch Departments")
+
+        setDepartments(data);
+        } catch (error) {
+        if(error instanceof Error) toast.error(error.message)
+    }
+  }
+
+  useEffect(() => {
+    const callFetchApi = () => {
+        fetchDepartments();
+    }
+    callFetchApi()
+  },[])
+
+  const handleSaveDepartment = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log({ name, description });
+    try {
+        const payload = { name, description }
+        const res = await fetch("/api/department", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(payload)
+        })
+
+        const data = await res.json();
+
+        if(!res.ok) throw new Error(data.message || "Failed to create department")
+        toast.success(data.message)
+        fetchDepartments();
+        
+    } catch (error) {
+        if(error instanceof Error) toast.error(error.message)
+    }
     closeModal();
   };
 
@@ -48,6 +77,40 @@ export default function DepartmentsPage() {
       ),
     );
   };
+
+  const handleDelete = async (id: number) => {
+    try {
+        const res = await fetch("/api/department", {
+            method: "DELETE",
+            headers: {"Content-Type": "application-json"},
+            body: JSON.stringify(id)
+        })
+
+        const data = await res.json();
+
+        if(!res.ok) throw new Error(data.message || "Failed to delete department.")
+        toast.success(data.message)
+        fetchDepartments();
+    } catch (error) {
+        if(error instanceof Error) toast.error(error.message)
+    }
+  }
+
+
+  const confirmDelete = (id: number, name: string) => {
+    toast(
+        <span>
+          Are you sure you want to delete {" "}
+          <b className="text-red-500 ml-1">{name}</b>
+        </span>,
+        {
+          action: {
+            label: "Delete",
+            onClick: () => handleDelete(id)
+          }
+        }
+      )
+  }
 
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
@@ -160,11 +223,19 @@ export default function DepartmentsPage() {
                       {department.description || "No description provided."}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-center">
+                      <div className="flex justify-center items-center gap-4">
                         <ToggleButton
                           checked={department.isActive}
                           onChange={() => handleToggleDepartment(department)}
                         />
+                        
+                        <button
+                        onClick={() => confirmDelete(department.id, department.name)}
+                        title={`Delete ${department.name}`}
+                         className="p-2 hover:bg-red-100 rounded-full ring ring-transparent hover:ring-red-200 transition-all duration-200 cursor-pointer">
+                            <DeleteIcon color="red" size={18}/>
+                        </button>
+
                       </div>
                     </td>
                   </tr>
