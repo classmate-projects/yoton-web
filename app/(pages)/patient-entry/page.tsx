@@ -34,7 +34,7 @@ export default function PatientEntryPage() {
       const data = await res.json();
       console.log("Data from patient enty: ", data)
 
-      if(!res.ok) {
+      if (!res.ok) {
         throw new Error(data.message || "Patient registration failed");
       }
 
@@ -57,7 +57,7 @@ export default function PatientEntryPage() {
 
   return (
     <>
-      <form onSubmit={handlePatientEntry} className="flex flex-col py-8 px-10 gap-4">
+      <form onSubmit={handlePatientEntry} className="mainPage flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-4xl font-semibold">New Patient Entry</h1>
           <p className="text-sm text-gray-500">
@@ -66,15 +66,15 @@ export default function PatientEntryPage() {
           </p>
         </div>
 
-        <div className="card rounded-xl shadow-2xl border-t p-8 mt-8 ">
+        <div className="card rounded-xl shadow-2xl border-t p-6 mt-8">
           <span className="flex items-center gap-2 text-2xl font-semibold mb-6">
             <MdOutlinePersonOutline className="text-blue-500" size={30} />
             <h2>Personal Information</h2>
           </span>
-          <hr className="text-neutral-400/50 mb-6" />
-          <div className="flex flex-col gap-6">
+          <hr className="text-neutral-400/50 mb-4" />
+          <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4 justify-center w-full">
-              <div className="w-full">
+              <div className="w-full flex flex-col gap-2">
                 <label htmlFor="fullname" className="font-bold required">
                   Full Name
                 </label>
@@ -86,17 +86,29 @@ export default function PatientEntryPage() {
                   onChange={e => setFullName(e.target.value)}
                   required
                   placeholder="Johnathan Doe"
-                  className="outline-0 p-4 rounded-xl w-full mt-2"
-                  style={{
-                    backgroundColor: "var(--color-highlight)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
+                  className="outline-neutral-400 px-4 py-2 ring text-xl ring-neutral-300 rounded-md"
                 />
               </div>
 
+              <div className="w-full flex flex-col gap-2">
+                <label htmlFor="gender" className="font-bold required">
+                  Gender
+                </label>
+                <select
+                  name="gender"
+                  id="gender"
+                  className="outline-neutral-400 px-4 py-2.5 ring text-xl ring-neutral-300 rounded-md"
+                  required
+                >
+                  <option value="">Select Gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>  
+
               <div className="flex items-center gap-4 justify-center w-full">
-                <div className="w-full">
+                <div className="w-full flex flex-col gap-2">
                   <label htmlFor="dateOfBirth" className="font-bold required">
                     Date of Birth
                   </label>
@@ -107,40 +119,14 @@ export default function PatientEntryPage() {
                     value={dateOfBirth}
                     onChange={e => setDateOfBirth(e.target.value)}
                     required
-                    className="outline-0 p-4 rounded-xl w-full mt-2"
-                    style={{
-                      backgroundColor: "var(--color-highlight)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
+                    className="outline-neutral-400 px-4 py-2 ring text-xl ring-neutral-300 rounded-md"
                   />
                 </div>
-                {/* <div className="w-full">
-                  <label htmlFor="gender" className="font-bold">
-                    Gender
-                  </label>
-                  <select
-                    name="gender"
-                    id="gender"
-                    className="outline-0 p-4 rounded-xl w-full mt-2"
-                    style={{
-                      backgroundColor: "var(--color-highlight)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  // required
-                  >
-                    <option value="">Select Gender</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div> */}
               </div>
             </div>
 
             <div className="flex items-center gap-4 justify-center w-full">
-              <div className="w-full">
+              <div className="w-full flex flex-col gap-2">
                 <label htmlFor="phone" className="font-bold required">
                   Phone Number
                 </label>
@@ -151,17 +137,12 @@ export default function PatientEntryPage() {
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
                   placeholder="+1 234 567 890"
-                  className="outline-0 p-4 rounded-xl w-full mt-2"
-                  style={{
-                    backgroundColor: "var(--color-highlight)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
+                  className="outline-neutral-400 px-4 py-2 ring text-xl ring-neutral-300 rounded-md"
                   required
                 />
               </div>
 
-              <div className="w-full">
+              <div className="w-full flex flex-col gap-2">
                 <label htmlFor="email" className="font-bold">
                   Email Address
                 </label>
@@ -172,12 +153,7 @@ export default function PatientEntryPage() {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="john.doe@example.com"
-                  className="outline-0 p-4 rounded-xl w-full mt-2"
-                  style={{
-                    backgroundColor: "var(--color-highlight)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
+                  className="outline-neutral-400 px-4 py-2 ring text-xl ring-neutral-300 rounded-md"
                 />
               </div>
 
@@ -204,7 +180,7 @@ export default function PatientEntryPage() {
               </div> */}
             </div>
 
-            <div className="w-full">
+            <div className="w-full flex flex-col gap-2">
               <label htmlFor="address" className="font-bold required">
                 Address
               </label>
@@ -216,12 +192,7 @@ export default function PatientEntryPage() {
                 value={address}
                 onChange={e => setAddress(e.target.value)}
                 placeholder="Street, city, state, postal code"
-                className="outline-0 p-4 rounded-xl w-full mt-2 resize-y min-h-[100px]"
-                style={{
-                  backgroundColor: "var(--color-highlight)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
-                }}
+                className="outline-neutral-400 px-4 py-2 ring text-xl ring-neutral-300 rounded-md"
               />
             </div>
           </div>
