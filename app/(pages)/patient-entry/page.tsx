@@ -1,214 +1,554 @@
 'use client'
 import React, { useState } from "react";
-import { MdOutlinePersonOutline } from "react-icons/md";
-import { toast } from "sonner";
+import { MdOutlinePersonOutline, MdOutlineLocalPhone, MdOutlineFilePresent } from "react-icons/md";
+import { countryDetails } from "@/helpers/countyDetails";
 
 export default function PatientEntryPage() {
+  const [formData, setFormData] = useState({
+    Name: "",
+    Sex: "",
+    DateOfBirth: "",
+    Phone: "",
+    PhoneCode: "+971",
+    Email: "",
+    Address: "",
+    Nationality: "",
+    PassportNumber: "",
+    NationalID: "",
+    FatherName: "",
+    MotherName: "",
+    PatientType: "Normal",
+    VisaType: "",
+    MaritalStatus: "",
+    Designation: "",
+    ReferralStatus: false,
+    ChronicStatus: false,
+    EmergencyContact: "",
+    EmergencyContactPhone: "",
+    RegisteredBy: 1,
+    OPNumber: "",
+    Password: ""
+  });
 
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    const inputElement = e.target as HTMLInputElement;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? inputElement.checked : value
+    }));
+  };
 
-
-  const handlePatientEntry = async (e: React.SubmitEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log("Clicked")
-    try {
-      const payload = {
-        fullName,
-        email,
-        phone,
-        address,
-        dateOfBirth
-      }
-      const res = await fetch("/api/reception/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload)
-      })
-
-      const data = await res.json();
-      console.log("Data from patient enty: ", data)
-
-      if (!res.ok) {
-        throw new Error(data.message || "Patient registration failed");
-      }
-
-      toast.success(data.message)
-      resetForm()
-    } catch (error) {
-      if (error instanceof Error) {
-        toast.error(error.message);
-      }
-    }
-  }
+    console.log("Form Data Submitted:", formData);
+  };
 
   const resetForm = () => {
-    setFullName("");
-    setEmail("");
-    setPhone("");
-    setAddress("");
-    setDateOfBirth("");
+    setFormData({
+      Name: "",
+      Sex: "",
+      DateOfBirth: "",
+      Phone: "",
+      PhoneCode: "+971",
+      Email: "",
+      Address: "",
+      Nationality: "",
+      PassportNumber: "",
+      NationalID: "",
+      FatherName: "",
+      MotherName: "",
+      PatientType: "Normal",
+      VisaType: "",
+      MaritalStatus: "",
+      Designation: "",
+      ReferralStatus: false,
+      ChronicStatus: false,
+      EmergencyContact: "",
+      EmergencyContactPhone: "",
+      RegisteredBy: 1,
+      OPNumber: "",
+      Password: ""
+    });
   };
 
   return (
     <>
-      <form onSubmit={handlePatientEntry} className="mainPage flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-4xl font-semibold">New Patient Entry</h1>
-          <p className="text-sm text-gray-500">
-            Please fill in the patient details accurately to ensure correct
-            record keeping.
+      <form onSubmit={handleSubmit} className="mainPage flex flex-col gap-6">
+        {/* Header */}
+        <div className="flex flex-col gap-2">
+          <h1 className="text-4xl font-bold text-gray-900">New Patient Entry</h1>
+          <p className="text-base text-gray-600">
+            Complete patient registration form. All fields marked with * are required.
           </p>
         </div>
 
-        <div className="card rounded-xl shadow-2xl border-t p-6 mt-8">
-          <span className="flex items-center gap-2 text-2xl font-semibold mb-6">
-            <MdOutlinePersonOutline className="text-blue-500" size={30} />
-            <h2>Personal Information</h2>
-          </span>
-          <hr className="text-neutral-400/50 mb-4" />
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-4 justify-center w-full">
-              <div className="w-full flex flex-col gap-2">
-                <label htmlFor="fullname" className="font-bold required">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  id="fullname"
-                  name="fullname"
-                  value={fullName}
-                  onChange={e => setFullName(e.target.value)}
-                  required
-                  placeholder="Johnathan Doe"
-                  className="outline-neutral-400 px-4 py-2 ring text-xl ring-neutral-300 rounded-md"
-                />
-              </div>
+        {/* Personal Information Section */}
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <MdOutlinePersonOutline className="text-blue-600" size={28} />
+            <h2 className="text-2xl font-bold text-gray-900">Personal Information</h2>
+          </div>
+          <hr className="mb-6 border-gray-300" />
 
-              <div className="w-full flex flex-col gap-2">
-                <label htmlFor="gender" className="font-bold required">
-                  Gender
-                </label>
-                <select
-                  name="gender"
-                  id="gender"
-                  className="outline-neutral-400 px-4 py-2.5 ring text-xl ring-neutral-300 rounded-md"
-                  required
-                >
-                  <option value="">Select Gender</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>  
-
-              <div className="flex items-center gap-4 justify-center w-full">
-                <div className="w-full flex flex-col gap-2">
-                  <label htmlFor="dateOfBirth" className="font-bold required">
-                    Date of Birth
-                  </label>
-                  <input
-                    type="date"
-                    id="dateOfBirth"
-                    name="dateOfBirth"
-                    value={dateOfBirth}
-                    onChange={e => setDateOfBirth(e.target.value)}
-                    required
-                    className="outline-neutral-400 px-4 py-2 ring text-xl ring-neutral-300 rounded-md"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 justify-center w-full">
-              <div className="w-full flex flex-col gap-2">
-                <label htmlFor="phone" className="font-bold required">
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  id="phone"
-                  name="phone"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  placeholder="+1 234 567 890"
-                  className="outline-neutral-400 px-4 py-2 ring text-xl ring-neutral-300 rounded-md"
-                  required
-                />
-              </div>
-
-              <div className="w-full flex flex-col gap-2">
-                <label htmlFor="email" className="font-bold">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="john.doe@example.com"
-                  className="outline-neutral-400 px-4 py-2 ring text-xl ring-neutral-300 rounded-md"
-                />
-              </div>
-
-              {/* <div className="w-full">
-                <label htmlFor="assign-doctor" className="font-bold">
-                  Assign Doctor
-                </label>
-                <select
-                  name="assign-doctor"
-                  id="assign-doctor"
-                  required
-                  className="outline-0 p-4 rounded-xl w-full mt-2"
-                  style={{
-                    backgroundColor: "var(--color-highlight)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  <option value="">Select a Doctor</option>
-                  <option value="dr-smith">Dr. Smith</option>
-                  <option value="dr-johnson">Dr. Johnson</option>
-                  <option value="dr-williams">Dr. Williams</option>
-                </select>
-              </div> */}
-            </div>
-
-            <div className="w-full flex flex-col gap-2">
-              <label htmlFor="address" className="font-bold required">
-                Address
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Name */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="Name" className="font-semibold text-gray-700">
+                Full Name <span className="text-red-500">*</span>
               </label>
-              <textarea
-                id="address"
-                name="address"
+              <input
+                type="text"
+                id="Name"
+                name="Name"
+                value={formData.Name}
+                onChange={handleInputChange}
                 required
-                rows={3}
-                value={address}
-                onChange={e => setAddress(e.target.value)}
-                placeholder="Street, city, state, postal code"
-                className="outline-neutral-400 px-4 py-2 ring text-xl ring-neutral-300 rounded-md"
+                placeholder="John Doe"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Sex */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="Sex" className="font-semibold text-gray-700">
+                Sex <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="Sex"
+                name="Sex"
+                value={formData.Sex}
+                onChange={handleInputChange}
+                required
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+              >
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            {/* Date of Birth */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="DateOfBirth" className="font-semibold text-gray-700">
+                Date of Birth <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                id="DateOfBirth"
+                name="DateOfBirth"
+                value={formData.DateOfBirth}
+                onChange={handleInputChange}
+                required
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Nationality */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="Nationality" className="font-semibold text-gray-700">
+                Nationality <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="Nationality"
+                name="Nationality"
+                value={formData.Nationality}
+                onChange={handleInputChange}
+                required
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+              >
+                <option value="" disabled>
+                  Select Country
+                </option>
+                {countryDetails.map((country) => (
+                  <option key={country.country} value={country.country}>
+                    {country.country}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Father Name */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="FatherName" className="font-semibold text-gray-700">
+                Father Name
+              </label>
+              <input
+                type="text"
+                id="FatherName"
+                name="FatherName"
+                value={formData.FatherName}
+                onChange={handleInputChange}
+                placeholder="Father's Name"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Mother Name */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="MotherName" className="font-semibold text-gray-700">
+                Mother Name
+              </label>
+              <input
+                type="text"
+                id="MotherName"
+                name="MotherName"
+                value={formData.MotherName}
+                onChange={handleInputChange}
+                placeholder="Mother's Name"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Marital Status */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="MaritalStatus" className="font-semibold text-gray-700">
+                Marital Status <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="MaritalStatus"
+                name="MaritalStatus"
+                value={formData.MaritalStatus}
+                onChange={handleInputChange}
+                required
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+              >
+                <option value="">Select Status</option>
+                <option value="Single">Single</option>
+                <option value="Married">Married</option>
+                <option value="Divorced">Divorced</option>
+                <option value="Widowed">Widowed</option>
+              </select>
+            </div>
+
+            {/* Designation */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="Designation" className="font-semibold text-gray-700">
+                Designation <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="Designation"
+                name="Designation"
+                value={formData.Designation}
+                onChange={handleInputChange}
+                required
+                placeholder="Engineer"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
               />
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-8 mt-6">
+
+        {/* Contact Information Section */}
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <MdOutlineLocalPhone className="text-blue-600" size={28} />
+            <h2 className="text-2xl font-bold text-gray-900">Contact Information</h2>
+          </div>
+          <hr className="mb-6 border-gray-300" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Phone Code */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="PhoneCode" className="font-semibold text-gray-700">
+                Phone Code <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="PhoneCode"
+                name="PhoneCode"
+                value={formData.PhoneCode}
+                onChange={handleInputChange}
+                required
+                placeholder="+971"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Phone */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="Phone" className="font-semibold text-gray-700">
+                Phone Number <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="tel"
+                id="Phone"
+                name="Phone"
+                value={formData.Phone}
+                onChange={handleInputChange}
+                required
+                placeholder="0501234567"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Email */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="Email" className="font-semibold text-gray-700">
+                Email Address <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                id="Email"
+                name="Email"
+                value={formData.Email}
+                onChange={handleInputChange}
+                required
+                placeholder="john@example.com"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Address */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="Address" className="font-semibold text-gray-700">
+                Address <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="Address"
+                name="Address"
+                value={formData.Address}
+                onChange={handleInputChange}
+                required
+                placeholder="Abu Dhabi"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Emergency Contact */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="EmergencyContact" className="font-semibold text-gray-700">
+                Emergency Contact <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="EmergencyContact"
+                name="EmergencyContact"
+                value={formData.EmergencyContact}
+                onChange={handleInputChange}
+                required
+                placeholder="Contact Name"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Emergency Contact Phone */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="EmergencyContactPhone" className="font-semibold text-gray-700">
+                Emergency Contact Phone <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="tel"
+                id="EmergencyContactPhone"
+                name="EmergencyContactPhone"
+                value={formData.EmergencyContactPhone}
+                onChange={handleInputChange}
+                required
+                placeholder="0509876543"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Identification Section */}
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <MdOutlineFilePresent className="text-blue-600" size={28} />
+            <h2 className="text-2xl font-bold text-gray-900">Identification</h2>
+          </div>
+          <hr className="mb-6 border-gray-300" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* National ID */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="NationalID" className="font-semibold text-gray-700">
+                National ID <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="NationalID"
+                name="NationalID"
+                value={formData.NationalID}
+                onChange={handleInputChange}
+                required
+                placeholder="784-1234-5678901-2"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Passport Number */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="PassportNumber" className="font-semibold text-gray-700">
+                Passport Number <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="PassportNumber"
+                name="PassportNumber"
+                value={formData.PassportNumber}
+                onChange={handleInputChange}
+                required
+                placeholder="A1234567"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Visa Type */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="VisaType" className="font-semibold text-gray-700">
+                Visa Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="VisaType"
+                name="VisaType"
+                value={formData.VisaType}
+                onChange={handleInputChange}
+                required
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+              >
+                <option value="">Select Visa Type</option>
+                <option value="Residency">Residency</option>
+                <option value="Tourist">Tourist</option>
+                <option value="Business">Business</option>
+                <option value="Student">Student</option>
+              </select>
+            </div>
+
+            {/* OP Number */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="OPNumber" className="font-semibold text-gray-700">
+                OP Number
+              </label>
+              <input
+                type="text"
+                id="OPNumber"
+                name="OPNumber"
+                value={formData.OPNumber}
+                onChange={handleInputChange}
+                placeholder="OP-2025-001"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Medical Information Section */}
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Medical Information</h2>
+          <hr className="mb-6 border-gray-300" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            {/* Patient Type */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="PatientType" className="font-semibold text-gray-700">
+                Patient Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="PatientType"
+                name="PatientType"
+                value={formData.PatientType}
+                onChange={handleInputChange}
+                required
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+              >
+                <option value="Normal">Normal</option>
+                <option value="VIP">VIP</option>
+                <option value="Emergency">Emergency</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Checkboxes */}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="ReferralStatus"
+                name="ReferralStatus"
+                checked={formData.ReferralStatus}
+                onChange={handleInputChange}
+                className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              />
+              <label htmlFor="ReferralStatus" className="font-semibold text-gray-700 cursor-pointer">
+                Referral Status
+              </label>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="ChronicStatus"
+                name="ChronicStatus"
+                checked={formData.ChronicStatus}
+                onChange={handleInputChange}
+                className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              />
+              <label htmlFor="ChronicStatus" className="font-semibold text-gray-700 cursor-pointer">
+                Chronic Status
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Account Information Section */}
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Account Information</h2>
+          <hr className="mb-6 border-gray-300" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Registered By */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="RegisteredBy" className="font-semibold text-gray-700">
+                Registered By
+              </label>
+              <input
+                type="number"
+                id="RegisteredBy"
+                name="RegisteredBy"
+                value={formData.RegisteredBy}
+                onChange={handleInputChange}
+                placeholder="1"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+
+            {/* Password */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="Password" className="font-semibold text-gray-700">
+                Password <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="password"
+                id="Password"
+                name="Password"
+                value={formData.Password}
+                onChange={handleInputChange}
+                required
+                placeholder="Enter password"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-4 mt-8">
+          <button
+            type="submit"
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md"
+          >
+            Register Patient
+          </button>
           <button
             type="button"
             onClick={resetForm}
-            className="px-6 py-3 rounded-md border border-neutral-400/50 hover:bg-neutral-300/50 transition-all duration-200 cursor-pointer text-lg">
-            Cancel
-          </button>
-          <button
-            type="submit"
-
-            className="px-6 py-3 rounded-md border border-transparent  bg-blue-500 hover:bg-blue-600 transition-all duration-200 cursor-pointer text-lg text-white">
-            Save Patient
+            className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-900 font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md"
+          >
+            Clear Form
           </button>
         </div>
       </form>
