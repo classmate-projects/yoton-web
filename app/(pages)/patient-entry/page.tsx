@@ -42,13 +42,26 @@ export default function PatientEntryPage() {
     setError("");
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
     // Validate that at least one of National ID or Passport Number is filled
     if (!formData.NationalID && !formData.PassportNumber) {
       setError("Please provide either National ID or Passport Number");
       return;
+    }
+
+    try {
+      const res = await fetch("/api/patient", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(formData)
+      })
+
+      const data = await res.json();
+      console.log("Patient entry: ", data)
+    } catch (error) {
+      console.log(error)
     }
 
     
