@@ -1,5 +1,5 @@
 export interface AvailableRolesType {
-  id: number;
+  roleId: number;
   name: string;
   description: string;
   userRoles: null

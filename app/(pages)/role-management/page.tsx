@@ -7,7 +7,7 @@ import { MdAdminPanelSettings, MdAdd } from "react-icons/md";
 import { toast } from "sonner";
 
 interface FetchedRoles {
-  id: number;
+  roleId: number;
   name: string;
   description: string;
   isEditable: boolean;
@@ -72,12 +72,12 @@ export default function RoleManagementPage() {
     }
   };
 
-  const handleRoleDelete = async (id: number) => {
+  const handleRoleDelete = async (roleId: number) => {
     try {
       await fetch("/api/role", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ roleId }),
       });
       fetchRoles();
     } catch {
@@ -85,7 +85,7 @@ export default function RoleManagementPage() {
     }
   };
 
-  const RequestDeleteRole = (id: number, name: string) => {
+  const RequestDeleteRole = (roleId: number, name: string) => {
     toast(
       <span>
         Are you sure you want to delete the role{" "}
@@ -94,7 +94,7 @@ export default function RoleManagementPage() {
       {
         action: {
           label: "Delete",
-          onClick: () => handleRoleDelete(id),
+          onClick: () => handleRoleDelete(roleId),
         },
         duration: 10000,
         closeButton: true,
@@ -103,6 +103,7 @@ export default function RoleManagementPage() {
   };
 
   const handleToggleRole = async (role: FetchedRoles) => {
+    console.log("from confirmation: ", role.roleId)
     const nextIsActive = !role.isActive;
 
     try {
@@ -110,7 +111,7 @@ export default function RoleManagementPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: role.id,
+          roleId: role.roleId,
           name: role.name,
           description: role.description,
           isActive: nextIsActive,
@@ -124,7 +125,7 @@ export default function RoleManagementPage() {
 
       setRoles((prev) =>
         prev.map((r) =>
-          r.id === role.id ? { ...r, isActive: nextIsActive } : r,
+          r.roleId === role.roleId ? { ...r, isActive: nextIsActive } : r,
         ),
       );
     } catch (error) {
@@ -165,10 +166,10 @@ export default function RoleManagementPage() {
             <div className="flex flex-col gap-3 h-[60dvh] overflow-y-scroll">
               {roles
                 .slice()
-                .sort((a, b) => b.id - a.id)
+                .sort((a, b) => b.roleId - a.roleId)
                 .map((role) => (
                   <div
-                    key={role.id}
+                    key={role.roleId}
                     className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-200" : ""}`}
                   >
                     <div className="flex flex-col justify-between mb-1">
@@ -185,7 +186,7 @@ export default function RoleManagementPage() {
                         onChange={() => handleToggleRole(role)}
                       />
                       {role.isEditable && (
-                        <button onClick={() => RequestDeleteRole(role.id, role.name)}
+                        <button onClick={() => RequestDeleteRole(role.roleId, role.name)}
                           className="cursor-pointer hover:bg-red-100 ring ring-transparent hover:ring-red-200 p-2 rounded-full transition-all duration-200"
                           title={`Delete ${role.name}`}
                         >

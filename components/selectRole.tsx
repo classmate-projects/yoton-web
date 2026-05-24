@@ -49,7 +49,7 @@ export default function SelectRole({
       }
 
       {availableRoles.map((role) => (
-        <option key={role.id} value={role.name} className="capitalize">
+        <option key={role.roleId} value={role.name} className="capitalize">
           {role.name}
         </option>
       ))}

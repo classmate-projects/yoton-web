@@ -11,15 +11,19 @@ export async function GET() {
 
 export async function PUT(req: Request) {
   try {
-    const { id, name, description, isActive } = await req.json();
+    const { roleId, name, description, isActive } = await req.json();
 
-    const data = await apiFetch(`/api/role/${id}`, {
+    console.log("ID: ", roleId)
+
+    const data = await apiFetch(`/api/role/${roleId}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ name, description, isActive }),
     });
+
+    console.log("toggle: ", data)
 
     return Response.json(data);
   } catch {
@@ -29,8 +33,8 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const { id } = await req.json();
-    const data = await apiFetch(`/api/role/${id}`, {
+    const { roleId } = await req.json();
+    const data = await apiFetch(`/api/role/${roleId}`, {
       method: "DELETE",
     });
 
