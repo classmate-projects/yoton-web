@@ -6,6 +6,7 @@ import { MdAdd } from "react-icons/md";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import DeleteIcon from "@/public/icons/deleteIcon";
+import EditIcon from "@/public/icons/EditIcon";
 
 interface Department {
   id: number;
@@ -17,13 +18,29 @@ interface Department {
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
-  const openModal = () => setIsModalOpen(true);
+  const isEditing = editingDepartment !== null;
+
+  const openCreateModal = () => {
+    setEditingDepartment(null);
+    setName("");
+    setDescription("");
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (department: Department) => {
+    setEditingDepartment(department);
+    setName(department.name);
+    setDescription(department.description ?? "");
+    setIsModalOpen(true);
+  };
 
   const closeModal = () => {
     setIsModalOpen(false);
+    setEditingDepartment(null);
     setName("");
     setDescription("");
   };
@@ -48,26 +65,42 @@ export default function DepartmentsPage() {
     callFetchApi()
   },[])
 
-  const handleSaveDepartment = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmitDepartment = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
     try {
-        const payload = { name, description }
-        const res = await fetch("/api/department", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify(payload)
-        })
+      const res = await fetch("/api/department", {
+        method: isEditing ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          isEditing
+            ? {
+                id: editingDepartment.id,
+                name,
+                description,
+                isActive: editingDepartment.isActive,
+              }
+            : { name, description },
+        ),
+      });
 
-        const data = await res.json();
+      const data = await res.json();
 
-        if(!res.ok) throw new Error(data.message || "Failed to create department")
-        toast.success(data.message)
-        fetchDepartments();
-        
+      if (!res.ok) {
+        throw new Error(
+          data.message ||
+            (isEditing
+              ? "Failed to update department"
+              : "Failed to create department"),
+        );
+      }
+
+      toast.success(data.message);
+      fetchDepartments();
+      closeModal();
     } catch (error) {
-        if(error instanceof Error) toast.error(error.message)
+      if (error instanceof Error) toast.error(error.message);
     }
-    closeModal();
   };
 
   const handleToggleDepartment = async (department: Department) => {
@@ -149,7 +182,7 @@ export default function DepartmentsPage() {
         </div>
         <button
           type="button"
-          onClick={openModal}
+          onClick={openCreateModal}
           className="bg-blue-500 px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:bg-blue-600 transition duration-150 shrink-0"
         >
           <MdAdd size={22} />
@@ -160,12 +193,16 @@ export default function DepartmentsPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
           <div className="card w-full max-w-md rounded-xl border-t p-6 shadow-2xl mx-4">
-            <h2 className="text-2xl font-semibold mb-1">Add Department</h2>
+            <h2 className="text-2xl font-semibold mb-1">
+              {isEditing ? "Edit Department" : "Add Department"}
+            </h2>
             <p className="text-sm text-gray-500 mb-6">
-              Enter the department name and description.
+              {isEditing
+                ? "Update the department name and description."
+                : "Enter the department name and description."}
             </p>
 
-            <form onSubmit={handleSaveDepartment} className="flex flex-col gap-4">
+            <form onSubmit={handleSubmitDepartment} className="flex flex-col gap-4">
               <div>
                 <label htmlFor="department-name" className="text-sm font-bold text-gray-700 required">
                   Name
@@ -207,7 +244,7 @@ export default function DepartmentsPage() {
                   type="submit"
                   className="px-5 py-2.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
                 >
-                  Save
+                  {isEditing ? "Update" : "Save"}
                 </button>
               </div>
             </form>
@@ -239,10 +276,10 @@ export default function DepartmentsPage() {
                         : "bg-red-100/80 text-gray-500 hover:bg-red-100"
                     }`}
                   >
-                    <td className="px-4 py-3 font-semibold text-gray-800 capitalize">
+                    <td className={`px-4 py-3 font-semibold capitalize ${department.isActive ? "text-gray-800" : "text-gray-450"}`}>
                       {department.name}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className={`px-4 py-3 text-sm  ${department.isActive ? "text-gray-600" : "text-gray-400"}`}>
                       {department.description || "No description provided."}
                     </td>
                     <td className="px-4 py-3">
@@ -257,6 +294,13 @@ export default function DepartmentsPage() {
                         title={`Delete ${department.name}`}
                          className="p-2 hover:bg-red-100 rounded-full ring ring-transparent hover:ring-red-200 transition-all duration-200 cursor-pointer">
                             <DeleteIcon color="red" size={18}/>
+                        </button>
+
+                        <button
+                        onClick={() => openEditModal(department)}
+                        title={`Edit ${department.name}`}
+                        className="p-2 hover:bg-blue-100 rounded-full ring ring-transparent hover:ring-blue-200 transition-all duration-200 cursor-pointer">
+                          <EditIcon color="blue" size={18} />
                         </button>
 
                       </div>
