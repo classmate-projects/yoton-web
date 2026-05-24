@@ -1,6 +1,6 @@
 'use client'
 import React, { useState } from "react";
-import { MdOutlinePersonOutline, MdOutlineLocalPhone, MdOutlineFilePresent } from "react-icons/md";
+import { MdOutlinePersonOutline, MdOutlineLocalPhone, MdOutlineFilePresent, MdExpandMore } from "react-icons/md";
 import { countryDetails } from "@/helpers/countyDetails";
 
 export default function PatientEntryPage() {
@@ -250,38 +250,49 @@ export default function PatientEntryPage() {
           <hr className="mb-6 border-gray-300" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Phone Code */}
+            {/* Phone Code and Phone Number - Combined */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="PhoneCode" className="font-semibold text-gray-700">
-                Phone Code <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                id="PhoneCode"
-                name="PhoneCode"
-                value={formData.PhoneCode}
-                onChange={handleInputChange}
-                required
-                placeholder="+971"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              />
-            </div>
-
-            {/* Phone */}
-            <div className="flex flex-col gap-2">
-              <label htmlFor="Phone" className="font-semibold text-gray-700">
+              <label className="font-semibold text-gray-700">
                 Phone Number <span className="text-red-500">*</span>
               </label>
-              <input
-                type="tel"
-                id="Phone"
-                name="Phone"
-                value={formData.Phone}
-                onChange={handleInputChange}
-                required
-                placeholder="0501234567"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              />
+              <div className="flex border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent overflow-hidden">
+                {/* Phone Code Display and Dropdown */}
+                <div className="relative w-24 shrink-0">
+                  <div className="absolute left-4 top-2.5 text-gray-900 font-medium pointer-events-none z-10">
+                    {formData.PhoneCode}
+                  </div>
+                  <div className="absolute right-1 top-2.5 pointer-events-none z-10 text-gray-500">
+                    <MdExpandMore size={20} />
+                  </div>
+                  <select
+                    id="PhoneCode"
+                    name="PhoneCode"
+                    value={formData.PhoneCode}
+                    onChange={handleInputChange}
+                    required
+                    className="px-4 py-2.5 border-r border-gray-300 focus:outline-none text-gray-900 bg-white w-full shrink-0 appearance-none cursor-pointer"
+                    style={{ color: 'transparent' }}
+                  >
+                    {countryDetails.map((country, index) => (
+                      <option key={index} value={country.phoneCode} style={{ color: 'black' }}>
+                        {country.phoneCode} - {country.country}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Phone Input */}
+                <input
+                  type="tel"
+                  id="Phone"
+                  name="Phone"
+                  value={formData.Phone}
+                  onChange={handleInputChange}
+                  required
+                  placeholder="0501234567"
+                  className="flex-1 px-4 py-2.5 focus:outline-none text-gray-900"
+                />
+              </div>
             </div>
 
             {/* Email */}
@@ -302,7 +313,7 @@ export default function PatientEntryPage() {
             </div>
 
             {/* Address */}
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 md:col-span-2">
               <label htmlFor="Address" className="font-semibold text-gray-700">
                 Address <span className="text-red-500">*</span>
               </label>
@@ -321,7 +332,7 @@ export default function PatientEntryPage() {
             {/* Emergency Contact */}
             <div className="flex flex-col gap-2">
               <label htmlFor="EmergencyContact" className="font-semibold text-gray-700">
-                Emergency Contact <span className="text-red-500">*</span>
+                Emergency Contact Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -441,9 +452,9 @@ export default function PatientEntryPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Medical Information</h2>
           <hr className="mb-6 border-gray-300" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="flex flex-wrap gap-6 items-end">
             {/* Patient Type */}
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 w-1/2">
               <label htmlFor="PatientType" className="font-semibold text-gray-700">
                 Patient Type <span className="text-red-500">*</span>
               </label>
@@ -460,36 +471,36 @@ export default function PatientEntryPage() {
                 <option value="Emergency">Emergency</option>
               </select>
             </div>
-          </div>
 
-          {/* Checkboxes */}
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="ReferralStatus"
-                name="ReferralStatus"
-                checked={formData.ReferralStatus}
-                onChange={handleInputChange}
-                className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              />
-              <label htmlFor="ReferralStatus" className="font-semibold text-gray-700 cursor-pointer">
-                Referral Status
-              </label>
-            </div>
+            {/* Checkboxes */}
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="ReferralStatus"
+                  name="ReferralStatus"
+                  checked={formData.ReferralStatus}
+                  onChange={handleInputChange}
+                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                />
+                <label htmlFor="ReferralStatus" className="font-semibold text-gray-700 cursor-pointer">
+                  Referral Status
+                </label>
+              </div>
 
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="ChronicStatus"
-                name="ChronicStatus"
-                checked={formData.ChronicStatus}
-                onChange={handleInputChange}
-                className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              />
-              <label htmlFor="ChronicStatus" className="font-semibold text-gray-700 cursor-pointer">
-                Chronic Status
-              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="ChronicStatus"
+                  name="ChronicStatus"
+                  checked={formData.ChronicStatus}
+                  onChange={handleInputChange}
+                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                />
+                <label htmlFor="ChronicStatus" className="font-semibold text-gray-700 cursor-pointer">
+                  Chronic Status
+                </label>
+              </div>
             </div>
           </div>
         </div>
