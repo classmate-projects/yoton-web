@@ -30,6 +30,8 @@ export default function PatientEntryPage() {
     Password: ""
   });
 
+  const [error, setError] = useState<string>("");
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const inputElement = e.target as HTMLInputElement;
@@ -37,10 +39,20 @@ export default function PatientEntryPage() {
       ...prev,
       [name]: type === 'checkbox' ? inputElement.checked : value
     }));
+    setError("");
   };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    
+    // Validate that at least one of National ID or Passport Number is filled
+    if (!formData.NationalID && !formData.PassportNumber) {
+      setError("Please provide either National ID or Passport Number");
+      return;
+    }
+
+    
+    setError("");
     console.log("Form Data Submitted:", formData);
   };
 
@@ -225,7 +237,7 @@ export default function PatientEntryPage() {
             {/* Designation */}
             <div className="flex flex-col gap-2">
               <label htmlFor="Designation" className="font-semibold text-gray-700">
-                Designation <span className="text-red-500">*</span>
+                Designation
               </label>
               <input
                 type="text"
@@ -233,7 +245,6 @@ export default function PatientEntryPage() {
                 name="Designation"
                 value={formData.Designation}
                 onChange={handleInputChange}
-                required
                 placeholder="Engineer"
                 className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
               />
@@ -315,7 +326,7 @@ export default function PatientEntryPage() {
             {/* Address */}
             <div className="flex flex-col gap-2 md:col-span-2">
               <label htmlFor="Address" className="font-semibold text-gray-700">
-                Address <span className="text-red-500">*</span>
+                Address
               </label>
               <input
                 type="text"
@@ -323,7 +334,6 @@ export default function PatientEntryPage() {
                 name="Address"
                 value={formData.Address}
                 onChange={handleInputChange}
-                required
                 placeholder="Abu Dhabi"
                 className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
               />
@@ -372,12 +382,15 @@ export default function PatientEntryPage() {
             <h2 className="text-2xl font-bold text-gray-900">Identification</h2>
           </div>
           <hr className="mb-6 border-gray-300" />
+          <p className="mb-6 text-sm text-gray-600">
+            <span className="text-red-500">*</span> Please provide either National ID or Passport Number
+          </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* National ID */}
             <div className="flex flex-col gap-2">
               <label htmlFor="NationalID" className="font-semibold text-gray-700">
-                National ID <span className="text-red-500">*</span>
+                National ID
               </label>
               <input
                 type="text"
@@ -385,7 +398,6 @@ export default function PatientEntryPage() {
                 name="NationalID"
                 value={formData.NationalID}
                 onChange={handleInputChange}
-                required
                 placeholder="784-1234-5678901-2"
                 className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
               />
@@ -394,7 +406,7 @@ export default function PatientEntryPage() {
             {/* Passport Number */}
             <div className="flex flex-col gap-2">
               <label htmlFor="PassportNumber" className="font-semibold text-gray-700">
-                Passport Number <span className="text-red-500">*</span>
+                Passport Number
               </label>
               <input
                 type="text"
@@ -402,10 +414,12 @@ export default function PatientEntryPage() {
                 name="PassportNumber"
                 value={formData.PassportNumber}
                 onChange={handleInputChange}
-                required
                 placeholder="A1234567"
                 className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
               />
+              {error && (
+                <p className="text-red-500 text-sm">{error}</p>
+              )}
             </div>
 
             {/* Visa Type */}
@@ -530,7 +544,7 @@ export default function PatientEntryPage() {
             {/* Password */}
             <div className="flex flex-col gap-2">
               <label htmlFor="Password" className="font-semibold text-gray-700">
-                Password <span className="text-red-500">*</span>
+                Password
               </label>
               <input
                 type="password"
@@ -538,7 +552,6 @@ export default function PatientEntryPage() {
                 name="Password"
                 value={formData.Password}
                 onChange={handleInputChange}
-                required
                 placeholder="Enter password"
                 className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
               />
