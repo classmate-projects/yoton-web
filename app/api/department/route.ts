@@ -33,12 +33,32 @@ export async function POST(req: Request) {
     }
 }
 
+
+export async function PUT(req: Request) {
+    try {
+        const { id, name, description, isActive } = await req.json();
+
+        const data = await apiFetch(`/api/department/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, description, isActive }),
+        });
+
+        return Response.json(data.body);
+    } catch (error: unknown) {
+        const err = error as ApiError;
+        return Response.json(err.body, {
+            status: err.status,
+        });
+    }
+}
+
 export async function DELETE(req: Request) {
-    const id = await req.json();
+    const { id } = await req.json();
     try {
         const data = await apiFetch(`/api/department/${id}`, {
             method: "DELETE",
-            headers: { "Content-Type": "application-json" },
+            headers: { "Content-Type": "application/json" },
         })
 
         return Response.json(data.body)

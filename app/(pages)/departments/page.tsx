@@ -70,20 +70,43 @@ export default function DepartmentsPage() {
     closeModal();
   };
 
-  const handleToggleDepartment = (department: Department) => {
-    setDepartments((prev) =>
-      prev.map((d) =>
-        d.id === department.id ? { ...d, isActive: !department.isActive } : d,
-      ),
-    );
+  const handleToggleDepartment = async (department: Department) => {
+    const nextIsActive = !department.isActive;
+
+    try {
+      const res = await fetch("/api/department", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: department.id,
+          name: department.name,
+          description: department.description,
+          isActive: nextIsActive,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to update department status");
+      }
+
+      setDepartments((prev) =>
+        prev.map((d) =>
+          d.id === department.id ? { ...d, isActive: nextIsActive } : d,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof Error) toast.error(error.message);
+    }
   };
 
   const handleDelete = async (id: number) => {
     try {
         const res = await fetch("/api/department", {
             method: "DELETE",
-            headers: {"Content-Type": "application-json"},
-            body: JSON.stringify(id)
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id }),
         })
 
         const data = await res.json();
