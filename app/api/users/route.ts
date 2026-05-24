@@ -29,7 +29,7 @@ export async function DELETE(req: Request) {
 
 
 export async function POST(request: Request) {
-    const { fullname, username, email, password, role, phone } = await request.json();
+    const { name, username, email, password, role, phone } = await request.json();
 
     try {
         const data = await apiFetch("/api/user", {
@@ -38,10 +38,10 @@ export async function POST(request: Request) {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                fullName: fullname,
+                name,
                 username,
                 email,
-                passwordHash: password,
+                password,
                 role,
                 phone
             })
@@ -59,11 +59,11 @@ export async function POST(request: Request) {
 export async function PUT(req: Request) {
     try {
         const payload = await req.json();
-        const { id, isActive, fullName, email, role, phone } = payload;
+        const { id, isActive, name, email, role, phone } = payload;
 
         const payloadforApi = {
             isActive,
-            fullName,
+            name,
             email,
             role,
             phone,

@@ -2,7 +2,7 @@
 
 interface getAllResponse {
   id: number;
-  fullName: string;
+  name: string;
   username: string;
   email: string;
   role: string;
@@ -34,7 +34,7 @@ export default function UserManagement() {
     return users.filter((user) => {
       const matchesSearch =
         !query ||
-        user.fullName.toLowerCase().includes(query) ||
+        user.name.toLowerCase().includes(query) ||
         user.username.toLowerCase().includes(query);
 
       const matchesRole =
@@ -99,11 +99,11 @@ export default function UserManagement() {
     }
   };
 
-  const handleDelete = (id: number, fullname: string) => {
+  const handleDelete = (id: number, name: string) => {
     toast(
       <span>
         Are you sure, you want to delete{" "}
-        <b className="text-red-500 ml-1">{fullname}</b>
+        <b className="text-red-500 ml-1">{name}</b>
       </span>,
       {
         action: {
@@ -118,7 +118,7 @@ export default function UserManagement() {
 
   const handleToggleUser = async (
     id: number,
-    fullName: string,
+    name: string,
     email: string,
     role: string,
     phone: string,
@@ -128,18 +128,24 @@ export default function UserManagement() {
     const payload = {
       id,
       isActive: !isActive,
-      fullName,
+      name,
       email,
       role,
       phone,
     }
 
     try {
-      await fetch(`/api/users`, {
+      const res = await fetch(`/api/users`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      const data = await res.json()
+      console.log("Toggle: ", data)
+
+      if (!res.ok) throw new Error("Failed to Toggle user")
+
+      toast.success(`Status changed to ${!isActive ? "active" : "inactive"}`)
 
       setUsers((prev) =>
         prev.map((user) =>
@@ -262,7 +268,7 @@ export default function UserManagement() {
                 .sort((a, b) => b.id - a.id)
                 .map((user) => (
                   <tr key={user.id} className={`ring transition-all duration-150 ${!user.isActive ? "bg-red-100/80 text-gray-500" : "bg-white"}`}>
-                    <td className="px-4 py-3">{user.fullName}</td>
+                    <td className="px-4 py-3">{user.name}</td>
                     <td className="px-4 py-3">{user.username}</td>
                     <td className="px-4 py-3">{user.email}</td>
                     <td className="px-4 py-3 capitalize">{user.role}</td>
@@ -274,11 +280,11 @@ export default function UserManagement() {
 
                         <ToggleButton
                           checked={user.isActive}
-                          onChange={() => handleToggleUser(user.id, user.fullName, user.email, user.role, user.phone, user.isActive,)}
+                          onChange={() => handleToggleUser(user.id, user.name, user.email, user.role, user.phone, user.isActive,)}
                         />
 
                         <button
-                          onClick={() => handleDelete(user.id, user.fullName)}
+                          onClick={() => handleDelete(user.id, user.name)}
                           title="Delete User"
                           className="hover:bg-red-100 p-2 rounded transition-colors cursor-pointer"
                         >

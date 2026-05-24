@@ -7,7 +7,7 @@ import { toast } from "sonner";
 
 
 export default function UserRegistrationPage() {
-  const [fullname, setFullname] = useState("");
+  const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,8 +19,8 @@ export default function UserRegistrationPage() {
 
   const handleUserReg = async () => {
     try {
-      if (!fullname || !username || !password || !email || !role || !phone) {
-        alert("Please fill the form first")
+      if (!name || !username || !password || !email || !role || !phone) {
+        toast.warning("Please fill the form first")
         return;
       }
 
@@ -30,7 +30,7 @@ export default function UserRegistrationPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          fullname,
+          name,
           username,
           email,
           password,
@@ -45,7 +45,7 @@ export default function UserRegistrationPage() {
       const data = await res.json()
 
       setEmail("");
-      setFullname("");
+      setName("");
       setUsername("");
       setPhone("");
       setPassword("");
@@ -84,8 +84,8 @@ export default function UserRegistrationPage() {
                 name="fullname"
                 required
                 placeholder="Johnathan Doe"
-                value={fullname}
-                onChange={(e) => setFullname(e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="outline-0 p-4 rounded-xl w-full mt-2"
                 style={{
                   backgroundColor: "var(--color-highlight)",
