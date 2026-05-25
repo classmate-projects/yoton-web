@@ -78,7 +78,7 @@ export default function LoginPage() {
                 name="email"
                 value={emailOrUserName}
                 onChange={(e) => setEmailOrUserName(e.target.value)}
-                placeholder="username@yoton.to"
+                placeholder="Username"
                 className="outline-0 p-4 rounded-xl w-full"
                 style={{
                   backgroundColor: "var(--color-highlight)",

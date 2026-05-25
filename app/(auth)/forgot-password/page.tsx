@@ -8,10 +8,15 @@ interface emailSendResponseType {
 
 import AskEmailPage from "@/components/forgotPassword/AskEmail";
 import SetPasswordPage from "@/components/forgotPassword/SetPassword";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 
 
 export default function ForgotPasswordPage() {
+
+  const router = useRouter();
+
   const [email, setEmail] = useState("")
   const [token, setToken] = useState("")
   const [showAskEmail, setshowAskEmail] = useState<boolean>(true)
@@ -52,10 +57,26 @@ export default function ForgotPasswordPage() {
     e: React.FormEvent
   ) => {
     e.preventDefault();
-  
+
     if (error) return;
-  
-    
+
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password, token })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) throw new Error(data.message || "Failed to reset password")
+
+      toast.success("Password reset success")
+      router.push("/login")
+
+    } catch (error: any) {
+      toast.error(error.message)
+    }
   }
 
   return (

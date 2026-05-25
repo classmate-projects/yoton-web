@@ -9,8 +9,8 @@ import { MdContacts } from "react-icons/md";
 import { toast } from "sonner";
 
 interface Patient {
-  id: number;
-  fullName: string;
+  opId: number;
+  name: string;
   email: string;
   phone: string;
   address: string;
@@ -26,7 +26,8 @@ export default function PatientRecordsPage() {
       setIsLoading(true);
       const res = await fetch("/api/patient");
       const data = await res.json();
-      setPatients(data);
+      console.log("Data: ", data.data.patients)
+      setPatients(data.data.patients || []);
     } catch (error) {
       console.error("Failed to fetch patients", error);
     } finally {
@@ -76,7 +77,7 @@ export default function PatientRecordsPage() {
 
   const filteredPatients = patients.filter(
     (p) =>
-      p.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.phone?.includes(searchTerm)
   );
@@ -135,14 +136,14 @@ export default function PatientRecordsPage() {
                 </tr>
               ) : filteredPatients.length > 0 ? (
                 filteredPatients.map((patient) => (
-                  <tr key={patient.id} className="bg-white hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-semibold text-gray-800">{patient.fullName}</td>
+                  <tr key={patient.opId} className="bg-white hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 font-semibold text-gray-800">{patient.name}</td>
                     <td className="px-4 py-3">{patient.email}</td>
                     <td className="px-4 py-3">{patient.phone}</td>
                     <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-xs">{patient.address || "N/A"}</td>
                     <td className="px-4 py-3 text-center">
                       <button
-                        onClick={() => confirmDelete(patient.id, patient.fullName)}
+                        onClick={() => confirmDelete(patient.opId, patient.name)}
                         className="hover:bg-red-50 p-2 rounded transition-colors cursor-pointer"
                         title="Delete Patient"
                       >

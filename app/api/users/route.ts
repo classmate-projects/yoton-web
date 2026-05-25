@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
     try {
-        const data = await apiFetch("/api/user");
+        const data = await apiFetch("/api/user/users");
 
         return Response.json(data);
     } catch {
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const { name, username, email, password, role, phone } = await request.json();
 
     try {
-        const data = await apiFetch("/api/user", {
+        const data = await apiFetch("/api/user/create", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -68,7 +68,7 @@ export async function PUT(req: Request) {
             role,
             phone,
         }
-        
+
         const data = await apiFetch(`/api/user/${id}`, {
             method: "PUT",
             headers: {
