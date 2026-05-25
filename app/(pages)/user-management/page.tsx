@@ -57,11 +57,11 @@ export default function UserManagement() {
     setActiveStatus("all");
   };
 
+  // fetch all users
   const fetchAllUsers = async () => {
     try {
       const res = await fetch(`${baseUrl}/api/user/users`);
       const data = await res.json();
-      console.log("fetched data: ", data)
       setUsers(data.users);
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -89,19 +89,24 @@ export default function UserManagement() {
       .replace("pm", "PM");
   };
 
+
+  // delete user
   const handleDeleteUser = async (id: number) => {
     try {
-      await fetch(`/api/users`, {
+      const res = await fetch(`${baseUrl}/api/user/${id}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
       });
+      const data = await res.json()
+      if (!res.ok) throw new Error("Failed to delete user")
+
+      toast.success(data?.message)
       fetchAllUsers();
     } catch {
       console.log("Error: error with deleting user");
     }
   };
 
+  // show toast for permission to delete user 
   const handleDelete = (id: number, name: string) => {
     toast(
       <span>
@@ -119,48 +124,36 @@ export default function UserManagement() {
     );
   };
 
-  const handleToggleUser = async (
-    id: number,
-    name: string,
-    email: string,
-    role: string,
-    phone: string,
-    isActive: boolean,
-  ) => {
-
+  // toggle user
+  const handleToggleUser = async (user: getAllResponse) => {
     const payload = {
-      id,
-      isActive: !isActive,
-      name,
-      email,
-      role,
-      phone,
-    }
+      ...user,
+      isActive: !user.isActive,
+    };
 
     try {
-      const res = await fetch(`/api/users`, {
+      const res = await fetch(`${baseUrl}/api/user/${user.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const data = await res.json()
-      console.log("Toggle: ", data)
 
       if (!res.ok) throw new Error("Failed to Toggle user")
 
-      toast.success(`Status changed to ${!isActive ? "active" : "inactive"}`)
+      toast.success(`Status changed to ${!user.isActive ? "active" : "inactive"}`)
 
       setUsers((prev) =>
-        prev.map((user) =>
-          user.id === id
-            ? { ...user, isActive: !isActive }
-            : user
+        prev.map((u) =>
+          u.id === user.id
+            ? { ...u, isActive: !user.isActive }
+            : u
         )
       );
     } catch {
       console.log("Error: error with toggling user");
     }
-  }
+  };
 
   return (
     <div className="p-6">
@@ -283,7 +276,7 @@ export default function UserManagement() {
 
                         <ToggleButton
                           checked={user.isActive}
-                          onChange={() => handleToggleUser(user.id, user.name, user.email, user.role, user.phone, user.isActive,)}
+                          onChange={() => handleToggleUser(user)}
                         />
 
                         <button

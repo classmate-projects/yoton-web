@@ -1,6 +1,7 @@
 "use client";
 
 import SelectRole from "@/components/selectRole";
+import { baseUrl } from "@/lib/constants";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -13,18 +14,18 @@ export default function UserRegistrationPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("");
   const [phone, setPhone] = useState("");
-  
+
 
   const router = useRouter();
 
   const handleUserReg = async () => {
     try {
       if (!name || !username || !password || !email || !role || !phone) {
-        toast.warning("Please fill the form first")
+        toast.warning("Please fill all the required fields")
         return;
       }
 
-      const res = await fetch("api/users", {
+      const res = await fetch(`${baseUrl}/api/user/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -51,7 +52,7 @@ export default function UserRegistrationPage() {
       setPassword("");
       setRole("");
 
-      toast.success(data.body.message)
+      toast.success(data.message)
 
       router.push("/user-management");
     } catch (error) {
