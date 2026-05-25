@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 // icons
 import { LuEye, LuEyeClosed } from "react-icons/lu";
 import Link from "next/link";
+import { toast } from "sonner";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,12 +13,15 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [emailOrUserName, setEmailOrUserName] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.SubmitEvent) => {
     e.preventDefault();
 
+    setLoading(true);
+
     try {
-      const res = await fetch("/api/login", {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -25,16 +29,22 @@ export default function LoginPage() {
         body: JSON.stringify({ emailOrUserName, password }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        throw new Error("Login failed");
+        throw new Error(data.message || "Login failed");
       }
 
-      const data = await res.json();
-      console.log("Login successful:", data);
+      const yoton_user_detail = { role: data.body.role, name: data.body.name };
+      localStorage.setItem("yoton_user_detail", JSON.stringify(yoton_user_detail));
 
       router.push("/");
     } catch (error) {
-      console.error("Login failed:", error);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,7 +78,7 @@ export default function LoginPage() {
                 name="email"
                 value={emailOrUserName}
                 onChange={(e) => setEmailOrUserName(e.target.value)}
-                placeholder="username@yoton.to"
+                placeholder="Username"
                 className="outline-0 p-4 rounded-xl w-full"
                 style={{
                   backgroundColor: "var(--color-highlight)",
@@ -109,10 +119,18 @@ export default function LoginPage() {
             </div>
           </div>
           <button
-            className="theme-blue text-white font-bold flex items-center justify-center gap-2 w-full p-4 rounded-xl mt-4 cursor-pointer hover:bg-[#00288E]/80 transition-all duration-200"
+            disabled={loading || !password || !emailOrUserName}
+            className="bg-blue-500 text-white font-bold flex items-center justify-center gap-2 w-full p-4 rounded-xl mt-4 cursor-pointer hover:bg-blue-600 transition-all duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
             type="submit"
           >
-            Login
+            {loading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Signing in...
+              </>
+            ) : (
+              "Login"
+            )}
           </button>
         </form>
         <Link

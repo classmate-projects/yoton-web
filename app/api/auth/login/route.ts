@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api";
+import { ApiError } from "@/types/api";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
 
         const res = NextResponse.json(data)
 
-        res.cookies.set("token", data.token, {
+        res.cookies.set("token", data.body.token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: "strict",
@@ -23,7 +24,11 @@ export async function POST(request: Request) {
         })
 
         return res;
-    } catch {
-        return Response.json({ error: "Login failed" }, { status: 401 });
+
+    } catch (error: unknown) {
+        const err = error as ApiError;
+        return Response.json(err.body, {
+            status: err.status,
+        })
     }
 }

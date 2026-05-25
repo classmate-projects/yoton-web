@@ -3,11 +3,10 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
     try {
-        const data = await apiFetch("/api/user");
-        console.log("Fetched users:", data);
+        const data = await apiFetch("/api/user/users");
 
         return Response.json(data);
-    } catch  {
+    } catch {
         return Response.json({ error: "Failed to fetch users" }, { status: 500 });
     }
 }
@@ -16,33 +15,33 @@ export async function GET() {
 export async function DELETE(req: Request) {
     try {
         const { id } = await req.json();
-        const data = await apiFetch(`/api/user/${id}`, { method: "DELETE"});
+        const data = await apiFetch(`/api/user/${id}`, { method: "DELETE" });
 
         return Response.json(data);
 
     } catch {
         return Response.json(
-            {success: false},
-            {status: 500}
+            { success: false },
+            { status: 500 }
         )
     }
 }
 
 
 export async function POST(request: Request) {
-    const { fullname, username, email, password, role, phone } = await request.json();
+    const { name, username, email, password, role, phone } = await request.json();
 
     try {
-        const data = await apiFetch("/api/user", {
+        const data = await apiFetch("/api/user/create", {
             method: "POST",
             headers: {
-                "Content-Type" : "application/json"
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                fullName: fullname,
+                name,
                 username,
                 email,
-                passwordHash: password,
+                password,
                 role,
                 phone
             })
@@ -53,5 +52,35 @@ export async function POST(request: Request) {
         return Response.json({
             error: "User regestration failed"
         })
+    }
+}
+
+
+export async function PUT(req: Request) {
+    try {
+        const payload = await req.json();
+        const { id, isActive, name, email, role, phone } = payload;
+
+        const payloadforApi = {
+            isActive,
+            name,
+            email,
+            role,
+            phone,
+        }
+
+        const data = await apiFetch(`/api/user/${id}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payloadforApi),
+        });
+
+        return Response.json(data);
+    } catch {
+        return Response.json({
+            error: "User toggle failed"
+        }, { status: 500 });
     }
 }

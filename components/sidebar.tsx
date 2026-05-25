@@ -1,20 +1,38 @@
 "use client";
 
+interface CurrentUserType {
+  role: string;
+  name: string;
+}
+
 import logo from "@/public/yoton_logo.png";
-import { MdLogout } from "react-icons/md";
 import Image from "next/image";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import pkg from "@/package.json";
+import { useEffect, useState } from "react";
+import LogoutIcon from "@/public/icons/LogoutIcon";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const currentUserRole = "admin"; // This should be dynamically set based on the logged-in user's role
+
+  const [currentUser, setCurrentUser] = useState<CurrentUserType | null>(null);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      const user = localStorage.getItem("yoton_user_detail");
+
+      if (user) {
+        setCurrentUser(JSON.parse(user));
+      }
+    });
+  }, []);
 
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
+    localStorage.removeItem("yoton_user_detail");
     router.push("/login");
   };
 
@@ -25,32 +43,29 @@ export default function Sidebar() {
         <Image src={logo} alt="logo" height={70} width={70} loading="eager" />
         <div>
           <h1 className="text-xl font-bold text-[#1AAFBE]">Yoton Health</h1>
-          <p className="text-sm text-black/50">
-            <b>Admin:</b> John Doe
-          </p>{" "}
-          {/* This should be dynamically set based on the logged-in user's name */}
+          <div className="text-sm capitalize flex items-center gap-2">
+            <p className="text-black"> {currentUser?.role}:</p>
+            <p>{currentUser?.name}</p>
+          </div>
         </div>
       </div>
 
       {/* menu section */}
       <div className="mt-14">
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-1">
           {sidebarMenuItems.map((item) => {
-            if (item.roles.includes(currentUserRole)) {
+            if (item.roles.includes(currentUser?.role ?? "")) {
               const isActive = pathname === item.navLink;
               return (
                 <li key={item.id}>
                   <Link
                     href={item.navLink}
-                    className={`flex items-center gap-3 text-lg py-2 px-4 rounded-lg transition-colors duration-200 ${
-                      isActive
+                    className={`flex items-center gap-3 text-lg py-1.5 px-2.5 rounded-xl transition-colors duration-200 ${isActive
                         ? "bg-neutral-300 font-semibold"
                         : "hover:bg-neutral-200"
-                    }`}
+                      }`}
                   >
-                    <span className="text-2xl">
-                      <item.icon />
-                    </span>
+                    <item.icon />
                     {item.name}
                   </Link>
                 </li>
@@ -69,11 +84,12 @@ export default function Sidebar() {
 
       <div className="absolute bottom-2 left-0 right-0 flex items-center justify-between px-4 py-2">
         <p className="text-center text-sm mt-1">Version: {pkg.version}</p>
-        <button onClick={handleLogout}
-        className="border-2 border-neutral-400 px-4 py-2 rounded-md cursor-pointer hover:bg-neutral-300 transition-all duration-200 flex items-center gap-3"
+        <button
+          onClick={handleLogout}
+          className="border-2 border-neutral-400 px-4 py-2 rounded-md cursor-pointer hover:bg-neutral-300 transition-all duration-200 flex items-center gap-3"
         >
           Logout
-          <MdLogout size={20}/>
+          <LogoutIcon />
         </button>
       </div>
     </div>

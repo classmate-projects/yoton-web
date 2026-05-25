@@ -1,24 +1,26 @@
 "use client";
 
+import SelectRole from "@/components/selectRole";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
 
 export default function UserRegistrationPage() {
-  const [fullname, setFullname] = useState("");
+  const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("");
   const [phone, setPhone] = useState("");
+  
 
   const router = useRouter();
 
   const handleUserReg = async () => {
     try {
-      if (!fullname || !username || !password || !email || !role || !phone) {
-        alert("Please fill the form first")
+      if (!name || !username || !password || !email || !role || !phone) {
+        toast.warning("Please fill the form first")
         return;
       }
 
@@ -28,7 +30,7 @@ export default function UserRegistrationPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          fullname,
+          name,
           username,
           email,
           password,
@@ -41,15 +43,15 @@ export default function UserRegistrationPage() {
       }
 
       const data = await res.json()
-      console.log("data: ", data)
+
       setEmail("");
-      setFullname("");
+      setName("");
       setUsername("");
       setPhone("");
       setPassword("");
       setRole("");
 
-      toast.success(data.message)
+      toast.success(data.body.message)
 
       router.push("/user-management");
     } catch (error) {
@@ -82,8 +84,8 @@ export default function UserRegistrationPage() {
                 name="fullname"
                 required
                 placeholder="Johnathan Doe"
-                value={fullname}
-                onChange={(e) => setFullname(e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="outline-0 p-4 rounded-xl w-full mt-2"
                 style={{
                   backgroundColor: "var(--color-highlight)",
@@ -115,30 +117,11 @@ export default function UserRegistrationPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="w-full">
+            <div className="w-full flex flex-col gap-2">
               <label htmlFor="role" className="font-bold required">
                 Role
               </label>
-              <select
-                name="role"
-                id="role"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="outline-0 p-4 rounded-xl w-full mt-2"
-                style={{
-                  backgroundColor: "var(--color-highlight)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
-                }}
-                required
-              >
-                <option value="" disabled>
-                  Select Role
-                </option>
-                <option value="doctor">Doctor</option>
-                <option value="nurse">Nurse</option>
-                <option value="receptionist">Receptionist</option>
-              </select>
+              <SelectRole role={role} setRole={setRole} allRole={false} selectRole={true} />
             </div>
 
             <div className="w-full">
@@ -211,6 +194,7 @@ export default function UserRegistrationPage() {
         <div className="mt-6 flex justify-end gap-4">
           <button
             type="reset"
+            onClick={() => router.push("/user-management")}
             className="px-6 py-3 rounded-md border border-neutral-400 hover:bg-neutral-200/50 transition-all duration-200 cursor-pointer"
           >
             Cancel
