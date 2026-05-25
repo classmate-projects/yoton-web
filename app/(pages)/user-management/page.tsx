@@ -14,6 +14,7 @@ interface getAllResponse {
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
@@ -22,9 +23,11 @@ import SettingsIcon from "@/public/icons/SettingsIcon";
 import AddUserIcon from "@/public/icons/AddUserIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
 import { baseUrl } from "@/lib/constants";
+import EditIcon from "@/public/icons/EditIcon";
 
 export default function UserManagement() {
 
+  const router = useRouter();
   const [users, setUsers] = useState<getAllResponse[]>([]);
   const [role, setRole] = useState("allRole");
   const [searchQuery, setSearchQuery] = useState("");
@@ -175,6 +178,7 @@ export default function UserManagement() {
           </Link>
           <Link
             href={"/user-registration"}
+            onClick={() => sessionStorage.removeItem("editUser")}
             title="User Registration"
             className=" text-xl p-4 rounded-full text-white hover:bg-gray-200 transition-all duration-200 cursor-pointer"
           >
@@ -282,9 +286,20 @@ export default function UserManagement() {
                         <button
                           onClick={() => handleDelete(user.id, user.name)}
                           title="Delete User"
-                          className="hover:bg-red-100 p-2 rounded transition-colors cursor-pointer"
+                          className="hover:bg-red-100 p-2 rounded-full transition-colors cursor-pointer"
                         >
                           <DeleteIcon color="red" />
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            sessionStorage.setItem("editUser", JSON.stringify(user));
+                            router.push("/user-registration?edit=true");
+                          }}
+                          title="Edit User"
+                          className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer"
+                        >
+                          <EditIcon color="blue" />
                         </button>
 
                       </div>
