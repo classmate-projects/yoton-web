@@ -21,8 +21,10 @@ import DeleteIcon from "@/public/icons/deleteIcon";
 import SettingsIcon from "@/public/icons/SettingsIcon";
 import AddUserIcon from "@/public/icons/AddUserIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
+import { baseUrl } from "@/lib/constants";
 
 export default function UserManagement() {
+
   const [users, setUsers] = useState<getAllResponse[]>([]);
   const [role, setRole] = useState("allRole");
   const [searchQuery, setSearchQuery] = useState("");
@@ -57,9 +59,10 @@ export default function UserManagement() {
 
   const fetchAllUsers = async () => {
     try {
-      const res = await fetch("/api/users");
+      const res = await fetch(`${baseUrl}/api/user/users`);
       const data = await res.json();
-      setUsers(data.body.users);
+      console.log("fetched data: ", data)
+      setUsers(data.users);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
