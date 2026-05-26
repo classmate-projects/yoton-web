@@ -20,6 +20,7 @@ import { MdAdd } from "react-icons/md";
 import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import { toast } from "sonner";
+import EditIcon from "@/public/icons/EditIcon";
 
 export default function SpecializationPage() {
   const [specializations, setSpecializations] = useState<SpecializationType[]>(
@@ -251,11 +252,17 @@ export default function SpecializationPage() {
                   <option value="" disabled>
                     Select department
                   </option>
-                  {allDepartments.map((dept) => (
-                    <option key={dept.departmentId} value={dept.departmentId}>
-                      {dept.name}
+                  {allDepartments.length === 0 ? (
+                    <option value="" disabled>
+                      No departments available
                     </option>
-                  ))}
+                  ) : (
+                    allDepartments.map((dept) => (
+                      <option key={dept.departmentId} value={dept.departmentId}>
+                        {dept.name}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
@@ -357,9 +364,16 @@ export default function SpecializationPage() {
                           confirmDelete(spec.specializationId, spec.name)
                         }
                         title="Delete"
-                        className="ml-4 hover:bg-red-100 ring-transparent hover:ring-red-200 transition-colors duration-150 rounded-full p-2 cursor-pointer"
+                        className="ml-4 hover:bg-red-100 ring-transparent hover:ring-red-200 transition-colors duration-150 rounded-full p-2 cursor-pointer mr-4"
                       >
                         <DeleteIcon color="red" size={20} />
+                      </button>
+
+                      <button
+                        title="Edit"
+                        onClick={() => editSpecialization(spec)}
+                       className="hover:bg-blue-100 ring-transparent hover:ring-blue-200 transition-colors duration-150 rounded-full p-2 cursor-pointer">
+                        <EditIcon color="blue" size={20} />
                       </button>
                     </div>
                   </td>
