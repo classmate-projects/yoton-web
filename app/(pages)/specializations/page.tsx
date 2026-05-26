@@ -1,62 +1,235 @@
 "use client";
 
 interface DepartmentType {
-    departmentId: number;
-    name: string;
+  departmentId: number;
+  name: string;
 }
 
 interface SpecializationType {
-    specializationId: number;
-    name: string;
-    description: string;
-    isActive: boolean;
-    department: DepartmentType;
+  specializationId: number;
+  name: string;
+  description: string;
+  isActive: boolean;
+  department: DepartmentType;
 }
 
 import { useEffect, useState } from "react";
 import ToggleButton from "@/components/ToggleButton";
+import SpecializationIcon from "@/public/icons/SpecializationIcon";
+import { MdAdd } from "react-icons/md";
 import { baseUrl } from "@/lib/constants";
 
 export default function SpecializationPage() {
-  const [specializations, setSpecializations] = useState<SpecializationType[]>([]);
+  const [specializations, setSpecializations] = useState<SpecializationType[]>(
+    [],
+  );
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [allDepartments, setAllDepartments] = useState<DepartmentType[]>([]);
+
+  const openModal = () => {
+    setName("");
+    setDescription("");
+    setSelectedDepartment("");
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setName("");
+    setDescription("");
+    setSelectedDepartment("");
+  };
+
+  const handleAddSpecialization = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const payload = {
+      name,
+      description,
+      departmentId: selectedDepartment,
+    };
+
+    try {
+        const res = await fetch(`${baseUrl}/api/specialization`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+        })
+        const data = await res.json();
+
+        if(!res.ok) {
+            throw new Error(data.message || "Failed to add specialization");
+        }
+
+        fetchSpecializations();
+    } catch (error) {
+        console.error("Error adding specialization:", error);
+    }
+
+    closeModal();
+  };
+
+  // fetch departments
+  const fetchDepartments = async () => {
+    try {
+      const res = await fetch(`${baseUrl}/api/department`);
+      const data = await res.json();
+
+      if(!res.ok) {
+        throw new Error(data.message || "Failed to fetch departments");
+      }
+
+        setAllDepartments(data);
+    } catch (error) {
+        console.error("Error fetching departments:", error);
+    }
+  };
+
+  useEffect(() => {
+    const callApi = () => {
+      fetchDepartments();
+    };
+    callApi();
+  }, []);
 
   // fetch specializations
   const fetchSpecializations = async () => {
     try {
-        const res = await fetch(`${baseUrl}/api/specialization`)
-        const data = await res.json();
+      const res = await fetch(`${baseUrl}/api/specialization`);
+      const data = await res.json();
 
-        setSpecializations(data);
-
-        console.log("fetched specializations:", data);
+      setSpecializations(data);
     } catch (error) {
-        console.error("Error fetching specializations:", error);
+      console.error("Error fetching specializations:", error);
     }
-  }
-  
+  };
+
   useEffect(() => {
     const callApi = () => {
-        fetchSpecializations()
-    }
+      fetchSpecializations();
+    };
 
     callApi();
-  }, [])
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="py-8 px-10 h-full overflow-y-auto">
       {/* Header Section */}
-      <div className="mb-8 flex items-start justify-between">
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold text-gray-900">Specializations</h1>
-          <p className="mt-2 text-gray-600">
-            Manage medical specializations and departments. Add, edit, or modify specialization details to organize your medical staff effectively.
+      <div className="flex justify-between items-center gap-4 mb-8">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-4xl font-semibold flex items-center gap-3">
+            <SpecializationIcon size={36} color="#2563eb" />
+            Specializations
+          </h1>
+          <p className="text-sm text-gray-500">
+            Manage medical specializations and departments.
           </p>
         </div>
-        <button className="ml-6 rounded-lg bg-emerald-500 px-6 py-2 text-white font-medium hover:bg-emerald-600 transition-colors duration-200 flex items-center gap-2">
-          <span className="text-xl">+</span>
+        <button
+          onClick={openModal}
+          className="rounded-lg bg-emerald-500 px-6 py-2 text-white font-medium hover:bg-emerald-600 transition-colors duration-200 flex items-center gap-2 whitespace-nowrap"
+        >
+          <MdAdd size={20} />
           Add Specialization
         </button>
       </div>
+
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="card w-full max-w-md rounded-xl border-t p-6 shadow-2xl mx-4">
+            <h2 className="text-2xl font-semibold mb-1">Add Specialization</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Enter the specialization name, description, and select a
+              department.
+            </p>
+
+            <form
+              onSubmit={handleAddSpecialization}
+              className="flex flex-col gap-4"
+            >
+              <div>
+                <label
+                  htmlFor="spec-name"
+                  className="text-sm font-bold text-gray-700 required"
+                >
+                  Name
+                </label>
+                <input
+                  id="spec-name"
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Cardiothoracic Surgery"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="spec-description"
+                  className="text-sm font-bold text-gray-700"
+                >
+                  Description
+                </label>
+                <textarea
+                  id="spec-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe this specialization"
+                  rows={4}
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500 resize-none min-h-25"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="spec-department"
+                  className="text-sm font-bold text-gray-700 required"
+                >
+                  Department
+                </label>
+                <select
+                  id="spec-department"
+                  required
+                  value={selectedDepartment}
+                  onChange={(e) => setSelectedDepartment(e.target.value)}
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500"
+                >
+                  <option value="" disabled>Select department</option>
+                  {allDepartments.map((dept) => (
+                    <option key={dept.departmentId} value={dept.departmentId}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 mt-2">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="px-5 py-2.5 rounded-md border border-neutral-400/50 hover:bg-neutral-300/50 transition-all duration-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
+                >
+                  Add
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Table Section */}
       <div className="rounded-lg bg-gray-100 shadow-md overflow-hidden">
