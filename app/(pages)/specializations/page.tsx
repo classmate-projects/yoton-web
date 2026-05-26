@@ -27,20 +27,33 @@ export default function SpecializationPage() {
     [],
   );
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSpecialization, setEditingSpecialization] = useState<SpecializationType | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [allDepartments, setAllDepartments] = useState<DepartmentType[]>([]);
 
+  const isEditing = editingSpecialization !== null;
+
   const openModal = () => {
+    setEditingSpecialization(null);
     setName("");
     setDescription("");
     setSelectedDepartment("");
     setIsModalOpen(true);
   };
 
+  const openEditModal = (spec: SpecializationType) => {
+    setEditingSpecialization(spec);
+    setName(spec.name);
+    setDescription(spec.description);
+    setSelectedDepartment(String(spec.department.departmentId));
+    setIsModalOpen(true);
+  };
+
   const closeModal = () => {
     setIsModalOpen(false);
+    setEditingSpecialization(null);
     setName("");
     setDescription("");
     setSelectedDepartment("");
@@ -58,8 +71,12 @@ export default function SpecializationPage() {
     };
 
     try {
-      const res = await fetch(`${baseUrl}/api/specialization`, {
-        method: "POST",
+      const url = isEditing
+        ? `${baseUrl}/api/specialization/${editingSpecialization?.specializationId}`
+        : `${baseUrl}/api/specialization`;
+
+      const res = await fetch(url, {
+        method: isEditing ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
         },
@@ -68,15 +85,72 @@ export default function SpecializationPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Failed to add specialization");
+        throw new Error(
+          data.message ||
+            (isEditing
+              ? "Failed to update specialization"
+              : "Failed to add specialization"),
+        );
       }
 
+      toast.success(data.message || (isEditing ? "Specialization updated" : "Specialization added"));
       fetchSpecializations();
     } catch (error) {
-      console.error("Error adding specialization:", error);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      }
+      console.error("Error:", error);
     }
 
     closeModal();
+  };
+
+  const editSpecialization = (spec: SpecializationType) => {
+    openEditModal(spec);
+  };
+
+  // handle toggle specialization active status
+  const handleToggleSpecialization = async (spec: SpecializationType) => {
+    const nextIsActive = !spec.isActive;
+
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/specialization/${spec.specializationId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: spec.name,
+            description: spec.description,
+            departmentId: spec.department.departmentId,
+            isActive: nextIsActive,
+          }),
+        },
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to update specialization status");
+      }
+
+      setSpecializations((prev) =>
+        prev.map((s) =>
+          s.specializationId === spec.specializationId
+            ? { ...s, isActive: nextIsActive }
+            : s,
+        ),
+      );
+
+      toast.success("Specialization status updated");
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+      }
+      console.error("Error updating specialization status:", error);
+    }
   };
 
   // fetch departments
@@ -190,10 +264,13 @@ export default function SpecializationPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
           <div className="card w-full max-w-md rounded-xl border-t p-6 shadow-2xl mx-4">
-            <h2 className="text-2xl font-semibold mb-1">Add Specialization</h2>
+            <h2 className="text-2xl font-semibold mb-1">
+              {isEditing ? "Update Specialization" : "Add Specialization"}
+            </h2>
             <p className="text-sm text-gray-500 mb-6">
-              Enter the specialization name, description, and select a
-              department.
+              {isEditing
+                ? "Update the specialization name, description, and department."
+                : "Enter the specialization name, description, and select a department."}
             </p>
 
             <form
@@ -278,7 +355,7 @@ export default function SpecializationPage() {
                   type="submit"
                   className="px-5 py-2.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
                 >
-                  Add
+                  {isEditing ? "Update" : "Add"}
                 </button>
               </div>
             </form>
@@ -354,9 +431,7 @@ export default function SpecializationPage() {
                     <div className="flex justify-center items-center ">
                       <ToggleButton
                         checked={spec.isActive}
-                        onChange={() => {
-                          // Handle toggle change
-                        }}
+                        onChange={() => handleToggleSpecialization(spec)}
                       />
 
                       <button
