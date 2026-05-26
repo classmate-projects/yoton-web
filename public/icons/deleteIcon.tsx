@@ -6,7 +6,7 @@ interface DeleteIconProps {
 }
 
 const DeleteIcon = ({
-  size = 16,
+  size = 24,
   color = "#51526C",
 }: DeleteIconProps) => {
   return (

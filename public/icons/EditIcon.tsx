@@ -6,7 +6,7 @@ interface EditIconProps {
 }
 
 const EditIcon = ({
-  size = 16,
+  size = 24,
   color = "#51526C",
 }: EditIconProps) => {
   return (

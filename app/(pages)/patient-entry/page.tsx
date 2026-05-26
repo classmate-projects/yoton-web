@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { MdOutlinePersonOutline, MdOutlineLocalPhone, MdOutlineFilePresent, MdExpandMore } from "react-icons/md";
 import { countryDetails } from "@/helpers/countyDetails";
+import { baseUrl } from "@/lib/constants";
 
 export default function PatientEntryPage() {
   const [formData, setFormData] = useState({
@@ -42,6 +43,8 @@ export default function PatientEntryPage() {
     setError("");
   };
 
+
+  // Form submission handler
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
@@ -52,7 +55,7 @@ export default function PatientEntryPage() {
     }
 
     try {
-      const res = await fetch("/api/patient", {
+      const res = await fetch(`${baseUrl}/api/reception`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(formData)
@@ -532,48 +535,8 @@ export default function PatientEntryPage() {
           </div>
         </div>
 
-        {/* Account Information Section */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Account Information</h2>
-          <hr className="mb-6 border-gray-300" />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Registered By */}
-            <div className="flex flex-col gap-2">
-              <label htmlFor="RegisteredBy" className="font-semibold text-gray-700">
-                Registered By
-              </label>
-              <input
-                type="number"
-                id="RegisteredBy"
-                name="RegisteredBy"
-                value={formData.RegisteredBy}
-                onChange={handleInputChange}
-                placeholder="1"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              />
-            </div>
-
-            {/* Password */}
-            <div className="flex flex-col gap-2">
-              <label htmlFor="Password" className="font-semibold text-gray-700">
-                Password
-              </label>
-              <input
-                type="password"
-                id="Password"
-                name="Password"
-                value={formData.Password}
-                onChange={handleInputChange}
-                placeholder="Enter password"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              />
-            </div>
-          </div>
-        </div>
-
         {/* Action Buttons */}
-        <div className="flex gap-4 mt-8">
+        <div className="flex gap-4 my-8">
           <button
             type="submit"
             className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md"

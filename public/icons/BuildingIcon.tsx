@@ -6,7 +6,7 @@ interface BuildingIconProps {
 }
 
 const BuildingIcon = ({
-  size = 16,
+  size = 24,
   color = "#51526C",
 }: BuildingIconProps) => {
   return (
