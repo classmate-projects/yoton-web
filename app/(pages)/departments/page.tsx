@@ -7,9 +7,10 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
+import { baseUrl } from "@/lib/constants";
 
 interface Department {
-  id: number;
+  departmentId: number;
   name: string;
   description: string;
   isActive: boolean;
@@ -18,7 +19,9 @@ interface Department {
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
+  const [editingDepartment, setEditingDepartment] = useState<Department | null>(
+    null,
+  );
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
@@ -45,44 +48,52 @@ export default function DepartmentsPage() {
     setDescription("");
   };
 
+  // fetch departments
   const fetchDepartments = async () => {
     try {
-        const res = await fetch("/api/department")
-        const data = await res.json();
+      const res = await fetch(`${baseUrl}/api/department`);
+      const data = await res.json();
 
-        if(!res.ok) throw new Error(data.message || "Failed to fetch Departments")
+      console.log(data);
+      if (!res.ok)
+        throw new Error(data.message || "Failed to fetch Departments");
 
-        setDepartments(data);
-        } catch (error) {
-        if(error instanceof Error) toast.error(error.message)
+      setDepartments(data);
+    } catch (error) {
+      if (error instanceof Error) toast.error(error.message);
     }
-  }
+  };
 
   useEffect(() => {
     const callFetchApi = () => {
-        fetchDepartments();
-    }
-    callFetchApi()
-  },[])
+      fetchDepartments();
+    };
+    callFetchApi();
+  }, []);
 
-  const handleSubmitDepartment = async (e: React.FormEvent<HTMLFormElement>) => {
+  // create or update department
+  const handleSubmitDepartment = async (
+    e: React.FormEvent<HTMLFormElement>,
+  ) => {
     e.preventDefault();
 
     try {
-      const res = await fetch("/api/department", {
-        method: isEditing ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          isEditing
-            ? {
-                id: editingDepartment.id,
-                name,
-                description,
-                isActive: editingDepartment.isActive,
-              }
-            : { name, description },
-        ),
-      });
+      const res = await fetch(
+        `${baseUrl}/api/department/${isEditing ? editingDepartment.departmentId : ""}`,
+        {
+          method: isEditing ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            isEditing
+              ? {
+                  name,
+                  description,
+                  isActive: editingDepartment.isActive,
+                }
+              : { name, description },
+          ),
+        },
+      );
 
       const data = await res.json();
 
@@ -103,20 +114,23 @@ export default function DepartmentsPage() {
     }
   };
 
+  // toggle department active status
   const handleToggleDepartment = async (department: Department) => {
     const nextIsActive = !department.isActive;
 
     try {
-      const res = await fetch("/api/department", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: department.id,
-          name: department.name,
-          description: department.description,
-          isActive: nextIsActive,
-        }),
-      });
+      const res = await fetch(
+        `${baseUrl}/api/department/${department.departmentId}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: department.name,
+            description: department.description,
+            isActive: nextIsActive,
+          }),
+        },
+      );
 
       const data = await res.json();
 
@@ -126,7 +140,9 @@ export default function DepartmentsPage() {
 
       setDepartments((prev) =>
         prev.map((d) =>
-          d.id === department.id ? { ...d, isActive: nextIsActive } : d,
+          d.departmentId === department.departmentId
+            ? { ...d, isActive: nextIsActive }
+            : d,
         ),
       );
     } catch (error) {
@@ -134,39 +150,41 @@ export default function DepartmentsPage() {
     }
   };
 
+  // delete department
   const handleDelete = async (id: number) => {
     try {
-        const res = await fetch("/api/department", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id }),
-        })
+      const res = await fetch(`${baseUrl}/api/department/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
 
-        const data = await res.json();
+      const data = await res.json();
 
-        if(!res.ok) throw new Error(data.message || "Failed to delete department.")
-        toast.success(data.message)
-        fetchDepartments();
+      if (!res.ok)
+        throw new Error(data.message || "Failed to delete department.");
+      toast.success(data.message);
+      fetchDepartments();
     } catch (error) {
-        if(error instanceof Error) toast.error(error.message)
+      if (error instanceof Error) toast.error(error.message);
     }
-  }
+  };
 
-
+  // confirm before delete
   const confirmDelete = (id: number, name: string) => {
     toast(
-        <span>
-          Are you sure you want to delete {" "}
-          <b className="text-red-500 ml-1">{name}</b>
-        </span>,
-        {
-          action: {
-            label: "Delete",
-            onClick: () => handleDelete(id)
-          }
-        }
-      )
-  }
+      <span>
+        Are you sure you want to delete{" "}
+        <b className="text-red-500 ml-1">{name}</b>
+      </span>,
+      {
+        action: {
+          label: "Delete",
+          onClick: () => handleDelete(id),
+        },
+      },
+    );
+  };
 
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
@@ -202,9 +220,15 @@ export default function DepartmentsPage() {
                 : "Enter the department name and description."}
             </p>
 
-            <form onSubmit={handleSubmitDepartment} className="flex flex-col gap-4">
+            <form
+              onSubmit={handleSubmitDepartment}
+              className="flex flex-col gap-4"
+            >
               <div>
-                <label htmlFor="department-name" className="text-sm font-bold text-gray-700 required">
+                <label
+                  htmlFor="department-name"
+                  className="text-sm font-bold text-gray-700 required"
+                >
                   Name
                 </label>
                 <input
@@ -219,7 +243,10 @@ export default function DepartmentsPage() {
               </div>
 
               <div>
-                <label htmlFor="department-description" className="text-sm font-bold text-gray-700">
+                <label
+                  htmlFor="department-description"
+                  className="text-sm font-bold text-gray-700"
+                >
                   Description
                 </label>
                 <textarea
@@ -269,17 +296,21 @@ export default function DepartmentsPage() {
               {departments.length > 0 ? (
                 departments.map((department) => (
                   <tr
-                    key={department.id}
+                    key={department.departmentId}
                     className={`transition-colors ${
                       department.isActive
                         ? "bg-white hover:bg-gray-50"
                         : "bg-red-100/80 text-gray-500 hover:bg-red-100"
                     }`}
                   >
-                    <td className={`px-4 py-3 font-semibold capitalize ${department.isActive ? "text-gray-800" : "text-gray-450"}`}>
+                    <td
+                      className={`px-4 py-3 font-semibold capitalize ${department.isActive ? "text-gray-800" : "text-gray-450"}`}
+                    >
                       {department.name}
                     </td>
-                    <td className={`px-4 py-3 text-sm  ${department.isActive ? "text-gray-600" : "text-gray-400"}`}>
+                    <td
+                      className={`px-4 py-3 text-sm  ${department.isActive ? "text-gray-600" : "text-gray-400"}`}
+                    >
                       {department.description || "No description provided."}
                     </td>
                     <td className="px-4 py-3">
@@ -288,28 +319,37 @@ export default function DepartmentsPage() {
                           checked={department.isActive}
                           onChange={() => handleToggleDepartment(department)}
                         />
-                        
+
                         <button
-                        onClick={() => confirmDelete(department.id, department.name)}
-                        title={`Delete ${department.name}`}
-                         className="p-2 hover:bg-red-100 rounded-full ring ring-transparent hover:ring-red-200 transition-all duration-200 cursor-pointer">
-                            <DeleteIcon color="red" size={18}/>
+                          onClick={() =>
+                            confirmDelete(
+                              department.departmentId,
+                              department.name,
+                            )
+                          }
+                          title={`Delete ${department.name}`}
+                          className="p-2 hover:bg-red-100 rounded-full ring ring-transparent hover:ring-red-200 transition-all duration-200 cursor-pointer"
+                        >
+                          <DeleteIcon color="red" size={18} />
                         </button>
 
                         <button
-                        onClick={() => openEditModal(department)}
-                        title={`Edit ${department.name}`}
-                        className="p-2 hover:bg-blue-100 rounded-full ring ring-transparent hover:ring-blue-200 transition-all duration-200 cursor-pointer">
+                          onClick={() => openEditModal(department)}
+                          title={`Edit ${department.name}`}
+                          className="p-2 hover:bg-blue-100 rounded-full ring ring-transparent hover:ring-blue-200 transition-all duration-200 cursor-pointer"
+                        >
                           <EditIcon color="blue" size={18} />
                         </button>
-
                       </div>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={3} className="px-4 py-20 text-center text-gray-500">
+                  <td
+                    colSpan={3}
+                    className="px-4 py-20 text-center text-gray-500"
+                  >
                     No departments found.
                   </td>
                 </tr>
