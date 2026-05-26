@@ -18,6 +18,8 @@ import ToggleButton from "@/components/ToggleButton";
 import SpecializationIcon from "@/public/icons/SpecializationIcon";
 import { MdAdd } from "react-icons/md";
 import { baseUrl } from "@/lib/constants";
+import DeleteIcon from "@/public/icons/deleteIcon";
+import { toast } from "sonner";
 
 export default function SpecializationPage() {
   const [specializations, setSpecializations] = useState<SpecializationType[]>(
@@ -43,7 +45,9 @@ export default function SpecializationPage() {
     setSelectedDepartment("");
   };
 
-  const handleAddSpecialization = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAddSpecialization = async (
+    e: React.FormEvent<HTMLFormElement>,
+  ) => {
     e.preventDefault();
 
     const payload = {
@@ -53,22 +57,22 @@ export default function SpecializationPage() {
     };
 
     try {
-        const res = await fetch(`${baseUrl}/api/specialization`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-        })
-        const data = await res.json();
+      const res = await fetch(`${baseUrl}/api/specialization`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
 
-        if(!res.ok) {
-            throw new Error(data.message || "Failed to add specialization");
-        }
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to add specialization");
+      }
 
-        fetchSpecializations();
+      fetchSpecializations();
     } catch (error) {
-        console.error("Error adding specialization:", error);
+      console.error("Error adding specialization:", error);
     }
 
     closeModal();
@@ -80,13 +84,13 @@ export default function SpecializationPage() {
       const res = await fetch(`${baseUrl}/api/department`);
       const data = await res.json();
 
-      if(!res.ok) {
+      if (!res.ok) {
         throw new Error(data.message || "Failed to fetch departments");
       }
 
-        setAllDepartments(data);
+      setAllDepartments(data);
     } catch (error) {
-        console.error("Error fetching departments:", error);
+      console.error("Error fetching departments:", error);
     }
   };
 
@@ -116,6 +120,48 @@ export default function SpecializationPage() {
 
     callApi();
   }, []);
+
+  // handle delete specialization
+  const handleDeleteSpecialization = async (id: number) => {
+    try {
+      const res = await fetch(`${baseUrl}/api/specialization/${id}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to delete specialization");
+      }
+
+      fetchSpecializations();
+    } catch (error: unknown) {
+      console.error("Error deleting specialization:", error);
+      toast.error(
+        (error as Error).message || "Failed to delete specialization",
+      );
+    }
+  };
+
+  const confirmDelete = (id: number, name: string) => {
+    toast(
+      <span>
+        Are you sure you want to delete the specialization{" "}
+        <b className="text-red-500 ml-1">{name}</b>?
+      </span>,
+      {
+        action: {
+          label: "Delete",
+          onClick: () => handleDeleteSpecialization(id),
+        },
+        duration: 10000,
+        closeButton: true,
+      },
+    );
+  };
 
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
@@ -202,7 +248,9 @@ export default function SpecializationPage() {
                   onChange={(e) => setSelectedDepartment(e.target.value)}
                   className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500"
                 >
-                  <option value="" disabled>Select department</option>
+                  <option value="" disabled>
+                    Select department
+                  </option>
                   {allDepartments.map((dept) => (
                     <option key={dept.departmentId} value={dept.departmentId}>
                       {dept.name}
@@ -296,13 +344,23 @@ export default function SpecializationPage() {
                     {spec.department?.name || "No department assigned"}
                   </td>
                   <td className="px-6 py-4 text-center">
-                    <div className="flex justify-center">
+                    <div className="flex justify-center items-center ">
                       <ToggleButton
                         checked={spec.isActive}
                         onChange={() => {
                           // Handle toggle change
                         }}
                       />
+
+                      <button
+                        onClick={() =>
+                          confirmDelete(spec.specializationId, spec.name)
+                        }
+                        title="Delete"
+                        className="ml-4 hover:bg-red-100 ring-transparent hover:ring-red-200 transition-colors duration-150 rounded-full p-2 cursor-pointer"
+                      >
+                        <DeleteIcon color="red" size={20} />
+                      </button>
                     </div>
                   </td>
                 </tr>
