@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+/* White theme palette */
+:root {
+  --color-bg: #FAFAFA;            /* Main background */
+  --color-sidebar: #F2F2F2;       /* Sidebar / navigation */
+  --color-card: #FFFFFF;          /* Cards / panels */
+  --color-button: #F0F0F0;        /* Button base */
+  --color-button-hover: #EAEAEA;  /* Button hover */
+  --color-border: #E0E0E0;        /* Borders / dividers */
+  --color-highlight: #FDFDFD;     /* Input fields / highlights */
+  --color-disabled: #DADADA;      /* Disabled elements */
+
+  /* Text */
+  --color-text: #333333;          /* Primary text */
+  --color-text-muted: #666666;    /* Secondary text */
+
+  /* Accent colors */
+  --color-accent: #0066CC;        /* Primary accent (links, CTAs) */
+  --color-accent-hover: #005BB5;
+  --color-success: #2E7D32;       /* Success/confirmation */
+  --color-error: #D32F2F;         /* Errors/alerts */
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Ensure HTML and body take full height */
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Sidebar */
+.sidebar {
+  background-color: var(--color-sidebar);
+}
+
+.mainPage {
+  padding: 16px 24px;
+}
+
+/* Cards */
+.card {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* Inputs */
+input {
+  background-color: var(--color-highlight);
+}
+
+input:disabled {
+  background-color: var(--color-disabled);
+}
+
+.theme-blue {
+  background-color: var(--color-accent);
+  color: #fff;
+  transition: all 0.2s ease-in-out;
+}
+
+.theme-blue:hover {
+  background-color: var(--color-accent-hover);
+}
+
+/* global.css */
+
+/* Add red asterisk to all required labels */
+label.required::after {
+  content: "*";
+  color: #dc2626; /* Tailwind red-600 */
+  font-weight: normal;
+  margin-left: 2px;
+  font-size: 20px;
+}
