@@ -20,7 +20,7 @@ export default function ToggleButton({
       id={id}
       type="button"
       role="switch"
-      title={`${checked ? "Active" : "False"}`}
+      title={`${checked ? "Active" : "Inactive"}`}
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}

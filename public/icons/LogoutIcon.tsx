@@ -6,7 +6,7 @@ interface LogoutIconProps {
 }
 
 const LogoutIcon = ({
-  size = 16,
+  size = 24,
   color = "#51526C",
 }: LogoutIconProps) => {
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import ToggleButton from "@/components/ToggleButton";
+import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import { useEffect, useState } from "react";
 import { MdAdminPanelSettings, MdAdd } from "react-icons/md";
@@ -22,13 +23,14 @@ export default function RoleManagementPage() {
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
 
+
+  // fetch roles
   const fetchRoles = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch("/api/role");
+      const res = await fetch(`${baseUrl}/api/role`);
       const data = await res.json();
-      setRoles(data.body);
-      console.log("Fetched roles:", data.body);
+      setRoles(data);
     } catch (error) {
       console.error("Failed to fetch roles", error);
     } finally {
@@ -44,10 +46,12 @@ export default function RoleManagementPage() {
     callfetchRoles();
   }, []);
 
+
+  // create role
   const handleCreateRole = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/role", {
+      const res = await fetch(`${baseUrl}/api/role`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -72,14 +76,21 @@ export default function RoleManagementPage() {
     }
   };
 
+
+  // delete role
   const handleRoleDelete = async (roleId: number) => {
     try {
-      await fetch("/api/role", {
+      const res = await fetch(`${baseUrl}/api/role/${roleId}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleId }),
       });
-      fetchRoles();
+
+      const data = await res.json()
+      if (res.ok) {
+        toast.success(data.message);
+        fetchRoles();
+      } else {
+        toast.warning(data.message || data.error || "Failed to delete role");
+      }
     } catch {
       console.log("Error: error with deleting role");
     }
@@ -102,16 +113,16 @@ export default function RoleManagementPage() {
     );
   };
 
+
+  // toggle role status
   const handleToggleRole = async (role: FetchedRoles) => {
-    console.log("from confirmation: ", role.roleId)
     const nextIsActive = !role.isActive;
 
     try {
-      const res = await fetch("/api/role", {
+      const res = await fetch(`${baseUrl}/api/role/${role.roleId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          roleId: role.roleId,
           name: role.name,
           description: role.description,
           isActive: nextIsActive,
