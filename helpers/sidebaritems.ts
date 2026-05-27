@@ -1,4 +1,4 @@
-import { appointmentsIcon, contactsIcon, dashboardIcon, registrationIcon } from "@/public/icons";
+import { appointmentsIcon, RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon } from "@/public/icons/icons";
 
 interface SidebarMenuItem {
     id: number;
@@ -8,7 +8,7 @@ interface SidebarMenuItem {
     icon: React.ComponentType; // Assuming icons are React components
 }
 
-const allRoles = ["admin", "doctor", "nurse", "receptionist"];
+const allRoles = ["Admin", "doctor", "nurse", "receptionist"];
 
 export const sidebarMenuItems: SidebarMenuItem[] = [
     {
@@ -23,7 +23,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 2,
         name: "Patient Entry",
         navLink: "/patient-entry",
-        roles: ["receptionist"],
+        roles: ["receptionist", "Admin"],
         icon: registrationIcon
     },
 
@@ -39,15 +39,37 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 4,
         name: "Patient Records",
         navLink: "/patient-records",
-        roles: ["doctor", "nurse", "receptionist"],
-        icon: contactsIcon
+        roles: ["doctor", "nurse", "receptionist", "Admin"],
+        icon: RecordsIcon
     },
 
     {
         id: 5,
-        name: "User Registration",
-        navLink: "/user-registration",
-        roles: ["admin"],
-        icon: registrationIcon
-    }
+        name: "User Management",
+        navLink: "/user-management",
+        roles: ["Admin"],
+        icon: multipleUsers
+    },
+
+    {
+        id: 6,
+        name: "Departments",
+        navLink: "/departments",
+        roles: ["Admin"],
+        icon: buildingIcon
+    },
+    {
+        id: 7,
+        name: "Specializations",
+        navLink: "/specializations",
+        roles: ["Admin"],
+        icon: specializationIcon
+    },
+    {
+        id: 8,
+        name: "Assign Doctor",
+        navLink: "/assign-doctor",
+        roles: ["Admin"],
+        icon: doctorIcon
+    },
 ]
