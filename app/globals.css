@@ -39,11 +39,6 @@ body {
   padding: 0;
 }
 
-/* Sidebar */
-.sidebar {
-  background-color: var(--color-sidebar);
-}
-
 .mainPage {
   padding: 16px 24px;
 }

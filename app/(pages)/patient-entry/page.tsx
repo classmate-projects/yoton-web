@@ -1,10 +1,11 @@
 'use client'
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { MdOutlinePersonOutline, MdOutlineLocalPhone, MdOutlineFilePresent, MdExpandMore } from "react-icons/md";
 import { countryDetails } from "@/helpers/countyDetails";
 import { baseUrl } from "@/lib/constants";
 
 export default function PatientEntryPage() {
+
   const [formData, setFormData] = useState({
     Name: "",
     Sex: "",
@@ -26,12 +27,15 @@ export default function PatientEntryPage() {
     ChronicStatus: false,
     EmergencyContact: "",
     EmergencyContactPhone: "",
-    RegisteredBy: 1,
     OPNumber: "",
     Password: ""
   });
-
   const [error, setError] = useState<string>("");
+
+  const registeredBy =
+  typeof window !== "undefined"
+    ? JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ?? null
+    : null;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -54,11 +58,19 @@ export default function PatientEntryPage() {
       return;
     }
 
+    const payload = {
+      ...formData,
+      RegisteredBy: registeredBy
+    }
+
+    console.log("payload submit: ", payload);
+    
+
     try {
       const res = await fetch(`${baseUrl}/api/reception`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       })
 
       const data = await res.json();
@@ -66,10 +78,7 @@ export default function PatientEntryPage() {
     } catch (error) {
       console.log(error)
     }
-
-    
     setError("");
-    console.log("Form Data Submitted:", formData);
   };
 
   const resetForm = () => {
@@ -94,7 +103,6 @@ export default function PatientEntryPage() {
       ChronicStatus: false,
       EmergencyContact: "",
       EmergencyContactPhone: "",
-      RegisteredBy: 1,
       OPNumber: "",
       Password: ""
     });

@@ -35,8 +35,17 @@ export default function LoginPage() {
         throw new Error(data.message || "Login failed");
       }
 
-      const yoton_user_detail = { role: data.body.role, name: data.body.name };
-      localStorage.setItem("yoton_user_detail", JSON.stringify(yoton_user_detail));
+      console.log("Login successfull: ", data);
+
+      const yoton_user_detail = {
+        role: data.body.role,
+        name: data.body.name,
+        userId: data.body.userId,
+      };
+      localStorage.setItem(
+        "yoton_user_detail",
+        JSON.stringify(yoton_user_detail),
+      );
 
       router.push("/");
     } catch (error) {

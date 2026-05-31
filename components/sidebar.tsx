@@ -41,8 +41,8 @@ export default function Sidebar() {
 
   return (
     <div
-      className={`sidebar fixed left-0 top-0 h-dvh p-1.5 border-r border-neutral-400/50 z-10 transition-all duration-300 ease-in-out ${
-        isExpanded ? "w-72" : "w-20"
+      className={`bg-white fixed left-0 top-0 h-dvh p-1.5 border-r border-neutral-400/50 z-50 transition-all duration-300 ease-in-out ${
+        isExpanded ? "w-80" : "w-20"
       }`}
     >
       <style>{`
