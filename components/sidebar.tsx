@@ -68,7 +68,7 @@ export default function Sidebar() {
         {isExpanded && (
           <div className="transition-opacity duration-300">
             <h1 className="text-lg font-bold text-[#1AAFBE] whitespace-nowrap">Yoton Health</h1>
-            <div className="text-xs capitalize flex items-center gap-1">
+            <div className="text-xs flex items-center gap-1">
               <p className="text-black"> {currentUser?.role}:</p>
               <p className="truncate">{currentUser?.name}</p>
             </div>

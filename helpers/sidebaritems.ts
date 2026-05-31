@@ -8,7 +8,7 @@ interface SidebarMenuItem {
     icon: React.ComponentType; // Assuming icons are React components
 }
 
-const allRoles = ["admin", "doctor", "nurse", "lab technician", "radiology technician", "pharmacist", "billing team", "reception"];
+const allRoles = ["Admin", "doctor", "nurse", "lab technician", "radiology technician", "pharmacist", "billing team", "reception"];
 
 export const sidebarMenuItems: SidebarMenuItem[] = [
     {
