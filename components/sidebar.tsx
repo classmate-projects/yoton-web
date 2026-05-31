@@ -19,6 +19,7 @@ export default function Sidebar() {
   const router = useRouter();
 
   const [currentUser, setCurrentUser] = useState<CurrentUserType | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -37,36 +38,70 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="sidebar fixed left-0 top-0 h-dvh overflow-hidden min-w-72 p-1.5 border-r border-neutral-400/50 z-10">
+    <div 
+      className={`sidebar fixed left-0 top-0 h-dvh overflow-hidden p-1.5 border-r border-neutral-400/50 z-10 transition-all duration-300 ease-in-out ${
+        isExpanded ? "w-72" : "w-20"
+      }`}
+      onMouseEnter={() => setIsExpanded(true)}
+      onMouseLeave={() => setIsExpanded(false)}
+    >
+      <style>{`
+        .sidebar {
+          overflow-y: auto;
+          overflow-x: hidden;
+        }
+        .sidebar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .sidebar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .sidebar::-webkit-scrollbar-thumb {
+          background: #d4d4d8;
+          border-radius: 3px;
+        }
+      `}</style>
+
       {/* header section */}
-      <div className="flex items-center gap-3">
-        <Image src={logo} alt="logo" height={70} width={70} loading="eager" />
-        <div>
-          <h1 className="text-xl font-bold text-[#1AAFBE]">Yoton Health</h1>
-          <div className="text-sm capitalize flex items-center gap-2">
-            <p className="text-black"> {currentUser?.role}:</p>
-            <p>{currentUser?.name}</p>
+      <div className="flex items-center justify-center gap-3 pb-4">
+        <Image src={logo} alt="logo" height={50} width={50} loading="eager" />
+        {isExpanded && (
+          <div className="transition-opacity duration-300">
+            <h1 className="text-lg font-bold text-[#1AAFBE] whitespace-nowrap">Yoton Health</h1>
+            <div className="text-xs capitalize flex items-center gap-1">
+              <p className="text-black"> {currentUser?.role}:</p>
+              <p className="truncate">{currentUser?.name}</p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* menu section */}
-      <div className="mt-14">
-        <ul className="flex flex-col gap-1">
+      <div className="mt-8">
+        <ul className="flex flex-col gap-2">
           {sidebarMenuItems.map((item) => {
             if (item.roles.includes(currentUser?.role ?? "")) {
               const isActive = pathname === item.navLink;
               return (
-                <li key={item.id}>
+                <li key={item.id} title={isExpanded ? "" : item.name}>
                   <Link
                     href={item.navLink}
-                    className={`flex items-center gap-3 text-lg py-1.5 px-2.5 rounded-xl transition-colors duration-200 ${isActive
+                    className={`flex items-center  gap-3 py-2 px-2.5 rounded-xl transition-all duration-200 ${
+                      isExpanded ? "px-3 justify-start" : "justify-center"
+                    } ${
+                      isActive
                         ? "bg-neutral-300 font-semibold"
                         : "hover:bg-neutral-200"
-                      }`}
+                    }`}
                   >
-                    <item.icon />
-                    {item.name}
+                    <span className="flex-shrink-0">
+                      <item.icon />
+                    </span>
+                    {isExpanded && (
+                      <span className="whitespace-nowrap text-base">
+                        {item.name}
+                      </span>
+                    )}
                   </Link>
                 </li>
               );
@@ -75,20 +110,21 @@ export default function Sidebar() {
           })}
         </ul>
       </div>
-      {/* <button
-        onClick={handleLogout}
-        className="bg-red-500 px-4 py-2 rounded-md absolute bottom-10 left-2 right-2"
-      >
-        Logout
-      </button> */}
 
-      <div className="absolute bottom-2 left-0 right-0 flex items-center justify-between px-4 py-2">
-        <p className="text-center text-sm mt-1">Version: {pkg.version}</p>
+      <div className="absolute bottom-2 left-0 right-0 flex flex-col items-center px-2 py-2 gap-3">
+        {isExpanded && (
+          <p className="text-center text-xs text-neutral-600">
+            v{pkg.version}
+          </p>
+        )}
         <button
           onClick={handleLogout}
-          className="border-2 border-neutral-400 px-4 py-2 rounded-md cursor-pointer hover:bg-neutral-300 transition-all duration-200 flex items-center gap-3"
+          title="Logout"
+          className={`border-2 border-neutral-400 rounded-md cursor-pointer hover:bg-neutral-300 transition-all duration-200 flex items-center justify-center gap-3 ${
+            isExpanded ? "px-3 py-2 w-full" : "p-2"
+          }`}
         >
-          Logout
+          {isExpanded && <span className="text-sm">Logout</span>}
           <LogoutIcon />
         </button>
       </div>
