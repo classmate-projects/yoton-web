@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { MdContacts } from "react-icons/md";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { baseUrl } from "@/lib/constants";
 
 interface Patient {
   opId: number;
@@ -24,7 +25,7 @@ export default function PatientRecordsPage() {
   const fetchPatients = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch("/api/patient");
+      const res = await fetch(`${baseUrl}/api/reception/patient`);
       const data = await res.json();
       console.log("Data: ", data.data.patients)
       setPatients(data.data.patients || []);
