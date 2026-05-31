@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MdPayment, MdSearch, MdAdd } from "react-icons/md";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Bill {
   id: number;
@@ -171,7 +172,9 @@ export default function BillingPage() {
           </form>
 
           {isLoadingBills ? (
-            <p>Loading...</p>
+            <div className="flex justify-center py-8">
+              <LoadingSpinner />
+            </div>
           ) : bills.length > 0 ? (
             <div className="flex flex-col gap-4">
               {bills.map((bill) => (

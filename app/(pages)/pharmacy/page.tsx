@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MdLocalPharmacy, MdWarning } from "react-icons/md";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Medicine {
   id: number;
@@ -92,7 +93,7 @@ export default function PharmacyPage() {
           <hr className="text-neutral-400/50 mb-4" />
           
           {isLoading ? (
-            <p>Loading...</p>
+            <LoadingSpinner />
           ) : medicines.length === 0 ? (
             <p className="text-gray-500">No medicines available.</p>
           ) : (
@@ -133,7 +134,7 @@ export default function PharmacyPage() {
             <hr className="text-neutral-400/50 mb-4" />
             
             {isLoading ? (
-              <p>Loading...</p>
+              <LoadingSpinner />
             ) : lowStock.length === 0 ? (
               <p className="text-green-600 font-medium">All stocks are sufficient.</p>
             ) : (

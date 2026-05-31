@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { baseUrl } from "@/lib/constants";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Department {
   departmentId: number;
@@ -24,6 +25,7 @@ export default function DepartmentsPage() {
   );
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
   const isEditing = editingDepartment !== null;
 
@@ -51,6 +53,7 @@ export default function DepartmentsPage() {
   // fetch departments
   const fetchDepartments = async () => {
     try {
+      setIsLoading(true);
       const res = await fetch(`${baseUrl}/api/department`);
       const data = await res.json();
       
@@ -60,6 +63,8 @@ export default function DepartmentsPage() {
       setDepartments(data);
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -281,8 +286,11 @@ export default function DepartmentsPage() {
       <div className="card p-6 rounded-xl shadow-lg border-t">
         <h2 className="text-2xl font-semibold mb-4">Department List</h2>
         <hr className="text-neutral-400/50 mb-4" />
-
-        <div className="overflow-x-auto">
+        {isLoading ? (
+          <div className="flex justify-center py-20\">
+            <LoadingSpinner />
+          </div>
+        ) : (        <div className="overflow-x-auto">
           <table className="w-full text-left rounded-xl overflow-hidden border border-neutral-400 border-separate border-spacing-0">
             <thead>
               <tr className="bg-neutral-300">
@@ -356,6 +364,7 @@ export default function DepartmentsPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

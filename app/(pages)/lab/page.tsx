@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MdOutlineScience, MdSearch, MdAdd } from "react-icons/md";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface LabRequest {
   id: number;
@@ -100,7 +101,7 @@ export default function LabPage() {
           <hr className="text-neutral-400/50 mb-4" />
           
           {isLoading ? (
-            <p>Loading...</p>
+            <LoadingSpinner />
           ) : labRequests.length === 0 ? (
             <p className="text-gray-500">No lab requests available.</p>
           ) : (

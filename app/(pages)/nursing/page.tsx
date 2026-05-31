@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MdOutlineLocalHospital, MdCheck } from "react-icons/md";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface NursingTask {
   id: number;
@@ -64,7 +65,7 @@ export default function NursingPage() {
         <hr className="text-neutral-400/50 mb-4" />
         
         {isLoading ? (
-          <p>Loading...</p>
+          <LoadingSpinner />
         ) : tasks.length === 0 ? (
           <p className="text-gray-500">No pending tasks. Great job!</p>
         ) : (

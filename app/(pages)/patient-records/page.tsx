@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MdContacts } from "react-icons/md";
 import { toast } from "sonner";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Patient {
   opId: number;
@@ -130,8 +131,8 @@ export default function PatientRecordsPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-20 text-center text-gray-500">
-                    Loading records...
+                  <td colSpan={5} className="px-4 py-20 text-center">
+                    <LoadingSpinner />
                   </td>
                 </tr>
               ) : filteredPatients.length > 0 ? (

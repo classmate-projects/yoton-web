@@ -24,6 +24,7 @@ import AddUserIcon from "@/public/icons/AddUserIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
 import { baseUrl } from "@/lib/constants";
 import EditIcon from "@/public/icons/EditIcon";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function UserManagement() {
 
@@ -32,6 +33,7 @@ export default function UserManagement() {
   const [role, setRole] = useState("allRole");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeStatus, setActiveStatus] = useState("all");
+  const [isLoading, setIsLoading] = useState(true);
 
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -63,11 +65,14 @@ export default function UserManagement() {
   // fetch all users
   const fetchAllUsers = async () => {
     try {
+      setIsLoading(true);
       const res = await fetch(`${baseUrl}/api/user/users`);
       const data = await res.json();
       setUsers(data.users);
     } catch (error) {
       console.error("Error fetching users:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -246,6 +251,11 @@ export default function UserManagement() {
       </div>
 
       <div className="w-full mt-8">
+        {isLoading ? (
+          <div className="flex justify-center py-20">
+            <LoadingSpinner />
+          </div>
+        ) : (
         <table className="w-full rounded-xl overflow-hidden border border-neutral-500 border-separate border-spacing-0">
           <thead>
             <tr className="bg-neutral-300">
@@ -316,6 +326,7 @@ export default function UserManagement() {
             </tbody>
           )}
         </table>
+        )}
       </div>
     </div>
   );

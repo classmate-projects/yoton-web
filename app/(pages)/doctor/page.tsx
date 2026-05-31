@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MdOutlineMedicalServices, MdPersonAdd } from "react-icons/md";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Doctor {
   id: number;
@@ -88,7 +89,7 @@ export default function DoctorPage() {
           <hr className="text-neutral-400/50 mb-4" />
           
           {isLoading ? (
-            <p>Loading...</p>
+            <LoadingSpinner />
           ) : doctors.length === 0 ? (
             <p className="text-gray-500">No doctors registered.</p>
           ) : (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MdOutlineScience, MdAdd } from "react-icons/md";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface RadiologyRequest {
   id: number;
@@ -99,7 +100,7 @@ export default function RadiologyPage() {
           <hr className="text-neutral-400/50 mb-4" />
           
           {isLoading ? (
-            <p>Loading...</p>
+            <LoadingSpinner />
           ) : requests.length === 0 ? (
             <p className="text-gray-500">No radiology requests available.</p>
           ) : (

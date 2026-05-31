@@ -5,6 +5,7 @@ import { MdAssignmentInd } from "react-icons/md";
 import ToggleButton from "@/components/ToggleButton";
 import { baseUrl } from "@/lib/constants";
 import { toast } from "sonner";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Doctor {
   id: number;
@@ -33,6 +34,7 @@ export default function AssignDoctor() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [assignments, setAssignments] = useState<Record<number, boolean>>({});
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Modal form state
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -50,6 +52,7 @@ export default function AssignDoctor() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setIsLoading(true);
         const [usersRes, specsRes] = await Promise.all([
           fetch(`${baseUrl}/api/user/users`),
           fetch(`${baseUrl}/api/specialization`),
@@ -66,6 +69,8 @@ export default function AssignDoctor() {
         }
       } catch (error) {
         console.error("Failed to fetch data:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
     
@@ -169,6 +174,11 @@ export default function AssignDoctor() {
 
       {/* Table Section */}
       <div className="card rounded-xl shadow-lg border border-neutral-300 overflow-hidden">
+        {isLoading ? (
+          <div className="flex justify-center py-20">
+            <LoadingSpinner />
+          </div>
+        ) : (
         <table className="w-full rounded-xl overflow-hidden border border-neutral-500 border-separate border-spacing-0">
           <thead>
             <tr className="bg-neutral-300">
@@ -226,6 +236,7 @@ export default function AssignDoctor() {
             </tbody>
           )}
         </table>
+        )}
       </div>
 
       {/* Assign Doctor Modal */}

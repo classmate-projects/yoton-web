@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
 import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
@@ -167,7 +168,7 @@ export default function RoleManagementPage() {
 
           {isLoading ? (
             <div className="h-80 flex justify-center items-center">
-              <p>Loading...</p>
+              < LoadingSpinner/>
             </div>
           ) : roles.length === 0 ? (
             <div className="h-80 flex justify-center items-center">
