@@ -1,6 +1,5 @@
 "use client";
 
-import AddUserIcon from "@/public/icons/AddUserIcon";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
 import Link from "next/link";

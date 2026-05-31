@@ -38,7 +38,10 @@ export default function DoctorPage() {
   };
 
   useEffect(() => {
-    fetchDoctors();
+    const callApi = () => {
+      fetchDoctors();
+    };
+    callApi();
   }, []);
 
   const handleCreateDoctor = async (e: React.FormEvent) => {
@@ -134,7 +137,7 @@ export default function DoctorPage() {
                 required
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
               />
             </div>
             <div>
@@ -145,7 +148,7 @@ export default function DoctorPage() {
                 placeholder="e.g. Cardiology"
                 value={specialization}
                 onChange={(e) => setSpecialization(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
               />
             </div>
             <div>
@@ -155,7 +158,7 @@ export default function DoctorPage() {
                 required
                 value={licenseNumber}
                 onChange={(e) => setLicenseNumber(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
               />
             </div>
             <div className="flex gap-4">
@@ -166,7 +169,7 @@ export default function DoctorPage() {
                   required
                   value={experienceYears}
                   onChange={(e) => setExperienceYears(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
                 />
               </div>
               <div className="w-full">
@@ -176,7 +179,7 @@ export default function DoctorPage() {
                   required
                   value={consultationFee}
                   onChange={(e) => setConsultationFee(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
                 />
               </div>
             </div>
