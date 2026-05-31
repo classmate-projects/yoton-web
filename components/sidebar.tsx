@@ -14,6 +14,8 @@ import pkg from "@/package.json";
 import { useEffect, useState } from "react";
 import LogoutIcon from "@/public/icons/LogoutIcon";
 
+import { IoIosArrowDroprightCircle } from "react-icons/io";
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -38,18 +40,12 @@ export default function Sidebar() {
   };
 
   return (
-    <div 
-      className={`sidebar fixed left-0 top-0 h-dvh overflow-hidden p-1.5 border-r border-neutral-400/50 z-10 transition-all duration-300 ease-in-out ${
+    <div
+      className={`sidebar relative left-0 top-0 h-dvh p-1.5 border-r border-neutral-400/50 z-10 transition-all duration-300 ease-in-out ${
         isExpanded ? "w-72" : "w-20"
       }`}
-      onMouseEnter={() => setIsExpanded(true)}
-      onMouseLeave={() => setIsExpanded(false)}
     >
       <style>{`
-        .sidebar {
-          overflow-y: auto;
-          overflow-x: hidden;
-        }
         .sidebar::-webkit-scrollbar {
           width: 6px;
         }
@@ -62,12 +58,22 @@ export default function Sidebar() {
         }
       `}</style>
 
+      {/* sidebar toggle */}
+      <IoIosArrowDroprightCircle
+        title={isExpanded ? "Collapse" : "Expand"}
+        onClick={() => setIsExpanded((prev) => !prev)}
+        className={`absolute -right-4 top-12 transition-all duration-200 cursor-pointer ${isExpanded ? "rotate-180" : ""}`}
+        size={30}
+      />
+
       {/* header section */}
       <div className="flex items-center justify-center gap-3 pb-4">
         <Image src={logo} alt="logo" height={50} width={50} loading="eager" />
         {isExpanded && (
           <div className="transition-opacity duration-300">
-            <h1 className="text-lg font-bold text-[#1AAFBE] whitespace-nowrap">Yoton Health</h1>
+            <h1 className="text-lg font-bold text-[#1AAFBE] whitespace-nowrap">
+              Yoton Health
+            </h1>
             <div className="text-xs flex items-center gap-1">
               <p className="text-black"> {currentUser?.role}:</p>
               <p className="truncate">{currentUser?.name}</p>
@@ -86,6 +92,7 @@ export default function Sidebar() {
                 <li key={item.id} title={isExpanded ? "" : item.name}>
                   <Link
                     href={item.navLink}
+                    title={isExpanded ? "" : item.name}
                     className={`flex items-center  gap-3 py-2 px-2.5 rounded-xl transition-all duration-200 ${
                       isExpanded ? "px-3 justify-start" : "justify-center"
                     } ${
@@ -94,7 +101,7 @@ export default function Sidebar() {
                         : "hover:bg-neutral-200"
                     }`}
                   >
-                    <span className="flex-shrink-0">
+                    <span className="shrink-0">
                       <item.icon />
                     </span>
                     {isExpanded && (
@@ -113,9 +120,7 @@ export default function Sidebar() {
 
       <div className="absolute bottom-2 left-0 right-0 flex flex-col items-center px-2 py-2 gap-3">
         {isExpanded && (
-          <p className="text-center text-xs text-neutral-600">
-            v{pkg.version}
-          </p>
+          <p className="text-center text-xs text-neutral-600">v{pkg.version}</p>
         )}
         <button
           onClick={handleLogout}
