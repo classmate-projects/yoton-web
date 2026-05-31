@@ -74,8 +74,8 @@ export default function Sidebar() {
             <h1 className="text-lg font-bold text-[#1AAFBE] whitespace-nowrap">
               Yoton Health
             </h1>
-            <div className="text-xs flex items-center gap-1">
-              <p className="text-black"> {currentUser?.role}:</p>
+            <div className="text-xs flex items-center capitalize gap-1">
+              <p className="text-black"> {currentUser?.role} user:</p>
               <p className="truncate">{currentUser?.name}</p>
             </div>
           </div>
