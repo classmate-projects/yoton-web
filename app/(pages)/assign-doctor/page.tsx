@@ -174,11 +174,6 @@ export default function AssignDoctor() {
 
       {/* Table Section */}
       <div className="card rounded-xl shadow-lg border border-neutral-300 overflow-hidden">
-        {isLoading ? (
-          <div className="flex justify-center py-20">
-            <LoadingSpinner />
-          </div>
-        ) : (
         <table className="w-full rounded-xl overflow-hidden border border-neutral-500 border-separate border-spacing-0">
           <thead>
             <tr className="bg-neutral-300">
@@ -191,9 +186,15 @@ export default function AssignDoctor() {
             </tr>
           </thead>
 
-          {doctors.length > 0 ? (
-            <tbody>
-              {doctors.map((doctor) => (
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td colSpan={6} className="text-center py-16">
+                  <LoadingSpinner />
+                </td>
+              </tr>
+            ) : doctors.length > 0 ? (
+              doctors.map((doctor) => (
                 <tr
                   key={doctor.id}
                   className="border-t border-neutral-200 hover:bg-gray-50 transition-colors"
@@ -220,10 +221,8 @@ export default function AssignDoctor() {
                     />
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          ) : (
-            <tbody>
+              ))
+            ) : (
               <tr>
                 <td colSpan={6} className="text-center py-16 text-gray-500">
                   <div className="flex flex-col items-center gap-2">
@@ -233,10 +232,9 @@ export default function AssignDoctor() {
                   </div>
                 </td>
               </tr>
-            </tbody>
-          )}
+            )}
+          </tbody>
         </table>
-        )}
       </div>
 
       {/* Assign Doctor Modal */}

@@ -21,6 +21,7 @@ import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import { toast } from "sonner";
 import EditIcon from "@/public/icons/EditIcon";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function SpecializationPage() {
   const [specializations, setSpecializations] = useState<SpecializationType[]>(
@@ -32,6 +33,7 @@ export default function SpecializationPage() {
   const [description, setDescription] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [allDepartments, setAllDepartments] = useState<DepartmentType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const isEditing = editingSpecialization !== null;
 
@@ -179,12 +181,15 @@ export default function SpecializationPage() {
   // fetch specializations
   const fetchSpecializations = async () => {
     try {
+      setIsLoading(true);
       const res = await fetch(`${baseUrl}/api/specialization`);
       const data = await res.json();
 
       setSpecializations(data);
     } catch (error) {
       console.error("Error fetching specializations:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -386,7 +391,13 @@ export default function SpecializationPage() {
 
           {/* Table Body */}
           <tbody>
-            {specializations.length === 0 ? (
+            {isLoading ? (
+              <tr>
+                <td colSpan={4} className="px-6 py-12 text-center">
+                  <LoadingSpinner />
+                </td>
+              </tr>
+            ) : specializations.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-6 py-12 text-center">
                   <div className="flex flex-col items-center justify-center">

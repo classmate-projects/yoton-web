@@ -251,11 +251,6 @@ export default function UserManagement() {
       </div>
 
       <div className="w-full mt-8">
-        {isLoading ? (
-          <div className="flex justify-center py-20">
-            <LoadingSpinner />
-          </div>
-        ) : (
         <table className="w-full rounded-xl overflow-hidden border border-neutral-500 border-separate border-spacing-0">
           <thead>
             <tr className="bg-neutral-300">
@@ -270,9 +265,15 @@ export default function UserManagement() {
             </tr>
           </thead>
 
-          {filteredUsers.length > 0 ? (
-            <tbody>
-              {filteredUsers
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td colSpan={8} className="text-center py-20">
+                  <LoadingSpinner />
+                </td>
+              </tr>
+            ) : filteredUsers.length > 0 ? (
+              filteredUsers
                 .slice()
                 .sort((a, b) => b.id - a.id)
                 .map((user) => (
@@ -314,19 +315,16 @@ export default function UserManagement() {
                       </div>
                     </td>
                   </tr>
-                ))}
-            </tbody>
-          ) : (
-            <tbody>
+                ))
+            ) : (
               <tr>
                 <td colSpan={8} className="text-center py-20 text-gray-600">
                   No users found
                 </td>
               </tr>
-            </tbody>
-          )}
+            )}
+          </tbody>
         </table>
-        )}
       </div>
     </div>
   );

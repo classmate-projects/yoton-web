@@ -92,24 +92,32 @@ export default function PharmacyPage() {
           <h2 className="text-2xl font-semibold mb-4">All Medicines</h2>
           <hr className="text-neutral-400/50 mb-4" />
           
-          {isLoading ? (
-            <LoadingSpinner />
-          ) : medicines.length === 0 ? (
-            <p className="text-gray-500">No medicines available.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-3 border-b">Name</th>
-                    <th className="p-3 border-b">Category</th>
-                    <th className="p-3 border-b">Stock</th>
-                    <th className="p-3 border-b">Price ($)</th>
-                    <th className="p-3 border-b">Expiry Date</th>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="p-3 border-b">Name</th>
+                  <th className="p-3 border-b">Category</th>
+                  <th className="p-3 border-b">Stock</th>
+                  <th className="p-3 border-b">Price ($)</th>
+                  <th className="p-3 border-b">Expiry Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-8">
+                      <LoadingSpinner />
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {medicines.map((med, i) => (
+                ) : medicines.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-8 text-gray-500">
+                      No medicines available.
+                    </td>
+                  </tr>
+                ) : (
+                  medicines.map((med, i) => (
                     <tr key={i} className="hover:bg-gray-50">
                       <td className="p-3 border-b font-medium">{med.name}</td>
                       <td className="p-3 border-b">{med.category}</td>
@@ -117,11 +125,11 @@ export default function PharmacyPage() {
                       <td className="p-3 border-b">{med.price}</td>
                       <td className="p-3 border-b">{new Date(med.expiryDate).toLocaleDateString()}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Sidebar panels */}

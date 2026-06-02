@@ -91,24 +91,32 @@ export default function DoctorPage() {
           <h2 className="text-2xl font-semibold mb-4">All Doctors</h2>
           <hr className="text-neutral-400/50 mb-4" />
           
-          {isLoading ? (
-            <LoadingSpinner />
-          ) : doctors.length === 0 ? (
-            <p className="text-gray-500">No doctors registered.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-3 border-b">ID</th>
-                    <th className="p-3 border-b">Specialization</th>
-                    <th className="p-3 border-b">License</th>
-                    <th className="p-3 border-b">Exp (Years)</th>
-                    <th className="p-3 border-b">Fee</th>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="p-3 border-b">ID</th>
+                  <th className="p-3 border-b">Specialization</th>
+                  <th className="p-3 border-b">License</th>
+                  <th className="p-3 border-b">Exp (Years)</th>
+                  <th className="p-3 border-b">Fee</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-8">
+                      <LoadingSpinner />
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {doctors.map((doc) => (
+                ) : doctors.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-8 text-gray-500">
+                      No doctors registered.
+                    </td>
+                  </tr>
+                ) : (
+                  doctors.map((doc) => (
                     <tr key={doc.id} className="hover:bg-gray-50">
                       <td className="p-3 border-b font-medium">#{doc.id}</td>
                       <td className="p-3 border-b text-teal-700 font-semibold">{doc.specialization}</td>
@@ -116,11 +124,11 @@ export default function DoctorPage() {
                       <td className="p-3 border-b">{doc.experienceYears}</td>
                       <td className="p-3 border-b">${doc.consultationFee}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="card p-6 rounded-xl shadow-lg border-t">

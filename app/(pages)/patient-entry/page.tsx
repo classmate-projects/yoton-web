@@ -1,11 +1,15 @@
-'use client'
+"use client";
 import React, { useEffect, useState } from "react";
-import { MdOutlinePersonOutline, MdOutlineLocalPhone, MdOutlineFilePresent, MdExpandMore } from "react-icons/md";
+import {
+  MdOutlinePersonOutline,
+  MdOutlineLocalPhone,
+  MdOutlineFilePresent,
+  MdExpandMore,
+} from "react-icons/md";
 import { countryDetails } from "@/helpers/countyDetails";
 import { baseUrl } from "@/lib/constants";
 
 export default function PatientEntryPage() {
-
   const [formData, setFormData] = useState({
     Name: "",
     Sex: "",
@@ -28,30 +32,32 @@ export default function PatientEntryPage() {
     EmergencyContact: "",
     EmergencyContactPhone: "",
     OPNumber: "",
-    Password: ""
+    Password: "",
   });
   const [error, setError] = useState<string>("");
 
   const registeredBy =
-  typeof window !== "undefined"
-    ? JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ?? null
-    : null;
+    typeof window !== "undefined"
+      ? (JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ??
+        null)
+      : null;
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
     const { name, value, type } = e.target;
     const inputElement = e.target as HTMLInputElement;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? inputElement.checked : value
+      [name]: type === "checkbox" ? inputElement.checked : value,
     }));
     setError("");
   };
 
-
   // Form submission handler
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+
     // Validate that at least one of National ID or Passport Number is filled
     if (!formData.NationalID && !formData.PassportNumber) {
       setError("Please provide either National ID or Passport Number");
@@ -60,23 +66,22 @@ export default function PatientEntryPage() {
 
     const payload = {
       ...formData,
-      RegisteredBy: registeredBy
-    }
+      RegisteredBy: registeredBy,
+    };
 
     console.log("payload submit: ", payload);
-    
 
     try {
       const res = await fetch(`${baseUrl}/api/reception`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload)
-      })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
       const data = await res.json();
-      console.log("Patient entry: ", data)
+      console.log("Patient entry: ", data);
     } catch (error) {
-      console.log(error)
+      console.log(error);
     }
     setError("");
   };
@@ -104,7 +109,7 @@ export default function PatientEntryPage() {
       EmergencyContact: "",
       EmergencyContactPhone: "",
       OPNumber: "",
-      Password: ""
+      Password: "",
     });
   };
 
@@ -113,9 +118,12 @@ export default function PatientEntryPage() {
       <form onSubmit={handleSubmit} className="mainPage flex flex-col gap-6">
         {/* Header */}
         <div className="flex flex-col gap-2">
-          <h1 className="text-4xl font-bold text-gray-900">New Patient Entry</h1>
+          <h1 className="text-4xl font-bold text-gray-900">
+            New Patient Entry
+          </h1>
           <p className="text-base text-gray-600">
-            Complete patient registration form. All fields marked with * are required.
+            Complete patient registration form. All fields marked with * are
+            required.
           </p>
         </div>
 
@@ -123,11 +131,13 @@ export default function PatientEntryPage() {
         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
           <div className="flex items-center gap-3 mb-6">
             <MdOutlinePersonOutline className="text-blue-600" size={28} />
-            <h2 className="text-2xl font-bold text-gray-900">Personal Information</h2>
+            <h2 className="text-2xl font-bold text-gray-900">
+              Personal Information
+            </h2>
           </div>
           <hr className="mb-6 border-gray-300" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Name */}
             <div className="flex flex-col gap-2">
               <label htmlFor="Name" className="font-semibold text-gray-700">
@@ -167,7 +177,10 @@ export default function PatientEntryPage() {
 
             {/* Date of Birth */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="DateOfBirth" className="font-semibold text-gray-700">
+              <label
+                htmlFor="DateOfBirth"
+                className="font-semibold text-gray-700"
+              >
                 Date of Birth <span className="text-red-500">*</span>
               </label>
               <input
@@ -183,7 +196,10 @@ export default function PatientEntryPage() {
 
             {/* Nationality */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Nationality" className="font-semibold text-gray-700">
+              <label
+                htmlFor="Nationality"
+                className="font-semibold text-gray-700"
+              >
                 Nationality <span className="text-red-500">*</span>
               </label>
               <select
@@ -207,7 +223,10 @@ export default function PatientEntryPage() {
 
             {/* Father Name */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="FatherName" className="font-semibold text-gray-700">
+              <label
+                htmlFor="FatherName"
+                className="font-semibold text-gray-700"
+              >
                 Father Name
               </label>
               <input
@@ -223,7 +242,10 @@ export default function PatientEntryPage() {
 
             {/* Mother Name */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="MotherName" className="font-semibold text-gray-700">
+              <label
+                htmlFor="MotherName"
+                className="font-semibold text-gray-700"
+              >
                 Mother Name
               </label>
               <input
@@ -239,7 +261,10 @@ export default function PatientEntryPage() {
 
             {/* Marital Status */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="MaritalStatus" className="font-semibold text-gray-700">
+              <label
+                htmlFor="MaritalStatus"
+                className="font-semibold text-gray-700"
+              >
                 Marital Status <span className="text-red-500">*</span>
               </label>
               <select
@@ -260,7 +285,10 @@ export default function PatientEntryPage() {
 
             {/* Designation */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Designation" className="font-semibold text-gray-700">
+              <label
+                htmlFor="Designation"
+                className="font-semibold text-gray-700"
+              >
                 Designation
               </label>
               <input
@@ -280,7 +308,9 @@ export default function PatientEntryPage() {
         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
           <div className="flex items-center gap-3 mb-6">
             <MdOutlineLocalPhone className="text-blue-600" size={28} />
-            <h2 className="text-2xl font-bold text-gray-900">Contact Information</h2>
+            <h2 className="text-2xl font-bold text-gray-900">
+              Contact Information
+            </h2>
           </div>
           <hr className="mb-6 border-gray-300" />
 
@@ -306,10 +336,14 @@ export default function PatientEntryPage() {
                     onChange={handleInputChange}
                     required
                     className="px-4 py-2.5 border-r border-gray-300 focus:outline-none text-gray-900 bg-white w-full shrink-0 appearance-none cursor-pointer"
-                    style={{ color: 'transparent' }}
+                    style={{ color: "transparent" }}
                   >
                     {countryDetails.map((country, index) => (
-                      <option key={index} value={country.phoneCode} style={{ color: 'black' }}>
+                      <option
+                        key={index}
+                        value={country.phoneCode}
+                        style={{ color: "black" }}
+                      >
                         {country.phoneCode} - {country.country}
                       </option>
                     ))}
@@ -365,7 +399,10 @@ export default function PatientEntryPage() {
 
             {/* Emergency Contact */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="EmergencyContact" className="font-semibold text-gray-700">
+              <label
+                htmlFor="EmergencyContact"
+                className="font-semibold text-gray-700"
+              >
                 Emergency Contact Name <span className="text-red-500">*</span>
               </label>
               <input
@@ -382,7 +419,10 @@ export default function PatientEntryPage() {
 
             {/* Emergency Contact Phone */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="EmergencyContactPhone" className="font-semibold text-gray-700">
+              <label
+                htmlFor="EmergencyContactPhone"
+                className="font-semibold text-gray-700"
+              >
                 Emergency Contact Phone <span className="text-red-500">*</span>
               </label>
               <input
@@ -407,13 +447,17 @@ export default function PatientEntryPage() {
           </div>
           <hr className="mb-6 border-gray-300" />
           <p className="mb-6 text-sm text-gray-600">
-            <span className="text-red-500">*</span> Please provide either National ID or Passport Number
+            <span className="text-red-500">*</span> Please provide either
+            National ID or Passport Number
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* National ID */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="NationalID" className="font-semibold text-gray-700">
+              <label
+                htmlFor="NationalID"
+                className="font-semibold text-gray-700"
+              >
                 National ID
               </label>
               <input
@@ -429,7 +473,10 @@ export default function PatientEntryPage() {
 
             {/* Passport Number */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="PassportNumber" className="font-semibold text-gray-700">
+              <label
+                htmlFor="PassportNumber"
+                className="font-semibold text-gray-700"
+              >
                 Passport Number
               </label>
               <input
@@ -441,9 +488,7 @@ export default function PatientEntryPage() {
                 placeholder="A1234567"
                 className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
               />
-              {error && (
-                <p className="text-red-500 text-sm">{error}</p>
-              )}
+              {error && <p className="text-red-500 text-sm">{error}</p>}
             </div>
 
             {/* Visa Type */}
@@ -487,13 +532,18 @@ export default function PatientEntryPage() {
 
         {/* Medical Information Section */}
         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Medical Information</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">
+            Medical Information
+          </h2>
           <hr className="mb-6 border-gray-300" />
 
           <div className="flex flex-wrap gap-6 items-end">
             {/* Patient Type */}
             <div className="flex flex-col gap-2 w-1/2">
-              <label htmlFor="PatientType" className="font-semibold text-gray-700">
+              <label
+                htmlFor="PatientType"
+                className="font-semibold text-gray-700"
+              >
                 Patient Type <span className="text-red-500">*</span>
               </label>
               <select
@@ -521,7 +571,10 @@ export default function PatientEntryPage() {
                   onChange={handleInputChange}
                   className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 />
-                <label htmlFor="ReferralStatus" className="font-semibold text-gray-700 cursor-pointer">
+                <label
+                  htmlFor="ReferralStatus"
+                  className="font-semibold text-gray-700 cursor-pointer"
+                >
                   Referral Status
                 </label>
               </div>
@@ -535,7 +588,10 @@ export default function PatientEntryPage() {
                   onChange={handleInputChange}
                   className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 />
-                <label htmlFor="ChronicStatus" className="font-semibold text-gray-700 cursor-pointer">
+                <label
+                  htmlFor="ChronicStatus"
+                  className="font-semibold text-gray-700 cursor-pointer"
+                >
                   Chronic Status
                 </label>
               </div>

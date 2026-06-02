@@ -100,25 +100,33 @@ export default function LabPage() {
           <h2 className="text-2xl font-semibold mb-4">Lab Requests</h2>
           <hr className="text-neutral-400/50 mb-4" />
           
-          {isLoading ? (
-            <LoadingSpinner />
-          ) : labRequests.length === 0 ? (
-            <p className="text-gray-500">No lab requests available.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-3 border-b">Req ID</th>
-                    <th className="p-3 border-b">Patient</th>
-                    <th className="p-3 border-b">Test Type</th>
-                    <th className="p-3 border-b">Priority</th>
-                    <th className="p-3 border-b">Status</th>
-                    <th className="p-3 border-b">Actions</th>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="p-3 border-b">Req ID</th>
+                  <th className="p-3 border-b">Patient</th>
+                  <th className="p-3 border-b">Test Type</th>
+                  <th className="p-3 border-b">Priority</th>
+                  <th className="p-3 border-b">Status</th>
+                  <th className="p-3 border-b">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-8">
+                      <LoadingSpinner />
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {labRequests.map((req) => (
+                ) : labRequests.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-8 text-gray-500">
+                      No lab requests available.
+                    </td>
+                  </tr>
+                ) : (
+                  labRequests.map((req) => (
                     <tr key={req.id} className="hover:bg-gray-50">
                       <td className="p-3 border-b font-medium">#{req.id}</td>
                       <td className="p-3 border-b">ID: {req.patientId}</td>
@@ -141,11 +149,11 @@ export default function LabPage() {
                         </select>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="card p-6 rounded-xl shadow-lg border-t">

@@ -286,11 +286,7 @@ export default function DepartmentsPage() {
       <div className="card p-6 rounded-xl shadow-lg border-t">
         <h2 className="text-2xl font-semibold mb-4">Department List</h2>
         <hr className="text-neutral-400/50 mb-4" />
-        {isLoading ? (
-          <div className="flex justify-center py-20\">
-            <LoadingSpinner />
-          </div>
-        ) : (        <div className="overflow-x-auto">
+        <div className="overflow-x-auto">
           <table className="w-full text-left rounded-xl overflow-hidden border border-neutral-400 border-separate border-spacing-0">
             <thead>
               <tr className="bg-neutral-300">
@@ -300,7 +296,13 @@ export default function DepartmentsPage() {
               </tr>
             </thead>
             <tbody>
-              {departments.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-20 text-center">
+                    <LoadingSpinner />
+                  </td>
+                </tr>
+              ) : departments.length > 0 ? (
                 departments.map((department) => (
                   <tr
                     key={department.departmentId}
@@ -364,7 +366,6 @@ export default function DepartmentsPage() {
             </tbody>
           </table>
         </div>
-        )}
       </div>
     </div>
   );
