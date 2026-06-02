@@ -7,7 +7,7 @@ interface CalendarIconProps {
 
 const CalendarIcon = ({
   size = 24,
-  color = "#292D32",
+  color = "currentColor",
 }: CalendarIconProps) => {
   return (
     <svg

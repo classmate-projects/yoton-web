@@ -7,7 +7,7 @@ interface MultipleUserIconProps {
 
 const MultipleUserIcon = ({
   size = 24,
-  color = "#292D32",
+  color = "currentColor",
 }: MultipleUserIconProps) => {
   return (
     <svg

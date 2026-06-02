@@ -172,11 +172,12 @@ export default function UserManagement() {
             permissions.
           </p>
         </div>
-        <div className="flex items-center gap-4 shadow-lg px-4 py-2 rounded-full">
+        <div className="flex items-center gap-3 rounded-full border border-border bg-card px-3 py-2 shadow-sm">
           <Link
             href={"/role-management"}
             title="Manage Roles"
-            className="text-xl p-4 rounded-full text-white hover:bg-gray-200 transition-all duration-200 cursor-pointer"
+            aria-label="Manage Roles"
+            className="grid h-11 w-11 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition-all duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <SettingsIcon size={20} />
           </Link>
@@ -184,7 +185,8 @@ export default function UserManagement() {
             href={"/user-registration"}
             onClick={() => sessionStorage.removeItem("editUser")}
             title="User Registration"
-            className=" text-xl p-4 rounded-full text-white hover:bg-gray-200 transition-all duration-200 cursor-pointer"
+            aria-label="User Registration"
+            className="grid h-11 w-11 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary shadow-sm transition-all duration-200 hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <AddUserIcon size={20} />
           </Link>
@@ -192,17 +194,17 @@ export default function UserManagement() {
       </div>
 
       <div className="mt-8 flex items-center w-full justify-between gap-6">
-        <div className="card flex-1 px-6 py-4 rounded-xl flex items-center justify-between gap-6">
-          <div className=" flex-1 relative">
-            <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
-              <SearchIcon />
+        <div className="card flex-1 px-6 py-4 flex items-center justify-between gap-6">
+          <div className="relative flex-1">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex w-11 items-center justify-center text-muted-foreground">
+              <SearchIcon size={18} />
             </span>
             <input
               type="text"
               placeholder="Filter by name or username"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="border w-full border-neutral-600/50 px-4 pl-10 py-2 rounded-md outline-0"
+              className="h-11 w-full rounded-xl border-input pl-11 pr-4"
             />
           </div>
           <div className="flex items-center justify-between gap-4">
@@ -250,18 +252,18 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <div className="card rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden mt-8">
-        <table className="w-full text-left border-collapse">
+      <div className="card mt-8">
+        <table>
           <thead>
-            <tr className="bg-neutral-100 border-b border-neutral-200">
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Name</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Username</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Email</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Role</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Phone</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Last loggedin</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Created at</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Action</th>
+            <tr>
+              <th>Name</th>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Phone</th>
+              <th>Last loggedin</th>
+              <th>Created at</th>
+              <th>Action</th>
             </tr>
           </thead>
 
@@ -277,15 +279,15 @@ export default function UserManagement() {
                 .slice()
                 .sort((a, b) => b.id - a.id)
                 .map((user) => (
-                  <tr key={user.id} className={`border-b border-neutral-200/80 last:border-b-0 transition-colors ${!user.isActive ? "bg-red-100/80 text-gray-500 hover:bg-red-100" : "bg-white hover:bg-neutral-50/60"}`}>
-                    <td className="px-5 py-4 text-sm font-semibold text-neutral-850">{user.name}</td>
-                    <td className="px-5 py-4 text-sm text-neutral-800">{user.username}</td>
-                    <td className="px-5 py-4 text-sm text-neutral-800">{user.email}</td>
-                    <td className="px-5 py-4 text-sm capitalize text-neutral-800">{user.role}</td>
-                    <td className="px-5 py-4 text-sm text-neutral-800">{user.phone}</td>
-                    <td className="px-5 py-4 text-sm text-neutral-800">{getTime(user.lastLogin)}</td>
-                    <td className="px-5 py-4 text-sm text-neutral-805">{getTime(user.createdAt)}</td>
-                    <td className="px-5 py-4 text-sm">
+                  <tr key={user.id} className={!user.isActive ? "bg-red-50/50 opacity-80" : ""}>
+                    <td className="font-semibold">{user.name}</td>
+                    <td>{user.username}</td>
+                    <td>{user.email}</td>
+                    <td className="capitalize">{user.role}</td>
+                    <td>{user.phone}</td>
+                    <td>{getTime(user.lastLogin)}</td>
+                    <td>{getTime(user.createdAt)}</td>
+                    <td>
                       <div className="flex items-center gap-4">
 
                         <ToggleButton

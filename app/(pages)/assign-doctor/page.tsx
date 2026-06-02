@@ -157,32 +157,32 @@ export default function AssignDoctor() {
       {/* Header Section */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex flex-col gap-1">
-          <h1 className="text-4xl font-semibold flex items-center gap-3">
-            <MdAssignmentInd className="text-teal-500" /> Assign Doctor
+          <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
+            <MdAssignmentInd className="text-primary" /> Assign Doctor
           </h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             Manage doctor assignments and availability for departments and specializations.
           </p>
         </div>
         <button
           onClick={handleAssignDoctor}
-          className="bg-teal-500 hover:bg-teal-600 text-white font-semibold px-6 py-3 rounded-lg shadow-md transition-colors"
+          className="bg-primary hover:opacity-90 text-white font-semibold px-6 py-3 rounded-lg shadow-md transition-colors"
         >
           + Assign Doctor
         </button>
       </div>
 
       {/* Table Section */}
-      <div className="card rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
-        <table className="w-full text-left border-collapse">
+      <div className="card">
+        <table>
           <thead>
-            <tr className="bg-neutral-100 border-b border-neutral-200">
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Doctor Name</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Specialization</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Licence Number</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Consultation Fee</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Experience</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Action</th>
+            <tr>
+              <th className="text-foreground/90">Doctor Name</th>
+              <th className="text-foreground/90">Specialization</th>
+              <th className="text-foreground/90">Licence Number</th>
+              <th className="text-foreground/90">Consultation Fee</th>
+              <th className="text-foreground/90">Experience</th>
+              <th className="text-foreground/90">Action</th>
             </tr>
           </thead>
 
@@ -195,26 +195,23 @@ export default function AssignDoctor() {
               </tr>
             ) : doctors.length > 0 ? (
               doctors.map((doctor) => (
-                <tr
-                  key={doctor.id}
-                  className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150"
-                >
-                  <td className="px-5 py-4 text-sm font-semibold text-neutral-850">
+                <tr key={doctor.id}>
+                  <td className="font-semibold text-foreground">
                     {doctor.name}
                   </td>
-                  <td className="px-5 py-4 text-sm text-teal-700 font-semibold">
+                  <td className="text-primary font-semibold">
                     {doctor.specialization}
                   </td>
-                  <td className="px-5 py-4 text-sm text-gray-700">
+                  <td className="text-foreground/80">
                     {doctor.licenseNumber}
                   </td>
-                  <td className="px-5 py-4 text-sm text-gray-700">
+                  <td className="text-foreground/80">
                     ${doctor.consultationFee}
                   </td>
-                  <td className="px-5 py-4 text-sm text-gray-700">
+                  <td className="text-foreground/80">
                     {doctor.experienceYears} years
                   </td>
-                  <td className="px-5 py-4">
+                  <td>
                     <ToggleButton
                       checked={assignments[doctor.id] || false}
                       onChange={() => handleToggle(doctor.id)}
@@ -224,11 +221,11 @@ export default function AssignDoctor() {
               ))
             ) : (
               <tr>
-                <td colSpan={6} className="text-center py-16 text-gray-500">
+                <td colSpan={6} className="text-center py-16 text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
-                    <MdAssignmentInd className="text-4xl text-gray-300" />
-                    <p className="text-lg font-medium">No doctors available</p>
-                    <p className="text-sm">No doctors have been registered yet.</p>
+                    <MdAssignmentInd className="text-4xl text-muted-foreground/40" />
+                    <p className="text-lg font-medium text-foreground/80">No doctors available</p>
+                    <p className="text-sm text-muted-foreground">No doctors have been registered yet.</p>
                   </div>
                 </td>
               </tr>
@@ -240,11 +237,11 @@ export default function AssignDoctor() {
       {/* Assign Doctor Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-card rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-border">
             {/* Modal Header */}
             <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-gray-800">Assign Doctor</h2>
-              <p className="text-sm text-gray-500 mt-1">
+              <h2 className="text-2xl font-semibold text-foreground">Assign Doctor</h2>
+              <p className="text-sm text-muted-foreground mt-1">
                 Fill in the details to assign a new doctor
               </p>
             </div>
@@ -253,7 +250,7 @@ export default function AssignDoctor() {
             <div className="space-y-4">
               {/* Username Search */}
               <div className="relative">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">
                   Username
                 </label>
                 <div className="relative">
@@ -266,7 +263,7 @@ export default function AssignDoctor() {
                     }}
                     onFocus={() => setShowUserDropdown(true)}
                     placeholder="Search by username or name..."
-                    className="w-full px-4 py-2 rounded-lg bg-gray-100 border border-gray-300 focus:outline-none focus:border-teal-500"
+                    className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
                   />
                   {selectedUser && (
                     <button
@@ -274,7 +271,7 @@ export default function AssignDoctor() {
                         setSelectedUser(null);
                         setSearchUsername("");
                       }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
                       ✕
                     </button>
@@ -283,7 +280,7 @@ export default function AssignDoctor() {
 
                 {/* Dropdown for users */}
                 {showUserDropdown && filteredUsers.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
                     {filteredUsers.map((user) => (
                       <button
                         key={user.id}
@@ -292,10 +289,10 @@ export default function AssignDoctor() {
                           setSearchUsername(user.username);
                           setShowUserDropdown(false);
                         }}
-                        className="w-full text-left px-4 py-2 hover:bg-teal-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                        className="w-full text-left px-4 py-2 hover:bg-primary/5 border-b border-border last:border-b-0 transition-colors"
                       >
-                        <div className="font-medium text-gray-800">{user.name}</div>
-                        <div className="text-sm text-gray-500">@{user.username}</div>
+                        <div className="font-medium text-foreground">{user.name}</div>
+                        <div className="text-sm text-muted-foreground">@{user.username}</div>
                       </button>
                     ))}
                   </div>
@@ -303,24 +300,24 @@ export default function AssignDoctor() {
 
                 {/* Show selected user info */}
                 {selectedUser && (
-                  <div className="mt-2 p-3 bg-teal-50 rounded-lg border border-teal-200">
-                    <p className="text-sm text-gray-700">
+                  <div className="mt-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                    <p className="text-sm text-foreground/90">
                       <span className="font-semibold">Selected: </span>{selectedUser.name} ({selectedUser.username})
                     </p>
-                    <p className="text-xs text-gray-600">{selectedUser.email}</p>
+                    <p className="text-xs text-muted-foreground">{selectedUser.email}</p>
                   </div>
                 )}
               </div>
 
               {/* Specialization Dropdown */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">
                   Specialization
                 </label>
                 <select
                   value={selectedSpecialization}
                   onChange={(e) => setSelectedSpecialization(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg bg-gray-100 border border-gray-300 focus:outline-none focus:border-teal-500"
+                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
                 >
                   <option value="">Select Specialization</option>
                   {specializations.map((spec) => (
@@ -333,7 +330,7 @@ export default function AssignDoctor() {
 
               {/* License Number */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">
                   Licence Number
                 </label>
                 <input
@@ -341,13 +338,13 @@ export default function AssignDoctor() {
                   value={licenseNumber}
                   onChange={(e) => setLicenseNumber(e.target.value)}
                   placeholder="e.g., MD123456"
-                  className="w-full px-4 py-2 rounded-lg bg-gray-100 border border-gray-300 focus:outline-none focus:border-teal-500"
+                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
                 />
               </div>
 
               {/* Consultation Fee */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">
                   Consultation Fee
                 </label>
                 <input
@@ -355,13 +352,13 @@ export default function AssignDoctor() {
                   value={consultationFee}
                   onChange={(e) => setConsultationFee(e.target.value)}
                   placeholder="e.g., 50"
-                  className="w-full px-4 py-2 rounded-lg bg-gray-100 border border-gray-300 focus:outline-none focus:border-teal-500"
+                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
                 />
               </div>
 
               {/* Experience */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">
                   Experience (Years)
                 </label>
                 <input
@@ -369,7 +366,7 @@ export default function AssignDoctor() {
                   value={experience}
                   onChange={(e) => setExperience(e.target.value)}
                   placeholder="e.g., 5"
-                  className="w-full px-4 py-2 rounded-lg bg-gray-100 border border-gray-300 focus:outline-none focus:border-teal-500"
+                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
                 />
               </div>
             </div>
@@ -378,13 +375,13 @@ export default function AssignDoctor() {
             <div className="flex gap-3 mt-8">
               <button
                 onClick={handleCancel}
-                className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white font-semibold rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 bg-primary hover:opacity-90 text-white font-semibold rounded-lg transition-colors"
               >
                 Save
               </button>

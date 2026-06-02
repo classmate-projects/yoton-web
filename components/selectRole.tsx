@@ -34,7 +34,7 @@ export default function SelectRole({
       id="role"
       value={role}
       onChange={(e) => setRole(e.target.value)}
-      className={`${selectRole ? "outline-0 px-4 py-4.75 rounded-xl w-full capitalize bg-(--color-highlight) border border-(--color-border) text-(--color-text)" : "border border-neutral-500 px-4 py-2 rounded-md outline-0"}`}
+      className={`w-full capitalize ${selectRole ? "h-12 px-4" : "h-10 px-3"}`}
       required
     >
       {selectRole && (
@@ -45,7 +45,7 @@ export default function SelectRole({
 
       {
         allRole && (
-          <option value="allRole">All roles</option>
+          <option value="allRole">All Roles</option>
         )
       }
 

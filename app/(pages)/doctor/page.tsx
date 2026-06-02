@@ -78,28 +78,28 @@ export default function DoctorPage() {
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
       <div className="flex flex-col gap-1 mb-8">
-        <h1 className="text-4xl font-semibold flex items-center gap-3">
-          <MdOutlineMedicalServices className="text-teal-500" /> Doctors Directory
+        <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
+          <MdOutlineMedicalServices className="text-primary" /> Doctors Directory
         </h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           Manage doctor profiles, specializations, and availability.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
-          <h2 className="text-2xl font-semibold mb-4">All Doctors</h2>
-          <hr className="text-neutral-400/50 mb-4" />
+        <div className="lg:col-span-2 card p-6">
+          <h2 className="text-2xl font-semibold mb-4 text-foreground">All Doctors</h2>
+          <hr className="border-border mb-4" />
           
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table>
               <thead>
-                <tr className="bg-neutral-100 border-b border-neutral-200">
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">ID</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Specialization</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">License</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Exp (Years)</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Fee</th>
+                <tr>
+                  <th className="text-foreground/90">ID</th>
+                  <th className="text-foreground/90">Specialization</th>
+                  <th className="text-foreground/90">License</th>
+                  <th className="text-foreground/90">Exp (Years)</th>
+                  <th className="text-foreground/90">Fee</th>
                 </tr>
               </thead>
               <tbody>
@@ -111,18 +111,18 @@ export default function DoctorPage() {
                   </tr>
                 ) : doctors.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-12 text-gray-500">
+                    <td colSpan={5} className="text-center py-12 text-muted-foreground">
                       No doctors registered.
                     </td>
                   </tr>
                 ) : (
                   doctors.map((doc) => (
-                    <tr key={doc.id} className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150">
-                      <td className="px-5 py-4 text-sm font-semibold text-neutral-850">#{doc.id}</td>
-                      <td className="px-5 py-4 text-sm text-teal-700 font-semibold">{doc.specialization}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">{doc.licenseNumber}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">{doc.experienceYears}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-805">${doc.consultationFee}</td>
+                    <tr key={doc.id}>
+                      <td className="font-semibold text-foreground">#{doc.id}</td>
+                      <td className="text-primary font-semibold">{doc.specialization}</td>
+                      <td className="text-foreground/80">{doc.licenseNumber}</td>
+                      <td className="text-foreground/80">{doc.experienceYears}</td>
+                      <td className="text-foreground/80">${doc.consultationFee}</td>
                     </tr>
                   ))
                 )}
@@ -131,69 +131,69 @@ export default function DoctorPage() {
           </div>
         </div>
 
-        <div className="card p-6 rounded-xl shadow-lg border-t">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <div className="card p-6">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-foreground">
             <MdPersonAdd className="text-green-500" /> Register Doctor
           </h2>
-          <hr className="text-neutral-400/50 mb-4" />
+          <hr className="border-border mb-4" />
           
           <form onSubmit={handleCreateDoctor} className="flex flex-col gap-4">
             <div>
-              <label className="text-sm font-bold text-gray-700">User ID</label>
+              <label className="text-sm font-bold text-foreground/90">User ID</label>
               <input
                 type="number"
                 required
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
+                className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
               />
             </div>
             <div>
-              <label className="text-sm font-bold text-gray-700">Specialization</label>
+              <label className="text-sm font-bold text-foreground/90">Specialization</label>
               <input
                 type="text"
                 required
                 placeholder="e.g. Cardiology"
                 value={specialization}
                 onChange={(e) => setSpecialization(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
+                className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
               />
             </div>
             <div>
-              <label className="text-sm font-bold text-gray-700">License Number</label>
+              <label className="text-sm font-bold text-foreground/90">License Number</label>
               <input
                 type="text"
                 required
                 value={licenseNumber}
                 onChange={(e) => setLicenseNumber(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
+                className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
               />
             </div>
             <div className="flex gap-4">
               <div className="w-full">
-                <label className="text-sm font-bold text-gray-700">Exp. Years</label>
+                <label className="text-sm font-bold text-foreground/90">Exp. Years</label>
                 <input
                   type="number"
                   required
                   value={experienceYears}
                   onChange={(e) => setExperienceYears(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
+                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
                 />
               </div>
               <div className="w-full">
-                <label className="text-sm font-bold text-gray-700">Fee ($)</label>
+                <label className="text-sm font-bold text-foreground/90">Fee ($)</label>
                 <input
                   type="number"
                   required
                   value={consultationFee}
                   onChange={(e) => setConsultationFee(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
+                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
                 />
               </div>
             </div>
             <button 
               type="submit"
-              className="w-full mt-4 bg-teal-500 hover:bg-teal-600 text-white font-semibold py-3 rounded-lg transition-colors"
+              className="w-full mt-4 bg-primary hover:opacity-90 text-white font-semibold py-3 rounded-lg transition-colors"
             >
               Add Doctor
             </button>

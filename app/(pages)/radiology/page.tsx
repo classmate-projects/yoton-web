@@ -36,7 +36,9 @@ export default function RadiologyPage() {
   };
 
   useEffect(() => {
-    fetchRequests();
+    queueMicrotask(() => {
+      fetchRequests();
+    });
   }, []);
 
   const handleCreateRequest = async (e: React.FormEvent) => {
@@ -95,20 +97,20 @@ export default function RadiologyPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border-t">
+        <div className="lg:col-span-2 card p-6">
           <h2 className="text-2xl font-semibold mb-4">Scan Requests</h2>
           <hr className="text-neutral-400/50 mb-4" />
           
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table>
               <thead>
-                <tr className="bg-gray-100">
-                  <th className="p-3 border-b">ID</th>
-                  <th className="p-3 border-b">Patient</th>
-                  <th className="p-3 border-b">Scan Type</th>
-                  <th className="p-3 border-b">Priority</th>
-                  <th className="p-3 border-b">Status</th>
-                  <th className="p-3 border-b">Actions</th>
+                <tr>
+                  <th>ID</th>
+                  <th>Patient</th>
+                  <th>Scan Type</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -126,17 +128,17 @@ export default function RadiologyPage() {
                   </tr>
                 ) : (
                   requests.map((req) => (
-                    <tr key={req.id} className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150">
-                      <td className="px-5 py-4 text-sm font-semibold text-neutral-850">#{req.id}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">{req.patientId}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">{req.scanType}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">
+                    <tr key={req.id}>
+                      <td className="font-semibold">#{req.id}</td>
+                      <td>{req.patientId}</td>
+                      <td>{req.scanType}</td>
+                      <td>
                         <span className={`px-2.5 py-1 text-xs rounded-full font-semibold ${req.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
                           {req.priority}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-sm font-semibold text-neutral-800">{req.status || "Pending"}</td>
-                      <td className="px-5 py-4 text-sm">
+                      <td className="font-semibold">{req.status || "Pending"}</td>
+                      <td>
                         <select 
                           className="p-1.5 text-sm border rounded bg-white outline-none focus:border-blue-500"
                           value={req.status || "Pending"}
@@ -155,7 +157,7 @@ export default function RadiologyPage() {
           </div>
         </div>
 
-        <div className="card p-6 rounded-xl shadow-lg border-t">
+        <div className="card p-6">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
             <MdAdd className="text-green-500" /> New Scan Request
           </h2>

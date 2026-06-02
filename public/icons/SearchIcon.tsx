@@ -6,8 +6,8 @@ interface SearchIconProps {
 }
 
 const SearchIcon = ({
-  size = 16,
-  color = "#51526C",
+  size = 24,
+  color = "currentColor",
 }: SearchIconProps) => {
   return (
     <svg

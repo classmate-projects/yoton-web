@@ -46,7 +46,9 @@ export default function PharmacyPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    queueMicrotask(() => {
+      fetchData();
+    });
   }, []);
 
   const handleAddMedicine = async (e: React.FormEvent) => {
@@ -88,19 +90,19 @@ export default function PharmacyPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Medicine List */}
-        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
+        <div className="lg:col-span-2 card p-6">
           <h2 className="text-2xl font-semibold mb-4">All Medicines</h2>
           <hr className="text-neutral-400/50 mb-4" />
           
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table>
               <thead>
-                <tr className="bg-neutral-100 border-b border-neutral-200">
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Name</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Category</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Stock</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Price ($)</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Expiry Date</th>
+                <tr>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>Stock</th>
+                  <th>Price ($)</th>
+                  <th>Expiry Date</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,12 +120,12 @@ export default function PharmacyPage() {
                   </tr>
                 ) : (
                   medicines.map((med, i) => (
-                    <tr key={i} className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150">
-                      <td className="px-5 py-4 text-sm font-semibold text-neutral-850">{med.name}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">{med.category}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">{med.stock}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">${med.price}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">{new Date(med.expiryDate).toLocaleDateString()}</td>
+                    <tr key={i}>
+                      <td className="font-semibold">{med.name}</td>
+                      <td>{med.category}</td>
+                      <td>{med.stock}</td>
+                      <td>${med.price}</td>
+                      <td>{new Date(med.expiryDate).toLocaleDateString()}</td>
                     </tr>
                   ))
                 )}
@@ -135,7 +137,7 @@ export default function PharmacyPage() {
         {/* Sidebar panels */}
         <div className="flex flex-col gap-8">
           {/* Low Stock Alerts */}
-          <div className="card p-6 rounded-xl shadow-lg border-t border-t-red-500">
+          <div className="card p-6">
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-red-600">
               <MdWarning size={24} /> Low Stock Alerts
             </h2>
@@ -158,7 +160,7 @@ export default function PharmacyPage() {
           </div>
 
           {/* Add Medicine Form */}
-          <div className="card p-6 rounded-xl shadow-lg border-t">
+          <div className="card p-6">
             <h2 className="text-xl font-semibold mb-4">Add Medicine</h2>
             <hr className="text-neutral-400/50 mb-4" />
             

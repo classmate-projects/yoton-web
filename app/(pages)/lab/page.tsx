@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MdOutlineScience, MdSearch, MdAdd } from "react-icons/md";
+import { MdOutlineScience, MdAdd } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface LabRequest {
@@ -37,7 +37,9 @@ export default function LabPage() {
   };
 
   useEffect(() => {
-    fetchLabRequests();
+    queueMicrotask(() => {
+      fetchLabRequests();
+    });
   }, []);
 
   const handleCreateRequest = async (e: React.FormEvent) => {
@@ -87,29 +89,29 @@ export default function LabPage() {
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
       <div className="flex flex-col gap-1 mb-8">
-        <h1 className="text-4xl font-semibold flex items-center gap-3">
+        <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
           <MdOutlineScience className="text-rose-500" /> Laboratory
         </h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           Manage lab requests, update test statuses, and process samples.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
-          <h2 className="text-2xl font-semibold mb-4">Lab Requests</h2>
-          <hr className="text-neutral-400/50 mb-4" />
+        <div className="lg:col-span-2 card p-6">
+          <h2 className="text-2xl font-semibold mb-4 text-foreground">Lab Requests</h2>
+          <hr className="border-border mb-4" />
           
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table>
               <thead>
-                <tr className="bg-neutral-100 border-b border-neutral-200">
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Req ID</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Patient</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Test Type</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Priority</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Status</th>
-                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Actions</th>
+                <tr>
+                  <th className="text-foreground/90">Req ID</th>
+                  <th className="text-foreground/90">Patient</th>
+                  <th className="text-foreground/90">Test Type</th>
+                  <th className="text-foreground/90">Priority</th>
+                  <th className="text-foreground/90">Status</th>
+                  <th className="text-foreground/90">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -121,25 +123,25 @@ export default function LabPage() {
                   </tr>
                 ) : labRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-gray-500">
+                    <td colSpan={6} className="text-center py-12 text-muted-foreground">
                       No lab requests available.
                     </td>
                   </tr>
                 ) : (
                   labRequests.map((req) => (
-                    <tr key={req.id} className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150">
-                      <td className="px-5 py-4 text-sm font-semibold text-neutral-850">#{req.id}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">ID: {req.patientId}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">{req.testType}</td>
-                      <td className="px-5 py-4 text-sm text-neutral-800">
-                        <span className={`px-2.5 py-1 text-xs rounded-full font-semibold ${req.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                    <tr key={req.id}>
+                      <td className="font-semibold text-foreground">#{req.id}</td>
+                      <td className="text-foreground/80">ID: {req.patientId}</td>
+                      <td className="text-foreground/80">{req.testType}</td>
+                      <td>
+                        <span className={`px-2.5 py-1 text-xs rounded-full font-semibold ${req.priority === 'High' ? 'bg-destructive/10 text-destructive' : 'bg-muted text-foreground/70'}`}>
                           {req.priority}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-sm font-semibold text-blue-600">{req.status || "Pending"}</td>
-                      <td className="px-5 py-4 text-sm">
+                      <td className="font-semibold text-primary">{req.status || "Pending"}</td>
+                      <td>
                         <select 
-                          className="p-1.5 text-sm border rounded bg-white outline-none focus:border-blue-500"
+                          className="p-1.5 text-sm border border-border rounded bg-card text-foreground outline-none focus:border-primary"
                           value={req.status || "Pending"}
                           onChange={(e) => handleUpdateStatus(req.id, e.target.value)}
                         >
@@ -156,51 +158,51 @@ export default function LabPage() {
           </div>
         </div>
 
-        <div className="card p-6 rounded-xl shadow-lg border-t">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <div className="card p-6">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-foreground">
             <MdAdd className="text-green-500" /> New Lab Request
           </h2>
-          <hr className="text-neutral-400/50 mb-4" />
+          <hr className="border-border mb-4" />
           
           <form onSubmit={handleCreateRequest} className="flex flex-col gap-4">
             <div>
-              <label className="text-sm font-bold text-gray-700">Patient ID</label>
+              <label className="text-sm font-bold text-foreground/90">Patient ID</label>
               <input
                 type="number"
                 required
                 value={patientId}
                 onChange={(e) => setPatientId(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
               />
             </div>
             <div>
-              <label className="text-sm font-bold text-gray-700">Doctor ID</label>
+              <label className="text-sm font-bold text-foreground/90">Doctor ID</label>
               <input
                 type="number"
                 required
                 value={doctorId}
                 onChange={(e) => setDoctorId(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
               />
             </div>
             <div>
-              <label className="text-sm font-bold text-gray-700">Test Type</label>
+              <label className="text-sm font-bold text-foreground/90">Test Type</label>
               <input
                 type="text"
                 required
                 placeholder="e.g. Blood Test"
                 value={testType}
                 onChange={(e) => setTestType(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
               />
             </div>
             <div>
-              <label className="text-sm font-bold text-gray-700">Priority</label>
+              <label className="text-sm font-bold text-foreground/90">Priority</label>
               <select
                 required
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
               >
                 <option value="Low">Low</option>
                 <option value="Normal">Normal</option>
@@ -209,7 +211,7 @@ export default function LabPage() {
             </div>
             <button 
               type="submit"
-              className="w-full mt-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-lg transition-colors"
+              className="w-full mt-4 bg-primary hover:opacity-90 text-white font-semibold py-3 rounded-lg transition-colors"
             >
               Submit Request
             </button>

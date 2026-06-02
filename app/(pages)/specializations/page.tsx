@@ -369,15 +369,15 @@ export default function SpecializationPage() {
       )}
 
       {/* Table Section */}
-      <div className="card rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
-        <table className="w-full text-left border-collapse">
+      <div className="card">
+        <table>
           {/* Table Head */}
           <thead>
-            <tr className="bg-neutral-100 border-b border-neutral-200">
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Name</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Description</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Department</th>
-              <th className="px-5 py-4 text-sm font-bold text-neutral-700 text-center">Action</th>
+            <tr>
+              <th>Name</th>
+              <th>Description</th>
+              <th>Department</th>
+              <th className="text-center">Action</th>
             </tr>
           </thead>
 
@@ -385,13 +385,13 @@ export default function SpecializationPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-5 py-16 text-center">
+                <td colSpan={4} className="py-16 text-center">
                   <LoadingSpinner />
                 </td>
               </tr>
             ) : specializations.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-5 py-16 text-center">
+                <td colSpan={4} className="py-16 text-center">
                   <div className="flex flex-col items-center justify-center">
                     <svg
                       className="h-12 w-12 text-gray-400 mb-3"
@@ -417,20 +417,17 @@ export default function SpecializationPage() {
               </tr>
             ) : (
               specializations.map((spec) => (
-                <tr
-                  key={spec.specializationId}
-                  className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150"
-                >
-                  <td className="px-5 py-4 text-sm text-neutral-850 font-semibold">
+                <tr key={spec.specializationId}>
+                  <td className="font-semibold">
                     {spec.name}
                   </td>
-                  <td className="px-5 py-4 text-sm text-neutral-800">
+                  <td>
                     {spec.description || "No description provided"}
                   </td>
-                  <td className="px-5 py-4 text-sm text-neutral-800">
+                  <td>
                     {spec.department?.name || "No department assigned"}
                   </td>
-                  <td className="px-5 py-4 text-center">
+                  <td className="text-center">
                     <div className="flex justify-center items-center ">
                       <ToggleButton
                         checked={spec.isActive}

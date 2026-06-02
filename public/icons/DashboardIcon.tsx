@@ -5,7 +5,7 @@ interface DashboardIconProps {
 
 const DashboardIcon = ({
   size = 24,
-  color = "#292D32",
+  color = "currentColor",
 }: DashboardIconProps) => {
   return (
     <svg

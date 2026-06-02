@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-// icons
-import { LuEye, LuEyeClosed } from "react-icons/lu";
+import { Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import Image from "next/image";
+import logo from "@/public/yoton_logo.png";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,146 +16,110 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.SubmitEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-
     setLoading(true);
 
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emailOrUserName, password }),
       });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Login failed");
 
-      if (!res.ok) {
-        throw new Error(data.message || "Login failed");
-      }
-
-      console.log("Login successfull: ", data);
-
-      const yoton_user_detail = {
+      localStorage.setItem("yoton_user_detail", JSON.stringify({
         role: data.body.role,
         name: data.body.name,
         userId: data.body.userId,
-      };
-      localStorage.setItem(
-        "yoton_user_detail",
-        JSON.stringify(yoton_user_detail),
-      );
+      }));
 
+      toast.success(`Welcome back, ${data.body.name}!`);
       router.push("/");
     } catch (error) {
-      if (error instanceof Error) {
-        toast.error(error.message);
-      }
+      if (error instanceof Error) toast.error(error.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div
-      className="h-dvh w-full flex justify-center items-center"
-      style={{ backgroundColor: "var(--color-bg)" }}
-    >
-      <div className="h-dvh sm:h-fit w-full px-4 sm:px-16 py-8 rounded-xl shadow-xl border-t max-w-150 flex flex-col gap-4 justify-center items-center card">
-        <div className=" flex flex-col items-center gap-1 pb-10">
-          <h1
-            className="text-4xl font-bold text-center"
-            style={{ color: "var(--color-text)" }}
-          >
-            Login Page
-          </h1>
-          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            Welcome back to Yoton
-          </p>
+    <div className="min-h-screen w-full flex flex-col justify-center items-center bg-background p-6">
+      <div className="w-full max-w-[400px] space-y-8">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="p-4 bg-card rounded-2xl shadow-sm border border-border">
+            <Image src={logo} alt="Logo" width={48} height={48} />
+          </div>
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Sign In</h1>
+            <p className="text-sm text-muted-foreground">Enter your details to access your dashboard</p>
+          </div>
         </div>
 
-        <form
-          onSubmit={handleLogin}
-          className=" w-full flex flex-col justify-center gap-6 "
-        >
-          <div className="flex flex-col gap-4 w-full">
-            <div>
-              <input
-                type="text"
-                id="email"
-                name="email"
-                value={emailOrUserName}
-                onChange={(e) => setEmailOrUserName(e.target.value)}
-                placeholder="Username"
-                className="outline-0 p-4 rounded-xl w-full"
-                style={{
-                  backgroundColor: "var(--color-highlight)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
-                }}
-                required
-              />
+        <div className="card p-8 shadow-lg border-border">
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  Username or Email
+                </label>
+                <input
+                  type="text"
+                  value={emailOrUserName}
+                  onChange={(e) => setEmailOrUserName(e.target.value)}
+                  placeholder="name@example.com"
+                  className="h-11 bg-muted/30"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium leading-none">Password</label>
+                  <Link href="/forgot-password" title="Forgot Password" className="text-xs font-semibold text-primary hover:text-primary/80">
+                    Forgot Password?
+                  </Link>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="h-11 bg-muted/30 pr-10"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div
-              className="relative outline-0 p-4 rounded-xl w-full"
-              style={{
-                backgroundColor: "var(--color-highlight)",
-                border: "1px solid var(--color-border)",
-              }}
+
+            <button
+              disabled={loading || !password || !emailOrUserName}
+              className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              type="submit"
             >
-              <input
-                type={showPassword ? "text" : "password"}
-                id="password"
-                name="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="********"
-                className="outline-none w-[93%] mr-8 flex-1 bg-transparent border-0"
-                style={{ color: "var(--color-text)" }}
-                required
-              />
-              <span
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-0 top-1/2 transform -translate-y-1/2 cursor-pointer h-10 w-10 flex items-center justify-center"
-              >
-                {showPassword ? (
-                  <LuEye className="text-xl" />
-                ) : (
-                  <LuEyeClosed className="text-xl" />
-                )}
-              </span>
-            </div>
-          </div>
-          <button
-            disabled={loading || !password || !emailOrUserName}
-            className="bg-blue-500 text-white font-bold flex items-center justify-center gap-2 w-full p-4 rounded-xl mt-4 cursor-pointer hover:bg-blue-600 transition-all duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            type="submit"
-          >
-            {loading ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Signing in...
-              </>
-            ) : (
-              "Login"
-            )}
-          </button>
-        </form>
-        <Link
-          href="/forgot-password"
-          className="text-center flex justify-center items-center gap-2 transition-all duration-200 cursor-pointer"
-          style={{ color: "var(--color-accent)" }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.color = "var(--color-accent-hover)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.color = "var(--color-accent)")
-          }
-        >
-          Forgot password?
-        </Link>
+              {loading ? <Loader2 className="animate-spin" size={18} /> : (
+                <>
+                  Sign In
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+
+        <p className="text-center text-xs text-muted-foreground">
+          © {new Date().getFullYear()} Yoton Health. All rights reserved.
+        </p>
       </div>
     </div>
   );
