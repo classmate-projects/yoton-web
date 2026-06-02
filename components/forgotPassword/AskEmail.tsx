@@ -26,7 +26,7 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit }: ema
                     onSubmit={handleEmailSubmit}
                     className="flex flex-col gap-4 w-full mt-10">
                     <div className="w-full flex flex-col gap-2 mb-4">
-                        <label htmlFor="email" className="text-sm font-bold" style={{ color: 'var(--color-text-muted)' }}>
+                        <label htmlFor="email" className="font-bold" style={{ color: 'var(--color-text-muted)' }}>
                             Email Address
                         </label>
                         <input
@@ -36,18 +36,21 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit }: ema
                             onChange={e => setEmail(e.target.value)}
                             name="email"
                             placeholder="name@company.com"
-                            className="outline-0 p-4 rounded-xl"
+                            className="outline-0 px-4 py-2 rounded-xl"
                             style={{ backgroundColor: 'var(--color-highlight)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                         />
                     </div>
 
-                    <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>We will never share your email with anyone else.</p>
+                    <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>We will never share your email with anyone else.</p>
 
                     <button
                         type="submit"
-                        className="theme-blue text-white font-bold flex items-center justify-center gap-2 w-full p-4 rounded-xl cursor-pointer transition-all duration-200">Send Reset Link <HiOutlineArrowSmRight /> </button>
+                        className="theme-blue text-white font-bold flex items-center justify-center gap-2 w-full p-4 rounded-xl cursor-pointer transition-all duration-200 bg-blue-500 hover:bg-blue-600"
+                    >
+                        Send Reset Link <HiOutlineArrowSmRight /> 
+                    </button>
 
-                    <Link href="/login" className="text-center flex justify-center items-center gap-2 mt-4 transition-all duration-200 cursor-pointer" style={{ color: 'var(--color-accent)' }} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--color-accent-hover)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-accent)'}><HiOutlineArrowSmRight className=" rotate-180" /> Return to Login</Link>
+                    <Link href="/login" className="text-center flex justify-center items-center gap-2 mt-4 transition-all duration-200 cursor-pointer hover:text-blue-400"><HiOutlineArrowSmRight className=" rotate-180" /> Return to Login</Link>
                 </form>
             </div>
         </>

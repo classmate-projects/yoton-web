@@ -30,11 +30,14 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Login failed");
 
-      localStorage.setItem("yoton_user_detail", JSON.stringify({
-        role: data.body.role,
-        name: data.body.name,
-        userId: data.body.userId,
-      }));
+      localStorage.setItem(
+        "yoton_user_detail",
+        JSON.stringify({
+          role: data.body.role,
+          name: data.body.name,
+          userId: data.body.userId,
+        }),
+      );
 
       toast.success(`Welcome back, ${data.body.name}!`);
       router.push("/");
@@ -49,27 +52,28 @@ export default function LoginPage() {
     <div className="min-h-screen w-full flex flex-col justify-center items-center bg-background p-6">
       <div className="w-full max-w-100 space-y-8">
         <div className="flex flex-col items-center space-y-4">
-          <div className="p-4 bg-card rounded-2xl shadow-sm border border-border">
-            <Image src={logo} alt="Logo" width={48} height={48} />
-          </div>
           <div className="text-center space-y-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Sign In</h1>
-            <p className="text-sm text-muted-foreground">Enter your details to access your dashboard</p>
+            <h1 className="text-4xl font-bold tracking-tight text-foreground">
+              Sign In
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Enter your details to access your dashboard
+            </p>
           </div>
         </div>
 
-        <div className="card p-8 shadow-lg border-border">
-          <form onSubmit={handleLogin} className="space-y-6">
+        <div className="card p-8 shadow-lg border-border w-full">
+          <form onSubmit={handleLogin} className="space-y-6 w-full">
             <div className="space-y-4">
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Username or Email
+                  Username
                 </label>
                 <input
                   type="text"
                   value={emailOrUserName}
                   onChange={(e) => setEmailOrUserName(e.target.value)}
-                  placeholder="name@example.com"
+                  placeholder="Enter your username"
                   className="h-11 bg-muted/30"
                   required
                 />
@@ -77,10 +81,9 @@ export default function LoginPage() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium leading-none">Password</label>
-                  <Link href="/forgot-password" title="Forgot Password" className="text-xs font-semibold text-primary hover:text-primary/80">
-                    Forgot Password?
-                  </Link>
+                  <label className="text-sm font-medium leading-none">
+                    Password
+                  </label>
                 </div>
                 <div className="relative">
                   <input
@@ -94,9 +97,9 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showPassword ? <Eye size={16} /> : <EyeOff size={16} />}
                   </button>
                 </div>
               </div>
@@ -107,13 +110,24 @@ export default function LoginPage() {
               className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               type="submit"
             >
-              {loading ? <Loader2 className="animate-spin" size={18} /> : (
+              {loading ? (
+                <Loader2 className="animate-spin" size={18} />
+              ) : (
                 <>
                   Sign In
                   <ArrowRight size={16} />
                 </>
               )}
             </button>
+            <div className="flex items-center justify-center">
+              <Link
+                href="/forgot-password"
+                title="Forgot Password"
+                className=" font-semibold text-primary hover:text-primary/80"
+              >
+                Forgot Password?
+              </Link>
+            </div>
           </form>
         </div>
 

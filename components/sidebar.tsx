@@ -122,7 +122,7 @@ export default function Sidebar() {
             <button
               key={t.name}
               onClick={() => setTheme(t.name)}
-              className={`flex-1 flex items-center justify-center p-2 rounded-md transition-all ${
+              className={`flex-1 flex items-center justify-center cursor-pointer p-2 rounded-md transition-all ${
                 mounted && theme === t.name
                   ? "bg-card text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
@@ -142,7 +142,7 @@ export default function Sidebar() {
           <button
             onClick={handleLogout}
             title="Logout"
-            className={`flex items-center gap-3 text-destructive hover:bg-destructive/10 rounded-xl transition-all duration-200 ${
+            className={`flex items-center gap-3 text-destructive hover:bg-destructive/10 rounded-xl transition-all duration-200 cursor-pointer hover:bg-red-400/80 ${
               isExpanded ? "px-3 py-2.5 w-full" : "p-3 justify-center"
             }`}
           >

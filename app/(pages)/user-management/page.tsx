@@ -204,7 +204,7 @@ export default function UserManagement() {
               placeholder="Filter by name or username"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-11 w-full rounded-xl border-input pl-12 pr-4 "
+              className="h-11 w-full rounded-xl border-input pl-12! pr-4 "
             />
           </div>
           <div className="flex items-center justify-between gap-4">
@@ -241,7 +241,7 @@ export default function UserManagement() {
               type="button"
               onClick={clearFilters}
               title="Clear filters"
-              className="border border-neutral-500 px-4 py-1.25 rounded-md bg-neutral-300/80 hover:bg-neutral-300 transition-all duration-200 cursor-pointer"
+              className="border border-neutral-500 px-4 py-1.25 rounded-md hover:scale-95 transition-all duration-200 cursor-pointer"
             >
               Clear
             </button>
