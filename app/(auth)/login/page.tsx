@@ -239,13 +239,6 @@ export default function LoginPage() {
                     Forgot password?
                   </Link>
                 </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-center text-xs leading-5 text-slate-500">
-                    Authorized staff access only. Activity may be reviewed by
-                    hospital administrators.
-                  </p>
-                </div>
               </form>
             </div>
 

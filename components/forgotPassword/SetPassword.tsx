@@ -11,6 +11,8 @@ interface SetPasswordPageType {
     error: string;
 }
 
+import { ArrowLeft, CheckCircle2, KeyRound, LockKeyhole } from "lucide-react";
+
 export default function SetPasswordPage({
     password,
     setPassword,
@@ -23,45 +25,93 @@ export default function SetPasswordPage({
 
 
     return (
-        <>
-            <div>
-                <h1 className="text-3xl font-bold text-neutral-500">Update Password</h1>
+        <div>
+            <div className="mb-8">
+                <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <KeyRound size={22} />
+                </div>
+                <p className="text-sm font-semibold uppercase text-primary">
+                    Create new password
+                </p>
+                <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
+                    Update Password
+                </h1>
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                    Choose a new password for your Yoton account. Use something
+                    memorable and hard to guess.
+                </p>
             </div>
-            <form onSubmit={handleSubmitNewPassword} className="flex flex-col gap-4 w-full px-4 mt-8">
-                <div className="w-full flex flex-col gap-1">
-                    <label htmlFor="password" className="required">Password</label>
-                    <input type="password"
-                        placeholder="******"
-                        required
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        className="border border-neutral-300 px-4 py-2.5 rounded-lg"
-                    />
-                </div>
-                <div className="w-full flex flex-col gap-1">
-                    <label htmlFor="confirm_password" className="required">Confirm Password</label>
-                    <input type="password"
-                        placeholder="******"
-                        required
-                        value={confirmPassword}
-                        onChange={e => setConfirmPassword(e.target.value)}
-                        className="border border-neutral-300 px-4 py-2.5 rounded-lg"
-                    />
+
+            <form onSubmit={handleSubmitNewPassword} className="space-y-5">
+                <div className="space-y-2">
+                    <label
+                        htmlFor="password"
+                        className="required text-sm font-semibold text-slate-700"
+                    >
+                        Password
+                    </label>
+                    <div className="relative">
+                        <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                            <LockKeyhole size={18} />
+                        </span>
+                        <input
+                            id="password"
+                            type="password"
+                            placeholder="Enter new password"
+                            required
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-12! pr-4 text-base text-slate-950 placeholder:text-slate-400 focus-visible:bg-white"
+                            autoComplete="new-password"
+                        />
+                    </div>
                 </div>
 
+                <div className="space-y-2">
+                    <label
+                        htmlFor="confirm_password"
+                        className="required text-sm font-semibold text-slate-700"
+                    >
+                        Confirm Password
+                    </label>
+                    <div className="relative">
+                        <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                            <CheckCircle2 size={18} />
+                        </span>
+                        <input
+                            id="confirm_password"
+                            type="password"
+                            placeholder="Confirm new password"
+                            required
+                            value={confirmPassword}
+                            onChange={e => setConfirmPassword(e.target.value)}
+                            className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-12! pr-4 text-base text-slate-950 placeholder:text-slate-400 focus-visible:bg-white"
+                            autoComplete="new-password"
+                        />
+                    </div>
+                </div>
 
-                <div className="w-full flex items-center gap-2 mt-4">
+                <p className="min-h-6 text-center text-sm font-medium text-red-500">
+                    {error}
+                </p>
+
+                <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
                     <button
                         type="button"
                         onClick={() => setshowAskEmail(true)}
-
-                        className="w-full bg-gray-300 px-4 py-3 rounded-lg hover:bg-gray-500 hover:text-white transition-all duration-200 cursor-pointer">Cancel</button>
+                        className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+                    >
+                        <ArrowLeft size={16} />
+                        Back
+                    </button>
                     <button
                         type="submit"
-                        className="w-full bg-blue-500 px-4 py-3 rounded-lg text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer">Save</button>
+                        className="h-12 w-full rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg shadow-blue-500/20 transition-all hover:bg-primary/90 active:scale-[0.99]"
+                    >
+                        Save password
+                    </button>
                 </div>
-                <p className="h-8 text-center mt-2 text-red-500 mb-0">{error}</p>
             </form>
-        </>
+        </div>
     )
 }
