@@ -259,21 +259,21 @@ export default function DepartmentsPage() {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe this department"
                   rows={4}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground resize-y min-h-25"
+                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground min-h-25 resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 mt-2">
+              <div className="flex items-center justify-end gap-3 mt-2 w-full">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground"
+                  className="px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground w-full"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer"
+                  className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full"
                 >
                   {isEditing ? "Update" : "Save"}
                 </button>
@@ -329,7 +329,7 @@ export default function DepartmentsPage() {
                           title={`Delete ${department.name}`}
                           className="p-2 hover:bg-destructive/10 rounded-full transition-all duration-200 cursor-pointer"
                         >
-                          <DeleteIcon color="currentColor" className="text-destructive" size={18} />
+                          <DeleteIcon color="red" className="text-destructive" size={18} />
                         </button>
 
                         <button

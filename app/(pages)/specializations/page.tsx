@@ -348,17 +348,17 @@ export default function SpecializationPage() {
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-3 mt-2">
+              <div className="flex items-center justify-end gap-3 mt-2 w-full">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-5 py-2.5 rounded-md border border-neutral-400/50 hover:bg-neutral-300/50 transition-all duration-200 cursor-pointer"
+                  className="px-5 py-2.5 rounded-md border border-neutral-400/50 hover:bg-neutral-300/50 transition-all duration-200 cursor-pointer w-full"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
+                  className="px-5 py-2.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer w-full"
                 >
                   {isEditing ? "Update" : "Add"}
                 </button>

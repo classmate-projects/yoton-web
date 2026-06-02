@@ -186,7 +186,7 @@ export default function UserManagement() {
             onClick={() => sessionStorage.removeItem("editUser")}
             title="User Registration"
             aria-label="User Registration"
-            className="grid h-11 w-11 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary shadow-sm transition-all duration-200 hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="grid h-11 w-11 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary shadow-sm transition-all duration-200 hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 "
           >
             <AddUserIcon size={20} />
           </Link>
@@ -204,7 +204,7 @@ export default function UserManagement() {
               placeholder="Filter by name or username"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-11 w-full rounded-xl border-input pl-11 pr-4"
+              className="h-11 w-full rounded-xl border-input pl-12 pr-4 "
             />
           </div>
           <div className="flex items-center justify-between gap-4">

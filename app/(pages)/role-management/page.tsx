@@ -182,7 +182,7 @@ export default function RoleManagementPage() {
                 .map((role) => (
                   <div
                     key={role.roleId}
-                    className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-200" : ""}`}
+                    className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-100" : ""}`}
                   >
                     <div className="flex flex-col justify-between mb-1">
                       <span className={`font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : "text-gray-800"}`}>

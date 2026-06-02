@@ -6,7 +6,7 @@ interface DeleteIconProps extends React.SVGProps<SVGSVGElement> {
 }
 
 const DeleteIcon = ({
-  size = 24,
+  size = 20,
   color = "currentColor",
   ...props
 }: DeleteIconProps) => {
