@@ -4,13 +4,14 @@ interface emailPropsTypes {
     handleEmailSubmit: (
         e: React.FormEvent<HTMLFormElement>
     ) => Promise<void>
+    isSending: boolean;
 
 }
 
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Mail, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Mail, ShieldCheck } from "lucide-react";
 
-export default function AskEmailPage({ email, setEmail, handleEmailSubmit }: emailPropsTypes) {
+export default function AskEmailPage({ email, setEmail, handleEmailSubmit, isSending }: emailPropsTypes) {
     return (
         <div>
             <div className="mb-8">
@@ -59,10 +60,20 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit }: ema
 
                 <button
                     type="submit"
-                    className="group flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-semibold text-primary-foreground shadow-lg shadow-blue-500/20 transition-all hover:bg-primary/90 active:scale-[0.99]"
+                    disabled={isSending || !email}
+                    className="group flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-semibold text-primary-foreground shadow-lg shadow-blue-500/20 transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
                 >
-                    Send reset link
-                    <ArrowRight size={17} className="transition-transform group-hover:translate-x-0.5" />
+                    {isSending ? (
+                        <>
+                            <Loader2 className="animate-spin" size={18} />
+                            Sending link
+                        </>
+                    ) : (
+                        <>
+                            Send reset link
+                            <ArrowRight size={17} className="transition-transform group-hover:translate-x-0.5" />
+                        </>
+                    )}
                 </button>
 
                 <Link

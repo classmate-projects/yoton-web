@@ -9,9 +9,10 @@ interface SetPasswordPageType {
     ) => Promise<void>
     setshowAskEmail: React.Dispatch<React.SetStateAction<boolean>>;
     error: string;
+    isSaving: boolean;
 }
 
-import { ArrowLeft, CheckCircle2, KeyRound, LockKeyhole } from "lucide-react";
+import { ArrowLeft, CheckCircle2, KeyRound, Loader2, LockKeyhole } from "lucide-react";
 
 export default function SetPasswordPage({
     password,
@@ -21,6 +22,7 @@ export default function SetPasswordPage({
     handleSubmitNewPassword,
     setshowAskEmail,
     error,
+    isSaving,
 }: SetPasswordPageType,) {
 
 
@@ -99,6 +101,7 @@ export default function SetPasswordPage({
                     <button
                         type="button"
                         onClick={() => setshowAskEmail(true)}
+                        disabled={isSaving}
                         className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
                     >
                         <ArrowLeft size={16} />
@@ -106,9 +109,17 @@ export default function SetPasswordPage({
                     </button>
                     <button
                         type="submit"
-                        className="h-12 w-full rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg shadow-blue-500/20 transition-all hover:bg-primary/90 active:scale-[0.99]"
+                        disabled={isSaving || !password || !confirmPassword || Boolean(error)}
+                        className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg shadow-blue-500/20 transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
                     >
-                        Save password
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="animate-spin" size={18} />
+                                Saving
+                            </>
+                        ) : (
+                            "Save password"
+                        )}
                     </button>
                 </div>
             </form>

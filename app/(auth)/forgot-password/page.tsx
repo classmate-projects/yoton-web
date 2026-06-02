@@ -22,6 +22,8 @@ export default function ForgotPasswordPage() {
   const [showAskEmail, setShowAskEmail] = useState<boolean>(true);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [isSendingResetLink, setIsSendingResetLink] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const validationError =
     confirmPassword && password !== confirmPassword
@@ -30,6 +32,7 @@ export default function ForgotPasswordPage() {
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSendingResetLink(true);
 
     try {
       const res = await fetch("/api/auth/forgot-password", {
@@ -46,12 +49,15 @@ export default function ForgotPasswordPage() {
       toast.success("Reset link sent to your email!");
     } catch (err) {
       if (err instanceof Error) toast.error(err.message);
+    } finally {
+      setIsSendingResetLink(false);
     }
   };
 
   const handleSubmitNewPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (validationError) return;
+    setIsSavingPassword(true);
 
     try {
       const res = await fetch("/api/auth/reset-password", {
@@ -67,6 +73,8 @@ export default function ForgotPasswordPage() {
       router.push("/login");
     } catch (err) {
       if (err instanceof Error) toast.error(err.message);
+    } finally {
+      setIsSavingPassword(false);
     }
   };
 
@@ -134,6 +142,7 @@ export default function ForgotPasswordPage() {
                   email={email}
                   setEmail={setEmail}
                   handleEmailSubmit={handleEmailSubmit}
+                  isSending={isSendingResetLink}
                 />
               ) : (
                 <SetPasswordPage
@@ -144,6 +153,7 @@ export default function ForgotPasswordPage() {
                   handleSubmitNewPassword={handleSubmitNewPassword}
                   setshowAskEmail={setShowAskEmail}
                   error={validationError}
+                  isSaving={isSavingPassword}
                 />
               )}
             </div>
