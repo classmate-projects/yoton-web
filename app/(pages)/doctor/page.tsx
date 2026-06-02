@@ -87,42 +87,42 @@ export default function DoctorPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border-t">
+        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
           <h2 className="text-2xl font-semibold mb-4">All Doctors</h2>
           <hr className="text-neutral-400/50 mb-4" />
           
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-gray-100">
-                  <th className="p-3 border-b">ID</th>
-                  <th className="p-3 border-b">Specialization</th>
-                  <th className="p-3 border-b">License</th>
-                  <th className="p-3 border-b">Exp (Years)</th>
-                  <th className="p-3 border-b">Fee</th>
+                <tr className="bg-neutral-100 border-b border-neutral-200">
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">ID</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Specialization</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">License</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Exp (Years)</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Fee</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-8">
+                    <td colSpan={5} className="text-center py-12">
                       <LoadingSpinner />
                     </td>
                   </tr>
                 ) : doctors.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-8 text-gray-500">
+                    <td colSpan={5} className="text-center py-12 text-gray-500">
                       No doctors registered.
                     </td>
                   </tr>
                 ) : (
                   doctors.map((doc) => (
-                    <tr key={doc.id} className="hover:bg-gray-50">
-                      <td className="p-3 border-b font-medium">#{doc.id}</td>
-                      <td className="p-3 border-b text-teal-700 font-semibold">{doc.specialization}</td>
-                      <td className="p-3 border-b">{doc.licenseNumber}</td>
-                      <td className="p-3 border-b">{doc.experienceYears}</td>
-                      <td className="p-3 border-b">${doc.consultationFee}</td>
+                    <tr key={doc.id} className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150">
+                      <td className="px-5 py-4 text-sm font-semibold text-neutral-850">#{doc.id}</td>
+                      <td className="px-5 py-4 text-sm text-teal-700 font-semibold">{doc.specialization}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">{doc.licenseNumber}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">{doc.experienceYears}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-805">${doc.consultationFee}</td>
                     </tr>
                   ))
                 )}

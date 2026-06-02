@@ -369,23 +369,15 @@ export default function SpecializationPage() {
       )}
 
       {/* Table Section */}
-      <div className="rounded-lg bg-gray-100 shadow-md overflow-hidden">
-        <table className="w-full">
+      <div className="card rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
+        <table className="w-full text-left border-collapse">
           {/* Table Head */}
           <thead>
-            <tr className="border-b border-gray-200 bg-gray-200">
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
-                Name
-              </th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
-                Description
-              </th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
-                Department
-              </th>
-              <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">
-                Action
-              </th>
+            <tr className="bg-neutral-100 border-b border-neutral-200">
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Name</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Description</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Department</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700 text-center">Action</th>
             </tr>
           </thead>
 
@@ -393,13 +385,13 @@ export default function SpecializationPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-6 py-12 text-center">
+                <td colSpan={4} className="px-5 py-16 text-center">
                   <LoadingSpinner />
                 </td>
               </tr>
             ) : specializations.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-6 py-12 text-center">
+                <td colSpan={4} className="px-5 py-16 text-center">
                   <div className="flex flex-col items-center justify-center">
                     <svg
                       className="h-12 w-12 text-gray-400 mb-3"
@@ -427,18 +419,18 @@ export default function SpecializationPage() {
               specializations.map((spec) => (
                 <tr
                   key={spec.specializationId}
-                  className="border-b border-gray-200 hover:bg-gray-50 transition-colors duration-150"
+                  className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150"
                 >
-                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                  <td className="px-5 py-4 text-sm text-neutral-850 font-semibold">
                     {spec.name}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
+                  <td className="px-5 py-4 text-sm text-neutral-800">
                     {spec.description || "No description provided"}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
+                  <td className="px-5 py-4 text-sm text-neutral-800">
                     {spec.department?.name || "No department assigned"}
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-5 py-4 text-center">
                     <div className="flex justify-center items-center ">
                       <ToggleButton
                         checked={spec.isActive}

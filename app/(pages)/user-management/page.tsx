@@ -250,18 +250,18 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <div className="w-full mt-8">
-        <table className="w-full rounded-xl overflow-hidden border border-neutral-500 border-separate border-spacing-0">
+      <div className="card rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden mt-8">
+        <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-neutral-300">
-              <th className="px-4 py-3 text-left">Name</th>
-              <th className="px-4 py-3 text-left">Username</th>
-              <th className="px-4 py-3 text-left">Email</th>
-              <th className="px-4 py-3 text-left">Role</th>
-              <th className="px-4 py-3 text-left">Phone</th>
-              <th className="px-4 py-3 text-left">Last loggedin</th>
-              <th className="px-4 py-3 text-left">Created at</th>
-              <th className="px-4 py-3 text-left">Action</th>
+            <tr className="bg-neutral-100 border-b border-neutral-200">
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Name</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Username</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Email</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Role</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Phone</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Last loggedin</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Created at</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Action</th>
             </tr>
           </thead>
 
@@ -277,15 +277,15 @@ export default function UserManagement() {
                 .slice()
                 .sort((a, b) => b.id - a.id)
                 .map((user) => (
-                  <tr key={user.id} className={`ring transition-all duration-150 ${!user.isActive ? "bg-red-100/80 text-gray-500" : "bg-white"}`}>
-                    <td className="px-4 py-3">{user.name}</td>
-                    <td className="px-4 py-3">{user.username}</td>
-                    <td className="px-4 py-3">{user.email}</td>
-                    <td className="px-4 py-3 capitalize">{user.role}</td>
-                    <td className="px-4 py-3">{user.phone}</td>
-                    <td className="px-4 py-3">{getTime(user.lastLogin)}</td>
-                    <td className="px-4 py-3">{getTime(user.createdAt)}</td>
-                    <td className="px-4 py-3">
+                  <tr key={user.id} className={`border-b border-neutral-200/80 last:border-b-0 transition-colors ${!user.isActive ? "bg-red-100/80 text-gray-500 hover:bg-red-100" : "bg-white hover:bg-neutral-50/60"}`}>
+                    <td className="px-5 py-4 text-sm font-semibold text-neutral-850">{user.name}</td>
+                    <td className="px-5 py-4 text-sm text-neutral-800">{user.username}</td>
+                    <td className="px-5 py-4 text-sm text-neutral-800">{user.email}</td>
+                    <td className="px-5 py-4 text-sm capitalize text-neutral-800">{user.role}</td>
+                    <td className="px-5 py-4 text-sm text-neutral-800">{user.phone}</td>
+                    <td className="px-5 py-4 text-sm text-neutral-800">{getTime(user.lastLogin)}</td>
+                    <td className="px-5 py-4 text-sm text-neutral-805">{getTime(user.createdAt)}</td>
+                    <td className="px-5 py-4 text-sm">
                       <div className="flex items-center gap-4">
 
                         <ToggleButton

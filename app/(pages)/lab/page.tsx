@@ -96,50 +96,50 @@ export default function LabPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border-t">
+        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
           <h2 className="text-2xl font-semibold mb-4">Lab Requests</h2>
           <hr className="text-neutral-400/50 mb-4" />
           
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-gray-100">
-                  <th className="p-3 border-b">Req ID</th>
-                  <th className="p-3 border-b">Patient</th>
-                  <th className="p-3 border-b">Test Type</th>
-                  <th className="p-3 border-b">Priority</th>
-                  <th className="p-3 border-b">Status</th>
-                  <th className="p-3 border-b">Actions</th>
+                <tr className="bg-neutral-100 border-b border-neutral-200">
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Req ID</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Patient</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Test Type</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Priority</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Status</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8">
+                    <td colSpan={6} className="text-center py-12">
                       <LoadingSpinner />
                     </td>
                   </tr>
                 ) : labRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-gray-500">
+                    <td colSpan={6} className="text-center py-12 text-gray-500">
                       No lab requests available.
                     </td>
                   </tr>
                 ) : (
                   labRequests.map((req) => (
-                    <tr key={req.id} className="hover:bg-gray-50">
-                      <td className="p-3 border-b font-medium">#{req.id}</td>
-                      <td className="p-3 border-b">ID: {req.patientId}</td>
-                      <td className="p-3 border-b">{req.testType}</td>
-                      <td className="p-3 border-b">
-                        <span className={`px-2 py-1 text-xs rounded-full ${req.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                    <tr key={req.id} className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150">
+                      <td className="px-5 py-4 text-sm font-semibold text-neutral-850">#{req.id}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">ID: {req.patientId}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">{req.testType}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">
+                        <span className={`px-2.5 py-1 text-xs rounded-full font-semibold ${req.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
                           {req.priority}
                         </span>
                       </td>
-                      <td className="p-3 border-b font-semibold text-blue-600">{req.status || "Pending"}</td>
-                      <td className="p-3 border-b">
+                      <td className="px-5 py-4 text-sm font-semibold text-blue-600">{req.status || "Pending"}</td>
+                      <td className="px-5 py-4 text-sm">
                         <select 
-                          className="p-1 text-sm border rounded"
+                          className="p-1.5 text-sm border rounded bg-white outline-none focus:border-blue-500"
                           value={req.status || "Pending"}
                           onChange={(e) => handleUpdateStatus(req.id, e.target.value)}
                         >

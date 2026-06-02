@@ -114,31 +114,31 @@ export default function RadiologyPage() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8">
+                    <td colSpan={6} className="text-center py-12">
                       <LoadingSpinner />
                     </td>
                   </tr>
                 ) : requests.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-gray-500">
+                    <td colSpan={6} className="text-center py-12 text-gray-500">
                       No radiology requests available.
                     </td>
                   </tr>
                 ) : (
                   requests.map((req) => (
-                    <tr key={req.id} className="hover:bg-gray-50">
-                      <td className="p-3 border-b font-medium">#{req.id}</td>
-                      <td className="p-3 border-b">{req.patientId}</td>
-                      <td className="p-3 border-b">{req.scanType}</td>
-                      <td className="p-3 border-b">
-                        <span className={`px-2 py-1 text-xs rounded-full ${req.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                    <tr key={req.id} className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150">
+                      <td className="px-5 py-4 text-sm font-semibold text-neutral-850">#{req.id}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">{req.patientId}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">{req.scanType}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">
+                        <span className={`px-2.5 py-1 text-xs rounded-full font-semibold ${req.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
                           {req.priority}
                         </span>
                       </td>
-                      <td className="p-3 border-b font-semibold">{req.status || "Pending"}</td>
-                      <td className="p-3 border-b">
+                      <td className="px-5 py-4 text-sm font-semibold text-neutral-800">{req.status || "Pending"}</td>
+                      <td className="px-5 py-4 text-sm">
                         <select 
-                          className="p-1 text-sm border rounded bg-white"
+                          className="p-1.5 text-sm border rounded bg-white outline-none focus:border-blue-500"
                           value={req.status || "Pending"}
                           onChange={(e) => handleUpdateStatus(req.id, e.target.value)}
                         >

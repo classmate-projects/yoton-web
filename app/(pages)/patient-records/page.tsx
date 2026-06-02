@@ -98,7 +98,7 @@ export default function PatientRecordsPage() {
           Add Patient</Link>
       </div>
 
-      <div className="card p-6 rounded-xl shadow-lg border-t">
+      <div className="card p-6 rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-semibold">Patient Directory</h2>
           <div className="relative w-64">
@@ -118,31 +118,31 @@ export default function PatientRecordsPage() {
         <hr className="text-neutral-400/50 mb-4" />
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left rounded-xl overflow-hidden border border-neutral-400 border-separate border-spacing-0">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-neutral-300">
-                <th className="px-4 py-3 text-left">Full Name</th>
-                <th className="px-4 py-3 text-left">Email</th>
-                <th className="px-4 py-3 text-left">Phone</th>
-                <th className="px-4 py-3 text-left">Address</th>
-                <th className="px-4 py-3 text-center">Actions</th>
+              <tr className="bg-neutral-100 border-b border-neutral-200">
+                <th className="px-5 py-4 text-sm font-bold text-neutral-700">Full Name</th>
+                <th className="px-5 py-4 text-sm font-bold text-neutral-700">Email</th>
+                <th className="px-5 py-4 text-sm font-bold text-neutral-700">Phone</th>
+                <th className="px-5 py-4 text-sm font-bold text-neutral-700">Address</th>
+                <th className="px-5 py-4 text-sm font-bold text-neutral-700 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-20 text-center">
+                  <td colSpan={5} className="px-5 py-16 text-center">
                     <LoadingSpinner />
                   </td>
                 </tr>
               ) : filteredPatients.length > 0 ? (
                 filteredPatients.map((patient) => (
-                  <tr key={patient.opId} className="bg-white hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-semibold text-gray-800">{patient.name}</td>
-                    <td className="px-4 py-3">{patient.email}</td>
-                    <td className="px-4 py-3">{patient.phone}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-xs">{patient.address || "N/A"}</td>
-                    <td className="px-4 py-3 text-center">
+                  <tr key={patient.opId} className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150">
+                    <td className="px-5 py-4 text-sm font-semibold text-neutral-850">{patient.name}</td>
+                    <td className="px-5 py-4 text-sm text-neutral-800">{patient.email}</td>
+                    <td className="px-5 py-4 text-sm text-neutral-800">{patient.phone}</td>
+                    <td className="px-5 py-4 text-sm text-neutral-600 truncate max-w-xs">{patient.address || "N/A"}</td>
+                    <td className="px-5 py-4 text-center">
                       <button
                         onClick={() => confirmDelete(patient.opId, patient.name)}
                         className="hover:bg-red-50 p-2 rounded transition-colors cursor-pointer"
@@ -155,7 +155,7 @@ export default function PatientRecordsPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="px-4 py-20 text-center text-gray-500">
+                  <td colSpan={5} className="px-5 py-16 text-center text-gray-500">
                     No patients found.
                   </td>
                 </tr>

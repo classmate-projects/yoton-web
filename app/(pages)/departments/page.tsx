@@ -283,22 +283,20 @@ export default function DepartmentsPage() {
         </div>
       )}
 
-      <div className="card p-6 rounded-xl shadow-lg border-t">
-        <h2 className="text-2xl font-semibold mb-4">Department List</h2>
-        <hr className="text-neutral-400/50 mb-4" />
+      <div className="card rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left rounded-xl overflow-hidden border border-neutral-400 border-separate border-spacing-0">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-neutral-300">
-                <th className="px-4 py-3 text-left">Name</th>
-                <th className="px-4 py-3 text-left">Description</th>
-                <th className="px-4 py-3 text-center">Actions</th>
+              <tr className="bg-neutral-100 border-b border-neutral-200">
+                <th className="px-5 py-4 text-sm font-bold text-neutral-700">Name</th>
+                <th className="px-5 py-4 text-sm font-bold text-neutral-700">Description</th>
+                <th className="px-5 py-4 text-sm font-bold text-neutral-700 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-20 text-center">
+                  <td colSpan={3} className="px-5 py-16 text-center">
                     <LoadingSpinner />
                   </td>
                 </tr>
@@ -306,23 +304,23 @@ export default function DepartmentsPage() {
                 departments.map((department) => (
                   <tr
                     key={department.departmentId}
-                    className={`transition-colors ${
+                    className={`border-b border-neutral-200/80 last:border-b-0 transition-colors ${
                       department.isActive
-                        ? "bg-white hover:bg-gray-50"
+                        ? "bg-white hover:bg-neutral-50/60"
                         : "bg-red-100/80 text-gray-500 hover:bg-red-100"
                     }`}
                   >
                     <td
-                      className={`px-4 py-3 font-semibold capitalize ${department.isActive ? "text-gray-800" : "text-gray-450"}`}
+                      className={`px-5 py-4 text-sm font-semibold capitalize ${department.isActive ? "text-gray-800" : "text-gray-450"}`}
                     >
                       {department.name}
                     </td>
                     <td
-                      className={`px-4 py-3 text-sm  ${department.isActive ? "text-gray-600" : "text-gray-400"}`}
+                      className={`px-5 py-4 text-sm ${department.isActive ? "text-gray-650" : "text-gray-400"}`}
                     >
                       {department.description || "No description provided."}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4">
                       <div className="flex justify-center items-center gap-4">
                         <ToggleButton
                           checked={department.isActive}
@@ -357,7 +355,7 @@ export default function DepartmentsPage() {
                 <tr>
                   <td
                     colSpan={3}
-                    className="px-4 py-20 text-center text-gray-500"
+                    className="px-5 py-16 text-center text-gray-500"
                   >
                     No departments found.
                   </td>

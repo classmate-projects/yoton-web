@@ -88,42 +88,42 @@ export default function PharmacyPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Medicine List */}
-        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border-t">
+        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
           <h2 className="text-2xl font-semibold mb-4">All Medicines</h2>
           <hr className="text-neutral-400/50 mb-4" />
           
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-gray-100">
-                  <th className="p-3 border-b">Name</th>
-                  <th className="p-3 border-b">Category</th>
-                  <th className="p-3 border-b">Stock</th>
-                  <th className="p-3 border-b">Price ($)</th>
-                  <th className="p-3 border-b">Expiry Date</th>
+                <tr className="bg-neutral-100 border-b border-neutral-200">
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Name</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Category</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Stock</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Price ($)</th>
+                  <th className="px-5 py-4 text-sm font-bold text-neutral-700">Expiry Date</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-8">
+                    <td colSpan={5} className="text-center py-12">
                       <LoadingSpinner />
                     </td>
                   </tr>
                 ) : medicines.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-8 text-gray-500">
+                    <td colSpan={5} className="text-center py-12 text-gray-500">
                       No medicines available.
                     </td>
                   </tr>
                 ) : (
                   medicines.map((med, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="p-3 border-b font-medium">{med.name}</td>
-                      <td className="p-3 border-b">{med.category}</td>
-                      <td className="p-3 border-b">{med.stock}</td>
-                      <td className="p-3 border-b">{med.price}</td>
-                      <td className="p-3 border-b">{new Date(med.expiryDate).toLocaleDateString()}</td>
+                    <tr key={i} className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150">
+                      <td className="px-5 py-4 text-sm font-semibold text-neutral-850">{med.name}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">{med.category}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">{med.stock}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">${med.price}</td>
+                      <td className="px-5 py-4 text-sm text-neutral-800">{new Date(med.expiryDate).toLocaleDateString()}</td>
                     </tr>
                   ))
                 )}

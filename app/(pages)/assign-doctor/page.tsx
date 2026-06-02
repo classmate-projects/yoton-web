@@ -173,16 +173,16 @@ export default function AssignDoctor() {
       </div>
 
       {/* Table Section */}
-      <div className="card rounded-xl shadow-lg border border-neutral-300 overflow-hidden">
-        <table className="w-full rounded-xl overflow-hidden border border-neutral-500 border-separate border-spacing-0">
+      <div className="card rounded-xl shadow-lg border border-neutral-300/80 overflow-hidden">
+        <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-neutral-300">
-              <th className="px-4 py-4 text-left font-semibold">Doctor Name</th>
-              <th className="px-4 py-4 text-left font-semibold">Specialization</th>
-              <th className="px-4 py-4 text-left font-semibold">Licence Number</th>
-              <th className="px-4 py-4 text-left font-semibold">Consultation Fee</th>
-              <th className="px-4 py-4 text-left font-semibold">Experience</th>
-              <th className="px-4 py-4 text-left font-semibold">Action</th>
+            <tr className="bg-neutral-100 border-b border-neutral-200">
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Doctor Name</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Specialization</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Licence Number</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Consultation Fee</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Experience</th>
+              <th className="px-5 py-4 text-sm font-bold text-neutral-700">Action</th>
             </tr>
           </thead>
 
@@ -197,24 +197,24 @@ export default function AssignDoctor() {
               doctors.map((doctor) => (
                 <tr
                   key={doctor.id}
-                  className="border-t border-neutral-200 hover:bg-gray-50 transition-colors"
+                  className="border-b border-neutral-200/80 last:border-b-0 hover:bg-neutral-50/60 transition-colors duration-150"
                 >
-                  <td className="px-4 py-4 font-medium text-gray-800">
+                  <td className="px-5 py-4 text-sm font-semibold text-neutral-850">
                     {doctor.name}
                   </td>
-                  <td className="px-4 py-4 text-teal-700 font-medium">
+                  <td className="px-5 py-4 text-sm text-teal-700 font-semibold">
                     {doctor.specialization}
                   </td>
-                  <td className="px-4 py-4 text-gray-700">
+                  <td className="px-5 py-4 text-sm text-gray-700">
                     {doctor.licenseNumber}
                   </td>
-                  <td className="px-4 py-4 text-gray-700">
+                  <td className="px-5 py-4 text-sm text-gray-700">
                     ${doctor.consultationFee}
                   </td>
-                  <td className="px-4 py-4 text-gray-700">
+                  <td className="px-5 py-4 text-sm text-gray-700">
                     {doctor.experienceYears} years
                   </td>
-                  <td className="px-4 py-4">
+                  <td className="px-5 py-4">
                     <ToggleButton
                       checked={assignments[doctor.id] || false}
                       onChange={() => handleToggle(doctor.id)}
