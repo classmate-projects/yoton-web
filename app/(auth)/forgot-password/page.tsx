@@ -70,7 +70,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="min-h-screen w-full flex justify-center items-center bg-background p-4">
-      <div className="w-full max-w-[500px] card p-8 sm:p-12 shadow-xl border-border/50">
+      <div className="w-full max-w-125 card p-8 sm:p-12 shadow-xl border-border/50">
         {showAskEmail ? (
           <AskEmailPage
             email={email}
