@@ -296,7 +296,7 @@ export default function SpecializationPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Cardiothoracic Surgery"
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border outline-none focus:border-blue-500"
                 />
               </div>
 
@@ -313,7 +313,7 @@ export default function SpecializationPage() {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe this specialization"
                   rows={4}
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500 resize-none min-h-25"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border outline-none focus:border-blue-500 resize-none min-h-25"
                 />
               </div>
 
@@ -329,7 +329,7 @@ export default function SpecializationPage() {
                   required
                   value={selectedDepartment}
                   onChange={(e) => setSelectedDepartment(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border outline-none focus:border-blue-500"
                 >
                   <option value="" disabled>
                     Select department

@@ -172,7 +172,7 @@ export default function PharmacyPage() {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
                 />
               </div>
               <div>
@@ -182,7 +182,7 @@ export default function PharmacyPage() {
                   required
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
                 />
               </div>
               <div className="flex gap-4">
@@ -194,7 +194,7 @@ export default function PharmacyPage() {
                     min={0}
                     value={stock}
                     onChange={(e) => setStock(Number(e.target.value))}
-                    className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                    className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
                   />
                 </div>
                 <div className="w-full">
@@ -206,7 +206,7 @@ export default function PharmacyPage() {
                     step={0.01}
                     value={price}
                     onChange={(e) => setPrice(Number(e.target.value))}
-                    className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                    className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
                   />
                 </div>
               </div>
@@ -217,7 +217,7 @@ export default function PharmacyPage() {
                   required
                   value={expiryDate}
                   onChange={(e) => setExpiryDate(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
                 />
               </div>
               <button 

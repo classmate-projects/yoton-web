@@ -171,7 +171,7 @@ export default function RadiologyPage() {
                 required
                 value={patientId}
                 onChange={(e) => setPatientId(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
               />
             </div>
             <div>
@@ -181,7 +181,7 @@ export default function RadiologyPage() {
                 required
                 value={doctorId}
                 onChange={(e) => setDoctorId(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
               />
             </div>
             <div>
@@ -192,7 +192,7 @@ export default function RadiologyPage() {
                 placeholder="e.g. MRI Brain"
                 value={scanType}
                 onChange={(e) => setScanType(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
               />
             </div>
             <div>
@@ -201,7 +201,7 @@ export default function RadiologyPage() {
                 required
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
               >
                 <option value="Low">Low</option>
                 <option value="Normal">Normal</option>

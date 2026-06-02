@@ -229,7 +229,7 @@ export default function RoleManagementPage() {
                 value={roleName}
                 onChange={(e) => setRoleName(e.target.value)}
                 placeholder="e.g. Pharmacist"
-                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
               />
             </div>
             <div>
@@ -240,7 +240,7 @@ export default function RoleManagementPage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe role responsibilities"
-                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) min-h-25 max-h-25"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border min-h-25 max-h-25"
               />
             </div>
 
