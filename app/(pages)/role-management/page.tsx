@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
 import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
@@ -167,7 +168,7 @@ export default function RoleManagementPage() {
 
           {isLoading ? (
             <div className="h-80 flex justify-center items-center">
-              <p>Loading...</p>
+              < LoadingSpinner/>
             </div>
           ) : roles.length === 0 ? (
             <div className="h-80 flex justify-center items-center">
@@ -181,7 +182,7 @@ export default function RoleManagementPage() {
                 .map((role) => (
                   <div
                     key={role.roleId}
-                    className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-200" : ""}`}
+                    className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-100" : ""}`}
                   >
                     <div className="flex flex-col justify-between mb-1">
                       <span className={`font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : "text-gray-800"}`}>
@@ -228,7 +229,7 @@ export default function RoleManagementPage() {
                 value={roleName}
                 onChange={(e) => setRoleName(e.target.value)}
                 placeholder="e.g. Pharmacist"
-                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border)"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
               />
             </div>
             <div>
@@ -239,7 +240,7 @@ export default function RoleManagementPage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe role responsibilities"
-                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) min-h-25 max-h-25"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border min-h-25 max-h-25"
               />
             </div>
 

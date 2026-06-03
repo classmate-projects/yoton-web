@@ -1,13 +1,14 @@
 import React from "react";
 
-interface BuildingIconProps {
+interface BuildingIconProps extends React.SVGProps<SVGSVGElement> {
   size?: number;
   color?: string;
 }
 
 const BuildingIcon = ({
   size = 24,
-  color = "#51526C",
+  color = "currentColor",
+  ...props
 }: BuildingIconProps) => {
   return (
     <svg
@@ -16,6 +17,7 @@ const BuildingIcon = ({
       viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      {...props}
     >
       <path
         d="M8.42169 15.3618H2.25133C1.40126 15.3618 0.705078 14.6802 0.705078 13.8448V2.96975C0.705078 1.04976 2.13408 0.177703 3.88552 1.0351L7.13925 2.63265C7.84276 2.97708 8.42169 3.89311 8.42169 4.6699V15.3618Z"

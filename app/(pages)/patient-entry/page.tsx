@@ -1,6 +1,11 @@
-'use client'
-import React, { useState } from "react";
-import { MdOutlinePersonOutline, MdOutlineLocalPhone, MdOutlineFilePresent, MdExpandMore } from "react-icons/md";
+"use client";
+import React, { useEffect, useState } from "react";
+import {
+  MdOutlinePersonOutline,
+  MdOutlineLocalPhone,
+  MdOutlineFilePresent,
+  MdExpandMore,
+} from "react-icons/md";
 import { countryDetails } from "@/helpers/countyDetails";
 import { baseUrl } from "@/lib/constants";
 
@@ -26,50 +31,59 @@ export default function PatientEntryPage() {
     ChronicStatus: false,
     EmergencyContact: "",
     EmergencyContactPhone: "",
-    RegisteredBy: 1,
     OPNumber: "",
-    Password: ""
+    Password: "",
   });
-
   const [error, setError] = useState<string>("");
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const registeredBy =
+    typeof window !== "undefined"
+      ? (JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ??
+        null)
+      : null;
+
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
     const { name, value, type } = e.target;
     const inputElement = e.target as HTMLInputElement;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? inputElement.checked : value
+      [name]: type === "checkbox" ? inputElement.checked : value,
     }));
     setError("");
   };
 
-
   // Form submission handler
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+
     // Validate that at least one of National ID or Passport Number is filled
     if (!formData.NationalID && !formData.PassportNumber) {
       setError("Please provide either National ID or Passport Number");
       return;
     }
 
+    const payload = {
+      ...formData,
+      RegisteredBy: registeredBy,
+    };
+
+    console.log("payload submit: ", payload);
+
     try {
       const res = await fetch(`${baseUrl}/api/reception`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(formData)
-      })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
       const data = await res.json();
-      console.log("Patient entry: ", data)
+      console.log("Patient entry: ", data);
     } catch (error) {
-      console.log(error)
+      console.log(error);
     }
-
-    
     setError("");
-    console.log("Form Data Submitted:", formData);
   };
 
   const resetForm = () => {
@@ -94,9 +108,8 @@ export default function PatientEntryPage() {
       ChronicStatus: false,
       EmergencyContact: "",
       EmergencyContactPhone: "",
-      RegisteredBy: 1,
       OPNumber: "",
-      Password: ""
+      Password: "",
     });
   };
 
@@ -105,24 +118,29 @@ export default function PatientEntryPage() {
       <form onSubmit={handleSubmit} className="mainPage flex flex-col gap-6">
         {/* Header */}
         <div className="flex flex-col gap-2">
-          <h1 className="text-4xl font-bold text-gray-900">New Patient Entry</h1>
-          <p className="text-base text-gray-600">
-            Complete patient registration form. All fields marked with * are required.
+          <h1 className="text-4xl font-bold text-foreground">
+            New Patient Entry
+          </h1>
+          <p className="text-base text-foreground/80">
+            Complete patient registration form. All fields marked with * are
+            required.
           </p>
         </div>
 
         {/* Personal Information Section */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+        <div className="bg-card rounded-lg shadow-md border border-border p-8">
           <div className="flex items-center gap-3 mb-6">
-            <MdOutlinePersonOutline className="text-blue-600" size={28} />
-            <h2 className="text-2xl font-bold text-gray-900">Personal Information</h2>
+            <MdOutlinePersonOutline className="text-primary" size={28} />
+            <h2 className="text-2xl font-bold text-foreground">
+              Personal Information
+            </h2>
           </div>
-          <hr className="mb-6 border-gray-300" />
+          <hr className="mb-6 border-border" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Name */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Name" className="font-semibold text-gray-700">
+              <label htmlFor="Name" className="font-semibold text-foreground/90">
                 Full Name <span className="text-red-500">*</span>
               </label>
               <input
@@ -133,13 +151,13 @@ export default function PatientEntryPage() {
                 onChange={handleInputChange}
                 required
                 placeholder="John Doe"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
 
             {/* Sex */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Sex" className="font-semibold text-gray-700">
+              <label htmlFor="Sex" className="font-semibold text-foreground/90">
                 Sex <span className="text-red-500">*</span>
               </label>
               <select
@@ -148,7 +166,7 @@ export default function PatientEntryPage() {
                 value={formData.Sex}
                 onChange={handleInputChange}
                 required
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
               >
                 <option value="">Select Gender</option>
                 <option value="Male">Male</option>
@@ -159,7 +177,10 @@ export default function PatientEntryPage() {
 
             {/* Date of Birth */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="DateOfBirth" className="font-semibold text-gray-700">
+              <label
+                htmlFor="DateOfBirth"
+                className="font-semibold text-foreground/90"
+              >
                 Date of Birth <span className="text-red-500">*</span>
               </label>
               <input
@@ -169,13 +190,16 @@ export default function PatientEntryPage() {
                 value={formData.DateOfBirth}
                 onChange={handleInputChange}
                 required
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
 
             {/* Nationality */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Nationality" className="font-semibold text-gray-700">
+              <label
+                htmlFor="Nationality"
+                className="font-semibold text-foreground/90"
+              >
                 Nationality <span className="text-red-500">*</span>
               </label>
               <select
@@ -184,7 +208,7 @@ export default function PatientEntryPage() {
                 value={formData.Nationality}
                 onChange={handleInputChange}
                 required
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
               >
                 <option value="" disabled>
                   Select Country
@@ -199,7 +223,10 @@ export default function PatientEntryPage() {
 
             {/* Father Name */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="FatherName" className="font-semibold text-gray-700">
+              <label
+                htmlFor="FatherName"
+                className="font-semibold text-foreground/90"
+              >
                 Father Name
               </label>
               <input
@@ -209,13 +236,16 @@ export default function PatientEntryPage() {
                 value={formData.FatherName}
                 onChange={handleInputChange}
                 placeholder="Father's Name"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
 
             {/* Mother Name */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="MotherName" className="font-semibold text-gray-700">
+              <label
+                htmlFor="MotherName"
+                className="font-semibold text-foreground/90"
+              >
                 Mother Name
               </label>
               <input
@@ -225,13 +255,16 @@ export default function PatientEntryPage() {
                 value={formData.MotherName}
                 onChange={handleInputChange}
                 placeholder="Mother's Name"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
 
             {/* Marital Status */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="MaritalStatus" className="font-semibold text-gray-700">
+              <label
+                htmlFor="MaritalStatus"
+                className="font-semibold text-foreground/90"
+              >
                 Marital Status <span className="text-red-500">*</span>
               </label>
               <select
@@ -240,7 +273,7 @@ export default function PatientEntryPage() {
                 value={formData.MaritalStatus}
                 onChange={handleInputChange}
                 required
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
               >
                 <option value="">Select Status</option>
                 <option value="Single">Single</option>
@@ -252,7 +285,10 @@ export default function PatientEntryPage() {
 
             {/* Designation */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Designation" className="font-semibold text-gray-700">
+              <label
+                htmlFor="Designation"
+                className="font-semibold text-foreground/90"
+              >
                 Designation
               </label>
               <input
@@ -262,33 +298,35 @@ export default function PatientEntryPage() {
                 value={formData.Designation}
                 onChange={handleInputChange}
                 placeholder="Engineer"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
           </div>
         </div>
 
         {/* Contact Information Section */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+        <div className="bg-card rounded-lg shadow-md border border-border p-8">
           <div className="flex items-center gap-3 mb-6">
-            <MdOutlineLocalPhone className="text-blue-600" size={28} />
-            <h2 className="text-2xl font-bold text-gray-900">Contact Information</h2>
+            <MdOutlineLocalPhone className="text-primary" size={28} />
+            <h2 className="text-2xl font-bold text-foreground">
+              Contact Information
+            </h2>
           </div>
-          <hr className="mb-6 border-gray-300" />
+          <hr className="mb-6 border-border" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Phone Code and Phone Number - Combined */}
             <div className="flex flex-col gap-2">
-              <label className="font-semibold text-gray-700">
+              <label className="font-semibold text-foreground/90">
                 Phone Number <span className="text-red-500">*</span>
               </label>
-              <div className="flex border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent overflow-hidden">
+              <div className="flex border border-border rounded-lg focus-within:ring-2 focus-within:ring-primary focus-within:border-transparent overflow-hidden">
                 {/* Phone Code Display and Dropdown */}
                 <div className="relative w-24 shrink-0">
-                  <div className="absolute left-4 top-2.5 text-gray-900 font-medium pointer-events-none z-10">
+                  <div className="absolute left-4 top-2.5 text-foreground font-medium pointer-events-none z-10">
                     {formData.PhoneCode}
                   </div>
-                  <div className="absolute right-1 top-2.5 pointer-events-none z-10 text-gray-500">
+                  <div className="absolute right-1 top-2.5 pointer-events-none z-10 text-muted-foreground">
                     <MdExpandMore size={20} />
                   </div>
                   <select
@@ -297,11 +335,15 @@ export default function PatientEntryPage() {
                     value={formData.PhoneCode}
                     onChange={handleInputChange}
                     required
-                    className="px-4 py-2.5 border-r border-gray-300 focus:outline-none text-gray-900 bg-white w-full shrink-0 appearance-none cursor-pointer"
-                    style={{ color: 'transparent' }}
+                    className="px-4 py-2.5 border-r border-border focus:outline-none text-foreground bg-card w-full shrink-0 appearance-none cursor-pointer"
+                    style={{ color: "transparent" }}
                   >
                     {countryDetails.map((country, index) => (
-                      <option key={index} value={country.phoneCode} style={{ color: 'black' }}>
+                      <option
+                        key={index}
+                        value={country.phoneCode}
+                        className="text-foreground bg-card"
+                      >
                         {country.phoneCode} - {country.country}
                       </option>
                     ))}
@@ -317,14 +359,14 @@ export default function PatientEntryPage() {
                   onChange={handleInputChange}
                   required
                   placeholder="0501234567"
-                  className="flex-1 px-4 py-2.5 focus:outline-none text-gray-900"
+                  className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent"
                 />
               </div>
             </div>
 
             {/* Email */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Email" className="font-semibold text-gray-700">
+              <label htmlFor="Email" className="font-semibold text-foreground/90">
                 Email Address <span className="text-red-500">*</span>
               </label>
               <input
@@ -335,13 +377,13 @@ export default function PatientEntryPage() {
                 onChange={handleInputChange}
                 required
                 placeholder="john@example.com"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
 
             {/* Address */}
             <div className="flex flex-col gap-2 md:col-span-2">
-              <label htmlFor="Address" className="font-semibold text-gray-700">
+              <label htmlFor="Address" className="font-semibold text-foreground/90">
                 Address
               </label>
               <input
@@ -351,13 +393,16 @@ export default function PatientEntryPage() {
                 value={formData.Address}
                 onChange={handleInputChange}
                 placeholder="Abu Dhabi"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
 
             {/* Emergency Contact */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="EmergencyContact" className="font-semibold text-gray-700">
+              <label
+                htmlFor="EmergencyContact"
+                className="font-semibold text-foreground/90"
+              >
                 Emergency Contact Name <span className="text-red-500">*</span>
               </label>
               <input
@@ -368,13 +413,16 @@ export default function PatientEntryPage() {
                 onChange={handleInputChange}
                 required
                 placeholder="Contact Name"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
 
             {/* Emergency Contact Phone */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="EmergencyContactPhone" className="font-semibold text-gray-700">
+              <label
+                htmlFor="EmergencyContactPhone"
+                className="font-semibold text-foreground/90"
+              >
                 Emergency Contact Phone <span className="text-red-500">*</span>
               </label>
               <input
@@ -385,27 +433,31 @@ export default function PatientEntryPage() {
                 onChange={handleInputChange}
                 required
                 placeholder="0509876543"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
           </div>
         </div>
 
         {/* Identification Section */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+        <div className="bg-card rounded-lg shadow-md border border-border p-8">
           <div className="flex items-center gap-3 mb-6">
-            <MdOutlineFilePresent className="text-blue-600" size={28} />
-            <h2 className="text-2xl font-bold text-gray-900">Identification</h2>
+            <MdOutlineFilePresent className="text-primary" size={28} />
+            <h2 className="text-2xl font-bold text-foreground">Identification</h2>
           </div>
-          <hr className="mb-6 border-gray-300" />
-          <p className="mb-6 text-sm text-gray-600">
-            <span className="text-red-500">*</span> Please provide either National ID or Passport Number
+          <hr className="mb-6 border-border" />
+          <p className="mb-6 text-sm text-foreground/80">
+            <span className="text-red-500">*</span> Please provide either
+            National ID or Passport Number
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* National ID */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="NationalID" className="font-semibold text-gray-700">
+              <label
+                htmlFor="NationalID"
+                className="font-semibold text-foreground/90"
+              >
                 National ID
               </label>
               <input
@@ -415,13 +467,16 @@ export default function PatientEntryPage() {
                 value={formData.NationalID}
                 onChange={handleInputChange}
                 placeholder="784-1234-5678901-2"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
 
             {/* Passport Number */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="PassportNumber" className="font-semibold text-gray-700">
+              <label
+                htmlFor="PassportNumber"
+                className="font-semibold text-foreground/90"
+              >
                 Passport Number
               </label>
               <input
@@ -431,16 +486,14 @@ export default function PatientEntryPage() {
                 value={formData.PassportNumber}
                 onChange={handleInputChange}
                 placeholder="A1234567"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
-              {error && (
-                <p className="text-red-500 text-sm">{error}</p>
-              )}
+              {error && <p className="text-red-500 text-sm">{error}</p>}
             </div>
 
             {/* Visa Type */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="VisaType" className="font-semibold text-gray-700">
+              <label htmlFor="VisaType" className="font-semibold text-foreground/90">
                 Visa Type <span className="text-red-500">*</span>
               </label>
               <select
@@ -449,7 +502,7 @@ export default function PatientEntryPage() {
                 value={formData.VisaType}
                 onChange={handleInputChange}
                 required
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
               >
                 <option value="">Select Visa Type</option>
                 <option value="Residency">Residency</option>
@@ -461,7 +514,7 @@ export default function PatientEntryPage() {
 
             {/* OP Number */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="OPNumber" className="font-semibold text-gray-700">
+              <label htmlFor="OPNumber" className="font-semibold text-foreground/90">
                 OP Number
               </label>
               <input
@@ -471,21 +524,26 @@ export default function PatientEntryPage() {
                 value={formData.OPNumber}
                 onChange={handleInputChange}
                 placeholder="OP-2025-001"
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
           </div>
         </div>
 
         {/* Medical Information Section */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Medical Information</h2>
-          <hr className="mb-6 border-gray-300" />
+        <div className="bg-card rounded-lg shadow-md border border-border p-8">
+          <h2 className="text-2xl font-bold text-foreground mb-6">
+            Medical Information
+          </h2>
+          <hr className="mb-6 border-border" />
 
           <div className="flex flex-wrap gap-6 items-end">
             {/* Patient Type */}
             <div className="flex flex-col gap-2 w-1/2">
-              <label htmlFor="PatientType" className="font-semibold text-gray-700">
+              <label
+                htmlFor="PatientType"
+                className="font-semibold text-foreground/90"
+              >
                 Patient Type <span className="text-red-500">*</span>
               </label>
               <select
@@ -494,7 +552,7 @@ export default function PatientEntryPage() {
                 value={formData.PatientType}
                 onChange={handleInputChange}
                 required
-                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
               >
                 <option value="Normal">Normal</option>
                 <option value="VIP">VIP</option>
@@ -511,9 +569,12 @@ export default function PatientEntryPage() {
                   name="ReferralStatus"
                   checked={formData.ReferralStatus}
                   onChange={handleInputChange}
-                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  className="w-5 h-5 text-primary border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-transparent"
                 />
-                <label htmlFor="ReferralStatus" className="font-semibold text-gray-700 cursor-pointer">
+                <label
+                  htmlFor="ReferralStatus"
+                  className="font-semibold text-foreground/90 cursor-pointer"
+                >
                   Referral Status
                 </label>
               </div>
@@ -525,9 +586,12 @@ export default function PatientEntryPage() {
                   name="ChronicStatus"
                   checked={formData.ChronicStatus}
                   onChange={handleInputChange}
-                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  className="w-5 h-5 text-primary border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-transparent"
                 />
-                <label htmlFor="ChronicStatus" className="font-semibold text-gray-700 cursor-pointer">
+                <label
+                  htmlFor="ChronicStatus"
+                  className="font-semibold text-foreground/90 cursor-pointer"
+                >
                   Chronic Status
                 </label>
               </div>
@@ -539,14 +603,14 @@ export default function PatientEntryPage() {
         <div className="flex gap-4 my-8">
           <button
             type="submit"
-            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md"
+            className="flex-1 bg-primary hover:opacity-90 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md"
           >
             Register Patient
           </button>
           <button
             type="button"
             onClick={resetForm}
-            className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-900 font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md"
+            className="flex-1 bg-muted hover:bg-muted/80 text-foreground font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md"
           >
             Clear Form
           </button>

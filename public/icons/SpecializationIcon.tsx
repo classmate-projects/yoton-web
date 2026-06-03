@@ -7,7 +7,7 @@ interface SpecializationIconProps {
 
 const SpecializationIcon = ({
   size = 24,
-  color = "#292D32",
+  color = "currentColor",
 }: SpecializationIconProps) => {
   return (
     <svg

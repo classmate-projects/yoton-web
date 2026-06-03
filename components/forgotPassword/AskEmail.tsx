@@ -4,31 +4,46 @@ interface emailPropsTypes {
     handleEmailSubmit: (
         e: React.FormEvent<HTMLFormElement>
     ) => Promise<void>
+    isSending: boolean;
 
 }
 
 import Link from "next/link";
-import { HiOutlineArrowSmRight } from "react-icons/hi";
+import { ArrowLeft, ArrowRight, Loader2, Mail, ShieldCheck } from "lucide-react";
 
-export default function AskEmailPage({ email, setEmail, handleEmailSubmit }: emailPropsTypes) {
+export default function AskEmailPage({ email, setEmail, handleEmailSubmit, isSending }: emailPropsTypes) {
     return (
-        <>
-            <div>
-                <div className=" flex flex-col items-center gap-1">
-                    <h1 className="text-2xl sm:text-3xl font-bold text-center text-nowrap" style={{ color: 'var(--color-text)' }}>Forgot your password?</h1>
-                    <p className="font-light text-md text-center max-w-100" style={{ color: 'var(--color-text-muted)' }}>
-                        Enter your email address and we&apos;ll send you a link to reset
-                        your password.
-                    </p>
+        <div>
+            <div className="mb-8">
+                <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <ShieldCheck size={22} />
                 </div>
+                <p className="text-sm font-semibold uppercase text-primary">
+                    Password recovery
+                </p>
+                <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
+                    Forgot your password?
+                </h1>
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                    Enter your email address and we&apos;ll send you a secure reset
+                    link to verify your account.
+                </p>
+            </div>
 
-                <form
-                    onSubmit={handleEmailSubmit}
-                    className="flex flex-col gap-4 w-full mt-10">
-                    <div className="w-full flex flex-col gap-2 mb-4">
-                        <label htmlFor="email" className="text-sm font-bold" style={{ color: 'var(--color-text-muted)' }}>
-                            Email Address
-                        </label>
+            <form
+                onSubmit={handleEmailSubmit}
+                className="space-y-5">
+                <div className="space-y-2">
+                    <label
+                        htmlFor="email"
+                        className="text-sm font-semibold text-slate-700"
+                    >
+                        Email Address
+                    </label>
+                    <div className="relative">
+                        <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                            <Mail size={18} />
+                        </span>
                         <input
                             type="email"
                             id="email"
@@ -36,20 +51,39 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit }: ema
                             onChange={e => setEmail(e.target.value)}
                             name="email"
                             placeholder="name@company.com"
-                            className="outline-0 p-4 rounded-xl"
-                            style={{ backgroundColor: 'var(--color-highlight)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                            className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-12! pr-4 text-base text-slate-950 placeholder:text-slate-400 focus-visible:bg-white"
+                            autoComplete="email"
+                            required
                         />
                     </div>
+                </div>
 
-                    <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>We will never share your email with anyone else.</p>
+                <button
+                    type="submit"
+                    disabled={isSending || !email}
+                    className="group flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-semibold text-primary-foreground shadow-lg shadow-blue-500/20 transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+                >
+                    {isSending ? (
+                        <>
+                            <Loader2 className="animate-spin" size={18} />
+                            Sending link
+                        </>
+                    ) : (
+                        <>
+                            Send reset link
+                            <ArrowRight size={17} className="transition-transform group-hover:translate-x-0.5" />
+                        </>
+                    )}
+                </button>
 
-                    <button
-                        type="submit"
-                        className="theme-blue text-white font-bold flex items-center justify-center gap-2 w-full p-4 rounded-xl cursor-pointer transition-all duration-200">Send Reset Link <HiOutlineArrowSmRight /> </button>
-
-                    <Link href="/login" className="text-center flex justify-center items-center gap-2 mt-4 transition-all duration-200 cursor-pointer" style={{ color: 'var(--color-accent)' }} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--color-accent-hover)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-accent)'}><HiOutlineArrowSmRight className=" rotate-180" /> Return to Login</Link>
-                </form>
-            </div>
-        </>
+                <Link
+                    href="/login"
+                    className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-500 transition-colors hover:text-primary"
+                >
+                    <ArrowLeft size={16} />
+                    Return to login
+                </Link>
+            </form>
+        </div>
     )
 }

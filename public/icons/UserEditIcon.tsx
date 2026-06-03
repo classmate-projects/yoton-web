@@ -7,7 +7,7 @@ interface UserEditIconProps {
 
 const UserEditIcon = ({
   size = 24,
-  color = "#292D32",
+  color = "currentColor",
 }: UserEditIconProps) => {
   return (
     <svg

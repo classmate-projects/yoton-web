@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { baseUrl } from "@/lib/constants";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Department {
   departmentId: number;
@@ -24,6 +25,7 @@ export default function DepartmentsPage() {
   );
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
   const isEditing = editingDepartment !== null;
 
@@ -51,6 +53,7 @@ export default function DepartmentsPage() {
   // fetch departments
   const fetchDepartments = async () => {
     try {
+      setIsLoading(true);
       const res = await fetch(`${baseUrl}/api/department`);
       const data = await res.json();
       
@@ -60,6 +63,8 @@ export default function DepartmentsPage() {
       setDepartments(data);
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -189,18 +194,18 @@ export default function DepartmentsPage() {
     <div className="py-8 px-10 h-full overflow-y-auto">
       <div className="flex justify-between items-center gap-4 mb-8">
         <div className="flex flex-col gap-1">
-          <h1 className="text-4xl font-semibold flex items-center gap-3">
-            <BuildingIcon size={36} color="#2563eb" />
+          <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
+            <BuildingIcon size={36} color="currentColor" className="text-primary" />
             Departments
           </h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             Manage hospital departments, their details, and active status.
           </p>
         </div>
         <button
           type="button"
           onClick={openCreateModal}
-          className="bg-blue-500 px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:bg-blue-600 transition duration-150 shrink-0"
+          className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150 shrink-0"
         >
           <MdAdd size={22} />
           Add Department
@@ -209,11 +214,11 @@ export default function DepartmentsPage() {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
-          <div className="card w-full max-w-md rounded-xl border-t p-6 shadow-2xl mx-4">
-            <h2 className="text-2xl font-semibold mb-1">
+          <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
+            <h2 className="text-2xl font-semibold mb-1 text-foreground">
               {isEditing ? "Edit Department" : "Add Department"}
             </h2>
-            <p className="text-sm text-gray-500 mb-6">
+            <p className="text-sm text-muted-foreground mb-6">
               {isEditing
                 ? "Update the department name and description."
                 : "Enter the department name and description."}
@@ -226,7 +231,7 @@ export default function DepartmentsPage() {
               <div>
                 <label
                   htmlFor="department-name"
-                  className="text-sm font-bold text-gray-700 required"
+                  className="text-sm font-bold text-foreground/90 required"
                 >
                   Name
                 </label>
@@ -237,14 +242,14 @@ export default function DepartmentsPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Cardiology"
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500"
+                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="department-description"
-                  className="text-sm font-bold text-gray-700"
+                  className="text-sm font-bold text-foreground/90"
                 >
                   Description
                 </label>
@@ -254,21 +259,21 @@ export default function DepartmentsPage() {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe this department"
                   rows={4}
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500 resize-y min-h-25"
+                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground min-h-25 resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 mt-2">
+              <div className="flex items-center justify-end gap-3 mt-2 w-full">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-5 py-2.5 rounded-md border border-neutral-400/50 hover:bg-neutral-300/50 transition-all duration-200 cursor-pointer"
+                  className="px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground w-full"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
+                  className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full"
                 >
                   {isEditing ? "Update" : "Save"}
                 </button>
@@ -278,41 +283,36 @@ export default function DepartmentsPage() {
         </div>
       )}
 
-      <div className="card p-6 rounded-xl shadow-lg border-t">
-        <h2 className="text-2xl font-semibold mb-4">Department List</h2>
-        <hr className="text-neutral-400/50 mb-4" />
-
+      <div className="card">
         <div className="overflow-x-auto">
-          <table className="w-full text-left rounded-xl overflow-hidden border border-neutral-400 border-separate border-spacing-0">
+          <table>
             <thead>
-              <tr className="bg-neutral-300">
-                <th className="px-4 py-3 text-left">Name</th>
-                <th className="px-4 py-3 text-left">Description</th>
-                <th className="px-4 py-3 text-center">Actions</th>
+              <tr>
+                <th className="text-foreground/90">Name</th>
+                <th className="text-foreground/90">Description</th>
+                <th className="text-center text-foreground/90">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {departments.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={3} className="py-16 text-center">
+                    <LoadingSpinner />
+                  </td>
+                </tr>
+              ) : departments.length > 0 ? (
                 departments.map((department) => (
                   <tr
                     key={department.departmentId}
-                    className={`transition-colors ${
-                      department.isActive
-                        ? "bg-white hover:bg-gray-50"
-                        : "bg-red-100/80 text-gray-500 hover:bg-red-100"
-                    }`}
+                    className={!department.isActive ? "bg-destructive/5 opacity-80" : ""}
                   >
-                    <td
-                      className={`px-4 py-3 font-semibold capitalize ${department.isActive ? "text-gray-800" : "text-gray-450"}`}
-                    >
+                    <td className="font-semibold capitalize text-foreground">
                       {department.name}
                     </td>
-                    <td
-                      className={`px-4 py-3 text-sm  ${department.isActive ? "text-gray-600" : "text-gray-400"}`}
-                    >
+                    <td className="text-foreground/80">
                       {department.description || "No description provided."}
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <div className="flex justify-center items-center gap-4">
                         <ToggleButton
                           checked={department.isActive}
@@ -327,17 +327,17 @@ export default function DepartmentsPage() {
                             )
                           }
                           title={`Delete ${department.name}`}
-                          className="p-2 hover:bg-red-100 rounded-full ring ring-transparent hover:ring-red-200 transition-all duration-200 cursor-pointer"
+                          className="p-2 hover:bg-destructive/10 rounded-full transition-all duration-200 cursor-pointer"
                         >
-                          <DeleteIcon color="red" size={18} />
+                          <DeleteIcon color="red" className="text-destructive" size={18} />
                         </button>
 
                         <button
                           onClick={() => openEditModal(department)}
                           title={`Edit ${department.name}`}
-                          className="p-2 hover:bg-blue-100 rounded-full ring ring-transparent hover:ring-blue-200 transition-all duration-200 cursor-pointer"
+                          className="p-2 hover:bg-primary/10 rounded-full transition-all duration-200 cursor-pointer"
                         >
-                          <EditIcon color="blue" size={18} />
+                          <EditIcon color="currentColor" className="text-primary" size={18} />
                         </button>
                       </div>
                     </td>
@@ -347,7 +347,7 @@ export default function DepartmentsPage() {
                 <tr>
                   <td
                     colSpan={3}
-                    className="px-4 py-20 text-center text-gray-500"
+                    className="py-16 text-center text-muted-foreground"
                   >
                     No departments found.
                   </td>

@@ -7,7 +7,7 @@ interface UserCardIconProps {
 
 const UserCardIcon = ({
   size = 24,
-  color = "#292D32",
+  color = "currentColor",
 }: UserCardIconProps) => {
   return (
     <svg

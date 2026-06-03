@@ -7,7 +7,7 @@ interface AddUserIconProps {
 
 const AddUserIcon = ({
   size = 24,
-  color = "#292D32",
+  color = "currentColor",
 }: AddUserIconProps) => {
   return (
     <svg
