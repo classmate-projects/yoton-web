@@ -1,4 +1,4 @@
-import { appointmentsIcon, RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon } from "@/public/icons/icons";
+import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon, calendarIcon } from "@/public/icons/icons";
 
 interface SidebarMenuItem {
     id: number;
@@ -8,7 +8,7 @@ interface SidebarMenuItem {
     icon: React.ComponentType; // Assuming icons are React components
 }
 
-const allRoles = ["Admin", "doctor", "nurse", "receptionist"];
+const allRoles = ["Admin", "doctor", "nurse", "lab technician", "radiology technician", "pharmacist", "billing team", "reception"];
 
 export const sidebarMenuItems: SidebarMenuItem[] = [
     {
@@ -21,25 +21,25 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
 
     {
         id: 2,
-        name: "Patient Entry",
-        navLink: "/patient-entry",
-        roles: ["receptionist", "Admin"],
-        icon: registrationIcon
+        name: "Appointments",
+        navLink: "/appointments",
+        roles: ["reception"],
+        icon: calendarIcon
     },
 
     {
         id: 3,
-        name: "Appointments",
-        navLink: "/appointments",
-        roles: ["receptionist"],
-        icon: appointmentsIcon
+        name: "Patient Entry",
+        navLink: "/patient-entry",
+        roles: ["reception"],
+        icon: registrationIcon
     },
 
     {
         id: 4,
         name: "Patient Records",
         navLink: "/patient-records",
-        roles: ["doctor", "nurse", "receptionist", "Admin"],
+        roles: ["doctor", "nurse", "reception"],
         icon: RecordsIcon
     },
 

@@ -1,13 +1,14 @@
 import React from "react";
 
-interface DeleteIconProps {
+interface DeleteIconProps extends React.SVGProps<SVGSVGElement> {
   size?: number;
   color?: string;
 }
 
 const DeleteIcon = ({
-  size = 24,
-  color = "#51526C",
+  size = 20,
+  color = "currentColor",
+  ...props
 }: DeleteIconProps) => {
   return (
     <svg
@@ -16,6 +17,7 @@ const DeleteIcon = ({
       viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      {...props}
     >
       <rect
         x="3"

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MdOutlineScience, MdAdd } from "react-icons/md";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface RadiologyRequest {
   id: number;
@@ -35,7 +36,9 @@ export default function RadiologyPage() {
   };
 
   useEffect(() => {
-    fetchRequests();
+    queueMicrotask(() => {
+      fetchRequests();
+    });
   }, []);
 
   const handleCreateRequest = async (e: React.FormEvent) => {
@@ -94,42 +97,50 @@ export default function RadiologyPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border-t">
+        <div className="lg:col-span-2 card p-6">
           <h2 className="text-2xl font-semibold mb-4">Scan Requests</h2>
           <hr className="text-neutral-400/50 mb-4" />
           
-          {isLoading ? (
-            <p>Loading...</p>
-          ) : requests.length === 0 ? (
-            <p className="text-gray-500">No radiology requests available.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-3 border-b">ID</th>
-                    <th className="p-3 border-b">Patient</th>
-                    <th className="p-3 border-b">Scan Type</th>
-                    <th className="p-3 border-b">Priority</th>
-                    <th className="p-3 border-b">Status</th>
-                    <th className="p-3 border-b">Actions</th>
+          <div className="overflow-x-auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Patient</th>
+                  <th>Scan Type</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-12">
+                      <LoadingSpinner />
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {requests.map((req) => (
-                    <tr key={req.id} className="hover:bg-gray-50">
-                      <td className="p-3 border-b font-medium">#{req.id}</td>
-                      <td className="p-3 border-b">{req.patientId}</td>
-                      <td className="p-3 border-b">{req.scanType}</td>
-                      <td className="p-3 border-b">
-                        <span className={`px-2 py-1 text-xs rounded-full ${req.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                ) : requests.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-12 text-gray-500">
+                      No radiology requests available.
+                    </td>
+                  </tr>
+                ) : (
+                  requests.map((req) => (
+                    <tr key={req.id}>
+                      <td className="font-semibold">#{req.id}</td>
+                      <td>{req.patientId}</td>
+                      <td>{req.scanType}</td>
+                      <td>
+                        <span className={`px-2.5 py-1 text-xs rounded-full font-semibold ${req.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
                           {req.priority}
                         </span>
                       </td>
-                      <td className="p-3 border-b font-semibold">{req.status || "Pending"}</td>
-                      <td className="p-3 border-b">
+                      <td className="font-semibold">{req.status || "Pending"}</td>
+                      <td>
                         <select 
-                          className="p-1 text-sm border rounded bg-white"
+                          className="p-1.5 text-sm border rounded bg-white outline-none focus:border-blue-500"
                           value={req.status || "Pending"}
                           onChange={(e) => handleUpdateStatus(req.id, e.target.value)}
                         >
@@ -139,14 +150,14 @@ export default function RadiologyPage() {
                         </select>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="card p-6 rounded-xl shadow-lg border-t">
+        <div className="card p-6">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
             <MdAdd className="text-green-500" /> New Scan Request
           </h2>
@@ -160,7 +171,7 @@ export default function RadiologyPage() {
                 required
                 value={patientId}
                 onChange={(e) => setPatientId(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
               />
             </div>
             <div>
@@ -170,7 +181,7 @@ export default function RadiologyPage() {
                 required
                 value={doctorId}
                 onChange={(e) => setDoctorId(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
               />
             </div>
             <div>
@@ -181,7 +192,7 @@ export default function RadiologyPage() {
                 placeholder="e.g. MRI Brain"
                 value={scanType}
                 onChange={(e) => setScanType(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
               />
             </div>
             <div>
@@ -190,7 +201,7 @@ export default function RadiologyPage() {
                 required
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
               >
                 <option value="Low">Low</option>
                 <option value="Normal">Normal</option>

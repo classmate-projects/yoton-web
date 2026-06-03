@@ -24,6 +24,7 @@ import AddUserIcon from "@/public/icons/AddUserIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
 import { baseUrl } from "@/lib/constants";
 import EditIcon from "@/public/icons/EditIcon";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function UserManagement() {
 
@@ -32,6 +33,7 @@ export default function UserManagement() {
   const [role, setRole] = useState("allRole");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeStatus, setActiveStatus] = useState("all");
+  const [isLoading, setIsLoading] = useState(true);
 
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -63,11 +65,14 @@ export default function UserManagement() {
   // fetch all users
   const fetchAllUsers = async () => {
     try {
+      setIsLoading(true);
       const res = await fetch(`${baseUrl}/api/user/users`);
       const data = await res.json();
       setUsers(data.users);
     } catch (error) {
       console.error("Error fetching users:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -167,11 +172,12 @@ export default function UserManagement() {
             permissions.
           </p>
         </div>
-        <div className="flex items-center gap-4 shadow-lg px-4 py-2 rounded-full">
+        <div className="flex items-center gap-3 rounded-full border border-border bg-card px-3 py-2 shadow-sm">
           <Link
             href={"/role-management"}
             title="Manage Roles"
-            className="text-xl p-4 rounded-full text-white hover:bg-gray-200 transition-all duration-200 cursor-pointer"
+            aria-label="Manage Roles"
+            className="grid h-11 w-11 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition-all duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <SettingsIcon size={20} />
           </Link>
@@ -179,7 +185,8 @@ export default function UserManagement() {
             href={"/user-registration"}
             onClick={() => sessionStorage.removeItem("editUser")}
             title="User Registration"
-            className=" text-xl p-4 rounded-full text-white hover:bg-gray-200 transition-all duration-200 cursor-pointer"
+            aria-label="User Registration"
+            className="grid h-11 w-11 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary shadow-sm transition-all duration-200 hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 "
           >
             <AddUserIcon size={20} />
           </Link>
@@ -187,17 +194,17 @@ export default function UserManagement() {
       </div>
 
       <div className="mt-8 flex items-center w-full justify-between gap-6">
-        <div className="card flex-1 px-6 py-4 rounded-xl flex items-center justify-between gap-6">
-          <div className=" flex-1 relative">
-            <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
-              <SearchIcon />
+        <div className="card flex-1 px-6 py-4 flex items-center justify-between gap-6">
+          <div className="relative flex-1">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex w-11 items-center justify-center text-muted-foreground">
+              <SearchIcon size={18} />
             </span>
             <input
               type="text"
               placeholder="Filter by name or username"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="border w-full border-neutral-600/50 px-4 pl-10 py-2 rounded-md outline-0"
+              className="h-11 w-full rounded-xl border-input pl-12! pr-4 "
             />
           </div>
           <div className="flex items-center justify-between gap-4">
@@ -234,7 +241,7 @@ export default function UserManagement() {
               type="button"
               onClick={clearFilters}
               title="Clear filters"
-              className="border border-neutral-500 px-4 py-1.25 rounded-md bg-neutral-300/80 hover:bg-neutral-300 transition-all duration-200 cursor-pointer"
+              className="border border-neutral-500 px-4 py-1.25 rounded-md hover:scale-95 transition-all duration-200 cursor-pointer"
             >
               Clear
             </button>
@@ -245,36 +252,42 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <div className="w-full mt-8">
-        <table className="w-full rounded-xl overflow-hidden border border-neutral-500 border-separate border-spacing-0">
+      <div className="card mt-8">
+        <table>
           <thead>
-            <tr className="bg-neutral-300">
-              <th className="px-4 py-3 text-left">Name</th>
-              <th className="px-4 py-3 text-left">Username</th>
-              <th className="px-4 py-3 text-left">Email</th>
-              <th className="px-4 py-3 text-left">Role</th>
-              <th className="px-4 py-3 text-left">Phone</th>
-              <th className="px-4 py-3 text-left">Last loggedin</th>
-              <th className="px-4 py-3 text-left">Created at</th>
-              <th className="px-4 py-3 text-left">Action</th>
+            <tr>
+              <th>Name</th>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Phone</th>
+              <th>Last loggedin</th>
+              <th>Created at</th>
+              <th>Action</th>
             </tr>
           </thead>
 
-          {filteredUsers.length > 0 ? (
-            <tbody>
-              {filteredUsers
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td colSpan={8} className="text-center py-20">
+                  <LoadingSpinner />
+                </td>
+              </tr>
+            ) : filteredUsers.length > 0 ? (
+              filteredUsers
                 .slice()
                 .sort((a, b) => b.id - a.id)
                 .map((user) => (
-                  <tr key={user.id} className={`ring transition-all duration-150 ${!user.isActive ? "bg-red-100/80 text-gray-500" : "bg-white"}`}>
-                    <td className="px-4 py-3">{user.name}</td>
-                    <td className="px-4 py-3">{user.username}</td>
-                    <td className="px-4 py-3">{user.email}</td>
-                    <td className="px-4 py-3 capitalize">{user.role}</td>
-                    <td className="px-4 py-3">{user.phone}</td>
-                    <td className="px-4 py-3">{getTime(user.lastLogin)}</td>
-                    <td className="px-4 py-3">{getTime(user.createdAt)}</td>
-                    <td className="px-4 py-3">
+                  <tr key={user.id} className={!user.isActive ? "bg-red-50/50 opacity-80" : ""}>
+                    <td className="font-semibold">{user.name}</td>
+                    <td>{user.username}</td>
+                    <td>{user.email}</td>
+                    <td className="capitalize">{user.role}</td>
+                    <td>{user.phone}</td>
+                    <td>{getTime(user.lastLogin)}</td>
+                    <td>{getTime(user.createdAt)}</td>
+                    <td>
                       <div className="flex items-center gap-4">
 
                         <ToggleButton
@@ -304,17 +317,15 @@ export default function UserManagement() {
                       </div>
                     </td>
                   </tr>
-                ))}
-            </tbody>
-          ) : (
-            <tbody>
+                ))
+            ) : (
               <tr>
                 <td colSpan={8} className="text-center py-20 text-gray-600">
                   No users found
                 </td>
               </tr>
-            </tbody>
-          )}
+            )}
+          </tbody>
         </table>
       </div>
     </div>

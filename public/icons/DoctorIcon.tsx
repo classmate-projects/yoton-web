@@ -7,7 +7,7 @@ interface DoctorIconProps {
 
 const DoctorIcon = ({
   size = 24,
-  color = "#51526C",
+  color = "currentColor",
 }: DoctorIconProps) => {
   return (
     <svg

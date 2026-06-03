@@ -6,8 +6,8 @@ interface SettingsIconProps {
 }
 
 const SettingsIcon = ({
-  size = 16,
-  color = "#51526C",
+  size = 24,
+  color = "currentColor",
 }: SettingsIconProps) => {
   return (
     <svg

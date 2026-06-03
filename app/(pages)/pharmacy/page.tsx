@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MdLocalPharmacy, MdWarning } from "react-icons/md";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Medicine {
   id: number;
@@ -45,7 +46,9 @@ export default function PharmacyPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    queueMicrotask(() => {
+      fetchData();
+    });
   }, []);
 
   const handleAddMedicine = async (e: React.FormEvent) => {
@@ -87,53 +90,61 @@ export default function PharmacyPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Medicine List */}
-        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border-t">
+        <div className="lg:col-span-2 card p-6">
           <h2 className="text-2xl font-semibold mb-4">All Medicines</h2>
           <hr className="text-neutral-400/50 mb-4" />
           
-          {isLoading ? (
-            <p>Loading...</p>
-          ) : medicines.length === 0 ? (
-            <p className="text-gray-500">No medicines available.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-3 border-b">Name</th>
-                    <th className="p-3 border-b">Category</th>
-                    <th className="p-3 border-b">Stock</th>
-                    <th className="p-3 border-b">Price ($)</th>
-                    <th className="p-3 border-b">Expiry Date</th>
+          <div className="overflow-x-auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>Stock</th>
+                  <th>Price ($)</th>
+                  <th>Expiry Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-12">
+                      <LoadingSpinner />
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {medicines.map((med, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="p-3 border-b font-medium">{med.name}</td>
-                      <td className="p-3 border-b">{med.category}</td>
-                      <td className="p-3 border-b">{med.stock}</td>
-                      <td className="p-3 border-b">{med.price}</td>
-                      <td className="p-3 border-b">{new Date(med.expiryDate).toLocaleDateString()}</td>
+                ) : medicines.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-12 text-gray-500">
+                      No medicines available.
+                    </td>
+                  </tr>
+                ) : (
+                  medicines.map((med, i) => (
+                    <tr key={i}>
+                      <td className="font-semibold">{med.name}</td>
+                      <td>{med.category}</td>
+                      <td>{med.stock}</td>
+                      <td>${med.price}</td>
+                      <td>{new Date(med.expiryDate).toLocaleDateString()}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Sidebar panels */}
         <div className="flex flex-col gap-8">
           {/* Low Stock Alerts */}
-          <div className="card p-6 rounded-xl shadow-lg border-t border-t-red-500">
+          <div className="card p-6">
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-red-600">
               <MdWarning size={24} /> Low Stock Alerts
             </h2>
             <hr className="text-neutral-400/50 mb-4" />
             
             {isLoading ? (
-              <p>Loading...</p>
+              <LoadingSpinner />
             ) : lowStock.length === 0 ? (
               <p className="text-green-600 font-medium">All stocks are sufficient.</p>
             ) : (
@@ -149,7 +160,7 @@ export default function PharmacyPage() {
           </div>
 
           {/* Add Medicine Form */}
-          <div className="card p-6 rounded-xl shadow-lg border-t">
+          <div className="card p-6">
             <h2 className="text-xl font-semibold mb-4">Add Medicine</h2>
             <hr className="text-neutral-400/50 mb-4" />
             
@@ -161,7 +172,7 @@ export default function PharmacyPage() {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
                 />
               </div>
               <div>
@@ -171,7 +182,7 @@ export default function PharmacyPage() {
                   required
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
                 />
               </div>
               <div className="flex gap-4">
@@ -183,7 +194,7 @@ export default function PharmacyPage() {
                     min={0}
                     value={stock}
                     onChange={(e) => setStock(Number(e.target.value))}
-                    className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                    className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
                   />
                 </div>
                 <div className="w-full">
@@ -195,7 +206,7 @@ export default function PharmacyPage() {
                     step={0.01}
                     value={price}
                     onChange={(e) => setPrice(Number(e.target.value))}
-                    className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                    className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
                   />
                 </div>
               </div>
@@ -206,7 +217,7 @@ export default function PharmacyPage() {
                   required
                   value={expiryDate}
                   onChange={(e) => setExpiryDate(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border"
                 />
               </div>
               <button 

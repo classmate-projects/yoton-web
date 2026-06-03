@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MdOutlineMedicalServices, MdPersonAdd } from "react-icons/md";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Doctor {
   id: number;
@@ -37,7 +38,10 @@ export default function DoctorPage() {
   };
 
   useEffect(() => {
-    fetchDoctors();
+    const callApi = () => {
+      fetchDoctors();
+    };
+    callApi();
   }, []);
 
   const handleCreateDoctor = async (e: React.FormEvent) => {
@@ -74,114 +78,122 @@ export default function DoctorPage() {
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
       <div className="flex flex-col gap-1 mb-8">
-        <h1 className="text-4xl font-semibold flex items-center gap-3">
-          <MdOutlineMedicalServices className="text-teal-500" /> Doctors Directory
+        <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
+          <MdOutlineMedicalServices className="text-primary" /> Doctors Directory
         </h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           Manage doctor profiles, specializations, and availability.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 card p-6 rounded-xl shadow-lg border-t">
-          <h2 className="text-2xl font-semibold mb-4">All Doctors</h2>
-          <hr className="text-neutral-400/50 mb-4" />
+        <div className="lg:col-span-2 card p-6">
+          <h2 className="text-2xl font-semibold mb-4 text-foreground">All Doctors</h2>
+          <hr className="border-border mb-4" />
           
-          {isLoading ? (
-            <p>Loading...</p>
-          ) : doctors.length === 0 ? (
-            <p className="text-gray-500">No doctors registered.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-3 border-b">ID</th>
-                    <th className="p-3 border-b">Specialization</th>
-                    <th className="p-3 border-b">License</th>
-                    <th className="p-3 border-b">Exp (Years)</th>
-                    <th className="p-3 border-b">Fee</th>
+          <div className="overflow-x-auto">
+            <table>
+              <thead>
+                <tr>
+                  <th className="text-foreground/90">ID</th>
+                  <th className="text-foreground/90">Specialization</th>
+                  <th className="text-foreground/90">License</th>
+                  <th className="text-foreground/90">Exp (Years)</th>
+                  <th className="text-foreground/90">Fee</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-12">
+                      <LoadingSpinner />
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {doctors.map((doc) => (
-                    <tr key={doc.id} className="hover:bg-gray-50">
-                      <td className="p-3 border-b font-medium">#{doc.id}</td>
-                      <td className="p-3 border-b text-teal-700 font-semibold">{doc.specialization}</td>
-                      <td className="p-3 border-b">{doc.licenseNumber}</td>
-                      <td className="p-3 border-b">{doc.experienceYears}</td>
-                      <td className="p-3 border-b">${doc.consultationFee}</td>
+                ) : doctors.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-12 text-muted-foreground">
+                      No doctors registered.
+                    </td>
+                  </tr>
+                ) : (
+                  doctors.map((doc) => (
+                    <tr key={doc.id}>
+                      <td className="font-semibold text-foreground">#{doc.id}</td>
+                      <td className="text-primary font-semibold">{doc.specialization}</td>
+                      <td className="text-foreground/80">{doc.licenseNumber}</td>
+                      <td className="text-foreground/80">{doc.experienceYears}</td>
+                      <td className="text-foreground/80">${doc.consultationFee}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="card p-6 rounded-xl shadow-lg border-t">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <div className="card p-6">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-foreground">
             <MdPersonAdd className="text-green-500" /> Register Doctor
           </h2>
-          <hr className="text-neutral-400/50 mb-4" />
+          <hr className="border-border mb-4" />
           
           <form onSubmit={handleCreateDoctor} className="flex flex-col gap-4">
             <div>
-              <label className="text-sm font-bold text-gray-700">User ID</label>
+              <label className="text-sm font-bold text-foreground/90">User ID</label>
               <input
                 type="number"
                 required
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
               />
             </div>
             <div>
-              <label className="text-sm font-bold text-gray-700">Specialization</label>
+              <label className="text-sm font-bold text-foreground/90">Specialization</label>
               <input
                 type="text"
                 required
                 placeholder="e.g. Cardiology"
                 value={specialization}
                 onChange={(e) => setSpecialization(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
               />
             </div>
             <div>
-              <label className="text-sm font-bold text-gray-700">License Number</label>
+              <label className="text-sm font-bold text-foreground/90">License Number</label>
               <input
                 type="text"
                 required
                 value={licenseNumber}
                 onChange={(e) => setLicenseNumber(e.target.value)}
-                className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
               />
             </div>
             <div className="flex gap-4">
               <div className="w-full">
-                <label className="text-sm font-bold text-gray-700">Exp. Years</label>
+                <label className="text-sm font-bold text-foreground/90">Exp. Years</label>
                 <input
                   type="number"
                   required
                   value={experienceYears}
                   onChange={(e) => setExperienceYears(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
                 />
               </div>
               <div className="w-full">
-                <label className="text-sm font-bold text-gray-700">Fee ($)</label>
+                <label className="text-sm font-bold text-foreground/90">Fee ($)</label>
                 <input
                   type="number"
                   required
                   value={consultationFee}
                   onChange={(e) => setConsultationFee(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-[var(--color-highlight)] border border-[var(--color-border)]"
+                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border text-foreground"
                 />
               </div>
             </div>
             <button 
               type="submit"
-              className="w-full mt-4 bg-teal-500 hover:bg-teal-600 text-white font-semibold py-3 rounded-lg transition-colors"
+              className="w-full mt-4 bg-primary hover:opacity-90 text-white font-semibold py-3 rounded-lg transition-colors"
             >
               Add Doctor
             </button>

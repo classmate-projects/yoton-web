@@ -21,6 +21,7 @@ import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import { toast } from "sonner";
 import EditIcon from "@/public/icons/EditIcon";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function SpecializationPage() {
   const [specializations, setSpecializations] = useState<SpecializationType[]>(
@@ -32,6 +33,7 @@ export default function SpecializationPage() {
   const [description, setDescription] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [allDepartments, setAllDepartments] = useState<DepartmentType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const isEditing = editingSpecialization !== null;
 
@@ -179,12 +181,15 @@ export default function SpecializationPage() {
   // fetch specializations
   const fetchSpecializations = async () => {
     try {
+      setIsLoading(true);
       const res = await fetch(`${baseUrl}/api/specialization`);
       const data = await res.json();
 
       setSpecializations(data);
     } catch (error) {
       console.error("Error fetching specializations:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -291,7 +296,7 @@ export default function SpecializationPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Cardiothoracic Surgery"
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border outline-none focus:border-blue-500"
                 />
               </div>
 
@@ -308,7 +313,7 @@ export default function SpecializationPage() {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe this specialization"
                   rows={4}
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500 resize-none min-h-25"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border outline-none focus:border-blue-500 resize-none min-h-25"
                 />
               </div>
 
@@ -324,7 +329,7 @@ export default function SpecializationPage() {
                   required
                   value={selectedDepartment}
                   onChange={(e) => setSelectedDepartment(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-(--color-border) outline-none focus:border-blue-500"
+                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border outline-none focus:border-blue-500"
                 >
                   <option value="" disabled>
                     Select department
@@ -343,17 +348,17 @@ export default function SpecializationPage() {
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-3 mt-2">
+              <div className="flex items-center justify-end gap-3 mt-2 w-full">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-5 py-2.5 rounded-md border border-neutral-400/50 hover:bg-neutral-300/50 transition-all duration-200 cursor-pointer"
+                  className="px-5 py-2.5 rounded-md border border-neutral-400/50 hover:bg-neutral-300/50 transition-all duration-200 cursor-pointer w-full"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
+                  className="px-5 py-2.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer w-full"
                 >
                   {isEditing ? "Update" : "Add"}
                 </button>
@@ -364,31 +369,29 @@ export default function SpecializationPage() {
       )}
 
       {/* Table Section */}
-      <div className="rounded-lg bg-gray-100 shadow-md overflow-hidden">
-        <table className="w-full">
+      <div className="card">
+        <table>
           {/* Table Head */}
           <thead>
-            <tr className="border-b border-gray-200 bg-gray-200">
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
-                Name
-              </th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
-                Description
-              </th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
-                Department
-              </th>
-              <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">
-                Action
-              </th>
+            <tr>
+              <th>Name</th>
+              <th>Description</th>
+              <th>Department</th>
+              <th className="text-center">Action</th>
             </tr>
           </thead>
 
           {/* Table Body */}
           <tbody>
-            {specializations.length === 0 ? (
+            {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-6 py-12 text-center">
+                <td colSpan={4} className="py-16 text-center">
+                  <LoadingSpinner />
+                </td>
+              </tr>
+            ) : specializations.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-16 text-center">
                   <div className="flex flex-col items-center justify-center">
                     <svg
                       className="h-12 w-12 text-gray-400 mb-3"
@@ -414,20 +417,17 @@ export default function SpecializationPage() {
               </tr>
             ) : (
               specializations.map((spec) => (
-                <tr
-                  key={spec.specializationId}
-                  className="border-b border-gray-200 hover:bg-gray-50 transition-colors duration-150"
-                >
-                  <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                <tr key={spec.specializationId}>
+                  <td className="font-semibold">
                     {spec.name}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
+                  <td>
                     {spec.description || "No description provided"}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
+                  <td>
                     {spec.department?.name || "No department assigned"}
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="text-center">
                     <div className="flex justify-center items-center ">
                       <ToggleButton
                         checked={spec.isActive}

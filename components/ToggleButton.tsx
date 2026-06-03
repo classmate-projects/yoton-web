@@ -15,6 +15,14 @@ export default function ToggleButton({
   id,
   className = "",
 }: ToggleButtonProps) {
+  const trackStateClass = disabled
+    ? checked
+      ? "bg-primary/60 border-primary/70"
+      : "bg-slate-300 border-slate-400"
+    : checked
+      ? "bg-primary border-primary"
+      : "bg-muted border-border";
+
   return (
     <button
       id={id}
@@ -24,14 +32,13 @@ export default function ToggleButton({
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-500 ${
-        checked ? "bg-emerald-500" : "bg-gray-300"
-      } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:brightness-95"} ${className}`}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${trackStateClass} ${
+        disabled ? "cursor-not-allowed" : "cursor-pointer"
+      } ${className}`}
     >
       <span
-        aria-hidden="true"
-        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-          checked ? "translate-x-5" : "translate-x-0.5"
+        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-1 ring-black/5 transition-transform duration-300 ease-spring ${
+          checked ? "translate-x-5" : "translate-x-1"
         }`}
       />
     </button>
