@@ -51,7 +51,7 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit, isSen
                             onChange={e => setEmail(e.target.value)}
                             name="email"
                             placeholder="name@company.com"
-                            className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-12! pr-4 text-base text-slate-950 placeholder:text-slate-400 focus-visible:bg-white"
+                            className="h-12 rounded-2xl border-slate-200! bg-slate-50! pl-12! pr-4 text-base! text-slate-950! placeholder:text-slate-400! focus-visible:bg-white!  focus-visible:ring-transparent!"
                             autoComplete="email"
                             required
                         />
@@ -66,11 +66,10 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit, isSen
                     {isSending ? (
                         <>
                             <Loader2 className="animate-spin" size={18} />
-                            Sending link
                         </>
                     ) : (
                         <>
-                            Send reset link
+                            Change Password
                             <ArrowRight size={17} className="transition-transform group-hover:translate-x-0.5" />
                         </>
                     )}
