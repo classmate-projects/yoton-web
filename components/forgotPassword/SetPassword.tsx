@@ -63,7 +63,7 @@ export default function SetPasswordPage({
                             required
                             value={password}
                             onChange={e => setPassword(e.target.value)}
-                            className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-12! pr-4 text-base text-slate-950 placeholder:text-slate-400 focus-visible:bg-white"
+                            className="h-12 rounded-2xl border-slate-200! bg-slate-50! pl-12! pr-4 text-base! text-slate-950! placeholder:text-slate-400! focus-visible:bg-white!  focus-visible:ring-transparent!"
                             autoComplete="new-password"
                         />
                     </div>
@@ -87,7 +87,7 @@ export default function SetPasswordPage({
                             required
                             value={confirmPassword}
                             onChange={e => setConfirmPassword(e.target.value)}
-                            className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-12! pr-4 text-base text-slate-950 placeholder:text-slate-400 focus-visible:bg-white"
+                            className="h-12 rounded-2xl border-slate-200! bg-slate-50! pl-12! pr-4 text-base! text-slate-950! placeholder:text-slate-400! focus-visible:bg-white!  focus-visible:ring-transparent!"
                             autoComplete="new-password"
                         />
                     </div>

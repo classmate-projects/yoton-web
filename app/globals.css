@@ -118,6 +118,10 @@ input, select, textarea {
   background-color: var(--card);
 }
 
+input[type="password"]::-ms-reveal {
+  display: none;
+}
+
 label.required::after {
   content: "*";
   color: var(--destructive);

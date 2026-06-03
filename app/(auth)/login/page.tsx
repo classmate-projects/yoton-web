@@ -166,7 +166,7 @@ export default function LoginPage() {
                       value={emailOrUserName}
                       onChange={(e) => setEmailOrUserName(e.target.value)}
                       placeholder="Enter your username"
-                      className="h-12 rounded-2xl border-slate-200 bg-slate-50! pl-12! pr-4 text-base text-slate-950 placeholder:text-slate-400 focus-visible:bg-white!"
+                      className="h-12 rounded-2xl border-slate-200! bg-slate-50! pl-12! pr-4 text-base! text-slate-950 placeholder:text-slate-400! focus-visible:bg-white!  focus-visible:ring-transparent!"
                       autoComplete="username"
                       required
                     />
@@ -192,7 +192,7 @@ export default function LoginPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
-                      className="h-12 rounded-2xl border-slate-200 bg-slate-50! pl-12! pr-12! text-base text-slate-950 placeholder:text-slate-400 focus-visible:bg-white!"
+                      className="h-12 rounded-2xl border-slate-200! bg-slate-50! pl-12! pr-12! text-base! text-slate-950! placeholder:text-slate-400! focus-visible:bg-white!  focus-visible:ring-transparent!"
                       autoComplete="current-password"
                       required
                     />
