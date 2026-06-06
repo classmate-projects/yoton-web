@@ -185,7 +185,7 @@ export default function RoleManagementPage() {
                     className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-100" : ""}`}
                   >
                     <div className="flex flex-col justify-between mb-1">
-                      <span className={`font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : "text-gray-800"}`}>
+                      <span className={`font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : ""}`}>
                         {role.name}
                       </span>
                       <p className={`text-sm text-gray-500 ${!role.isActive ? "text-gray-100" : "text-gray-500"}`}>

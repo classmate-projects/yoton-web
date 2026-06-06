@@ -25,7 +25,12 @@ export default function PatientRecordsPage() {
   const fetchPatients = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/reception/patient`);
+      const res = await fetch(`${baseUrl}/api/reception/patient`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json"
+        }
+      });
       const data = await res.json();
       console.log("Data: ", data.data.patients)
       setPatients(data.data.patients || []);
@@ -111,7 +116,7 @@ export default function PatientRecordsPage() {
               placeholder="Search patients..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg bg-(--color-highlight) border border-(--color-border) focus:outline-none focus:border-blue-500"
+              className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
             />
           </div>
         </div>

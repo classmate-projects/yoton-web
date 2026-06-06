@@ -322,7 +322,7 @@ export default function PatientEntryPage() {
               </label>
               <div className="flex border border-border rounded-lg focus-within:ring-2 focus-within:ring-primary focus-within:border-transparent overflow-hidden">
                 {/* Phone Code Display and Dropdown */}
-                <div className="relative w-24 shrink-0">
+                <div className="relative w-20 shrink-0">
                   <div className="absolute left-4 top-2.5 text-foreground font-medium pointer-events-none z-10">
                     {formData.PhoneCode}
                   </div>
@@ -335,7 +335,7 @@ export default function PatientEntryPage() {
                     value={formData.PhoneCode}
                     onChange={handleInputChange}
                     required
-                    className="px-4 py-2.5 border-r border-border focus:outline-none text-foreground bg-card w-full shrink-0 appearance-none cursor-pointer"
+                    className="px-4 py-2.5 border-r border-border ring-transparent! focus:outline-none! rounded-none! text-foreground bg-card w-full shrink-0 appearance-none cursor-pointer"
                     style={{ color: "transparent" }}
                   >
                     {countryDetails.map((country, index) => (
@@ -359,7 +359,7 @@ export default function PatientEntryPage() {
                   onChange={handleInputChange}
                   required
                   placeholder="0501234567"
-                  className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent"
+                  className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent rounded-none!"
                 />
               </div>
             </div>
@@ -569,7 +569,7 @@ export default function PatientEntryPage() {
                   name="ReferralStatus"
                   checked={formData.ReferralStatus}
                   onChange={handleInputChange}
-                  className="w-5 h-5 text-primary border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-transparent"
+                  className="cursor-pointer bg-transparent"
                 />
                 <label
                   htmlFor="ReferralStatus"
@@ -586,7 +586,7 @@ export default function PatientEntryPage() {
                   name="ChronicStatus"
                   checked={formData.ChronicStatus}
                   onChange={handleInputChange}
-                  className="w-5 h-5 text-primary border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-transparent"
+                  className="cursor-pointer bg-transparent"
                 />
                 <label
                   htmlFor="ChronicStatus"

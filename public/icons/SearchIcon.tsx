@@ -1,12 +1,10 @@
-import React from "react";
-
 interface SearchIconProps {
   size?: number;
   color?: string;
 }
 
 const SearchIcon = ({
-  size = 24,
+  size = 18,
   color = "currentColor",
 }: SearchIconProps) => {
   return (
