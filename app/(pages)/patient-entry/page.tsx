@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   MdOutlinePersonOutline,
   MdOutlineLocalPhone,
@@ -42,6 +42,8 @@ export default function PatientEntryPage() {
         null)
       : null;
 
+  const token = localStorage.getItem("yoton_token");
+
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
@@ -74,12 +76,16 @@ export default function PatientEntryPage() {
     try {
       const res = await fetch(`${baseUrl}/api/reception`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(payload),
       });
 
       const data = await res.json();
       console.log("Patient entry: ", data);
+      resetForm();
     } catch (error) {
       console.log(error);
     }

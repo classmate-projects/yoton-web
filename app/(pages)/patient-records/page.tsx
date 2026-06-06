@@ -22,18 +22,24 @@ export default function PatientRecordsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
+  const token = localStorage.getItem("yoton_token");
   const fetchPatients = async () => {
     try {
+      if (!token) {
+        toast.error("Authentication token not found. Please log in again.");
+        return;
+      }
       setIsLoading(true);
       const res = await fetch(`${baseUrl}/api/reception/patient`, {
         method: "GET",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         }
       });
       const data = await res.json();
-      console.log("Data: ", data.data.patients)
-      setPatients(data.data.patients || []);
+      console.log("Data: ", data)
+      setPatients(data.patients || []);
     } catch (error) {
       console.error("Failed to fetch patients", error);
     } finally {
@@ -51,10 +57,12 @@ export default function PatientRecordsPage() {
 
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`/api/patient`, {
+      const res = await fetch(`${baseUrl}/api/reception/${id}`, {
         method: "DELETE",
-        body: JSON.stringify({ id })
-
+         headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        }
       });
       if (res.ok) {
         fetchPatients();
