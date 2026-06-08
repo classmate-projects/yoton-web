@@ -274,7 +274,9 @@ export default function UserManagement() {
                   <LoadingSpinner />
                 </td>
               </tr>
-            ) : filteredUsers.length > 0 ? (
+            ) : filteredUsers
+              .filter((user) => user.role !== "admin")
+              .length > 0 ? (
               filteredUsers
                 .slice()
                 .sort((a, b) => b.id - a.id)

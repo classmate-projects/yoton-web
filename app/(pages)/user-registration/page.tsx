@@ -142,6 +142,7 @@ function UserRegistrationForm() {
               handleUserReg();
             }
           }}
+          autoComplete="off"
           className="card rounded-xl shadow-2xl border-t p-8 mt-8 flex flex-col gap-6"
         >
           {editMode ? (
@@ -261,17 +262,18 @@ function UserRegistrationForm() {
                 </div>
 
                 <div className="w-full">
-                  <label htmlFor="username" className="font-bold required">
+                  <label htmlFor="staff-username" className="font-bold required">
                     Username
                   </label>
                   <input
                     type="text"
-                    id="username"
-                    name="username"
+                    id="staff-username"
+                    name="staffUsername"
                     required
                     placeholder="johnathandoe123"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="off"
                     className="outline-0 p-4 rounded-xl w-full mt-2"
                     style={{
                       backgroundColor: "var(--color-highlight)",
@@ -337,17 +339,18 @@ function UserRegistrationForm() {
                 </div>
 
                 <div className="w-full">
-                  <label htmlFor="password" className="font-bold required">
+                  <label htmlFor="temporary-password" className="font-bold required">
                     Temporary Password
                   </label>
                   <input
                     type="password"
-                    id="password"
-                    name="password"
+                    id="temporary-password"
+                    name="temporaryPassword"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter temporary password"
+                    autoComplete="new-password"
                     className="outline-0 p-4 rounded-xl w-full mt-2"
                     style={{
                       backgroundColor: "var(--color-highlight)",
