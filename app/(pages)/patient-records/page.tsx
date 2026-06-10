@@ -22,8 +22,8 @@ export default function PatientRecordsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const token = localStorage.getItem("yoton_token");
   const fetchPatients = async () => {
+    const token = localStorage.getItem("yoton_token");
     try {
       if (!token) {
         toast.error("Authentication token not found. Please log in again.");
@@ -56,6 +56,7 @@ export default function PatientRecordsPage() {
   }, []);
 
   const handleDelete = async (id: number) => {
+    const token = localStorage.getItem("yoton_token");
     try {
       const res = await fetch(`${baseUrl}/api/reception/${id}`, {
         method: "DELETE",
