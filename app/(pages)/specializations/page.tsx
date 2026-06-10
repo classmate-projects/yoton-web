@@ -34,6 +34,8 @@ export default function SpecializationPage() {
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [allDepartments, setAllDepartments] = useState<DepartmentType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+
 
   const isEditing = editingSpecialization !== null;
 
@@ -66,6 +68,8 @@ export default function SpecializationPage() {
   ) => {
     e.preventDefault();
 
+    setLoading(true)
+
     const payload = {
       name,
       description,
@@ -89,9 +93,9 @@ export default function SpecializationPage() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            (isEditing
-              ? "Failed to update specialization"
-              : "Failed to add specialization"),
+          (isEditing
+            ? "Failed to update specialization"
+            : "Failed to add specialization"),
         );
       }
 
@@ -102,6 +106,8 @@ export default function SpecializationPage() {
         toast.error(error.message);
       }
       console.error("Error:", error);
+    } finally {
+      setLoading(false)
     }
 
     closeModal();
@@ -360,7 +366,7 @@ export default function SpecializationPage() {
                   type="submit"
                   className="px-5 py-2.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer w-full"
                 >
-                  {isEditing ? "Update" : "Add"}
+                  {isEditing ? "Update" : loading ? "Saving.." : "Add"}
                 </button>
               </div>
             </form>
@@ -447,7 +453,7 @@ export default function SpecializationPage() {
                       <button
                         title="Edit"
                         onClick={() => editSpecialization(spec)}
-                       className="hover:bg-blue-100 ring-transparent hover:ring-blue-200 transition-colors duration-150 rounded-full p-2 cursor-pointer">
+                        className="hover:bg-blue-100 ring-transparent hover:ring-blue-200 transition-colors duration-150 rounded-full p-2 cursor-pointer">
                         <EditIcon color="blue" size={20} />
                       </button>
                     </div>

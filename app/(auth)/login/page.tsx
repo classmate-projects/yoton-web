@@ -39,6 +39,8 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Login failed");
 
+      localStorage.setItem("yoton_token", data.body.token);
+
       localStorage.setItem(
         "yoton_user_detail",
         JSON.stringify({
@@ -52,8 +54,7 @@ export default function LoginPage() {
       router.push("/");
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
-    } finally {
-      setLoading(false);
+      setLoading(false)
     }
   };
 

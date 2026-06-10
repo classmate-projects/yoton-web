@@ -52,7 +52,9 @@ export default function UserManagement() {
         (activeStatus === "active" && user.isActive) ||
         (activeStatus === "inactive" && !user.isActive);
 
-      return matchesSearch && matchesRole && matchesActiveStatus;
+        const notAdmin = user.role.toLowerCase() !== "admin";
+
+      return matchesSearch && matchesRole && matchesActiveStatus && notAdmin;
     });
   }, [users, searchQuery, role, activeStatus]);
 
@@ -248,7 +250,7 @@ export default function UserManagement() {
           </div>
         </div>
         <div className="bg-gray-500 p-6 rounded-xl text-white">
-          <h3>Total Users: {users.length}</h3>
+          <h3>Total Users: {users.length - 1}</h3>
         </div>
       </div>
 
@@ -274,7 +276,8 @@ export default function UserManagement() {
                   <LoadingSpinner />
                 </td>
               </tr>
-            ) : filteredUsers.length > 0 ? (
+            ) : filteredUsers
+              .length > 0 ? (
               filteredUsers
                 .slice()
                 .sort((a, b) => b.id - a.id)
