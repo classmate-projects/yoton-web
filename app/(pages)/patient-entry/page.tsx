@@ -35,6 +35,7 @@ export default function PatientEntryPage() {
     Password: "",
   });
   const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState(false)
 
   const registeredBy =
     typeof window !== "undefined"
@@ -59,6 +60,8 @@ export default function PatientEntryPage() {
   // Form submission handler
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    setLoading(true)
 
     // Validate that at least one of National ID or Passport Number is filled
     if (!formData.NationalID && !formData.PassportNumber) {
@@ -88,6 +91,8 @@ export default function PatientEntryPage() {
       resetForm();
     } catch (error) {
       console.log(error);
+    } finally {
+      setLoading(false)
     }
     setError("");
   };
@@ -609,9 +614,9 @@ export default function PatientEntryPage() {
         <div className="flex gap-4 my-8">
           <button
             type="submit"
-            className="flex-1 bg-primary hover:opacity-90 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md"
+            className="flex-1 bg-primary hover:opacity-90 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md cursor-pointer"
           >
-            Register Patient
+            {loading ? "Registering..." : "Register Patient"}
           </button>
           <button
             type="button"

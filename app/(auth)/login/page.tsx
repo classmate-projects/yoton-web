@@ -54,8 +54,7 @@ export default function LoginPage() {
       router.push("/");
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
-    } finally {
-      setLoading(false);
+      setLoading(false)
     }
   };
 

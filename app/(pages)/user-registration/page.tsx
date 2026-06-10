@@ -21,6 +21,7 @@ function UserRegistrationForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editMode = searchParams.get("edit") === "true";
+  const[loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (editMode) {
@@ -43,6 +44,7 @@ function UserRegistrationForm() {
   }, [editMode]);
 
   const handleUserReg = async () => {
+    setLoading(true);
     try {
       if (!name || !username || !password || !email || !role || !phone) {
         toast.warning("Please fill all the required fields");
@@ -82,6 +84,8 @@ function UserRegistrationForm() {
       router.push("/user-management");
     } catch (error) {
       console.log(error);
+    } finally {
+      setLoading(false)
     }
   };
 
@@ -378,7 +382,7 @@ function UserRegistrationForm() {
               type="submit"
               className="px-6 py-3 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
             >
-              {editMode ? "Save Changes" : "Register User"}
+              {editMode ? "Save Changes" : loading ? "Saving..." : "Register User"}
             </button>
           </div>
         </form>

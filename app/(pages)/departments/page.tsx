@@ -26,6 +26,7 @@ export default function DepartmentsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [loading, setloading] = useState(false)
 
   const isEditing = editingDepartment !== null;
 
@@ -80,6 +81,7 @@ export default function DepartmentsPage() {
     e: React.FormEvent<HTMLFormElement>,
   ) => {
     e.preventDefault();
+    setloading(true)
 
     try {
       const res = await fetch(
@@ -115,6 +117,8 @@ export default function DepartmentsPage() {
       closeModal();
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
+    } finally {
+      setloading(false)
     }
   };
 
@@ -275,7 +279,7 @@ export default function DepartmentsPage() {
                   type="submit"
                   className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full"
                 >
-                  {isEditing ? "Update" : "Save"}
+                  {isEditing ? "Update" : loading ? "Saving..." : "Save"}
                 </button>
               </div>
             </form>
