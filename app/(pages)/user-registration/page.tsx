@@ -21,6 +21,7 @@ function UserRegistrationForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editMode = searchParams.get("edit") === "true";
+  const[loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (editMode) {
@@ -43,6 +44,7 @@ function UserRegistrationForm() {
   }, [editMode]);
 
   const handleUserReg = async () => {
+    setLoading(true);
     try {
       if (!name || !username || !password || !email || !role || !phone) {
         toast.warning("Please fill all the required fields");
@@ -82,6 +84,8 @@ function UserRegistrationForm() {
       router.push("/user-management");
     } catch (error) {
       console.log(error);
+    } finally {
+      setLoading(false)
     }
   };
 
@@ -142,6 +146,7 @@ function UserRegistrationForm() {
               handleUserReg();
             }
           }}
+          autoComplete="off"
           className="card rounded-xl shadow-2xl border-t p-8 mt-8 flex flex-col gap-6"
         >
           {editMode ? (
@@ -261,17 +266,18 @@ function UserRegistrationForm() {
                 </div>
 
                 <div className="w-full">
-                  <label htmlFor="username" className="font-bold required">
+                  <label htmlFor="staff-username" className="font-bold required">
                     Username
                   </label>
                   <input
                     type="text"
-                    id="username"
-                    name="username"
+                    id="staff-username"
+                    name="staffUsername"
                     required
                     placeholder="johnathandoe123"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="off"
                     className="outline-0 p-4 rounded-xl w-full mt-2"
                     style={{
                       backgroundColor: "var(--color-highlight)",
@@ -337,17 +343,18 @@ function UserRegistrationForm() {
                 </div>
 
                 <div className="w-full">
-                  <label htmlFor="password" className="font-bold required">
+                  <label htmlFor="temporary-password" className="font-bold required">
                     Temporary Password
                   </label>
                   <input
                     type="password"
-                    id="password"
-                    name="password"
+                    id="temporary-password"
+                    name="temporaryPassword"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter temporary password"
+                    autoComplete="new-password"
                     className="outline-0 p-4 rounded-xl w-full mt-2"
                     style={{
                       backgroundColor: "var(--color-highlight)",
@@ -375,7 +382,7 @@ function UserRegistrationForm() {
               type="submit"
               className="px-6 py-3 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer"
             >
-              {editMode ? "Save Changes" : "Register User"}
+              {editMode ? "Save Changes" : loading ? "Saving..." : "Register User"}
             </button>
           </div>
         </form>

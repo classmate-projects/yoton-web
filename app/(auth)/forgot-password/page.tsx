@@ -81,7 +81,7 @@ export default function ForgotPasswordPage() {
   return (
     <main className="min-h-screen w-full bg-[#f6f9fc] px-5 py-10 text-foreground">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-6xl items-center justify-center">
-        <div className="grid w-full overflow-hidden rounded-[2rem] border border-white bg-white shadow-[0_24px_80px_rgba(15,23,42,0.12)] lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="grid w-full overflow-hidden rounded-4xl border border-white bg-white shadow-[0_24px_80px_rgba(15,23,42,0.12)] lg:grid-cols-[0.9fr_1.1fr]">
           <section className="hidden bg-[#0b5968] p-10 text-white lg:flex lg:flex-col lg:justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-xl">
