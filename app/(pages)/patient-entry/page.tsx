@@ -35,15 +35,7 @@ export default function PatientEntryPage() {
     Password: "",
   });
   const [error, setError] = useState<string>("");
-  const [loading, setLoading] = useState(false)
-
-  const registeredBy =
-    typeof window !== "undefined"
-      ? (JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ??
-        null)
-      : null;
-
-  const token = localStorage.getItem("yoton_token");
+  const [loading, setLoading] = useState(false);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -61,13 +53,19 @@ export default function PatientEntryPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    setLoading(true)
+    setLoading(true);
 
     // Validate that at least one of National ID or Passport Number is filled
     if (!formData.NationalID && !formData.PassportNumber) {
       setError("Please provide either National ID or Passport Number");
+      setLoading(false);
       return;
     }
+
+    const registeredBy =
+      JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ??
+      null;
+    const token = localStorage.getItem("yoton_token");
 
     const payload = {
       ...formData,
