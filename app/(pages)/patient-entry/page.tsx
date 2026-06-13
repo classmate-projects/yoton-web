@@ -31,7 +31,6 @@ export default function PatientEntryPage() {
     ChronicStatus: false,
     EmergencyContact: "",
     EmergencyContactPhone: "",
-    OPNumber: "",
     Password: "",
   });
   const [error, setError] = useState<string>("");
@@ -75,7 +74,7 @@ export default function PatientEntryPage() {
     console.log("payload submit: ", payload);
 
     try {
-      const res = await fetch(`${baseUrl}/api/reception`, {
+      const res = await fetch(`${baseUrl}/api/reception/create-patient`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -117,7 +116,6 @@ export default function PatientEntryPage() {
       ChronicStatus: false,
       EmergencyContact: "",
       EmergencyContactPhone: "",
-      OPNumber: "",
       Password: "",
     });
   };
@@ -519,22 +517,6 @@ export default function PatientEntryPage() {
                 <option value="Business">Business</option>
                 <option value="Student">Student</option>
               </select>
-            </div>
-
-            {/* OP Number */}
-            <div className="flex flex-col gap-2">
-              <label htmlFor="OPNumber" className="font-semibold text-foreground/90">
-                OP Number
-              </label>
-              <input
-                type="text"
-                id="OPNumber"
-                name="OPNumber"
-                value={formData.OPNumber}
-                onChange={handleInputChange}
-                placeholder="OP-2025-001"
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
-              />
             </div>
           </div>
         </div>

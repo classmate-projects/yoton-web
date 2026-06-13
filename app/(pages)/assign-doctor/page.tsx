@@ -6,29 +6,8 @@ import ToggleButton from "@/components/ToggleButton";
 import { baseUrl } from "@/lib/constants";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { Doctor, Specialization, User } from "@/types/Specializations.type";
 
-interface Doctor {
-  id: number;
-  name: string;
-  specialization: string;
-  licenseNumber: string;
-  consultationFee: number;
-  experienceYears: number;
-  isAssigned?: boolean;
-}
-
-interface User {
-  id: number;
-  name: string;
-  username: string;
-  email: string;
-  role: string;
-}
-
-interface Specialization {
-  specializationId: number;
-  name: string;
-}
 
 export default function AssignDoctor() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -319,7 +298,7 @@ export default function AssignDoctor() {
                   onChange={(e) => setSelectedSpecialization(e.target.value)}
                   className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
                 >
-                  <option value="">Select Specialization</option>
+                  <option value="" disabled>Select Specialization</option>
                   {specializations.map((spec) => (
                     <option key={spec.specializationId} value={String(spec.specializationId)}>
                       {spec.name}
