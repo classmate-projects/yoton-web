@@ -1,20 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MdAssignmentInd } from "react-icons/md";
-import ToggleButton from "@/components/ToggleButton";
+import { MdAssignmentInd, MdAdd } from "react-icons/md";
 import { baseUrl } from "@/lib/constants";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { Doctor, Specialization, User } from "@/types/Specializations.type";
+import { Specialization, User } from "@/types/Specializations.type";
+import { AssignedDoctors, AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
+import ToggleButton from "@/components/ToggleButton";
 
 
 export default function AssignDoctor() {
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [assignments, setAssignments] = useState<Record<number, boolean>>({});
+  const [doctors, setDoctors] = useState<AssignedDoctorsInfo[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Modal form state
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [searchUsername, setSearchUsername] = useState("");
@@ -23,9 +23,28 @@ export default function AssignDoctor() {
   const [licenseNumber, setLicenseNumber] = useState("");
   const [consultationFee, setConsultationFee] = useState("");
   const [experience, setExperience] = useState("");
-  
+
   const [users, setUsers] = useState<User[]>([]);
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
+
+
+  // fetch assigned doctors
+  useEffect(() => {
+    const fetchAssignedDoctors = async () => {
+      try {
+        const res = await fetch(`${baseUrl}/api/user/AssignedDoctors`)
+        if (!res.ok) throw new Error("Failed to fetch assigned doctors")
+
+        const data: AssignedDoctors = await res.json()
+        console.log("assigned doctors: ", data)
+        setDoctors(data.doctors)
+      } catch (error) {
+        console.error("Error", error)
+      }
+    }
+
+    fetchAssignedDoctors()
+  }, [])
 
   // Fetch users and specializations
   useEffect(() => {
@@ -36,12 +55,12 @@ export default function AssignDoctor() {
           fetch(`${baseUrl}/api/user/users`),
           fetch(`${baseUrl}/api/specialization`),
         ]);
-        
+
         if (usersRes.ok) {
           const usersData = await usersRes.json();
           setUsers(usersData.users.filter((user: User) => user.role === "doctor"));
         }
-        
+
         if (specsRes.ok) {
           const specsData = await specsRes.json();
           setSpecializations(Array.isArray(specsData) ? specsData : []);
@@ -52,25 +71,18 @@ export default function AssignDoctor() {
         setIsLoading(false);
       }
     };
-    
+
     fetchData();
   }, []);
 
   // Compute filtered users based on search
   const filteredUsers = searchUsername.trim()
     ? users.filter(
-        (user) =>
-          user.username.toLowerCase().includes(searchUsername.toLowerCase()) ||
-          user.name.toLowerCase().includes(searchUsername.toLowerCase())
-      )
+      (user) =>
+        user.username.toLowerCase().includes(searchUsername.toLowerCase()) ||
+        user.name.toLowerCase().includes(searchUsername.toLowerCase())
+    )
     : [];
-
-  const handleToggle = (doctorId: number) => {
-    setAssignments((prev) => ({
-      ...prev,
-      [doctorId]: !prev[doctorId],
-    }));
-  };
 
   const handleAssignDoctor = () => {
     setIsModalOpen(true);
@@ -91,12 +103,12 @@ export default function AssignDoctor() {
     try {
 
       const payload = {
-          UserId: selectedUser.id,
-          SpecializationId: parseInt(selectedSpecialization),
-          LicenseNumber: licenseNumber,
-          ConsultationFee: parseFloat(consultationFee),
-          ExperienceYears: parseInt(experience),
-        };
+        UserId: selectedUser.id,
+        SpecializationId: parseInt(selectedSpecialization),
+        LicenseNumber: licenseNumber,
+        ConsultationFee: parseFloat(consultationFee),
+        ExperienceYears: parseInt(experience),
+      };
 
       const response = await fetch(`${baseUrl}/api/user/AssignDoctor`, {
         method: "POST",
@@ -105,7 +117,7 @@ export default function AssignDoctor() {
         },
         body: JSON.stringify(payload),
       });
-      
+
       const data = await response.json();
 
       if (response.ok) {
@@ -174,26 +186,29 @@ export default function AssignDoctor() {
               </tr>
             ) : doctors.length > 0 ? (
               doctors.map((doctor) => (
-                <tr key={doctor.id}>
+                <tr key={doctor.doctorId}>
                   <td className="font-semibold text-foreground">
-                    {doctor.name}
+                    {doctor.userName}
                   </td>
                   <td className="text-primary font-semibold">
-                    {doctor.specialization}
+                    {doctor.specializationName}
                   </td>
                   <td className="text-foreground/80">
                     {doctor.licenseNumber}
                   </td>
                   <td className="text-foreground/80">
-                    ${doctor.consultationFee}
+                    {doctor.consultationFee}
                   </td>
                   <td className="text-foreground/80">
                     {doctor.experienceYears} years
                   </td>
+                  {/* <td>
+                    <button>Add</button>
+                  </td> */}
                   <td>
-                    <ToggleButton
-                      checked={assignments[doctor.id] || false}
-                      onChange={() => handleToggle(doctor.id)}
+                    <ToggleButton 
+                      checked={doctor.isActive}
+                      onChange={() => console.log("nothing")}
                     />
                   </td>
                 </tr>
