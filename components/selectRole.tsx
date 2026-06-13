@@ -19,7 +19,6 @@ export default function SelectRole({
       try {
         const res = await fetch(`${baseUrl}/api/role`);
         const data = await res.json();
-        console.log("Fetched roles: ", data);
         setAvailableRoles(data);
       } catch (error) {
         console.error("Error fetching roles: ", error);

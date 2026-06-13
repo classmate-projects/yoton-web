@@ -4,6 +4,7 @@
 import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
 import { baseUrl } from "@/lib/constants";
+import { Specialization } from "@/types/Specializations.type";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { toast } from "sonner";
@@ -18,10 +19,45 @@ function UserRegistrationForm() {
   const [isActive, setIsActive] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
 
+
+  const [showAssignDoctor, setShowAssignDoctor] = useState(false)
+  const [specializations, setSpecializations] = useState<Specialization[]>([]);
+  const [selectedSpecialization, setSelectedSpecialization] = useState("");
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [consultationFee, setConsultationFee] = useState("");
+  const [experience, setExperience] = useState("");
+
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const editMode = searchParams.get("edit") === "true";
-  const[loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+
+
+  const fetchAllSpecializations = async () => {
+    try {
+      const res = await fetch(`${baseUrl}/api/specialization`)
+      if (!res.ok) {
+        throw new Error("Failed to fetch specializations")
+      }
+
+      const data = await res.json()
+      setSpecializations(data)
+    } catch (error) {
+      console.error("Error: ", error)
+    }
+  }
+
+  useEffect(() => {
+    fetchAllSpecializations()
+  }, [])
+
+
+  useEffect(() => {
+    if (role === "doctor") setShowAssignDoctor(true)
+    if (role !== "doctor") setShowAssignDoctor(false)
+  }, [role])
 
   useEffect(() => {
     if (editMode) {
@@ -43,6 +79,37 @@ function UserRegistrationForm() {
     }
   }, [editMode]);
 
+  // handle assign doctor if the role is doctor
+  const handleDoctorAssign = async (userId: number) => {
+    console.log("Need to do assign doctor", userId)
+
+    const payload = {
+      UserId: userId,
+      SpecializationId: selectedSpecialization,
+      LicenseNumber: licenseNumber,
+      ExperienceYears: experience,
+      ConsultationFee: consultationFee
+    }
+
+    try {
+      const res = await fetch(`${baseUrl}/api/user/AssignDoctor`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify(payload)
+      })
+
+      const data = await res.json()
+
+      console.log("Assign doctor: ", data)
+    } catch (error) {
+      console.error("Error: ", error)
+    }
+  }
+
+  // register user
   const handleUserReg = async () => {
     setLoading(true);
     try {
@@ -70,6 +137,10 @@ function UserRegistrationForm() {
       }
 
       const data = await res.json();
+
+      if (data.role === "doctor") {
+        handleDoctorAssign(data.userId)
+      }
 
       setEmail("");
       setName("");
@@ -129,11 +200,6 @@ function UserRegistrationForm() {
         <h1 className="text-4xl font-semibold">
           {editMode ? "Edit Staff Details" : "Staff Registration"}
         </h1>
-        <p className="text-sm text-gray-500">
-          {editMode
-            ? "Update personnel details and system access permissions."
-            : "Enter new personnel details to provision system access."}
-        </p>
       </div>
 
       <div>
@@ -147,7 +213,7 @@ function UserRegistrationForm() {
             }
           }}
           autoComplete="off"
-          className="card rounded-xl shadow-2xl border-t p-8 mt-8 flex flex-col gap-6"
+          className="card rounded-xl shadow-2xl border-t p-8 mt-4 flex flex-col gap-6"
         >
           {editMode ? (
             <>
@@ -364,6 +430,61 @@ function UserRegistrationForm() {
                   />
                 </div>
               </div>
+
+              {showAssignDoctor && (
+                <div className="flex  gap-4 w-full">
+                  <div className="flex items-center gap-2 w-full">
+                    <div className="flex flex-col gap-1 w-full">
+                      <label htmlFor="specialization" className="font-bold text-sm">Specialisation</label>
+                      <select
+                        name="specialization"
+                        id="specialization"
+                        value={selectedSpecialization}
+                        onChange={(e) => setSelectedSpecialization(e.target.value)}
+                      >
+                        <option value="" disabled>Select</option>
+                        {specializations.map((specialization) => (
+                          <option
+                            key={specialization.specializationId}
+                            value={specialization.specializationId}>
+                            {specialization.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-1 w-full">
+                      <label htmlFor="licence_number" className="font-bold text-sm">Licence Number</label>
+                      <input
+                        type="text"
+                        value={licenseNumber}
+                        onChange={(e) => setLicenseNumber(e.target.value)}
+                        placeholder="eg: MD123456"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 w-full">
+                    <div className="flex flex-col gap-1 w-full">
+                      <label htmlFor="consultation_fee" className="font-bold text-sm">Consultation Fee</label>
+                      <input
+                        type="text"
+                        placeholder="eg: 50"
+                        value={consultationFee}
+                        onChange={(e) => setConsultationFee(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 w-full">
+                      <label htmlFor="experience" className="font-bold text-sm">Experience (Years)</label>
+                      <input
+                        type="text"
+                        placeholder="eg: 5"
+                        value={experience}
+                        onChange={(e) => setExperience(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
