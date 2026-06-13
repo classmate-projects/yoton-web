@@ -2,13 +2,14 @@
 
 import ToggleButton from "@/components/ToggleButton";
 import BuildingIcon from "@/public/icons/BuildingIcon";
-import { MdAdd } from "react-icons/md";
-import { useEffect, useState } from "react";
+import { MdAdd, MdExpandMore, MdExpandLess } from "react-icons/md";
+import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { baseUrl } from "@/lib/constants";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import SpecializationModal from "@/components/SpecializationModal";
 
 interface Department {
   departmentId: number;
@@ -17,9 +18,27 @@ interface Department {
   isActive: boolean;
 }
 
+interface Specialization {
+  specializationId: number;
+  name: string;
+  description: string;
+  isActive: boolean;
+  department: {
+    departmentId: number;
+    name: string;
+  };
+}
+
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [specializations, setSpecializations] = useState<Specialization[]>([]);
+  const [expandedDepartments, setExpandedDepartments] = useState<Set<number>>(new Set());
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSpecModalOpen, setIsSpecModalOpen] = useState(false);
+  const [initialDeptIdForSpec, setInitialDeptIdForSpec] = useState("");
+  const [editingSpecialization, setEditingSpecialization] = useState<Specialization | null>(null);
+  
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(
     null,
   );
@@ -51,6 +70,39 @@ export default function DepartmentsPage() {
     setDescription("");
   };
 
+  const openSpecModal = (departmentId: number) => {
+    setInitialDeptIdForSpec(String(departmentId));
+    setEditingSpecialization(null);
+    setIsSpecModalOpen(true);
+  };
+
+  const openEditSpecModal = (spec: Specialization) => {
+    setEditingSpecialization(spec);
+    setIsSpecModalOpen(true);
+  };
+
+  const closeSpecModal = () => {
+    setIsSpecModalOpen(false);
+    setInitialDeptIdForSpec("");
+    setEditingSpecialization(null);
+  };
+
+  const handleSpecSuccess = () => {
+    fetchSpecializations();
+  };
+
+  const toggleExpand = (id: number) => {
+    setExpandedDepartments((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   // fetch departments
   const fetchDepartments = async () => {
     try {
@@ -69,11 +121,22 @@ export default function DepartmentsPage() {
     }
   };
 
+  // fetch specializations
+  const fetchSpecializations = async () => {
+    try {
+      const res = await fetch(`${baseUrl}/api/specialization`);
+      const data = await res.json();
+      if (res.ok) {
+        setSpecializations(data);
+      }
+    } catch (error) {
+      console.error("Error fetching specializations:", error);
+    }
+  };
+
   useEffect(() => {
-    const callFetchApi = () => {
-      fetchDepartments();
-    };
-    callFetchApi();
+    fetchDepartments();
+    fetchSpecializations();
   }, []);
 
   // create or update department
@@ -156,6 +219,59 @@ export default function DepartmentsPage() {
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
     }
+  };
+
+  // toggle specialization active status
+  const handleToggleSpecialization = async (spec: Specialization) => {
+    const nextIsActive = !spec.isActive;
+    try {
+      const res = await fetch(`${baseUrl}/api/specialization/${spec.specializationId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: spec.name,
+          description: spec.description,
+          departmentId: spec.department.departmentId,
+          isActive: nextIsActive,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to update specialization status");
+      
+      setSpecializations((prev) =>
+        prev.map((s) => (s.specializationId === spec.specializationId ? { ...s, isActive: nextIsActive } : s))
+      );
+      toast.success("Specialization status updated");
+    } catch (error) {
+      toast.error("Failed to update specialization status");
+    }
+  };
+
+  // delete specialization
+  const handleDeleteSpecialization = async (id: number) => {
+    try {
+      const res = await fetch(`${baseUrl}/api/specialization/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete specialization");
+      toast.success("Specialization deleted");
+      fetchSpecializations();
+    } catch (error) {
+      toast.error("Failed to delete specialization");
+    }
+  };
+
+  const confirmDeleteSpec = (id: number, name: string) => {
+    toast(
+      <span>
+        Are you sure you want to delete specialization <b className="text-red-500 ml-1">{name}</b>?
+      </span>,
+      {
+        action: {
+          label: "Delete",
+          onClick: () => handleDeleteSpecialization(id),
+        },
+      }
+    );
   };
 
   // delete department
@@ -287,70 +403,162 @@ export default function DepartmentsPage() {
         </div>
       )}
 
+      {/* Specialization Modal */}
+      <SpecializationModal
+        isOpen={isSpecModalOpen}
+        onClose={closeSpecModal}
+        onSuccess={handleSpecSuccess}
+        initialDepartmentId={initialDeptIdForSpec}
+        editingSpecialization={editingSpecialization}
+      />
+
       <div className="card">
         <div className="overflow-x-auto">
-          <table>
+          <table className="w-full">
             <thead>
               <tr>
+                <th className="w-10"></th>
                 <th className="text-foreground/90">Name</th>
                 <th className="text-foreground/90">Description</th>
                 <th className="text-center text-foreground/90">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border">
               {isLoading ? (
                 <tr>
-                  <td colSpan={3} className="py-16 text-center">
+                  <td colSpan={4} className="py-16 text-center">
                     <LoadingSpinner />
                   </td>
                 </tr>
               ) : departments.length > 0 ? (
-                departments.map((department) => (
-                  <tr
-                    key={department.departmentId}
-                    className={!department.isActive ? "bg-destructive/5 opacity-80" : ""}
-                  >
-                    <td className="font-semibold capitalize text-foreground">
-                      {department.name}
-                    </td>
-                    <td className="text-foreground/80">
-                      {department.description || "No description provided."}
-                    </td>
-                    <td>
-                      <div className="flex justify-center items-center gap-4">
-                        <ToggleButton
-                          checked={department.isActive}
-                          onChange={() => handleToggleDepartment(department)}
-                        />
+                departments.map((department) => {
+                  const deptSpecs = specializations.filter(
+                    (s) => s.department.departmentId === department.departmentId
+                  );
+                  const isExpanded = expandedDepartments.has(department.departmentId);
 
-                        <button
-                          onClick={() =>
-                            confirmDelete(
-                              department.departmentId,
-                              department.name,
-                            )
-                          }
-                          title={`Delete ${department.name}`}
-                          className="p-2 hover:bg-destructive/10 rounded-full transition-all duration-200 cursor-pointer"
-                        >
-                          <DeleteIcon color="red" className="text-destructive" size={18} />
-                        </button>
+                  return (
+                    <React.Fragment key={department.departmentId}>
+                      <tr
+                        className={`${!department.isActive ? "bg-destructive/5 opacity-80" : ""} hover:bg-muted/30 transition-colors`}
+                      >
+                        <td className="pl-4">
+                          {deptSpecs.length > 0 && (
+                            <button
+                              onClick={() => toggleExpand(department.departmentId)}
+                              className="p-1 hover:bg-muted rounded transition-colors cursor-pointer"
+                            >
+                              {isExpanded ? (
+                                <MdExpandLess size={24} className="text-muted-foreground" />
+                              ) : (
+                                <MdExpandMore size={24} className="text-muted-foreground" />
+                              )}
+                            </button>
+                          )}
+                        </td>
+                        <td className="font-semibold capitalize text-foreground">
+                          {department.name}
+                        </td>
+                        <td className="text-foreground/80">
+                          {department.description || "No description provided."}
+                        </td>
+                        <td>
+                          <div className="flex justify-center items-center gap-2">
+                            <button
+                              onClick={() => openSpecModal(department.departmentId)}
+                              title="Add Specialization"
+                              className="p-1.5 hover:bg-emerald-500/10 rounded-full transition-all duration-200 cursor-pointer text-emerald-500"
+                            >
+                              <MdAdd size={18} />
+                            </button>
 
-                        <button
-                          onClick={() => openEditModal(department)}
-                          title={`Edit ${department.name}`}
-                          className="p-2 hover:bg-primary/10 rounded-full transition-all duration-200 cursor-pointer"
-                        >
-                          <EditIcon color="currentColor" className="text-primary" size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                            <ToggleButton
+                              checked={department.isActive}
+                              onChange={() => handleToggleDepartment(department)}
+                              className="scale-[0.8]"
+                            />
+
+                            <button
+                              onClick={() =>
+                                confirmDelete(
+                                  department.departmentId,
+                                  department.name,
+                                )
+                              }
+                              title={`Delete ${department.name}`}
+                              className="p-1.5 hover:bg-destructive/10 rounded-full transition-all duration-200 cursor-pointer"
+                            >
+                              <DeleteIcon color="red" className="text-destructive" size={16} />
+                            </button>
+
+                            <button
+                              onClick={() => openEditModal(department)}
+                              title={`Edit ${department.name}`}
+                              className="p-1.5 hover:bg-primary/10 rounded-full transition-all duration-200 cursor-pointer"
+                            >
+                              <EditIcon color="currentColor" className="text-primary" size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && deptSpecs.length > 0 && (
+                        <tr className="bg-muted/20">
+                          <td colSpan={4} className="p-0">
+                            <div className="px-14 py-3 space-y-1">
+                              <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 opacity-70">
+                                Specializations
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+                                {deptSpecs.map((spec) => (
+                                  <div
+                                    key={spec.specializationId}
+                                    className="bg-card border border-border rounded-lg p-2.5 shadow-sm flex items-center justify-between group"
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-semibold text-sm text-foreground truncate">{spec.name}</p>
+                                      {spec.description && (
+                                        <p className="text-[11px] text-muted-foreground line-clamp-1 opacity-80">
+                                          {spec.description}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 ml-2">
+                                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          onClick={() => openEditSpecModal(spec)}
+                                          title="Edit"
+                                          className="p-1 hover:bg-primary/10 rounded-md transition-all text-primary"
+                                        >
+                                          <EditIcon size={14} />
+                                        </button>
+                                        <button
+                                          onClick={() => confirmDeleteSpec(spec.specializationId, spec.name)}
+                                          title="Delete"
+                                          className="p-1 hover:bg-destructive/10 rounded-md transition-all text-destructive"
+                                        >
+                                          <DeleteIcon size={14} />
+                                        </button>
+                                      </div>
+                                      <ToggleButton
+                                        checked={spec.isActive}
+                                        onChange={() => handleToggleSpecialization(spec)}
+                                        className="scale-[0.7] -mr-2.5"
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })
               ) : (
                 <tr>
                   <td
-                    colSpan={3}
+                    colSpan={4}
                     className="py-16 text-center text-muted-foreground"
                   >
                     No departments found.
