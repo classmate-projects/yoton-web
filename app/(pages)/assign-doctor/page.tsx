@@ -187,7 +187,8 @@ export default function AssignDoctor() {
             ) : doctors.length > 0 ? (
               doctors.map((doctor) => (
                 <tr key={doctor.doctorId}>
-                  <td className="font-semibold text-foreground">
+                  <td className="font-semibold text-foreground flex items-center gap-2">
+                    <span className={` w-[8px] h-[8px] block rounded-full ${doctor.isActive ? "bg-green-500" : "bg-red-500"}`}></span>
                     {doctor.userName}
                   </td>
                   <td className="text-primary font-semibold">
@@ -206,10 +207,7 @@ export default function AssignDoctor() {
                     <button>Add</button>
                   </td> */}
                   <td>
-                    <ToggleButton 
-                      checked={doctor.isActive}
-                      onChange={() => console.log("nothing")}
-                    />
+                    <button>Edit</button>
                   </td>
                 </tr>
               ))
