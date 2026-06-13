@@ -65,15 +65,15 @@ export default function RoleManagementPage() {
       console.log("Update payload: ", updatePayload)
 
       const res = await fetch(`${baseUrl}/api/role/update/${editingRole.roleId}`, {
-        method: "PUT", 
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatePayload)
       })
 
-      if(!res.ok) throw new Error("Error while updating role")
+      if (!res.ok) throw new Error("Error while updating role")
 
-        const data = await res.json()
-        console.log("updated data: ", data)
+      const data = await res.json()
+      console.log("updated data: ", data)
 
       toast.info(data.message);
       fetchRoles();
@@ -164,7 +164,7 @@ export default function RoleManagementPage() {
     const nextIsActive = !role.isActive;
 
     try {
-      const res = await fetch(`${baseUrl}/api/role/${role.roleId}`, {
+      const res = await fetch(`${baseUrl}/api/role/update/${role.roleId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -212,7 +212,7 @@ export default function RoleManagementPage() {
 
           {isLoading ? (
             <div className="h-80 flex justify-center items-center">
-              < LoadingSpinner/>
+              < LoadingSpinner />
             </div>
           ) : roles.length === 0 ? (
             <div className="h-80 flex justify-center items-center">
@@ -226,39 +226,42 @@ export default function RoleManagementPage() {
                 .map((role) => (
                   <div
                     key={role.roleId}
-                    className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-100" : ""}`}
+                    className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-200 dark:bg-gray-800" : ""}`}
                   >
-                    <div className="flex flex-col justify-between mb-1">
-                      <span className={`font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : ""}`}>
-                        {role.name}
-                      </span>
+                    <div className="flex flex-col justify-between mb-1 w-full">
+                      <div className="flex justify-between items-center gap-4 mb-4">
+                        <span className={`font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : ""}`}>
+                          {role.name}
+                        </span>
+
+                        <div className="flex gap-2 items-center">
+                          <div className="flex items-center gap-2">
+                            {role.isEditable && (
+                              <>
+                                <button onClick={() => handleEditRole(role)}
+                                  className="cursor-pointer hover:bg-blue-100 ring ring-transparent hover:ring-blue-200 p-2 rounded-full transition-all duration-200"
+                                  title={`Edit ${role.name}`}
+                                >
+                                  <EditIcon color="blue" />
+                                </button>
+                                <button onClick={() => RequestDeleteRole(role.roleId, role.name)}
+                                  className="cursor-pointer hover:bg-red-100 ring ring-transparent hover:ring-red-200 p-2 rounded-full transition-all duration-200"
+                                  title={`Delete ${role.name}`}
+                                >
+                                  <DeleteIcon color="red" />
+                                </button>
+                              </>
+                            )}
+                            <ToggleButton
+                              checked={role.isActive}
+                              onChange={() => handleToggleRole(role)}
+                            />
+                          </div>
+                        </div>
+                      </div>
                       <p className={`text-sm text-gray-500 ${!role.isActive ? "text-gray-100" : "text-gray-500"}`}>
                         {role.description || "No description provided."}
                       </p>
-                    </div>
-                    <div className="flex flex-col gap-3 items-center">
-                      <ToggleButton
-                        checked={role.isActive}
-                        onChange={() => handleToggleRole(role)}
-                      />
-                      <div className="flex items-center gap-2">
-                        {role.isEditable && (
-                          <>
-                            <button onClick={() => handleEditRole(role)}
-                              className="cursor-pointer hover:bg-blue-100 ring ring-transparent hover:ring-blue-200 p-2 rounded-full transition-all duration-200"
-                              title={`Edit ${role.name}`}
-                            >
-                              <EditIcon color="blue" />
-                            </button>
-                            <button onClick={() => RequestDeleteRole(role.roleId, role.name)}
-                              className="cursor-pointer hover:bg-red-100 ring ring-transparent hover:ring-red-200 p-2 rounded-full transition-all duration-200"
-                              title={`Delete ${role.name}`}
-                            >
-                              <DeleteIcon color="red" />
-                            </button>
-                          </>
-                        )}
-                      </div>
                     </div>
                   </div>
                 ))}
