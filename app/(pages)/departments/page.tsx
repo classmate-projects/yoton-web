@@ -33,12 +33,12 @@ export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
   const [expandedDepartments, setExpandedDepartments] = useState<Set<number>>(new Set());
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSpecModalOpen, setIsSpecModalOpen] = useState(false);
   const [initialDeptIdForSpec, setInitialDeptIdForSpec] = useState("");
   const [editingSpecialization, setEditingSpecialization] = useState<Specialization | null>(null);
-  
+
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(
     null,
   );
@@ -107,12 +107,11 @@ export default function DepartmentsPage() {
   const fetchDepartments = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/department`);
+      const res = await fetch(`${baseUrl}/api/department/get-all`);
       const data = await res.json();
-      
+
       if (!res.ok)
         throw new Error(data.message || "Failed to fetch Departments");
-
       setDepartments(data);
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
@@ -135,8 +134,11 @@ export default function DepartmentsPage() {
   };
 
   useEffect(() => {
-    fetchDepartments();
-    fetchSpecializations();
+    const callApi = () => {
+      fetchDepartments();
+      fetchSpecializations();
+    }
+    callApi()
   }, []);
 
   // create or update department
@@ -148,17 +150,17 @@ export default function DepartmentsPage() {
 
     try {
       const res = await fetch(
-        `${baseUrl}/api/department/${isEditing ? editingDepartment.departmentId : ""}`,
+        `${baseUrl}/api/department/${isEditing ? `update/${editingDepartment.departmentId}` : "create"}`,
         {
           method: isEditing ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             isEditing
               ? {
-                  name,
-                  description,
-                  isActive: editingDepartment.isActive,
-                }
+                name,
+                description,
+                isActive: editingDepartment.isActive,
+              }
               : { name, description },
           ),
         },
@@ -169,9 +171,9 @@ export default function DepartmentsPage() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            (isEditing
-              ? "Failed to update department"
-              : "Failed to create department"),
+          (isEditing
+            ? "Failed to update department"
+            : "Failed to create department"),
         );
       }
 
@@ -191,7 +193,7 @@ export default function DepartmentsPage() {
 
     try {
       const res = await fetch(
-        `${baseUrl}/api/department/${department.departmentId}`,
+        `${baseUrl}/api/department/update/${department.departmentId}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -236,13 +238,14 @@ export default function DepartmentsPage() {
         }),
       });
       if (!res.ok) throw new Error("Failed to update specialization status");
-      
+
       setSpecializations((prev) =>
         prev.map((s) => (s.specializationId === spec.specializationId ? { ...s, isActive: nextIsActive } : s))
       );
       toast.success("Specialization status updated");
     } catch (error) {
       toast.error("Failed to update specialization status");
+      console.log("error: ", error)
     }
   };
 
@@ -257,6 +260,7 @@ export default function DepartmentsPage() {
       fetchSpecializations();
     } catch (error) {
       toast.error("Failed to delete specialization");
+      console.log("error: ", error)
     }
   };
 
@@ -277,7 +281,7 @@ export default function DepartmentsPage() {
   // delete department
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`${baseUrl}/api/department/${id}`, {
+      const res = await fetch(`${baseUrl}/api/department/delete/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),

@@ -17,7 +17,7 @@ export default function SelectRole({
   useEffect(() => {
     const fetchAvailableRoles = async () => {
       try {
-        const res = await fetch(`${baseUrl}/api/role`);
+        const res = await fetch(`${baseUrl}/api/role/get-all`);
         const data = await res.json();
         setAvailableRoles(data);
       } catch (error) {
