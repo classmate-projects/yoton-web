@@ -123,7 +123,7 @@ export default function DepartmentsPage() {
   // fetch specializations
   const fetchSpecializations = async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization`);
+      const res = await fetch(`${baseUrl}/api/specialization/get-all`);
       const data = await res.json();
       if (res.ok) {
         setSpecializations(data);
@@ -227,7 +227,7 @@ export default function DepartmentsPage() {
   const handleToggleSpecialization = async (spec: Specialization) => {
     const nextIsActive = !spec.isActive;
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/${spec.specializationId}`, {
+      const res = await fetch(`${baseUrl}/api/specialization/update/${spec.specializationId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -252,7 +252,7 @@ export default function DepartmentsPage() {
   // delete specialization
   const handleDeleteSpecialization = async (id: number) => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/${id}`, {
+      const res = await fetch(`${baseUrl}/api/specialization/delete/${id}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete specialization");

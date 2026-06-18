@@ -40,9 +40,23 @@ export default function SpecializationModal({
 
   const isEditing = !!editingSpecialization;
 
+  const fetchDepartments = async () => {
+    try {
+      const res = await fetch(`${baseUrl}/api/department/get-all`);
+      const data = await res.json();
+      if (res.ok) {
+        setAllDepartments(data);
+      }
+    } catch (error) {
+      console.error("Error fetching departments:", error);
+    }
+  };
+
+
   useEffect(() => {
     if (isOpen) {
       if (editingSpecialization) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setName(editingSpecialization.name);
         setDescription(editingSpecialization.description);
         setSelectedDepartment(String(editingSpecialization.department.departmentId));
@@ -55,17 +69,6 @@ export default function SpecializationModal({
     }
   }, [isOpen, editingSpecialization, initialDepartmentId]);
 
-  const fetchDepartments = async () => {
-    try {
-      const res = await fetch(`${baseUrl}/api/department`);
-      const data = await res.json();
-      if (res.ok) {
-        setAllDepartments(data);
-      }
-    } catch (error) {
-      console.error("Error fetching departments:", error);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -79,8 +82,8 @@ export default function SpecializationModal({
 
     try {
       const url = isEditing
-        ? `${baseUrl}/api/specialization/${editingSpecialization?.specializationId}`
-        : `${baseUrl}/api/specialization`;
+        ? `${baseUrl}/api/specialization/update/${editingSpecialization?.specializationId}`
+        : `${baseUrl}/api/specialization/create`;
 
       const res = await fetch(url, {
         method: isEditing ? "PUT" : "POST",

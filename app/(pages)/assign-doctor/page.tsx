@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MdAssignmentInd, MdAdd } from "react-icons/md";
+import { MdAssignmentInd } from "react-icons/md";
 import { baseUrl } from "@/lib/constants";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { Specialization, User } from "@/types/Specializations.type";
 import { AssignedDoctors, AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
-import ToggleButton from "@/components/ToggleButton";
 
 
 export default function AssignDoctor() {
@@ -29,21 +28,25 @@ export default function AssignDoctor() {
 
 
   // fetch assigned doctors
-  useEffect(() => {
-    const fetchAssignedDoctors = async () => {
-      try {
-        const res = await fetch(`${baseUrl}/api/user/AssignedDoctors`)
-        if (!res.ok) throw new Error("Failed to fetch assigned doctors")
+  const fetchAssignedDoctors = async () => {
+    try {
+      const res = await fetch(`${baseUrl}/api/user/assigned-doctors`)
+      if (!res.ok) throw new Error("Failed to fetch assigned doctors")
 
-        const data: AssignedDoctors = await res.json()
-        console.log("assigned doctors: ", data)
-        setDoctors(data.doctors)
-      } catch (error) {
-        console.error("Error", error)
-      }
+      const data: AssignedDoctors = await res.json()
+      console.log("assigned doctors: ", data)
+      setDoctors(data.doctors)
+    } catch (error) {
+      console.error("Error", error)
     }
+  }
 
-    fetchAssignedDoctors()
+
+  useEffect(() => {
+    const callApi = () => {
+      fetchAssignedDoctors()
+    }
+    callApi()
   }, [])
 
   // Fetch users and specializations
@@ -52,8 +55,8 @@ export default function AssignDoctor() {
       try {
         setIsLoading(true);
         const [usersRes, specsRes] = await Promise.all([
-          fetch(`${baseUrl}/api/user/users`),
-          fetch(`${baseUrl}/api/specialization`),
+          fetch(`${baseUrl}/api/user/get-all`),
+          fetch(`${baseUrl}/api/specialization/get-all`),
         ]);
 
         if (usersRes.ok) {
@@ -101,7 +104,6 @@ export default function AssignDoctor() {
     }
 
     try {
-
       const payload = {
         UserId: selectedUser.id,
         SpecializationId: parseInt(selectedSpecialization),
@@ -110,7 +112,7 @@ export default function AssignDoctor() {
         ExperienceYears: parseInt(experience),
       };
 
-      const response = await fetch(`${baseUrl}/api/user/AssignDoctor`, {
+      const response = await fetch(`${baseUrl}/api/user/assign-doctor`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -123,7 +125,7 @@ export default function AssignDoctor() {
       if (response.ok) {
         toast.success(data.message);
         setIsModalOpen(false);
-        console.log("Doctor assigned successfully: ", data);
+        fetchAssignedDoctors();
       } else {
         toast.error("Failed to assign doctor");
       }

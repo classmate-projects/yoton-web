@@ -55,7 +55,7 @@ export default function SpecializationPage() {
 
     try {
       const res = await fetch(
-        `${baseUrl}/api/specialization/${spec.specializationId}`,
+        `${baseUrl}/api/specialization/update/${spec.specializationId}`,
         {
           method: "PUT",
           headers: {
@@ -97,7 +97,7 @@ export default function SpecializationPage() {
   const fetchSpecializations = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/specialization`);
+      const res = await fetch(`${baseUrl}/api/specialization/get-all`);
       const data = await res.json();
 
       setSpecializations(data);
@@ -115,7 +115,7 @@ export default function SpecializationPage() {
   // handle delete specialization
   const handleDeleteSpecialization = async (id: number) => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/${id}`, {
+      const res = await fetch(`${baseUrl}/api/specialization/delete/${id}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
