@@ -30,7 +30,7 @@ export default function PatientRecordsPage() {
         return;
       }
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/reception/patient`, {
+      const res = await fetch(`${baseUrl}/api/reception/get-all/patient`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -38,7 +38,6 @@ export default function PatientRecordsPage() {
         }
       });
       const data = await res.json();
-      console.log("Data: ", data)
       setPatients(data.patients || []);
     } catch (error) {
       console.error("Failed to fetch patients", error);
@@ -58,7 +57,7 @@ export default function PatientRecordsPage() {
   const handleDelete = async (id: number) => {
     const token = localStorage.getItem("yoton_token");
     try {
-      const res = await fetch(`${baseUrl}/api/reception/${id}`, {
+      const res = await fetch(`${baseUrl}/api/reception/soft-delete/${id}`, {
         method: "DELETE",
          headers: {
           "Content-Type": "application/json",

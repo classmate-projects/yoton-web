@@ -22,99 +22,31 @@ import DeleteIcon from "@/public/icons/deleteIcon";
 import { toast } from "sonner";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import SpecializationModal from "@/components/SpecializationModal";
 
 export default function SpecializationPage() {
-  const [specializations, setSpecializations] = useState<SpecializationType[]>(
-    [],
-  );
+  const [specializations, setSpecializations] = useState<SpecializationType[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSpecialization, setEditingSpecialization] = useState<SpecializationType | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [selectedDepartment, setSelectedDepartment] = useState("");
-  const [allDepartments, setAllDepartments] = useState<DepartmentType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [loading, setLoading] = useState(false);
-
-
-  const isEditing = editingSpecialization !== null;
 
   const openModal = () => {
     setEditingSpecialization(null);
-    setName("");
-    setDescription("");
-    setSelectedDepartment("");
     setIsModalOpen(true);
   };
 
   const openEditModal = (spec: SpecializationType) => {
     setEditingSpecialization(spec);
-    setName(spec.name);
-    setDescription(spec.description);
-    setSelectedDepartment(String(spec.department.departmentId));
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingSpecialization(null);
-    setName("");
-    setDescription("");
-    setSelectedDepartment("");
   };
 
-  const handleAddSpecialization = async (
-    e: React.FormEvent<HTMLFormElement>,
-  ) => {
-    e.preventDefault();
-
-    setLoading(true)
-
-    const payload = {
-      name,
-      description,
-      departmentId: selectedDepartment,
-    };
-
-    try {
-      const url = isEditing
-        ? `${baseUrl}/api/specialization/${editingSpecialization?.specializationId}`
-        : `${baseUrl}/api/specialization`;
-
-      const res = await fetch(url, {
-        method: isEditing ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(
-          data.message ||
-          (isEditing
-            ? "Failed to update specialization"
-            : "Failed to add specialization"),
-        );
-      }
-
-      toast.success(data.message || (isEditing ? "Specialization updated" : "Specialization added"));
-      fetchSpecializations();
-    } catch (error) {
-      if (error instanceof Error) {
-        toast.error(error.message);
-      }
-      console.error("Error:", error);
-    } finally {
-      setLoading(false)
-    }
-
-    closeModal();
-  };
-
-  const editSpecialization = (spec: SpecializationType) => {
-    openEditModal(spec);
+  const handleSuccess = () => {
+    fetchSpecializations();
   };
 
   // handle toggle specialization active status
@@ -123,7 +55,7 @@ export default function SpecializationPage() {
 
     try {
       const res = await fetch(
-        `${baseUrl}/api/specialization/${spec.specializationId}`,
+        `${baseUrl}/api/specialization/update/${spec.specializationId}`,
         {
           method: "PUT",
           headers: {
@@ -161,34 +93,11 @@ export default function SpecializationPage() {
     }
   };
 
-  // fetch departments
-  const fetchDepartments = async () => {
-    try {
-      const res = await fetch(`${baseUrl}/api/department`);
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to fetch departments");
-      }
-
-      setAllDepartments(data);
-    } catch (error) {
-      console.error("Error fetching departments:", error);
-    }
-  };
-
-  useEffect(() => {
-    const callApi = () => {
-      fetchDepartments();
-    };
-    callApi();
-  }, []);
-
   // fetch specializations
   const fetchSpecializations = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/specialization`);
+      const res = await fetch(`${baseUrl}/api/specialization/get-all`);
       const data = await res.json();
 
       setSpecializations(data);
@@ -200,17 +109,13 @@ export default function SpecializationPage() {
   };
 
   useEffect(() => {
-    const callApi = () => {
-      fetchSpecializations();
-    };
-
-    callApi();
+    fetchSpecializations();
   }, []);
 
   // handle delete specialization
   const handleDeleteSpecialization = async (id: number) => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/${id}`, {
+      const res = await fetch(`${baseUrl}/api/specialization/delete/${id}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -271,108 +176,13 @@ export default function SpecializationPage() {
         </button>
       </div>
 
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
-          <div className="card w-full max-w-md rounded-xl border-t p-6 shadow-2xl mx-4">
-            <h2 className="text-2xl font-semibold mb-1">
-              {isEditing ? "Update Specialization" : "Add Specialization"}
-            </h2>
-            <p className="text-sm text-gray-500 mb-6">
-              {isEditing
-                ? "Update the specialization name, description, and department."
-                : "Enter the specialization name, description, and select a department."}
-            </p>
-
-            <form
-              onSubmit={handleAddSpecialization}
-              className="flex flex-col gap-4"
-            >
-              <div>
-                <label
-                  htmlFor="spec-name"
-                  className="text-sm font-bold text-gray-700 required"
-                >
-                  Name
-                </label>
-                <input
-                  id="spec-name"
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Cardiothoracic Surgery"
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="spec-description"
-                  className="text-sm font-bold text-gray-700"
-                >
-                  Description
-                </label>
-                <textarea
-                  id="spec-description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe this specialization"
-                  rows={4}
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border outline-none focus:border-blue-500 resize-none min-h-25"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="spec-department"
-                  className="text-sm font-bold text-gray-700 required"
-                >
-                  Department
-                </label>
-                <select
-                  id="spec-department"
-                  required
-                  value={selectedDepartment}
-                  onChange={(e) => setSelectedDepartment(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-(--color-highlight) border border-border outline-none focus:border-blue-500"
-                >
-                  <option value="" disabled>
-                    Select department
-                  </option>
-                  {allDepartments.length === 0 ? (
-                    <option value="" disabled>
-                      No departments available
-                    </option>
-                  ) : (
-                    allDepartments.map((dept) => (
-                      <option key={dept.departmentId} value={dept.departmentId}>
-                        {dept.name}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 mt-2 w-full">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-5 py-2.5 rounded-md border border-neutral-400/50 hover:bg-neutral-300/50 transition-all duration-200 cursor-pointer w-full"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-all duration-200 cursor-pointer w-full"
-                >
-                  {isEditing ? "Update" : loading ? "Saving.." : "Add"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Reusable Modal */}
+      <SpecializationModal
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        onSuccess={handleSuccess}
+        editingSpecialization={editingSpecialization}
+      />
 
       {/* Table Section */}
       <div className="card">
@@ -452,7 +262,7 @@ export default function SpecializationPage() {
 
                       <button
                         title="Edit"
-                        onClick={() => editSpecialization(spec)}
+                        onClick={() => openEditModal(spec)}
                         className="hover:bg-blue-100 ring-transparent hover:ring-blue-200 transition-colors duration-150 rounded-full p-2 cursor-pointer">
                         <EditIcon color="blue" size={20} />
                       </button>

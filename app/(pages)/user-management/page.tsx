@@ -68,7 +68,7 @@ export default function UserManagement() {
   const fetchAllUsers = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/user/users`);
+      const res = await fetch(`${baseUrl}/api/user/get-all`);
       const data = await res.json();
       setUsers(data.users);
     } catch (error) {
@@ -103,7 +103,7 @@ export default function UserManagement() {
   // delete user
   const handleDeleteUser = async (id: number) => {
     try {
-      const res = await fetch(`${baseUrl}/api/user/${id}`, {
+      const res = await fetch(`${baseUrl}/api/user/delete/${id}`, {
         method: "DELETE",
       });
       const data = await res.json()
@@ -142,7 +142,7 @@ export default function UserManagement() {
     };
 
     try {
-      const res = await fetch(`${baseUrl}/api/user/${user.id}`, {
+      const res = await fetch(`${baseUrl}/api/user/update/${user.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

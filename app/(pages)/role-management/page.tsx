@@ -4,8 +4,9 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
 import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
+import EditIcon from "@/public/icons/EditIcon";
 import { useEffect, useState } from "react";
-import { MdAdminPanelSettings, MdAdd } from "react-icons/md";
+import { MdAdminPanelSettings, MdAdd, MdEdit } from "react-icons/md";
 import { toast } from "sonner";
 
 interface FetchedRoles {
@@ -23,13 +24,14 @@ export default function RoleManagementPage() {
   // New Role Form
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
+  const [editingRole, setEditingRole] = useState<FetchedRoles | null>(null);
 
 
   // fetch roles
   const fetchRoles = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/role`);
+      const res = await fetch(`${baseUrl}/api/role/get-all`);
       const data = await res.json();
       setRoles(data);
     } catch (error) {
@@ -48,11 +50,39 @@ export default function RoleManagementPage() {
   }, []);
 
 
-  // create role
+  // create or update role
   const handleCreateRole = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (editingRole) {
+      // For now, just console log the update data as requested
+      const updatePayload = {
+        name: roleName,
+        description,
+        isActive: editingRole.isActive
+      };
+
+      console.log("Update payload: ", updatePayload)
+
+      const res = await fetch(`${baseUrl}/api/role/update/${editingRole.roleId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatePayload)
+      })
+
+      if (!res.ok) throw new Error("Error while updating role")
+
+      const data = await res.json()
+      console.log("updated data: ", data)
+
+      toast.info(data.message);
+      fetchRoles();
+      handleCancelEdit();
+      return;
+    }
+
     try {
-      const res = await fetch(`${baseUrl}/api/role`, {
+      const res = await fetch(`${baseUrl}/api/role/create-role`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -77,11 +107,25 @@ export default function RoleManagementPage() {
     }
   };
 
+  const handleEditRole = (role: FetchedRoles) => {
+    setEditingRole(role);
+    setRoleName(role.name);
+    setDescription(role.description || "");
+    // Scroll to form if needed
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRole(null);
+    setRoleName("");
+    setDescription("");
+  };
+
 
   // delete role
   const handleRoleDelete = async (roleId: number) => {
     try {
-      const res = await fetch(`${baseUrl}/api/role/${roleId}`, {
+      const res = await fetch(`${baseUrl}/api/role/delete/${roleId}`, {
         method: "DELETE",
       });
 
@@ -120,7 +164,7 @@ export default function RoleManagementPage() {
     const nextIsActive = !role.isActive;
 
     try {
-      const res = await fetch(`${baseUrl}/api/role/${role.roleId}`, {
+      const res = await fetch(`${baseUrl}/api/role/update/${role.roleId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -168,7 +212,7 @@ export default function RoleManagementPage() {
 
           {isLoading ? (
             <div className="h-80 flex justify-center items-center">
-              < LoadingSpinner/>
+              < LoadingSpinner />
             </div>
           ) : roles.length === 0 ? (
             <div className="h-80 flex justify-center items-center">
@@ -182,29 +226,42 @@ export default function RoleManagementPage() {
                 .map((role) => (
                   <div
                     key={role.roleId}
-                    className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-100" : ""}`}
+                    className={`p-4 flex justify-between items-center shadow-md rounded-lg border transition-all duration-150 border-neutral-500/20 mr-2 ${!role.isActive ? "bg-neutral-200 dark:bg-gray-800" : ""}`}
                   >
-                    <div className="flex flex-col justify-between mb-1">
-                      <span className={`font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : ""}`}>
-                        {role.name}
-                      </span>
+                    <div className="flex flex-col justify-between mb-1 w-full">
+                      <div className="flex justify-between items-center gap-4 mb-4">
+                        <span className={`font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : ""}`}>
+                          {role.name}
+                        </span>
+
+                        <div className="flex gap-2 items-center">
+                          <div className="flex items-center gap-2">
+                            {role.isEditable && (
+                              <>
+                                <button onClick={() => handleEditRole(role)}
+                                  className="cursor-pointer hover:bg-blue-100 ring ring-transparent hover:ring-blue-200 p-2 rounded-full transition-all duration-200"
+                                  title={`Edit ${role.name}`}
+                                >
+                                  <EditIcon color="blue" />
+                                </button>
+                                <button onClick={() => RequestDeleteRole(role.roleId, role.name)}
+                                  className="cursor-pointer hover:bg-red-100 ring ring-transparent hover:ring-red-200 p-2 rounded-full transition-all duration-200"
+                                  title={`Delete ${role.name}`}
+                                >
+                                  <DeleteIcon color="red" />
+                                </button>
+                              </>
+                            )}
+                            <ToggleButton
+                              checked={role.isActive}
+                              onChange={() => handleToggleRole(role)}
+                            />
+                          </div>
+                        </div>
+                      </div>
                       <p className={`text-sm text-gray-500 ${!role.isActive ? "text-gray-100" : "text-gray-500"}`}>
                         {role.description || "No description provided."}
                       </p>
-                    </div>
-                    <div className="flex flex-col gap-3 items-center">
-                      <ToggleButton
-                        checked={role.isActive}
-                        onChange={() => handleToggleRole(role)}
-                      />
-                      {role.isEditable && (
-                        <button onClick={() => RequestDeleteRole(role.roleId, role.name)}
-                          className="cursor-pointer hover:bg-red-100 ring ring-transparent hover:ring-red-200 p-2 rounded-full transition-all duration-200"
-                          title={`Delete ${role.name}`}
-                        >
-                          <DeleteIcon color="red" />
-                        </button>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -214,7 +271,12 @@ export default function RoleManagementPage() {
 
         <div className="card p-6 rounded-xl shadow-lg border-t h-fit">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <MdAdd className="text-purple-600" /> Create New Role
+            {editingRole ? (
+              <MdEdit className="text-blue-600" />
+            ) : (
+              <MdAdd className="text-purple-600" />
+            )}
+            {editingRole ? "Update Role" : "Create New Role"}
           </h2>
           <hr className="text-neutral-400/50 mb-4" />
 
@@ -244,12 +306,23 @@ export default function RoleManagementPage() {
               />
             </div>
 
-            <button
-              type="submit"
-              className="w-full mt-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer"
-            >
-              Save Role
-            </button>
+            <div className="flex gap-3">
+              {editingRole && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="w-1/3 mt-2 border border-neutral-400 text-gray-700 font-semibold py-3 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="submit"
+                className={`w-full mt-2 ${editingRole ? "bg-blue-600 hover:bg-blue-700" : "bg-purple-600 hover:bg-purple-700"} text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer`}
+              >
+                {editingRole ? "Update Role" : "Save Role"}
+              </button>
+            </div>
           </form>
         </div>
       </div>

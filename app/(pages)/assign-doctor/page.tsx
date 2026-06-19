@@ -2,19 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { MdAssignmentInd } from "react-icons/md";
-import ToggleButton from "@/components/ToggleButton";
 import { baseUrl } from "@/lib/constants";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { Doctor, Specialization, User } from "@/types/Specializations.type";
+import { Specialization, User } from "@/types/Specializations.type";
+import { AssignedDoctors, AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 
 
 export default function AssignDoctor() {
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [assignments, setAssignments] = useState<Record<number, boolean>>({});
+  const [doctors, setDoctors] = useState<AssignedDoctorsInfo[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Modal form state
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [searchUsername, setSearchUsername] = useState("");
@@ -23,9 +22,32 @@ export default function AssignDoctor() {
   const [licenseNumber, setLicenseNumber] = useState("");
   const [consultationFee, setConsultationFee] = useState("");
   const [experience, setExperience] = useState("");
-  
+
   const [users, setUsers] = useState<User[]>([]);
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
+
+
+  // fetch assigned doctors
+  const fetchAssignedDoctors = async () => {
+    try {
+      const res = await fetch(`${baseUrl}/api/user/assigned-doctors`)
+      if (!res.ok) throw new Error("Failed to fetch assigned doctors")
+
+      const data: AssignedDoctors = await res.json()
+      console.log("assigned doctors: ", data)
+      setDoctors(data.doctors)
+    } catch (error) {
+      console.error("Error", error)
+    }
+  }
+
+
+  useEffect(() => {
+    const callApi = () => {
+      fetchAssignedDoctors()
+    }
+    callApi()
+  }, [])
 
   // Fetch users and specializations
   useEffect(() => {
@@ -33,15 +55,15 @@ export default function AssignDoctor() {
       try {
         setIsLoading(true);
         const [usersRes, specsRes] = await Promise.all([
-          fetch(`${baseUrl}/api/user/users`),
-          fetch(`${baseUrl}/api/specialization`),
+          fetch(`${baseUrl}/api/user/get-all`),
+          fetch(`${baseUrl}/api/specialization/get-all`),
         ]);
-        
+
         if (usersRes.ok) {
           const usersData = await usersRes.json();
           setUsers(usersData.users.filter((user: User) => user.role === "doctor"));
         }
-        
+
         if (specsRes.ok) {
           const specsData = await specsRes.json();
           setSpecializations(Array.isArray(specsData) ? specsData : []);
@@ -52,25 +74,18 @@ export default function AssignDoctor() {
         setIsLoading(false);
       }
     };
-    
+
     fetchData();
   }, []);
 
   // Compute filtered users based on search
   const filteredUsers = searchUsername.trim()
     ? users.filter(
-        (user) =>
-          user.username.toLowerCase().includes(searchUsername.toLowerCase()) ||
-          user.name.toLowerCase().includes(searchUsername.toLowerCase())
-      )
+      (user) =>
+        user.username.toLowerCase().includes(searchUsername.toLowerCase()) ||
+        user.name.toLowerCase().includes(searchUsername.toLowerCase())
+    )
     : [];
-
-  const handleToggle = (doctorId: number) => {
-    setAssignments((prev) => ({
-      ...prev,
-      [doctorId]: !prev[doctorId],
-    }));
-  };
 
   const handleAssignDoctor = () => {
     setIsModalOpen(true);
@@ -89,29 +104,28 @@ export default function AssignDoctor() {
     }
 
     try {
-
       const payload = {
-          UserId: selectedUser.id,
-          SpecializationId: parseInt(selectedSpecialization),
-          LicenseNumber: licenseNumber,
-          ConsultationFee: parseFloat(consultationFee),
-          ExperienceYears: parseInt(experience),
-        };
+        UserId: selectedUser.id,
+        SpecializationId: parseInt(selectedSpecialization),
+        LicenseNumber: licenseNumber,
+        ConsultationFee: parseFloat(consultationFee),
+        ExperienceYears: parseInt(experience),
+      };
 
-      const response = await fetch(`${baseUrl}/api/user/AssignDoctor`, {
+      const response = await fetch(`${baseUrl}/api/user/assign-doctor`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
       });
-      
+
       const data = await response.json();
 
       if (response.ok) {
         toast.success(data.message);
         setIsModalOpen(false);
-        console.log("Doctor assigned successfully: ", data);
+        fetchAssignedDoctors();
       } else {
         toast.error("Failed to assign doctor");
       }
@@ -174,27 +188,28 @@ export default function AssignDoctor() {
               </tr>
             ) : doctors.length > 0 ? (
               doctors.map((doctor) => (
-                <tr key={doctor.id}>
-                  <td className="font-semibold text-foreground">
-                    {doctor.name}
+                <tr key={doctor.doctorId}>
+                  <td className="font-semibold text-foreground flex items-center gap-2">
+                    <span className={` w-[8px] h-[8px] block rounded-full ${doctor.isActive ? "bg-green-500" : "bg-red-500"}`}></span>
+                    {doctor.userName}
                   </td>
                   <td className="text-primary font-semibold">
-                    {doctor.specialization}
+                    {doctor.specializationName}
                   </td>
                   <td className="text-foreground/80">
                     {doctor.licenseNumber}
                   </td>
                   <td className="text-foreground/80">
-                    ${doctor.consultationFee}
+                    {doctor.consultationFee}
                   </td>
                   <td className="text-foreground/80">
                     {doctor.experienceYears} years
                   </td>
+                  {/* <td>
+                    <button>Add</button>
+                  </td> */}
                   <td>
-                    <ToggleButton
-                      checked={assignments[doctor.id] || false}
-                      onChange={() => handleToggle(doctor.id)}
-                    />
+                    <button>Edit</button>
                   </td>
                 </tr>
               ))

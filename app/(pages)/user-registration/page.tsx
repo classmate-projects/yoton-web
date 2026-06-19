@@ -35,9 +35,10 @@ function UserRegistrationForm() {
 
 
 
+  // fetch all specializations
   const fetchAllSpecializations = async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization`)
+      const res = await fetch(`${baseUrl}/api/specialization/get-all`)
       if (!res.ok) {
         throw new Error("Failed to fetch specializations")
       }
@@ -92,7 +93,7 @@ function UserRegistrationForm() {
     }
 
     try {
-      const res = await fetch(`${baseUrl}/api/user/AssignDoctor`, {
+      const res = await fetch(`${baseUrl}/api/user/assign-doctor`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -167,7 +168,7 @@ function UserRegistrationForm() {
         return;
       }
 
-      const res = await fetch(`${baseUrl}/api/user/${userId}`, {
+      const res = await fetch(`${baseUrl}/api/user/update/${userId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
