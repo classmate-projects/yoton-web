@@ -52,9 +52,8 @@ export default function Sidebar() {
 
   return (
     <div
-      className={`bg-card sticky top-0 h-screen p-3 border-r border-border z-50 transition-all duration-300 ease-in-out shrink-0 flex flex-col ${
-        isExpanded ? "w-72" : "w-20"
-      }`}
+      className={`bg-card sticky top-0 h-screen p-3 border-r border-border z-50 transition-all duration-300 ease-in-out shrink-0 flex flex-col ${isExpanded ? "w-72" : "w-20"
+        }`}
     >
       <button
         title={isExpanded ? "Collapse" : "Expand"}
@@ -92,13 +91,12 @@ export default function Sidebar() {
                     <Link
                       href={item.navLink}
                       title={isExpanded ? "" : item.name}
-                      className={`flex items-center gap-3 py-2.5 px-3 rounded-xl transition-all duration-200 group ${
-                        isActive
+                      className={`flex items-center gap-3 py-2.5 px-3 rounded-xl transition-all duration-200 group ${isActive
                           ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
                           : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      } ${!isExpanded && "justify-center px-0"}`}
+                        } ${!isExpanded && "justify-center px-0"}`}
                     >
-                      <span className={`shrink-0 transition-transform duration-200 ${isActive ? "scale-110" : "group-hover:scale-110"}`}>
+                      <span className={`shrink-0 transition-transform duration-200 text-xl ${isActive ? "scale-110" : "group-hover:scale-110"}`}>
                         <item.icon />
                       </span>
                       {isExpanded && (
@@ -122,11 +120,10 @@ export default function Sidebar() {
             <button
               key={t.name}
               onClick={() => setTheme(t.name)}
-              className={`flex-1 flex items-center justify-center cursor-pointer p-2 rounded-md transition-all ${
-                mounted && theme === t.name
+              className={`flex-1 flex items-center justify-center cursor-pointer p-2 rounded-md transition-all ${mounted && theme === t.name
                   ? "bg-card text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
-              }`}
+                }`}
               title={t.label}
             >
               <t.icon size={16} />
@@ -142,9 +139,8 @@ export default function Sidebar() {
           <button
             onClick={handleLogout}
             title="Logout"
-            className={`flex items-center gap-3 text-destructive hover:bg-destructive/10 rounded-xl transition-all duration-200 cursor-pointer hover:bg-red-400/80 ${
-              isExpanded ? "px-3 py-2.5 w-full" : "p-3 justify-center"
-            }`}
+            className={`flex items-center gap-3 text-destructive hover:bg-destructive/10 rounded-xl transition-all duration-200 cursor-pointer hover:bg-red-400/80 ${isExpanded ? "px-3 py-2.5 w-full" : "p-3 justify-center"
+              }`}
           >
             <LogOut size={18} />
             {isExpanded && <span className="text-sm font-semibold">Logout</span>}
