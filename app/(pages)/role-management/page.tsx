@@ -6,12 +6,12 @@ import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { RoleService } from "@/services/role.service";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { MdAdminPanelSettings, MdAdd, MdEdit } from "react-icons/md";
 import { toast } from "sonner";
 
 interface FetchedRoles {
-  roleId: number;
+  roleId: string;
   name: string;
   description: string;
   isEditable: boolean;
@@ -26,6 +26,14 @@ export default function RoleManagementPage() {
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
   const [editingRole, setEditingRole] = useState<FetchedRoles | null>(null);
+
+
+  // reset values
+  const resetValues = () => {
+    setRoleName("")
+    setDescription("")
+    setEditingRole(null)
+  }
 
 
   // fetch roles
@@ -45,63 +53,47 @@ export default function RoleManagementPage() {
     void fetchRoles();
   }, []);
 
-  // create or update role
-  const handleCreateRole = async (e: React.FormEvent) => {
-    e.preventDefault();
 
-    if (editingRole) {
-      // For now, just console log the update data as requested
-      const updatePayload = {
+  // create role
+  const handleCreateRole = async (e: FormEvent) => {
+    e.preventDefault()
+    try {
+      const payload = {
+        name: roleName,
+        description
+      }
+
+      const data = await RoleService.create(payload);
+      toast.success(data.message)
+      resetValues()
+      fetchRoles()
+    } catch (error) {
+      console.error("Failed to create role", error);
+    }
+  }
+
+  // update role
+  const handleUpdateRole = async (e: FormEvent) => {
+    e.preventDefault()
+    try {
+      if(!editingRole) return;
+
+      const payload = {
         name: roleName,
         description,
-        isActive: editingRole.isActive
-      };
-
-      console.log("Update payload: ", updatePayload)
-
-      const res = await fetch(`${baseUrl}/api/role/update/${editingRole.roleId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatePayload)
-      })
-
-      if (!res.ok) throw new Error("Error while updating role")
-
-      const data = await res.json()
-      console.log("updated data: ", data)
-
-      toast.info(data.message);
-      fetchRoles();
-      handleCancelEdit();
-      return;
-    }
-
-    try {
-      const res = await fetch(`${baseUrl}/api/role/create-role`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: roleName,
-          description,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        toast.success(data.message);
-        setRoleName("");
-        setDescription("");
-        fetchRoles();
-      } else {
-        toast.warning(data.message || data.error || "Failed to create role");
-        setRoleName("");
+        isActive: editingRole?.isActive
       }
-    } catch (error) {
-      console.error(error);
-    }
-  };
 
+      const data = await RoleService.update(editingRole?.roleId, payload)
+      toast.success(data.message)
+      resetValues();
+      fetchRoles();
+    } catch (error) {
+      console.error("Failed to Update role", error);
+    }
+  }
+
+  // handle editing role model
   const handleEditRole = (role: FetchedRoles) => {
     setEditingRole(role);
     setRoleName(role.name);
@@ -118,25 +110,17 @@ export default function RoleManagementPage() {
 
 
   // delete role
-  const handleRoleDelete = async (roleId: number) => {
+  const handleRoleDelete = async (id: string) => {
     try {
-      const res = await fetch(`${baseUrl}/api/role/delete/${roleId}`, {
-        method: "DELETE",
-      });
-
-      const data = await res.json()
-      if (res.ok) {
-        toast.success(data.message);
-        fetchRoles();
-      } else {
-        toast.warning(data.message || data.error || "Failed to delete role");
-      }
-    } catch {
-      console.log("Error: error with deleting role");
+      const data = await RoleService.delete(id);
+      fetchRoles()
+      toast.success(data.message)
+    } catch (error) {
+      console.error("Failed to Delete role", error);
     }
-  };
+  }
 
-  const RequestDeleteRole = (roleId: number, name: string) => {
+  const RequestDeleteRole = (roleId: string, name: string) => {
     toast(
       <span>
         Are you sure you want to delete the role{" "}
@@ -159,20 +143,15 @@ export default function RoleManagementPage() {
     const nextIsActive = !role.isActive;
 
     try {
-      const res = await fetch(`${baseUrl}/api/role/update/${role.roleId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: role.name,
-          description: role.description,
-          isActive: nextIsActive,
-        }),
-      });
-
-      if (!res.ok) {
-        toast.warning("Failed to update role status");
-        return;
+      const payload = {
+        name: role.name,
+        description: role.description,
+        isActive: nextIsActive
       }
+
+      const data = await RoleService.update(role.roleId, payload);
+      console.log("toggle data: ", data)
+      toast.success(data.message)
 
       setRoles((prev) =>
         prev.map((r) =>
@@ -217,7 +196,6 @@ export default function RoleManagementPage() {
             <div className="flex flex-col gap-3 h-[60dvh] overflow-y-scroll">
               {roles
                 .slice()
-                .sort((a, b) => b.roleId - a.roleId)
                 .map((role) => (
                   <div
                     key={role.roleId}
@@ -275,7 +253,7 @@ export default function RoleManagementPage() {
           </h2>
           <hr className="text-neutral-400/50 mb-4" />
 
-          <form onSubmit={handleCreateRole} className="flex flex-col gap-4">
+          <form onSubmit={editingRole ? handleUpdateRole : handleCreateRole} className="flex flex-col gap-4">
             <div>
               <label className="text-sm font-bold text-gray-700 required">
                 Role Name
