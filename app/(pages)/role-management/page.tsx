@@ -5,6 +5,7 @@ import ToggleButton from "@/components/ToggleButton";
 import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
+import { RoleService } from "@/services/role.service";
 import { useEffect, useState } from "react";
 import { MdAdminPanelSettings, MdAdd, MdEdit } from "react-icons/md";
 import { toast } from "sonner";
@@ -31,8 +32,7 @@ export default function RoleManagementPage() {
   const fetchRoles = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/role/get-all`);
-      const data = await res.json();
+      const data = await RoleService.getAll();
       setRoles(data);
     } catch (error) {
       console.error("Failed to fetch roles", error);
@@ -42,13 +42,8 @@ export default function RoleManagementPage() {
   };
 
   useEffect(() => {
-    const callfetchRoles = () => {
-      fetchRoles();
-    };
-
-    callfetchRoles();
+    void fetchRoles();
   }, []);
-
 
   // create or update role
   const handleCreateRole = async (e: React.FormEvent) => {

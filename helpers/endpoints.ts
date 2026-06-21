@@ -1,5 +1,5 @@
 export const ENDPOINTS = {
-    Role: {
+    ROLE: {
         LIST: `/api/role/get-all`,
         CREATE: `/api/role/create-role`,
         UPDATE: (id: number) => `/api/role/update/${id}`,
