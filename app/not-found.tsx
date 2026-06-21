@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Home, FileQuestion } from "lucide-react";
+import { ArrowLeft, Home } from "lucide-react";
 
 export default function NotFoundPage() {
   const router = useRouter();
@@ -14,9 +14,6 @@ export default function NotFoundPage() {
       <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-primary/5 blur-3xl pointer-events-none" />
 
       <div className="max-w-md w-full text-center flex flex-col items-center z-10">
-        <div className="p-4 bg-card rounded-3xl shadow-xl border border-border mb-8 animate-bounce">
-          <FileQuestion size={48} className="text-primary" />
-        </div>
 
         {/* Big 404 text with gradient */}
         <h1 className="text-9xl font-black tracking-tighter text-foreground relative select-none">
