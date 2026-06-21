@@ -100,6 +100,11 @@
     background-color: var(--muted) !important;
     opacity: 0.9;
   }
+  table.table-no-row-hover tbody tr,
+  table.table-no-row-hover tbody tr:hover {
+    background-color: var(--card) !important;
+    opacity: 1 !important;
+  }
 }
 
 .mainPage {
