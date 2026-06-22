@@ -3,16 +3,17 @@
 import ToggleButton from "@/components/ToggleButton";
 import BuildingIcon from "@/public/icons/BuildingIcon";
 import { MdAdd, MdExpandMore, MdExpandLess } from "react-icons/md";
-import React, { useEffect, useState } from "react";
+import React, { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { baseUrl } from "@/lib/constants";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SpecializationModal from "@/components/SpecializationModal";
+import { DepartmentSerivce } from "@/services/department.service";
 
 interface Department {
-  departmentId: number;
+  departmentId: string;
   name: string;
   description: string;
   isActive: boolean;
@@ -103,15 +104,12 @@ export default function DepartmentsPage() {
     });
   };
 
+  // department logics
   // fetch departments
   const fetchDepartments = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/department/get-all`);
-      const data = await res.json();
-
-      if (!res.ok)
-        throw new Error(data.message || "Failed to fetch Departments");
+      const data = await DepartmentSerivce.getAll();
       setDepartments(data);
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
@@ -120,6 +118,97 @@ export default function DepartmentsPage() {
     }
   };
 
+  // create deaprtment
+  const handleCreateDepartment = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    try {
+      const payload = { name, description }
+      const data = await DepartmentSerivce.create(payload)
+      setIsModalOpen(false)
+      fetchDepartments();
+      toast.success(data.message)
+    } catch (error) {
+      console.log("Error: ", error)
+    }
+  }
+
+  // update department
+  const handleUpdateDepartment = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!editingDepartment) return;
+    try {
+      const payload = {
+        name,
+        description,
+        isActive: editingDepartment?.isActive
+      }
+
+      const data = await DepartmentSerivce.update(editingDepartment.departmentId, payload)
+      setIsModalOpen(false)
+      fetchDepartments()
+      toast.success(data.message)
+    } catch (error) {
+      console.log("Error: ", error)
+    }
+
+    console.log("called")
+  }
+
+  // toggle department active status
+  const handleToggleDepartment = async (department: Department) => {
+    const nextIsActive = !department.isActive;
+
+    try {
+      const payload = {
+        name: department.name,
+        description: department.description,
+        isActive: nextIsActive
+      }
+      const data = await DepartmentSerivce.update(department.departmentId, payload)
+      toast.success(data.message)
+
+      setDepartments((prev) =>
+        prev.map((d) =>
+          d.departmentId === department.departmentId
+            ? { ...d, isActive: nextIsActive }
+            : d,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof Error) toast.error(error.message);
+    }
+  };
+
+  // delete department
+  const handleDelete = async (id: string) => {
+    try {
+      const data = await DepartmentSerivce.delete(id)
+      toast.success(data.message);
+      fetchDepartments();
+    } catch (error) {
+      if (error instanceof Error) toast.error(error.message);
+    }
+  };
+
+  // confirm before delete
+  const confirmDelete = (id: string, name: string) => {
+    toast(
+      <span>
+        Are you sure you want to delete{" "}
+        <b className="text-red-500 ml-1">{name}</b>
+      </span>,
+      {
+        action: {
+          label: "Delete",
+          onClick: () => handleDelete(id),
+        },
+      },
+    );
+  };
+
+  // specialization logic
   // fetch specializations
   const fetchSpecializations = async () => {
     try {
@@ -140,88 +229,6 @@ export default function DepartmentsPage() {
     }
     callApi()
   }, []);
-
-  // create or update department
-  const handleSubmitDepartment = async (
-    e: React.FormEvent<HTMLFormElement>,
-  ) => {
-    e.preventDefault();
-    setloading(true)
-
-    try {
-      const res = await fetch(
-        `${baseUrl}/api/department/${isEditing ? `update/${editingDepartment.departmentId}` : "create"}`,
-        {
-          method: isEditing ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            isEditing
-              ? {
-                name,
-                description,
-                isActive: editingDepartment.isActive,
-              }
-              : { name, description },
-          ),
-        },
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(
-          data.message ||
-          (isEditing
-            ? "Failed to update department"
-            : "Failed to create department"),
-        );
-      }
-
-      toast.success(data.message);
-      fetchDepartments();
-      closeModal();
-    } catch (error) {
-      if (error instanceof Error) toast.error(error.message);
-    } finally {
-      setloading(false)
-    }
-  };
-
-  // toggle department active status
-  const handleToggleDepartment = async (department: Department) => {
-    const nextIsActive = !department.isActive;
-
-    try {
-      const res = await fetch(
-        `${baseUrl}/api/department/update/${department.departmentId}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: department.name,
-            description: department.description,
-            isActive: nextIsActive,
-          }),
-        },
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to update department status");
-      }
-
-      setDepartments((prev) =>
-        prev.map((d) =>
-          d.departmentId === department.departmentId
-            ? { ...d, isActive: nextIsActive }
-            : d,
-        ),
-      );
-    } catch (error) {
-      if (error instanceof Error) toast.error(error.message);
-    }
-  };
 
   // toggle specialization active status
   const handleToggleSpecialization = async (spec: Specialization) => {
@@ -278,42 +285,6 @@ export default function DepartmentsPage() {
     );
   };
 
-  // delete department
-  const handleDelete = async (id: number) => {
-    try {
-      const res = await fetch(`${baseUrl}/api/department/delete/${id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok)
-        throw new Error(data.message || "Failed to delete department.");
-      toast.success(data.message);
-      fetchDepartments();
-    } catch (error) {
-      if (error instanceof Error) toast.error(error.message);
-    }
-  };
-
-  // confirm before delete
-  const confirmDelete = (id: number, name: string) => {
-    toast(
-      <span>
-        Are you sure you want to delete{" "}
-        <b className="text-red-500 ml-1">{name}</b>
-      </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => handleDelete(id),
-        },
-      },
-    );
-  };
-
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
       <div className="flex justify-between items-center gap-4 mb-8">
@@ -349,7 +320,7 @@ export default function DepartmentsPage() {
             </p>
 
             <form
-              onSubmit={handleSubmitDepartment}
+              onSubmit={isEditing ? handleUpdateDepartment : handleCreateDepartment}
               className="flex flex-col gap-4"
             >
               <div>
