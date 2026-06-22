@@ -4,7 +4,7 @@ import { CreateRoleProps, UpdateRoleProps } from "@/types/role.type";
 
 export const RoleService = {
     getAll: async () => {
-        const { data } = await api.get(ENDPOINTS.ROLE.LIST);
+        const { data } = await api.get(ENDPOINTS.ROLE.GET);
         return data;
     },
 

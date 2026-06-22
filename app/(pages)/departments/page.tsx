@@ -11,6 +11,8 @@ import { baseUrl } from "@/lib/constants";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SpecializationModal from "@/components/SpecializationModal";
 import { DepartmentSerivce } from "@/services/department.service";
+import { SpecializationService } from "@/services/specialization.service";
+import { SpecializationTypes } from "@/types/specialization.type";
 
 interface Department {
   departmentId: string;
@@ -19,26 +21,15 @@ interface Department {
   isActive: boolean;
 }
 
-interface Specialization {
-  specializationId: number;
-  name: string;
-  description: string;
-  isActive: boolean;
-  department: {
-    departmentId: number;
-    name: string;
-  };
-}
-
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [specializations, setSpecializations] = useState<Specialization[]>([]);
+  const [specializations, setSpecializations] = useState<SpecializationTypes[]>([]);
   const [expandedDepartments, setExpandedDepartments] = useState<Set<number>>(new Set());
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSpecModalOpen, setIsSpecModalOpen] = useState(false);
   const [initialDeptIdForSpec, setInitialDeptIdForSpec] = useState("");
-  const [editingSpecialization, setEditingSpecialization] = useState<Specialization | null>(null);
+  const [editingSpecialization, setEditingSpecialization] = useState<SpecializationTypes | null>(null);
 
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(
     null,
@@ -77,7 +68,7 @@ export default function DepartmentsPage() {
     setIsSpecModalOpen(true);
   };
 
-  const openEditSpecModal = (spec: Specialization) => {
+  const openEditSpecModal = (spec: SpecializationTypes) => {
     setEditingSpecialization(spec);
     setIsSpecModalOpen(true);
   };
@@ -212,39 +203,30 @@ export default function DepartmentsPage() {
   // fetch specializations
   const fetchSpecializations = async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/get-all`);
-      const data = await res.json();
-      if (res.ok) {
-        setSpecializations(data);
-      }
+      const data = await SpecializationService.getAll()
+      setSpecializations(data)
     } catch (error) {
       console.error("Error fetching specializations:", error);
     }
   };
 
   useEffect(() => {
-    const callApi = () => {
-      fetchDepartments();
-      fetchSpecializations();
-    }
-    callApi()
+    fetchSpecializations();
+    fetchDepartments();
   }, []);
 
   // toggle specialization active status
-  const handleToggleSpecialization = async (spec: Specialization) => {
+  const handleToggleSpecialization = async (spec: SpecializationTypes) => {
     const nextIsActive = !spec.isActive;
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/update/${spec.specializationId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: spec.name,
-          description: spec.description,
-          departmentId: spec.department.departmentId,
-          isActive: nextIsActive,
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to update specialization status");
+      const payload = {
+        name: spec.name,
+        description: spec.description,
+        departmentId: spec.department.departmentId,
+        isActive: nextIsActive
+      }
+      const data = await SpecializationService.update(spec.specializationId, payload)
+      console.log("toggle data: ", data)
 
       setSpecializations((prev) =>
         prev.map((s) => (s.specializationId === spec.specializationId ? { ...s, isActive: nextIsActive } : s))
@@ -257,13 +239,10 @@ export default function DepartmentsPage() {
   };
 
   // delete specialization
-  const handleDeleteSpecialization = async (id: number) => {
+  const handleDeleteSpecialization = async (id: string) => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/delete/${id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete specialization");
-      toast.success("Specialization deleted");
+      const data = await SpecializationService.delete(id)
+      toast.success(data.message);
       fetchSpecializations();
     } catch (error) {
       toast.error("Failed to delete specialization");

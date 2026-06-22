@@ -4,7 +4,7 @@ import { DepartmentCreateType, DepartmentUpdateType } from "@/types/department.t
 
 export const DepartmentSerivce = {
     getAll: async () => {
-        const { data } = await api.get(ENDPOINTS.DEPARTMENT.LIST);
+        const { data } = await api.get(ENDPOINTS.DEPARTMENT.GET);
         return data;
     }, 
     create: async (payload: DepartmentCreateType) => {
