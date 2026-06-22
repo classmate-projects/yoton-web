@@ -2,7 +2,6 @@
 
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
-import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { RoleService } from "@/services/role.service";
@@ -16,6 +15,7 @@ interface FetchedRoles {
   description: string;
   isEditable: boolean;
   isActive: boolean;
+  createdAt: string
 }
 
 export default function RoleManagementPage() {
@@ -41,6 +41,7 @@ export default function RoleManagementPage() {
     try {
       setIsLoading(true);
       const data = await RoleService.getAll();
+      console.log("Roles: ", data)
       setRoles(data);
     } catch (error) {
       console.error("Failed to fetch roles", error);
@@ -196,6 +197,11 @@ export default function RoleManagementPage() {
             <div className="flex flex-col gap-3 h-[60dvh] overflow-y-scroll">
               {roles
                 .slice()
+                .sort(
+                  (a, b) =>
+                    new Date(b.createdAt).getTime() -
+                    new Date(a.createdAt).getTime()
+                )
                 .map((role) => (
                   <div
                     key={role.roleId}
