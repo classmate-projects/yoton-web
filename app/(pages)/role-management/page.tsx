@@ -41,7 +41,6 @@ export default function RoleManagementPage() {
     try {
       setIsLoading(true);
       const data = await RoleService.getAll();
-      console.log("Roles: ", data)
       setRoles(data);
     } catch (error) {
       console.error("Failed to fetch roles", error);
@@ -151,7 +150,6 @@ export default function RoleManagementPage() {
       }
 
       const data = await RoleService.update(role.roleId, payload);
-      console.log("toggle data: ", data)
       toast.success(data.message)
 
       setRoles((prev) =>

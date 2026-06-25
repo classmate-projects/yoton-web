@@ -82,8 +82,6 @@ function UserRegistrationForm() {
 
   // handle assign doctor if the role is doctor
   const handleDoctorAssign = async (userId: number) => {
-    console.log("Need to do assign doctor", userId)
-
     const payload = {
       UserId: userId,
       SpecializationId: selectedSpecialization,
@@ -101,10 +99,6 @@ function UserRegistrationForm() {
 
         body: JSON.stringify(payload)
       })
-
-      const data = await res.json()
-
-      console.log("Assign doctor: ", data)
     } catch (error) {
       console.error("Error: ", error)
     }

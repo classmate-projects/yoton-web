@@ -228,8 +228,7 @@ export default function DepartmentsPage() {
         departmentId: spec.department.departmentId,
         isActive: nextIsActive
       }
-      const data = await SpecializationService.update(spec.specializationId, payload)
-      console.log("toggle data: ", data)
+      await SpecializationService.update(spec.specializationId, payload)
 
       setSpecializations((prev) =>
         prev.map((s) => (s.specializationId === spec.specializationId ? { ...s, isActive: nextIsActive } : s))

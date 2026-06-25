@@ -4,7 +4,6 @@ import { ApiError } from "@/types/api";
 export async function POST(req: Request) {
     try {
         const payload = await req.json();
-        console.log("Payload from api: ", payload)
 
         const data = await apiFetch("/api/reception/register", {
             method: "POST",

@@ -44,7 +44,6 @@ export default function SpecializationModal({
   const fetchDepartments = async () => {
     try {
       const data = await DepartmentSerivce.getAll()
-      console.log("fetched department: ", data)
       setAllDepartments(data);
     } catch (error) {
       console.error("Error fetching departments:", error);

@@ -34,7 +34,6 @@ export default function AssignDoctor() {
       if (!res.ok) throw new Error("Failed to fetch assigned doctors")
 
       const data: AssignedDoctors = await res.json()
-      console.log("assigned doctors: ", data)
       setDoctors(data.doctors)
     } catch (error) {
       console.error("Error", error)

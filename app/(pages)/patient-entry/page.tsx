@@ -71,8 +71,6 @@ export default function PatientEntryPage() {
       RegisteredBy: registeredBy,
     };
 
-    console.log("payload submit: ", payload);
-
     try {
       const res = await fetch(`${baseUrl}/api/reception/create-patient`, {
         method: "POST",
@@ -82,9 +80,6 @@ export default function PatientEntryPage() {
         },
         body: JSON.stringify(payload),
       });
-
-      const data = await res.json();
-      console.log("Patient entry: ", data);
       resetForm();
     } catch (error) {
       console.log(error);
