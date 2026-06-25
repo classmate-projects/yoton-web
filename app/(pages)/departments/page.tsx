@@ -7,7 +7,6 @@ import React, { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
-import { baseUrl } from "@/lib/constants";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SpecializationModal from "@/components/SpecializationModal";
 import { DepartmentSerivce } from "@/services/department.service";
@@ -24,7 +23,7 @@ interface Department {
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [specializations, setSpecializations] = useState<SpecializationTypes[]>([]);
-  const [expandedDepartments, setExpandedDepartments] = useState<Set<number>>(new Set());
+  const [expandedDepartments, setExpandedDepartments] = useState<Set<string>>(new Set());
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSpecModalOpen, setIsSpecModalOpen] = useState(false);
@@ -62,7 +61,7 @@ export default function DepartmentsPage() {
     setDescription("");
   };
 
-  const openSpecModal = (departmentId: number) => {
+  const openSpecModal = (departmentId: string) => {
     setInitialDeptIdForSpec(String(departmentId));
     setEditingSpecialization(null);
     setIsSpecModalOpen(true);
@@ -83,7 +82,7 @@ export default function DepartmentsPage() {
     fetchSpecializations();
   };
 
-  const toggleExpand = (id: number) => {
+  const toggleExpand = (id: string) => {
     setExpandedDepartments((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -250,7 +249,7 @@ export default function DepartmentsPage() {
     }
   };
 
-  const confirmDeleteSpec = (id: number, name: string) => {
+  const confirmDeleteSpec = (id: string, name: string) => {
     toast(
       <span>
         Are you sure you want to delete specialization <b className="text-red-500 ml-1">{name}</b>?

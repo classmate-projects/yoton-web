@@ -5,12 +5,12 @@ import { baseUrl } from "@/lib/constants";
 import { toast } from "sonner";
 
 interface DepartmentType {
-  departmentId: number;
+  departmentId: string;
   name: string;
 }
 
 interface SpecializationType {
-  specializationId: number;
+  specializationId: string;
   name: string;
   description: string;
   isActive: boolean;
