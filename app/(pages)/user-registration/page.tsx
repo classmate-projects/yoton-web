@@ -4,6 +4,8 @@
 import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
 import { baseUrl } from "@/lib/constants";
+import { SpecializationService } from "@/services/specialization.service";
+import { UserService } from "@/services/user.service";
 import { Specialization } from "@/types/Specializations.type";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
@@ -38,12 +40,7 @@ function UserRegistrationForm() {
   // fetch all specializations
   const fetchAllSpecializations = async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/get-all`)
-      if (!res.ok) {
-        throw new Error("Failed to fetch specializations")
-      }
-
-      const data = await res.json()
+      const data = await SpecializationService.getAll()
       setSpecializations(data)
     } catch (error) {
       console.error("Error: ", error)
@@ -80,6 +77,16 @@ function UserRegistrationForm() {
     }
   }, [editMode]);
 
+  // reset data
+  const resetdata = () => {
+    setEmail("");
+    setName("");
+    setUsername("");
+    setPhone("");
+    setPassword("");
+    setRole("");
+  }
+
   // handle assign doctor if the role is doctor
   const handleDoctorAssign = async (userId: number) => {
     const payload = {
@@ -91,7 +98,7 @@ function UserRegistrationForm() {
     }
 
     try {
-      const res = await fetch(`${baseUrl}/api/user/assign-doctor`, {
+      await fetch(`${baseUrl}/api/user/assign-doctor`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -113,37 +120,22 @@ function UserRegistrationForm() {
         return;
       }
 
-      const res = await fetch(`${baseUrl}/api/user/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          username,
-          email,
-          password,
-          role,
-          phone,
-        }),
-      });
-      if (!res.ok) {
-        throw new Error("User registration failed");
+      const payload = {
+        name,
+        username,
+        email,
+        password,
+        role,
+        phone,
       }
 
-      const data = await res.json();
+      const data = await UserService.create(payload)
 
       if (data.role === "doctor") {
         handleDoctorAssign(data.userId)
       }
 
-      setEmail("");
-      setName("");
-      setUsername("");
-      setPhone("");
-      setPassword("");
-      setRole("");
-
+      resetdata()
       sessionStorage.removeItem("editUser");
       toast.success(data.message);
 
@@ -162,27 +154,20 @@ function UserRegistrationForm() {
         return;
       }
 
-      const res = await fetch(`${baseUrl}/api/user/update/${userId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          username,
-          email,
-          role,
-          phone,
-          isActive,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error("User update failed");
+      const payload = {
+        name,
+        email,
+        role,
+        phone,
+        isActive,
       }
 
+      if (!userId) return;
+
+      const data = await UserService.update(userId, payload)
+      toast.success(data.message);
+
       sessionStorage.removeItem("editUser");
-      toast.success("User changes saved successfully!");
       router.push("/user-management");
     } catch (error) {
       console.log("Error updating user:", error);

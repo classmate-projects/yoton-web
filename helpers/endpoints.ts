@@ -16,5 +16,11 @@ export const ENDPOINTS = {
         CREATE: `/api/specialization/create`,
         UPDATE: (id: string) => `/api/specialization/update/${id}`,
         DELETE: (id: string) => `/api/specialization/delete/${id}`
+    }, 
+    USER: {
+        GET: `/api/user/get-all`,
+        CREATE: `/api/user/create`,
+        UPDATE: (id: string) => `/api/user/update/${id}`,
+        DELETE: (id: string) => `/api/user/delete/${id}`
     }
 }

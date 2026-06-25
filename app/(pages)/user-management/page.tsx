@@ -1,7 +1,7 @@
 "use client";
 
 interface getAllResponse {
-  id: number;
+  id: string;
   name: string;
   username: string;
   email: string;
@@ -25,6 +25,7 @@ import SearchIcon from "@/public/icons/SearchIcon";
 import { baseUrl } from "@/lib/constants";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { UserService } from "@/services/user.service";
 
 export default function UserManagement() {
 
@@ -52,7 +53,7 @@ export default function UserManagement() {
         (activeStatus === "active" && user.isActive) ||
         (activeStatus === "inactive" && !user.isActive);
 
-        const notAdmin = user.role.toLowerCase() !== "admin";
+      const notAdmin = user.role.toLowerCase() !== "admin";
 
       return matchesSearch && matchesRole && matchesActiveStatus && notAdmin;
     });
@@ -68,8 +69,7 @@ export default function UserManagement() {
   const fetchAllUsers = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/user/get-all`);
-      const data = await res.json();
+      const data = await UserService.getAll()
       setUsers(data.users);
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -101,13 +101,9 @@ export default function UserManagement() {
 
 
   // delete user
-  const handleDeleteUser = async (id: number) => {
+  const handleDeleteUser = async (id: string) => {
     try {
-      const res = await fetch(`${baseUrl}/api/user/delete/${id}`, {
-        method: "DELETE",
-      });
-      const data = await res.json()
-      if (!res.ok) throw new Error("Failed to delete user")
+      const data = await UserService.delete(id)
 
       toast.success(data?.message)
       fetchAllUsers();
@@ -117,7 +113,7 @@ export default function UserManagement() {
   };
 
   // show toast for permission to delete user 
-  const handleDelete = (id: number, name: string) => {
+  const handleDelete = (id: string, name: string) => {
     toast(
       <span>
         Are you sure, you want to delete{" "}
@@ -142,14 +138,7 @@ export default function UserManagement() {
     };
 
     try {
-      const res = await fetch(`${baseUrl}/api/user/update/${user.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error("Failed to Toggle user")
-
+      await UserService.update(user.id, payload)
       toast.success(`Status changed to ${!user.isActive ? "active" : "inactive"}`)
 
       setUsers((prev) =>
@@ -217,17 +206,6 @@ export default function UserManagement() {
               selectRole={false}
             />
 
-            {/* <select
-              name="date"
-              id="date"
-              className="border border-neutral-500 px-4 py-2 rounded-md outline-0"
-            >
-              <option value="today">Today</option>
-              <option value="this_week">This Week</option>
-              <option value="this_month">This Month</option>
-              <option value="last_month">Last Month</option>
-            </select> */}
-
             <select
               name="isActive"
               id="isActive"
@@ -280,7 +258,6 @@ export default function UserManagement() {
               .length > 0 ? (
               filteredUsers
                 .slice()
-                .sort((a, b) => b.id - a.id)
                 .map((user) => (
                   <tr key={user.id} className={!user.isActive ? "bg-red-50/50 opacity-80" : ""}>
                     <td className="font-semibold">{user.name}</td>
