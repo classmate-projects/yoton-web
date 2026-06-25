@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { baseUrl } from "@/lib/constants";
 import { toast } from "sonner";
 import { SpecializationService } from "@/services/specialization.service";
 import { DepartmentSerivce } from "@/services/department.service";
@@ -99,11 +98,12 @@ export default function SpecializationModal({
         departmentId: selectedDepartment,
         isActive: editingSpecialization?.isActive
       };
-      const data = await SpecializationService.update(selectedDepartment, payload)
+      const data = await SpecializationService.update(editingSpecialization.specializationId, payload)
       toast.success(data.message)
     } catch (error) {
       console.log("error: ", error)
     } finally {
+      setLoading(false)
       onSuccess();
       onClose();
     }
