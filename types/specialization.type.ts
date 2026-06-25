@@ -4,6 +4,11 @@ export interface SpecializationUpdateTypes {
     departmentId: string;
     isActive: boolean;
 }
+export interface SpecializationCreateTypes {
+    name: string;
+    description: string;
+    departmentId: string;
+}
 
 export interface SpecializationTypes {
     specializationId: string;

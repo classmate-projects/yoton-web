@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { baseUrl } from "@/lib/constants";
 import { toast } from "sonner";
+import { SpecializationService } from "@/services/specialization.service";
+import { DepartmentSerivce } from "@/services/department.service";
 
 interface DepartmentType {
   departmentId: string;
@@ -42,11 +44,9 @@ export default function SpecializationModal({
 
   const fetchDepartments = async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/department/get-all`);
-      const data = await res.json();
-      if (res.ok) {
-        setAllDepartments(data);
-      }
+      const data = await DepartmentSerivce.getAll()
+      console.log("fetched department: ", data)
+      setAllDepartments(data);
     } catch (error) {
       console.error("Error fetching departments:", error);
     }
@@ -56,7 +56,6 @@ export default function SpecializationModal({
   useEffect(() => {
     if (isOpen) {
       if (editingSpecialization) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setName(editingSpecialization.name);
         setDescription(editingSpecialization.description);
         setSelectedDepartment(String(editingSpecialization.department.departmentId));
@@ -69,44 +68,46 @@ export default function SpecializationModal({
     }
   }, [isOpen, editingSpecialization, initialDepartmentId]);
 
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-
-    const payload = {
-      name,
-      description,
-      departmentId: selectedDepartment,
-    };
+  const handleCreateSpecialization = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
 
     try {
-      const url = isEditing
-        ? `${baseUrl}/api/specialization/update/${editingSpecialization?.specializationId}`
-        : `${baseUrl}/api/specialization/create`;
-
-      const res = await fetch(url, {
-        method: isEditing ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(
-          data.message || (isEditing ? "Failed to update specialization" : "Failed to add specialization")
-        );
-      }
-
-      toast.success(data.message || (isEditing ? "Specialization updated" : "Specialization added"));
+      const payload = {
+        name,
+        description,
+        departmentId: selectedDepartment,
+      };
+      const data = await SpecializationService.create(payload)
+      toast.success(data.message)
+    } catch (error) {
+      console.log("error: ", error)
+    } finally {
       onSuccess();
       onClose();
-    } catch (error) {
-      if (error instanceof Error) toast.error(error.message);
-    } finally {
-      setLoading(false);
     }
-  };
+  }
+
+  const handleUpdateSpecialization = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+
+    if(!editingSpecialization) return;
+
+    try {
+      const payload = {
+        name,
+        description,
+        departmentId: selectedDepartment,
+        isActive: editingSpecialization?.isActive
+      };
+      const data = await SpecializationService.update(selectedDepartment, payload)
+      toast.success(data.message)
+    } catch (error) {
+      console.log("error: ", error)
+    } finally {
+      onSuccess();
+      onClose();
+    }
+  }
 
   if (!isOpen) return null;
 
@@ -122,7 +123,7 @@ export default function SpecializationModal({
             : "Enter the specialization name, description, and select a department."}
         </p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={isEditing ? handleUpdateSpecialization : handleCreateSpecialization} className="flex flex-col gap-4">
           <div>
             <label htmlFor="spec-name" className="text-sm font-bold text-foreground/90 required">
               Name
