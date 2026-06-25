@@ -111,6 +111,7 @@ export default function DepartmentsPage() {
   // create deaprtment
   const handleCreateDepartment = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setloading(true)
     if (!name.trim()) return;
 
     try {
@@ -121,12 +122,15 @@ export default function DepartmentsPage() {
       toast.success(data.message)
     } catch (error) {
       console.log("Error: ", error)
+    } finally {
+      setloading(false)
     }
   }
 
   // update department
   const handleUpdateDepartment = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setloading(true)
     if (!editingDepartment) return;
     try {
       const payload = {
@@ -141,9 +145,9 @@ export default function DepartmentsPage() {
       toast.success(data.message)
     } catch (error) {
       console.log("Error: ", error)
+    } finally {
+      setloading(false)
     }
-
-    console.log("called")
   }
 
   // toggle department active status
@@ -348,7 +352,7 @@ export default function DepartmentsPage() {
                   type="submit"
                   className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full"
                 >
-                  {isEditing ? "Update" : loading ? "Saving..." : "Save"}
+                  {loading ? isEditing ? "Updating..." : "Saving..." : isEditing ? "Update" : "Save"}
                 </button>
               </div>
             </form>

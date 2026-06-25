@@ -69,7 +69,7 @@ export default function SpecializationModal({
 
   const handleCreateSpecialization = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-
+    setLoading(true)
     try {
       const payload = {
         name,
@@ -81,6 +81,7 @@ export default function SpecializationModal({
     } catch (error) {
       console.log("error: ", error)
     } finally {
+      setLoading(false)
       onSuccess();
       onClose();
     }
@@ -88,6 +89,7 @@ export default function SpecializationModal({
 
   const handleUpdateSpecialization = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setLoading(true)
 
     if(!editingSpecialization) return;
 
@@ -188,7 +190,7 @@ export default function SpecializationModal({
               disabled={loading}
               className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full disabled:opacity-50"
             >
-              {isEditing ? "Update" : loading ? "Saving..." : "Add"}
+              {loading ? isEditing ? "Updating..." : "Saving..." : isEditing ? "Update" : "Save"}
             </button>
           </div>
         </form>
