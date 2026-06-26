@@ -40,8 +40,8 @@ export default function RoleManagementPage() {
   const fetchRoles = async () => {
     try {
       setIsLoading(true);
-      const data = await RoleService.getAll();
-      setRoles(data);
+      const res = await RoleService.getAll();
+      setRoles(res.data);
     } catch (error) {
       console.error("Failed to fetch roles", error);
     } finally {
