@@ -1,12 +1,12 @@
 "use client";
 
 interface DepartmentType {
-  departmentId: number;
+  departmentId: string;
   name: string;
 }
 
 interface SpecializationType {
-  specializationId: number;
+  specializationId: string;
   name: string;
   description: string;
   isActive: boolean;
@@ -113,7 +113,7 @@ export default function SpecializationPage() {
   }, []);
 
   // handle delete specialization
-  const handleDeleteSpecialization = async (id: number) => {
+  const handleDeleteSpecialization = async (id: string) => {
     try {
       const res = await fetch(`${baseUrl}/api/specialization/delete/${id}`, {
         method: "DELETE",
@@ -137,7 +137,7 @@ export default function SpecializationPage() {
     }
   };
 
-  const confirmDelete = (id: number, name: string) => {
+  const confirmDelete = (id: string, name: string) => {
     toast(
       <span>
         Are you sure you want to delete the specialization{" "}

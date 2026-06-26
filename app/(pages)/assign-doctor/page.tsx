@@ -21,8 +21,8 @@ export default function AssignDoctor() {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [selectedSpecialization, setSelectedSpecialization] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
-  const [consultationFee, setConsultationFee] = useState(0);
-  const [experience, setExperience] = useState(0);
+  const [consultationFee, setConsultationFee] = useState<string>("");
+  const [experience, setExperience] = useState<string>("");
 
   const [users, setUsers] = useState<User[]>([]);
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
@@ -86,8 +86,8 @@ export default function AssignDoctor() {
     setSelectedUser(null);
     setSelectedSpecialization("");
     setLicenseNumber("");
-    setConsultationFee(0);
-    setExperience(0);
+    setConsultationFee("");
+    setExperience("");
   };
 
   const handleSave = async () => {
@@ -102,7 +102,7 @@ export default function AssignDoctor() {
         SpecializationId: selectedSpecialization,
         LicenseNumber: licenseNumber,
         ConsultationFee: parseFloat(consultationFee),
-        ExperienceYears: experience,
+        ExperienceYears: parseInt(experience),
       };
 
       const data = await UserService.create_assign_doctor(payload)
@@ -124,8 +124,8 @@ export default function AssignDoctor() {
     setSelectedUser(null);
     setSelectedSpecialization("");
     setLicenseNumber("");
-    setConsultationFee(null);
-    setExperience(null);
+    setConsultationFee("");
+    setExperience("");
   };
 
   return (
