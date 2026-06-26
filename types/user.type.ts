@@ -15,3 +15,11 @@ export interface UserUpdateType {
     phone: string
     isActive: boolean
 }
+
+export interface UserAssignedDoctorCreateType {
+    UserId: string;
+    SpecializationId: string;
+    LicenseNumber: string;
+    ExperienceYears: number;
+    ConsultationFee: number;
+}

@@ -1,5 +1,5 @@
 export interface Doctor {
-  id: number;
+  id: string;
   name: string;
   specialization: string;
   licenseNumber: string;
@@ -9,7 +9,7 @@ export interface Doctor {
 }
 
 export interface User {
-  id: number;
+  id: string;
   name: string;
   username: string;
   email: string;
@@ -17,6 +17,6 @@ export interface User {
 }
 
 export interface Specialization {
-  specializationId: number;
+  specializationId: string;
   name: string;
 }

@@ -13,6 +13,7 @@ export interface AssignedDoctorsInfo {
   
   export interface AssignedDoctors {
     count: number;
-    doctors: AssignedDoctorsInfo[];
+    data: AssignedDoctorsInfo[];
     message: string;
+    status: boolean;
   }

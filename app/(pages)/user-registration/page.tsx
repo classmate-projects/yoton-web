@@ -7,6 +7,7 @@ import { baseUrl } from "@/lib/constants";
 import { SpecializationService } from "@/services/specialization.service";
 import { UserService } from "@/services/user.service";
 import { Specialization } from "@/types/Specializations.type";
+import axios from "axios";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { toast } from "sonner";
@@ -88,7 +89,8 @@ function UserRegistrationForm() {
   }
 
   // handle assign doctor if the role is doctor
-  const handleDoctorAssign = async (userId: number) => {
+  const handleDoctorAssign = async (userId: string) => {
+    if(!userId) return;
     const payload = {
       UserId: userId,
       SpecializationId: selectedSpecialization,
@@ -97,18 +99,20 @@ function UserRegistrationForm() {
       ConsultationFee: consultationFee
     }
 
-    try {
-      await fetch(`${baseUrl}/api/user/assign-doctor`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+    console.log("payload: ", payload)
 
-        body: JSON.stringify(payload)
-      })
-    } catch (error) {
-      console.error("Error: ", error)
-    }
+    // try {
+    //   const data = await UserService.create_assign_doctor(payload)
+    //   console.log("data: ", data)
+    // } catch (error) {
+    //   if (axios.isAxiosError(error)) {
+    //     console.log("Status:", error.response?.status);
+    //     console.log("Response:", error.response?.data);
+    //     console.log("Payload:", payload);
+    //   } else {
+    //     console.error(error);
+    //   }
+    // }
   }
 
   // register user

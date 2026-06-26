@@ -1,6 +1,7 @@
 "use client";
 
 import { baseUrl } from "@/lib/constants";
+import { RoleService } from "@/services/role.service";
 import { AvailableRolesType, SelectRoleProps } from "@/types/selectRole";
 import { useEffect, useState } from "react";
 
@@ -17,9 +18,8 @@ export default function SelectRole({
   useEffect(() => {
     const fetchAvailableRoles = async () => {
       try {
-        const res = await fetch(`${baseUrl}/api/role/get-all`);
-        const data = await res.json();
-        setAvailableRoles(data);
+        const res = await RoleService.getAll();
+        setAvailableRoles(res.data);
       } catch (error) {
         console.error("Error fetching roles: ", error);
       }

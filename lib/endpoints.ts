@@ -21,6 +21,9 @@ export const ENDPOINTS = {
         GET: `/api/user/get-all`,
         CREATE: `/api/user/create`,
         UPDATE: (id: string) => `/api/user/update/${id}`,
-        DELETE: (id: string) => `/api/user/delete/${id}`
+        DELETE: (id: string) => `/api/user/delete/${id}`,
+        GET_ASSIGNED_DOCTORS: `/api/user/assigned-doctors`,
+        CREATE_ASSIGN_DOCTOR: `/api/user/assign-doctor`,
+        GET_SCHEDULED_DOCTOR: (doctorId: string) => `/api/user/${doctorId}/schedule`
     }
 }

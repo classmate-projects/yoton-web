@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { Specialization, User } from "@/types/Specializations.type";
 import { AssignedDoctors, AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
+import { UserService } from "@/services/user.service";
 
 
 export default function AssignDoctor() {
@@ -20,8 +21,8 @@ export default function AssignDoctor() {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [selectedSpecialization, setSelectedSpecialization] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
-  const [consultationFee, setConsultationFee] = useState("");
-  const [experience, setExperience] = useState("");
+  const [consultationFee, setConsultationFee] = useState(0);
+  const [experience, setExperience] = useState(0);
 
   const [users, setUsers] = useState<User[]>([]);
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
@@ -30,22 +31,15 @@ export default function AssignDoctor() {
   // fetch assigned doctors
   const fetchAssignedDoctors = async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/user/assigned-doctors`)
-      if (!res.ok) throw new Error("Failed to fetch assigned doctors")
-
-      const data: AssignedDoctors = await res.json()
-      setDoctors(data.doctors)
+      const res = await UserService.get_assigned_doctors()
+      setDoctors(res.data)
     } catch (error) {
       console.error("Error", error)
     }
   }
 
-
   useEffect(() => {
-    const callApi = () => {
-      fetchAssignedDoctors()
-    }
-    callApi()
+    fetchAssignedDoctors()
   }, [])
 
   // Fetch users and specializations
@@ -92,42 +86,32 @@ export default function AssignDoctor() {
     setSelectedUser(null);
     setSelectedSpecialization("");
     setLicenseNumber("");
-    setConsultationFee("");
-    setExperience("");
+    setConsultationFee(0);
+    setExperience(0);
   };
 
   const handleSave = async () => {
     if (!selectedUser || !selectedSpecialization || !licenseNumber || !consultationFee || !experience) {
-      alert("Please fill in all fields");
+      toast.warning("Please enter all the fields")
       return;
     }
 
     try {
       const payload = {
         UserId: selectedUser.id,
-        SpecializationId: parseInt(selectedSpecialization),
+        SpecializationId: selectedSpecialization,
         LicenseNumber: licenseNumber,
         ConsultationFee: parseFloat(consultationFee),
-        ExperienceYears: parseInt(experience),
+        ExperienceYears: experience,
       };
 
-      const response = await fetch(`${baseUrl}/api/user/assign-doctor`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      const data = await UserService.create_assign_doctor(payload)
 
-      const data = await response.json();
+      console.log("data assigned doctor created: ", data)
 
-      if (response.ok) {
-        toast.success(data.message);
-        setIsModalOpen(false);
-        fetchAssignedDoctors();
-      } else {
-        toast.error("Failed to assign doctor");
-      }
+      toast.success(data.message);
+      setIsModalOpen(false);
+      fetchAssignedDoctors();
     } catch (error) {
       console.error("Error assigning doctor:", error);
       toast.error("Error assigning doctor");
@@ -140,8 +124,8 @@ export default function AssignDoctor() {
     setSelectedUser(null);
     setSelectedSpecialization("");
     setLicenseNumber("");
-    setConsultationFee("");
-    setExperience("");
+    setConsultationFee(null);
+    setExperience(null);
   };
 
   return (
