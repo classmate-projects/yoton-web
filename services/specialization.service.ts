@@ -1,4 +1,4 @@
-import { ENDPOINTS } from "@/helpers/endpoints"
+import { ENDPOINTS } from "@/lib/endpoints"
 import api from "@/lib/axios"
 import { SpecializationCreateTypes, SpecializationUpdateTypes } from "@/types/specialization.type";
 
