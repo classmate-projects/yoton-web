@@ -2,6 +2,7 @@
 
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
+import { getSignalRConnection } from "@/lib/signalR";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { RoleService } from "@/services/role.service";
@@ -53,6 +54,44 @@ export default function RoleManagementPage() {
     void fetchRoles();
   }, []);
 
+  
+  useEffect(() => {
+    let connection: any;
+
+    console.log("connection: ", connection)
+  
+    const connect = async () => {
+      connection = await getSignalRConnection();
+  
+      connection.on("roleCreated", (newRole: FetchedRoles) => {
+        console.log("data: ", newRole)
+        setRoles((prev) => [newRole, ...prev]);
+      });
+  
+      connection.on("roleUpdated", (updatedRole: FetchedRoles) => {
+        setRoles((prev) =>
+          prev.map((role) =>
+            role.roleId === updatedRole.roleId ? updatedRole : role
+          )
+        );
+      });
+  
+      connection.on("roleDeleted", (deletedRole: FetchedRoles) => {
+        setRoles((prev) =>
+          prev.filter((role) => role.roleId !== deletedRole.roleId)
+        );
+      });
+    };
+  
+    connect();
+  
+    return () => {
+      connection?.off("roleCreated");
+      connection?.off("roleUpdated");
+      connection?.off("roleDeleted");
+    };
+  }, []);
+
 
   // create role
   const handleCreateRole = async (e: FormEvent) => {
@@ -64,9 +103,9 @@ export default function RoleManagementPage() {
       }
 
       const data = await RoleService.create(payload);
+      console.log("data: ", data)
       toast.success(data.message)
       resetValues()
-      fetchRoles()
     } catch (error) {
       console.error("Failed to create role", error);
     }
@@ -113,7 +152,6 @@ export default function RoleManagementPage() {
   const handleRoleDelete = async (id: string) => {
     try {
       const data = await RoleService.delete(id);
-      fetchRoles()
       toast.success(data.message)
     } catch (error) {
       console.error("Failed to Delete role", error);
