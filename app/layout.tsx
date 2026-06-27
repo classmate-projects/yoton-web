@@ -36,8 +36,8 @@ export default function RootLayout({
           <Toaster
             position="bottom-right"
             richColors
-            duration={3000}
-            visibleToasts={2}
+            duration={1000}
+            visibleToasts={1}
           />
         </ThemeProvider>
       </body>
