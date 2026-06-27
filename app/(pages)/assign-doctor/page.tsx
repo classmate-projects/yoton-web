@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { MdAssignmentInd } from "react-icons/md";
-import { baseUrl } from "@/lib/constants";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { Specialization, User } from "@/types/Specializations.type";
-import { AssignedDoctors, AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
+import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { UserService } from "@/services/user.service";
+import { SpecializationService } from "@/services/specialization.service";
 
 
 export default function AssignDoctor() {
@@ -48,18 +48,16 @@ export default function AssignDoctor() {
       try {
         setIsLoading(true);
         const [usersRes, specsRes] = await Promise.all([
-          fetch(`${baseUrl}/api/user/get-all`),
-          fetch(`${baseUrl}/api/specialization/get-all`),
+          await UserService.getAll(),
+          await SpecializationService.getAll(),
         ]);
 
-        if (usersRes.ok) {
-          const usersData = await usersRes.json();
-          setUsers(usersData.users.filter((user: User) => user.role === "doctor"));
+        if (usersRes) {
+          setUsers(usersRes.data.filter((user: User) => user.role === "doctor"));
         }
 
-        if (specsRes.ok) {
-          const specsData = await specsRes.json();
-          setSpecializations(Array.isArray(specsData) ? specsData : []);
+        if (specsRes) {
+          setSpecializations(Array.isArray(specsRes) ? specsRes : []);
         }
       } catch (error) {
         console.error("Failed to fetch data:", error);
@@ -106,8 +104,6 @@ export default function AssignDoctor() {
       };
 
       const data = await UserService.create_assign_doctor(payload)
-
-      console.log("data assigned doctor created: ", data)
 
       toast.success(data.message);
       setIsModalOpen(false);
@@ -358,7 +354,7 @@ export default function AssignDoctor() {
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 px-4 py-2 bg-primary hover:opacity-90 text-white font-semibold rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 bg-primary hover:opacity-90 text-white font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 Save
               </button>
