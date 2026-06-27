@@ -7,6 +7,7 @@ import { baseUrl } from "@/lib/constants";
 import { SpecializationService } from "@/services/specialization.service";
 import { UserService } from "@/services/user.service";
 import { Specialization } from "@/types/Specializations.type";
+import { UserAssignedDoctorCreateType } from "@/types/user.type";
 import axios from "axios";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
@@ -27,8 +28,8 @@ function UserRegistrationForm() {
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
   const [selectedSpecialization, setSelectedSpecialization] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
-  const [consultationFee, setConsultationFee] = useState("");
-  const [experience, setExperience] = useState("");
+  const [consultationFee, setConsultationFee] = useState(0);
+  const [experience, setExperience] = useState(0);
 
 
   const router = useRouter();
@@ -90,8 +91,8 @@ function UserRegistrationForm() {
 
   // handle assign doctor if the role is doctor
   const handleDoctorAssign = async (userId: string) => {
-    if(!userId) return;
-    const payload = {
+    if (!userId) return;
+    const payload: UserAssignedDoctorCreateType = {
       UserId: userId,
       SpecializationId: selectedSpecialization,
       LicenseNumber: licenseNumber,
@@ -99,20 +100,11 @@ function UserRegistrationForm() {
       ConsultationFee: consultationFee
     }
 
-    console.log("payload: ", payload)
-
-    // try {
-    //   const data = await UserService.create_assign_doctor(payload)
-    //   console.log("data: ", data)
-    // } catch (error) {
-    //   if (axios.isAxiosError(error)) {
-    //     console.log("Status:", error.response?.status);
-    //     console.log("Response:", error.response?.data);
-    //     console.log("Payload:", payload);
-    //   } else {
-    //     console.error(error);
-    //   }
-    // }
+    try {
+      await UserService.create_assign_doctor(payload)
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   // register user
@@ -135,8 +127,8 @@ function UserRegistrationForm() {
 
       const data = await UserService.create(payload)
 
-      if (data.role === "doctor") {
-        handleDoctorAssign(data.userId)
+      if (data.data.role === "doctor") {
+        handleDoctorAssign(data.data.userId)
       }
 
       resetdata()
@@ -454,7 +446,7 @@ function UserRegistrationForm() {
                         type="text"
                         placeholder="eg: 50"
                         value={consultationFee}
-                        onChange={(e) => setConsultationFee(e.target.value)}
+                        onChange={(e) => setConsultationFee(Number(e.target.value))}
                       />
                     </div>
                     <div className="flex flex-col gap-1 w-full">
@@ -463,7 +455,7 @@ function UserRegistrationForm() {
                         type="text"
                         placeholder="eg: 5"
                         value={experience}
-                        onChange={(e) => setExperience(e.target.value)}
+                        onChange={(e) => setExperience(Number(e.target.value))}
                       />
                     </div>
                   </div>

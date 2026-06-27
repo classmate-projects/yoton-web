@@ -17,12 +17,12 @@ import { useEffect, useState } from "react";
 import ToggleButton from "@/components/ToggleButton";
 import SpecializationIcon from "@/public/icons/SpecializationIcon";
 import { MdAdd } from "react-icons/md";
-import { baseUrl } from "@/lib/constants";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import { toast } from "sonner";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SpecializationModal from "@/components/SpecializationModal";
+import { SpecializationService } from "@/services/specialization.service";
 
 export default function SpecializationPage() {
   const [specializations, setSpecializations] = useState<SpecializationType[]>([]);
@@ -53,28 +53,15 @@ export default function SpecializationPage() {
   const handleToggleSpecialization = async (spec: SpecializationType) => {
     const nextIsActive = !spec.isActive;
 
+    const payload = {
+      name: spec.name,
+      description: spec.description,
+      departmentId: spec.department.departmentId,
+      isActive: nextIsActive,
+    }
+
     try {
-      const res = await fetch(
-        `${baseUrl}/api/specialization/update/${spec.specializationId}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: spec.name,
-            description: spec.description,
-            departmentId: spec.department.departmentId,
-            isActive: nextIsActive,
-          }),
-        },
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to update specialization status");
-      }
+      await SpecializationService.update(spec.specializationId, payload)
 
       setSpecializations((prev) =>
         prev.map((s) =>
@@ -97,10 +84,8 @@ export default function SpecializationPage() {
   const fetchSpecializations = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/specialization/get-all`);
-      const data = await res.json();
-
-      setSpecializations(data);
+      const res = await SpecializationService.getAll()
+      setSpecializations(res);
     } catch (error) {
       console.error("Error fetching specializations:", error);
     } finally {
@@ -115,18 +100,8 @@ export default function SpecializationPage() {
   // handle delete specialization
   const handleDeleteSpecialization = async (id: string) => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/delete/${id}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to delete specialization");
-      }
+      const data = await SpecializationService.delete(id)
+      toast.success(data.message)
 
       fetchSpecializations();
     } catch (error: unknown) {

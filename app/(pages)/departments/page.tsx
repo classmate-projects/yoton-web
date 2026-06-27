@@ -100,7 +100,8 @@ export default function DepartmentsPage() {
     try {
       setIsLoading(true);
       const data = await DepartmentSerivce.getAll();
-      setDepartments(data);
+      console.log("Dept: ", data)
+      setDepartments(data || []);
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
     } finally {
@@ -207,6 +208,7 @@ export default function DepartmentsPage() {
   const fetchSpecializations = async () => {
     try {
       const data = await SpecializationService.getAll()
+      console.log("data", data)
       setSpecializations(data)
     } catch (error) {
       console.error("Error fetching specializations:", error);
@@ -389,7 +391,7 @@ export default function DepartmentsPage() {
               ) : departments.length > 0 ? (
                 departments.map((department) => {
                   const deptSpecs = specializations.filter(
-                    (s) => s.department.departmentId === department.departmentId
+                    (s) => s.department?.departmentId === department.departmentId
                   );
                   const isExpanded = expandedDepartments.has(department.departmentId);
 
