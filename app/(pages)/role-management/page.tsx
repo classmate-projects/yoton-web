@@ -3,6 +3,7 @@
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
 import { getSignalRConnection } from "@/lib/signalR";
+import * as signalR from "@microsoft/signalr";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { RoleService } from "@/services/role.service";
@@ -56,7 +57,7 @@ export default function RoleManagementPage() {
 
   
   useEffect(() => {
-    let connection: any;
+    let connection: signalR.HubConnection | null = null;
 
     console.log("connection: ", connection)
   
@@ -64,7 +65,6 @@ export default function RoleManagementPage() {
       connection = await getSignalRConnection();
   
       connection.on("roleCreated", (newRole: FetchedRoles) => {
-        console.log("data: ", newRole)
         setRoles((prev) => [newRole, ...prev]);
       });
   
@@ -103,7 +103,6 @@ export default function RoleManagementPage() {
       }
 
       const data = await RoleService.create(payload);
-      console.log("data: ", data)
       toast.success(data.message)
       resetValues()
     } catch (error) {
@@ -126,7 +125,6 @@ export default function RoleManagementPage() {
       const data = await RoleService.update(editingRole?.roleId, payload)
       toast.success(data.message)
       resetValues();
-      fetchRoles();
     } catch (error) {
       console.error("Failed to Update role", error);
     }

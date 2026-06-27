@@ -22,7 +22,6 @@ import DeleteIcon from "@/public/icons/deleteIcon";
 import SettingsIcon from "@/public/icons/SettingsIcon";
 import AddUserIcon from "@/public/icons/AddUserIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
-import { baseUrl } from "@/lib/constants";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { UserService } from "@/services/user.service";
@@ -38,6 +37,7 @@ export default function UserManagement() {
 
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
+    if (!users) return [];
 
     return users.filter((user) => {
       const matchesSearch =
@@ -47,6 +47,7 @@ export default function UserManagement() {
 
       const matchesRole =
         !role || role === "allRole" || user.role.toLowerCase() === role.toLowerCase();
+
 
       const matchesActiveStatus =
         activeStatus === "all" ||
@@ -69,8 +70,8 @@ export default function UserManagement() {
   const fetchAllUsers = async () => {
     try {
       setIsLoading(true);
-      const data = await UserService.getAll()
-      setUsers(data.users);
+      const res = await UserService.getAll()
+      setUsers(res.data);
     } catch (error) {
       console.error("Error fetching users:", error);
     } finally {
@@ -79,13 +80,10 @@ export default function UserManagement() {
   };
 
   useEffect(() => {
-    const loadUser = async () => {
-      await fetchAllUsers();
-    };
-
-    loadUser();
+    fetchAllUsers();
   }, []);
 
+  // get formatted time
   const getTime = (time?: string) => {
     if (!time) return "N/A";
 
@@ -228,7 +226,7 @@ export default function UserManagement() {
           </div>
         </div>
         <div className="bg-gray-500 p-6 rounded-xl text-white">
-          <h3>Total Users: {users.length - 1}</h3>
+          <h3>Total Users: {filteredUsers?.length}</h3>
         </div>
       </div>
 
