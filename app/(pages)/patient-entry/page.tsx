@@ -11,27 +11,27 @@ import { baseUrl } from "@/lib/constants";
 
 export default function PatientEntryPage() {
   const [formData, setFormData] = useState({
-    Name: "",
-    Sex: "",
-    DateOfBirth: "",
-    Phone: "",
-    PhoneCode: "+971",
-    Email: "",
-    Address: "",
-    Nationality: "",
-    PassportNumber: "",
-    NationalID: "",
-    FatherName: "",
-    MotherName: "",
-    PatientType: "Normal",
-    VisaType: "",
-    MaritalStatus: "",
-    Designation: "",
-    ReferralStatus: false,
-    ChronicStatus: false,
-    EmergencyContact: "",
-    EmergencyContactPhone: "",
-    Password: "",
+    name: "",
+    sex: "",
+    dateOfBirth: "",
+    phone: "",
+    phoneCode: "+971",
+    email: "",
+    address: "",
+    nationality: "",
+    passportNumber: "",
+    nationalID: "",
+    fatherName: "",
+    motherName: "",
+    patientType: "Normal",
+    visaType: "",
+    maritalStatus: "",
+    designation: "",
+    referralStatus: false,
+    chronicStatus: false,
+    emergencyContact: "",
+    emergencyContactPhone: "",
+    password: "",
   });
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -55,7 +55,7 @@ export default function PatientEntryPage() {
     setLoading(true);
 
     // Validate that at least one of National ID or Passport Number is filled
-    if (!formData.NationalID && !formData.PassportNumber) {
+    if (!formData.nationalID && !formData.passportNumber) {
       setError("Please provide either National ID or Passport Number");
       setLoading(false);
       return;
@@ -80,6 +80,8 @@ export default function PatientEntryPage() {
         },
         body: JSON.stringify(payload),
       });
+      const data = await res.json()
+      console.log("Patiet entry: ", data)
       resetForm();
     } catch (error) {
       console.log(error);
@@ -91,27 +93,27 @@ export default function PatientEntryPage() {
 
   const resetForm = () => {
     setFormData({
-      Name: "",
-      Sex: "",
-      DateOfBirth: "",
-      Phone: "",
-      PhoneCode: "+971",
-      Email: "",
-      Address: "",
-      Nationality: "",
-      PassportNumber: "",
-      NationalID: "",
-      FatherName: "",
-      MotherName: "",
-      PatientType: "Normal",
-      VisaType: "",
-      MaritalStatus: "",
-      Designation: "",
-      ReferralStatus: false,
-      ChronicStatus: false,
-      EmergencyContact: "",
-      EmergencyContactPhone: "",
-      Password: "",
+      name: "",
+    sex: "",
+    dateOfBirth: "",
+    phone: "",
+    phoneCode: "+971",
+    email: "",
+    address: "",
+    nationality: "",
+    passportNumber: "",
+    nationalID: "",
+    fatherName: "",
+    motherName: "",
+    patientType: "Normal",
+    visaType: "",
+    maritalStatus: "",
+    designation: "",
+    referralStatus: false,
+    chronicStatus: false,
+    emergencyContact: "",
+    emergencyContactPhone: "",
+    password: "",
     });
   };
 
@@ -149,7 +151,7 @@ export default function PatientEntryPage() {
                 type="text"
                 id="Name"
                 name="Name"
-                value={formData.Name}
+                value={formData.name}
                 onChange={handleInputChange}
                 required
                 placeholder="John Doe"
@@ -165,7 +167,7 @@ export default function PatientEntryPage() {
               <select
                 id="Sex"
                 name="Sex"
-                value={formData.Sex}
+                value={formData.sex}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
@@ -189,7 +191,7 @@ export default function PatientEntryPage() {
                 type="date"
                 id="DateOfBirth"
                 name="DateOfBirth"
-                value={formData.DateOfBirth}
+                value={formData.dateOfBirth}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -207,7 +209,7 @@ export default function PatientEntryPage() {
               <select
                 id="Nationality"
                 name="Nationality"
-                value={formData.Nationality}
+                value={formData.nationality}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
@@ -235,7 +237,7 @@ export default function PatientEntryPage() {
                 type="text"
                 id="FatherName"
                 name="FatherName"
-                value={formData.FatherName}
+                value={formData.fatherName}
                 onChange={handleInputChange}
                 placeholder="Father's Name"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -254,7 +256,7 @@ export default function PatientEntryPage() {
                 type="text"
                 id="MotherName"
                 name="MotherName"
-                value={formData.MotherName}
+                value={formData.motherName}
                 onChange={handleInputChange}
                 placeholder="Mother's Name"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -272,7 +274,7 @@ export default function PatientEntryPage() {
               <select
                 id="MaritalStatus"
                 name="MaritalStatus"
-                value={formData.MaritalStatus}
+                value={formData.maritalStatus}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
@@ -297,7 +299,7 @@ export default function PatientEntryPage() {
                 type="text"
                 id="Designation"
                 name="Designation"
-                value={formData.Designation}
+                value={formData.designation}
                 onChange={handleInputChange}
                 placeholder="Engineer"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -326,7 +328,7 @@ export default function PatientEntryPage() {
                 {/* Phone Code Display and Dropdown */}
                 <div className="relative w-20 shrink-0">
                   <div className="absolute left-4 top-2.5 text-foreground font-medium pointer-events-none z-10">
-                    {formData.PhoneCode}
+                    {formData.phoneCode}
                   </div>
                   <div className="absolute right-1 top-2.5 pointer-events-none z-10 text-muted-foreground">
                     <MdExpandMore size={20} />
@@ -334,7 +336,7 @@ export default function PatientEntryPage() {
                   <select
                     id="PhoneCode"
                     name="PhoneCode"
-                    value={formData.PhoneCode}
+                    value={formData.phoneCode}
                     onChange={handleInputChange}
                     required
                     className="px-4 py-2.5 border-r border-border ring-transparent! focus:outline-none! rounded-none! text-foreground bg-card w-full shrink-0 appearance-none cursor-pointer"
@@ -357,7 +359,7 @@ export default function PatientEntryPage() {
                   type="tel"
                   id="Phone"
                   name="Phone"
-                  value={formData.Phone}
+                  value={formData.phone}
                   onChange={handleInputChange}
                   required
                   placeholder="0501234567"
@@ -375,7 +377,7 @@ export default function PatientEntryPage() {
                 type="email"
                 id="Email"
                 name="Email"
-                value={formData.Email}
+                value={formData.email}
                 onChange={handleInputChange}
                 required
                 placeholder="john@example.com"
@@ -392,7 +394,7 @@ export default function PatientEntryPage() {
                 type="text"
                 id="Address"
                 name="Address"
-                value={formData.Address}
+                value={formData.address}
                 onChange={handleInputChange}
                 placeholder="Abu Dhabi"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -411,7 +413,7 @@ export default function PatientEntryPage() {
                 type="text"
                 id="EmergencyContact"
                 name="EmergencyContact"
-                value={formData.EmergencyContact}
+                value={formData.emergencyContact}
                 onChange={handleInputChange}
                 required
                 placeholder="Contact Name"
@@ -431,7 +433,7 @@ export default function PatientEntryPage() {
                 type="tel"
                 id="EmergencyContactPhone"
                 name="EmergencyContactPhone"
-                value={formData.EmergencyContactPhone}
+                value={formData.emergencyContactPhone}
                 onChange={handleInputChange}
                 required
                 placeholder="0509876543"
@@ -466,7 +468,7 @@ export default function PatientEntryPage() {
                 type="text"
                 id="NationalID"
                 name="NationalID"
-                value={formData.NationalID}
+                value={formData.nationalID}
                 onChange={handleInputChange}
                 placeholder="784-1234-5678901-2"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -485,7 +487,7 @@ export default function PatientEntryPage() {
                 type="text"
                 id="PassportNumber"
                 name="PassportNumber"
-                value={formData.PassportNumber}
+                value={formData.passportNumber}
                 onChange={handleInputChange}
                 placeholder="A1234567"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -501,7 +503,7 @@ export default function PatientEntryPage() {
               <select
                 id="VisaType"
                 name="VisaType"
-                value={formData.VisaType}
+                value={formData.visaType}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
@@ -535,7 +537,7 @@ export default function PatientEntryPage() {
               <select
                 id="PatientType"
                 name="PatientType"
-                value={formData.PatientType}
+                value={formData.patientType}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
@@ -553,7 +555,7 @@ export default function PatientEntryPage() {
                   type="checkbox"
                   id="ReferralStatus"
                   name="ReferralStatus"
-                  checked={formData.ReferralStatus}
+                  checked={formData.referralStatus}
                   onChange={handleInputChange}
                   className="cursor-pointer bg-transparent"
                 />
@@ -570,7 +572,7 @@ export default function PatientEntryPage() {
                   type="checkbox"
                   id="ChronicStatus"
                   name="ChronicStatus"
-                  checked={formData.ChronicStatus}
+                  checked={formData.chronicStatus}
                   onChange={handleInputChange}
                   className="cursor-pointer bg-transparent"
                 />

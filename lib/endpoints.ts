@@ -5,6 +5,21 @@ export const ENDPOINTS = {
         UPDATE: (id: string) => `/api/department/update/${id}`,
         DELETE: (id: string) => `/api/department/delete/${id}`,
     },
+    RECEPTION: {
+        GET_ALL_PATIENTS: `/api/reception/get-all/patient`,
+        CREATE_PATIENT: `/api/reception/create-patient`,
+        UPDATE_SCEDULE: `/api/reception/update-schedule`,
+        GET_DOCTOR_AVAILABILITY: `/api/reception/doctor-availability`,
+        GET_ALL_APPOINTMENTS: `/api/reception/get-all/appointment`,
+        CREATE_APPOINTMENT: `/api/reception/create-appointment`,
+        UPDATE_PATIENT_AND_APPOINTMENT: (patientId: string) => `/api/reception/update-patient-and-appointment/${patientId}`,
+        UPLOAD_PROFILE: (id: string) => `/api/reception/${id}/upload-profile`,
+        SOFT_DELETE: (id: string) => `/api/reception/soft-delete/${id}`,
+        UPDATE_STATUS: `/api/reception/update-status`,
+        GET_DOCTOR_BY_ID: (doctorId: string) => `/api/reception/get-all/doctor/${doctorId}`,
+        GET_PATIENT_BY_ID: (patientId: string) => `/api/reception/get-all/patient/${patientId}`,
+        CANCEL: (id: string) => `/api/reception/cancel/${id}`
+    },
     ROLE: {
         GET: `/api/role/get-all`,
         CREATE: `/api/role/create-role`,
