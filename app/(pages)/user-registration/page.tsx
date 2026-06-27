@@ -3,12 +3,10 @@
 
 import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
-import { baseUrl } from "@/lib/constants";
 import { SpecializationService } from "@/services/specialization.service";
 import { UserService } from "@/services/user.service";
 import { Specialization } from "@/types/Specializations.type";
 import { UserAssignedDoctorCreateType } from "@/types/user.type";
-import axios from "axios";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { toast } from "sonner";

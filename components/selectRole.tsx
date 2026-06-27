@@ -1,6 +1,5 @@
 "use client";
 
-import { baseUrl } from "@/lib/constants";
 import { RoleService } from "@/services/role.service";
 import { AvailableRolesType, SelectRoleProps } from "@/types/selectRole";
 import { useEffect, useState } from "react";
