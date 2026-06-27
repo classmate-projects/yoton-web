@@ -10,15 +10,9 @@ import { RoleService } from "@/services/role.service";
 import { FormEvent, useEffect, useState } from "react";
 import { MdAdminPanelSettings, MdAdd, MdEdit } from "react-icons/md";
 import { toast } from "sonner";
-
-interface FetchedRoles {
-  roleId: string;
-  name: string;
-  description: string;
-  isEditable: boolean;
-  isActive: boolean;
-  createdAt: string
-}
+import axios from "axios";
+import { FetchedRoles } from "@/types/role.type";
+import { useRoleSignalR } from "@/hooks/useRoleSignalR";
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<FetchedRoles[]>([]);
@@ -36,6 +30,8 @@ export default function RoleManagementPage() {
     setDescription("")
     setEditingRole(null)
   }
+
+  useRoleSignalR(setRoles)
 
 
   // fetch roles
@@ -56,42 +52,43 @@ export default function RoleManagementPage() {
   }, []);
 
   
-  useEffect(() => {
-    let connection: signalR.HubConnection | null = null;
+  // useEffect(() => {
+  //   let connection: signalR.HubConnection | null = null;
 
-    console.log("connection: ", connection)
+  //   console.log("connection: ", connection)
   
-    const connect = async () => {
-      connection = await getSignalRConnection();
+  //   const connect = async () => {
+  //     connection = await getSignalRConnection();
   
-      connection.on("roleCreated", (newRole: FetchedRoles) => {
-        setRoles((prev) => [newRole, ...prev]);
-      });
+  //     connection.on("roleCreated", (newRole: FetchedRoles) => {
+  //       console.log("Ner role: ", newRole )
+  //       setRoles((prev) => [newRole, ...prev]);
+  //     });
   
-      connection.on("roleUpdated", (updatedRole: FetchedRoles) => {
-        console.log("role updated: ", updatedRole)
-        setRoles((prev) =>
-          prev.map((role) =>
-            role.roleId === updatedRole.roleId ? updatedRole : role
-          )
-        );
-      });
+  //     connection.on("roleUpdated", (updatedRole: FetchedRoles) => {
+  //       console.log("role updated: ", updatedRole)
+  //       setRoles((prev) =>
+  //         prev.map((role) =>
+  //           role.roleId === updatedRole.roleId ? updatedRole : role
+  //         )
+  //       );
+  //     });
   
-      connection.on("roleDeleted", (deletedRole: FetchedRoles) => {
-        setRoles((prev) =>
-          prev.filter((role) => role.roleId !== deletedRole.roleId)
-        );
-      });
-    };
+  //     connection.on("roleDeleted", (deletedRole: FetchedRoles) => {
+  //       setRoles((prev) =>
+  //         prev.filter((role) => role.roleId !== deletedRole.roleId)
+  //       );
+  //     });
+  //   };
   
-    connect();
+  //   connect();
   
-    return () => {
-      connection?.off("roleCreated");
-      connection?.off("roleUpdated");
-      connection?.off("roleDeleted");
-    };
-  }, []);
+  //   return () => {
+  //     connection?.off("roleCreated");
+  //     connection?.off("roleUpdated");
+  //     connection?.off("roleDeleted");
+  //   };
+  // }, []);
 
 
   // create role
@@ -107,7 +104,11 @@ export default function RoleManagementPage() {
       toast.success(data.message)
       resetValues()
     } catch (error) {
-      console.error("Failed to create role", error);
+      if(axios.isAxiosError(error)) {
+        toast.error(error.response?.data.message)
+      } else {
+        toast.error("Something went wrong")
+      }
     }
   }
 
