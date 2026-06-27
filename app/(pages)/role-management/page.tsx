@@ -69,6 +69,7 @@ export default function RoleManagementPage() {
       });
   
       connection.on("roleUpdated", (updatedRole: FetchedRoles) => {
+        console.log("role updated: ", updatedRole)
         setRoles((prev) =>
           prev.map((role) =>
             role.roleId === updatedRole.roleId ? updatedRole : role

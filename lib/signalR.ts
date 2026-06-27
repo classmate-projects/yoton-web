@@ -1,4 +1,5 @@
 import * as signalR from "@microsoft/signalr";
+import { baseUrl } from "./constants";
 
 let connection: signalR.HubConnection | null = null;
 
@@ -8,14 +9,14 @@ export const getSignalRConnection = async () => {
   }
 
   connection = new signalR.HubConnectionBuilder()
-    .withUrl("http://localhost:5205/notify")
+    .withUrl(`${baseUrl}/notify`)
     .withAutomaticReconnect()
     .configureLogging(signalR.LogLevel.Information)
     .build();
 
   await connection.start();
 
-  console.log("✅ SignalR Connected");
+  console.log("SignalR Connected.");
 
   return connection;
 };
