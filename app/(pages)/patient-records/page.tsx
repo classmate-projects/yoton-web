@@ -26,7 +26,6 @@ export default function PatientRecordsPage() {
     try {
       setIsLoading(true);
       const data = await ReceptionService.getAllPatients()
-      console.log("data: ", data)
       setPatients(data.patients || []);
     } catch (error) {
       console.error("Failed to fetch patients", error);
