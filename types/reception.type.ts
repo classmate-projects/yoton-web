@@ -1,4 +1,4 @@
-export interface ReceptionCreatePatient {
+export interface ReceptionCreatePatientType {
     name: string;
     sex: string;
     dateOfBirth: string;
@@ -22,3 +22,11 @@ export interface ReceptionCreatePatient {
     password: string;
     registeredBy: string;
 }
+
+export interface PatientGetAllType {
+    opId: string;
+    name: string;
+    email: string;
+    phone: string;
+    address: string;
+  }

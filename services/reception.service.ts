@@ -1,13 +1,13 @@
 import api from "@/lib/axios"
 import { ENDPOINTS } from "@/lib/endpoints"
-import { ReceptionCreatePatient } from "@/types/reception.type";
+import { ReceptionCreatePatientType } from "@/types/reception.type";
 
 export const ReceptionService = {
     getAllPatients: async () => {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_ALL_PATIENTS)
         return data;
     },
-    createPatinet: async (payload: ReceptionCreatePatient) => {
+    createPatinet: async (payload: ReceptionCreatePatientType) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CREATE_PATIENT, payload)
         return data;
     }, 

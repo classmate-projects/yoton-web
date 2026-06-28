@@ -8,17 +8,10 @@ import { MdContacts } from "react-icons/md";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { ReceptionService } from "@/services/reception.service";
-
-interface Patient {
-  opId: string;
-  name: string;
-  email: string;
-  phone: string;
-  address: string;
-}
+import { PatientGetAllType } from "@/types/reception.type";
 
 export default function PatientRecordsPage() {
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patients, setPatients] = useState<PatientGetAllType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
