@@ -76,7 +76,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 9,
         name: "Doctors Availability",
         navLink: "/doctor-availability",
-        roles: ["reception"],
+        roles: ["reception", "admin"],
         icon: availableDoctor
     },
 ]
