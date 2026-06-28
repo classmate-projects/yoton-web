@@ -68,7 +68,7 @@ export default function PatientEntryPage() {
 
     const payload = {
       ...formData,
-      RegisteredBy: registeredBy,
+      registeredBy,
     };
 
     try {
@@ -94,26 +94,26 @@ export default function PatientEntryPage() {
   const resetForm = () => {
     setFormData({
       name: "",
-    sex: "",
-    dateOfBirth: "",
-    phone: "",
-    phoneCode: "+971",
-    email: "",
-    address: "",
-    nationality: "",
-    passportNumber: "",
-    nationalID: "",
-    fatherName: "",
-    motherName: "",
-    patientType: "Normal",
-    visaType: "",
-    maritalStatus: "",
-    designation: "",
-    referralStatus: false,
-    chronicStatus: false,
-    emergencyContact: "",
-    emergencyContactPhone: "",
-    password: "",
+      sex: "",
+      dateOfBirth: "",
+      phone: "",
+      phoneCode: "+971",
+      email: "",
+      address: "",
+      nationality: "",
+      passportNumber: "",
+      nationalID: "",
+      fatherName: "",
+      motherName: "",
+      patientType: "Normal",
+      visaType: "",
+      maritalStatus: "",
+      designation: "",
+      referralStatus: false,
+      chronicStatus: false,
+      emergencyContact: "",
+      emergencyContactPhone: "",
+      password: "",
     });
   };
 
@@ -144,13 +144,13 @@ export default function PatientEntryPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Name */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Name" className="font-semibold text-foreground/90">
+              <label htmlFor="name" className="font-semibold text-foreground/90">
                 Full Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                id="Name"
-                name="Name"
+                id="name"
+                name="name"
                 value={formData.name}
                 onChange={handleInputChange}
                 required
@@ -161,12 +161,12 @@ export default function PatientEntryPage() {
 
             {/* Sex */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Sex" className="font-semibold text-foreground/90">
+              <label htmlFor="sex" className="font-semibold text-foreground/90">
                 Sex <span className="text-red-500">*</span>
               </label>
               <select
-                id="Sex"
-                name="Sex"
+                id="sex"
+                name="sex"
                 value={formData.sex}
                 onChange={handleInputChange}
                 required
@@ -182,15 +182,15 @@ export default function PatientEntryPage() {
             {/* Date of Birth */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="DateOfBirth"
+                htmlFor="dateOfBirth"
                 className="font-semibold text-foreground/90"
               >
                 Date of Birth <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
-                id="DateOfBirth"
-                name="DateOfBirth"
+                id="dateOfBirth"
+                name="dateOfBirth"
                 value={formData.dateOfBirth}
                 onChange={handleInputChange}
                 required
@@ -201,14 +201,14 @@ export default function PatientEntryPage() {
             {/* Nationality */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="Nationality"
+                htmlFor="nationality"
                 className="font-semibold text-foreground/90"
               >
                 Nationality <span className="text-red-500">*</span>
               </label>
               <select
-                id="Nationality"
-                name="Nationality"
+                id="nationality"
+                name="nationality"
                 value={formData.nationality}
                 onChange={handleInputChange}
                 required
@@ -228,15 +228,15 @@ export default function PatientEntryPage() {
             {/* Father Name */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="FatherName"
+                htmlFor="fatherName"
                 className="font-semibold text-foreground/90"
               >
                 Father Name
               </label>
               <input
                 type="text"
-                id="FatherName"
-                name="FatherName"
+                id="fatherName"
+                name="fatherName"
                 value={formData.fatherName}
                 onChange={handleInputChange}
                 placeholder="Father's Name"
@@ -247,15 +247,15 @@ export default function PatientEntryPage() {
             {/* Mother Name */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="MotherName"
+                htmlFor="motherName"
                 className="font-semibold text-foreground/90"
               >
                 Mother Name
               </label>
               <input
                 type="text"
-                id="MotherName"
-                name="MotherName"
+                id="motherName"
+                name="motherName"
                 value={formData.motherName}
                 onChange={handleInputChange}
                 placeholder="Mother's Name"
@@ -266,14 +266,14 @@ export default function PatientEntryPage() {
             {/* Marital Status */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="MaritalStatus"
+                htmlFor="maritalStatus"
                 className="font-semibold text-foreground/90"
               >
                 Marital Status <span className="text-red-500">*</span>
               </label>
               <select
-                id="MaritalStatus"
-                name="MaritalStatus"
+                id="maritalStatus"
+                name="maritalStatus"
                 value={formData.maritalStatus}
                 onChange={handleInputChange}
                 required
@@ -290,15 +290,15 @@ export default function PatientEntryPage() {
             {/* Designation */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="Designation"
+                htmlFor="designation"
                 className="font-semibold text-foreground/90"
               >
                 Designation
               </label>
               <input
                 type="text"
-                id="Designation"
-                name="Designation"
+                id="designation"
+                name="designation"
                 value={formData.designation}
                 onChange={handleInputChange}
                 placeholder="Engineer"
@@ -334,8 +334,8 @@ export default function PatientEntryPage() {
                     <MdExpandMore size={20} />
                   </div>
                   <select
-                    id="PhoneCode"
-                    name="PhoneCode"
+                    id="phoneCode"
+                    name="phoneCode"
                     value={formData.phoneCode}
                     onChange={handleInputChange}
                     required
@@ -357,8 +357,8 @@ export default function PatientEntryPage() {
                 {/* Phone Input */}
                 <input
                   type="tel"
-                  id="Phone"
-                  name="Phone"
+                  id="phone"
+                  name="phone"
                   value={formData.phone}
                   onChange={handleInputChange}
                   required
@@ -375,8 +375,8 @@ export default function PatientEntryPage() {
               </label>
               <input
                 type="email"
-                id="Email"
-                name="Email"
+                id="email"
+                name="email"
                 value={formData.email}
                 onChange={handleInputChange}
                 required
@@ -392,8 +392,8 @@ export default function PatientEntryPage() {
               </label>
               <input
                 type="text"
-                id="Address"
-                name="Address"
+                id="address"
+                name="address"
                 value={formData.address}
                 onChange={handleInputChange}
                 placeholder="Abu Dhabi"
@@ -404,15 +404,15 @@ export default function PatientEntryPage() {
             {/* Emergency Contact */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="EmergencyContact"
+                htmlFor="emergencyContact"
                 className="font-semibold text-foreground/90"
               >
                 Emergency Contact Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                id="EmergencyContact"
-                name="EmergencyContact"
+                id="emergencyContact"
+                name="emergencyContact"
                 value={formData.emergencyContact}
                 onChange={handleInputChange}
                 required
@@ -424,15 +424,15 @@ export default function PatientEntryPage() {
             {/* Emergency Contact Phone */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="EmergencyContactPhone"
+                htmlFor="emergencyContactPhone"
                 className="font-semibold text-foreground/90"
               >
                 Emergency Contact Phone <span className="text-red-500">*</span>
               </label>
               <input
                 type="tel"
-                id="EmergencyContactPhone"
-                name="EmergencyContactPhone"
+                id="emergencyContactPhone"
+                name="emergencyContactPhone"
                 value={formData.emergencyContactPhone}
                 onChange={handleInputChange}
                 required
@@ -459,15 +459,15 @@ export default function PatientEntryPage() {
             {/* National ID */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="NationalID"
+                htmlFor="nationalID"
                 className="font-semibold text-foreground/90"
               >
                 National ID
               </label>
               <input
                 type="text"
-                id="NationalID"
-                name="NationalID"
+                id="nationalID"
+                name="nationalID"
                 value={formData.nationalID}
                 onChange={handleInputChange}
                 placeholder="784-1234-5678901-2"
@@ -478,15 +478,15 @@ export default function PatientEntryPage() {
             {/* Passport Number */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="PassportNumber"
+                htmlFor="passportNumber"
                 className="font-semibold text-foreground/90"
               >
                 Passport Number
               </label>
               <input
                 type="text"
-                id="PassportNumber"
-                name="PassportNumber"
+                id="passportNumber"
+                name="passportNumber"
                 value={formData.passportNumber}
                 onChange={handleInputChange}
                 placeholder="A1234567"
@@ -497,12 +497,12 @@ export default function PatientEntryPage() {
 
             {/* Visa Type */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="VisaType" className="font-semibold text-foreground/90">
+              <label htmlFor="visaType" className="font-semibold text-foreground/90">
                 Visa Type <span className="text-red-500">*</span>
               </label>
               <select
-                id="VisaType"
-                name="VisaType"
+                id="visaType"
+                name="visaType"
                 value={formData.visaType}
                 onChange={handleInputChange}
                 required
@@ -529,14 +529,14 @@ export default function PatientEntryPage() {
             {/* Patient Type */}
             <div className="flex flex-col gap-2 w-1/2">
               <label
-                htmlFor="PatientType"
+                htmlFor="patientType"
                 className="font-semibold text-foreground/90"
               >
                 Patient Type <span className="text-red-500">*</span>
               </label>
               <select
-                id="PatientType"
-                name="PatientType"
+                id="patientType"
+                name="patientType"
                 value={formData.patientType}
                 onChange={handleInputChange}
                 required
@@ -553,14 +553,14 @@ export default function PatientEntryPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  id="ReferralStatus"
-                  name="ReferralStatus"
+                  id="referralStatus"
+                  name="referralStatus"
                   checked={formData.referralStatus}
                   onChange={handleInputChange}
                   className="cursor-pointer bg-transparent"
                 />
                 <label
-                  htmlFor="ReferralStatus"
+                  htmlFor="referralStatus"
                   className="font-semibold text-foreground/90 cursor-pointer"
                 >
                   Referral Status
@@ -570,14 +570,14 @@ export default function PatientEntryPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  id="ChronicStatus"
-                  name="ChronicStatus"
+                  id="chronicStatus"
+                  name="chronicStatus"
                   checked={formData.chronicStatus}
                   onChange={handleInputChange}
                   className="cursor-pointer bg-transparent"
                 />
                 <label
-                  htmlFor="ChronicStatus"
+                  htmlFor="chronicStatus"
                   className="font-semibold text-foreground/90 cursor-pointer"
                 >
                   Chronic Status
