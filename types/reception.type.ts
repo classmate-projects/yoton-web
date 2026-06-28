@@ -29,4 +29,11 @@ export interface PatientGetAllType {
     email: string;
     phone: string;
     address: string;
-  }
+}
+
+export interface UpdateScheduleTypes {
+    doctorId: string;
+    days: number[];
+    startTime: string;
+    endTime: string;
+}

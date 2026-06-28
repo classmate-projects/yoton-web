@@ -6,22 +6,6 @@ import { useEffect } from "react"
 
 export default function Appointments() {
     useEffect(() => {
-        const fetchDoctorAvailability = async () => {
-            try {
-                const data = await ReceptionService.getDoctorAvailability();
-                console.log("DoctorAvailability: ", data)
-            } catch (error) {
-                if(axios.isAxiosError(error)){
-                    console.log("error: ", error.response?.data)
-                } else {
-                    console.log("Something went wrong")
-                }
-            }
-        }
-
-        fetchDoctorAvailability()
-    }, [])
-    useEffect(() => {
         const fetchAllAppointments = async () => {
             try {
                 const data = await ReceptionService.getAllAppointments();
