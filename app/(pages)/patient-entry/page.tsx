@@ -7,7 +7,9 @@ import {
   MdExpandMore,
 } from "react-icons/md";
 import { countryDetails } from "@/helpers/countyDetails";
-import { baseUrl } from "@/lib/constants";
+import { ReceptionService } from "@/services/reception.service";
+import { toast } from "sonner";
+import { ReceptionCreatePatient } from "@/types/reception.type";
 
 export default function PatientEntryPage() {
   const [formData, setFormData] = useState({
@@ -64,24 +66,15 @@ export default function PatientEntryPage() {
     const registeredBy =
       JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ??
       null;
-    const token = localStorage.getItem("yoton_token");
 
-    const payload = {
+    const payload: ReceptionCreatePatient = {
       ...formData,
       registeredBy,
     };
 
     try {
-      const res = await fetch(`${baseUrl}/api/reception/create-patient`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json()
-      console.log("Patiet entry: ", data)
+      const data = await ReceptionService.createPatinet(payload)
+      toast.success(data.message)
       resetForm();
     } catch (error) {
       console.log(error);
