@@ -23,7 +23,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 2,
         name: "Appointments",
         navLink: "/appointments",
-        roles: ["reception"],
+        roles: ["reception", "admin"],
         icon: calendarIcon
     },
 

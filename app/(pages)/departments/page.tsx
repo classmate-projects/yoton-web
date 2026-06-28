@@ -225,7 +225,7 @@ export default function DepartmentsPage() {
       const payload = {
         name: spec.name,
         description: spec.description,
-        departmentId: spec.department.departmentId,
+        departmentId: spec.departmentId,
         isActive: nextIsActive
       }
       await SpecializationService.update(spec.specializationId, payload)
@@ -389,7 +389,7 @@ export default function DepartmentsPage() {
               ) : departments.length > 0 ? (
                 departments.map((department) => {
                   const deptSpecs = specializations.filter(
-                    (s) => s.department?.departmentId === department.departmentId
+                    (s) => s.departmentId === department.departmentId
                   );
                   const isExpanded = expandedDepartments.has(department.departmentId);
 

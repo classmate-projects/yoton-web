@@ -15,8 +15,5 @@ export interface SpecializationTypes {
     name: string;
     description: string;
     isActive: boolean;
-    department: {
-      departmentId: string;
-      name: string;
-    };
+    departmentId: string;
   }

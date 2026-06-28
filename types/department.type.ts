@@ -7,3 +7,16 @@ export interface DepartmentUpdateType {
     description: string;
     isActive: boolean
 }
+
+export interface SpecDepartmetnTypes {
+    specializationId: string;
+    name: string;
+}
+
+export interface DepartmentTypes {
+    departmentId: string;
+    description: string;
+    isActive: boolean;
+    name: string;
+    specializations: SpecDepartmetnTypes;
+}

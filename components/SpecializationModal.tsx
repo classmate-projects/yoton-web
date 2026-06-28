@@ -4,25 +4,16 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { SpecializationService } from "@/services/specialization.service";
 import { DepartmentSerivce } from "@/services/department.service";
+import { SpecializationTypes } from "@/types/specialization.type";
+import { DepartmentTypes } from "@/types/department.type";
+import axios from "axios";
 
-interface DepartmentType {
-  departmentId: string;
-  name: string;
-}
-
-interface SpecializationType {
-  specializationId: string;
-  name: string;
-  description: string;
-  isActive: boolean;
-  department: DepartmentType;
-}
 
 interface SpecializationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  editingSpecialization?: SpecializationType | null;
+  editingSpecialization?: SpecializationTypes | null;
   initialDepartmentId?: string;
 }
 
@@ -36,7 +27,7 @@ export default function SpecializationModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
-  const [allDepartments, setAllDepartments] = useState<DepartmentType[]>([]);
+  const [allDepartments, setAllDepartments] = useState<DepartmentTypes[]>([]);
   const [loading, setLoading] = useState(false);
 
   const isEditing = !!editingSpecialization;
@@ -56,7 +47,7 @@ export default function SpecializationModal({
       if (editingSpecialization) {
         setName(editingSpecialization.name);
         setDescription(editingSpecialization.description);
-        setSelectedDepartment(String(editingSpecialization.department.departmentId));
+        setSelectedDepartment(String(editingSpecialization.departmentId));
       } else {
         setName("");
         setDescription("");
@@ -78,6 +69,9 @@ export default function SpecializationModal({
       const data = await SpecializationService.create(payload)
       toast.success(data.message)
     } catch (error) {
+      if(axios.isAxiosError(error)){
+        console.log("Error: ", error.response?.data)
+      }
       console.log("error: ", error)
     } finally {
       setLoading(false)

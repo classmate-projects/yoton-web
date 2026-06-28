@@ -14,5 +14,18 @@ export const ReceptionService = {
     softDelete: async (id: string) => {
         const { data } = await api.delete(ENDPOINTS.RECEPTION.SOFT_DELETE(id))
         return data;
-    }
+    },
+    getDoctorAvailability: async () => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DOCTOR_AVAILABILITY)
+        return data;
+    },
+    getAllAppointments: async () => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_ALL_APPOINTMENTS)
+        return data;
+    },
+    getDoctorById: async (id: string) => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DOCTOR_BY_ID(id))
+        return data;
+    },
+
 }
