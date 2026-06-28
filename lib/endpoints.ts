@@ -1,4 +1,10 @@
 export const ENDPOINTS = {
+    DASHBOARD: {
+        GET_COUNTS: `/api/dashboard/counts`,
+        GET_WEEKLY_APPOINTMENTS: `/api/dashboard/appointments/weekly`,
+        GET_REVENUE: `/api/dashboard/revenue`,
+        GET_TOP_DOCTORS: `/api/dashboard/top-doctors`
+    },
     DEPARTMENT: {
         GET: `/api/department/get-all`,
         CREATE: `/api/department/create`,
@@ -31,7 +37,7 @@ export const ENDPOINTS = {
         CREATE: `/api/specialization/create`,
         UPDATE: (id: string) => `/api/specialization/update/${id}`,
         DELETE: (id: string) => `/api/specialization/delete/${id}`
-    }, 
+    },
     USER: {
         GET: `/api/user/get-all`,
         CREATE: `/api/user/create`,

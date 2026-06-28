@@ -10,6 +10,7 @@ import {
   ArrowUpRight,
   LucideIcon
 } from "lucide-react";
+import { DashboardService } from "@/services/dashboard.service";
 
 interface TotalCounts {
   totalPatients: number;
@@ -58,8 +59,8 @@ export default function Home() {
     const fetchTotalCounts = async () => {
       try {
         setIsLoading(true);
-        const res = await fetch("/api/total-counts");
-        const data = await res.json();
+        const data = await DashboardService.getCounts();
+        console.log("Data: ", data)
         setTotalCounts(data);
       } catch (error) {
         console.error("Failed to fetch total counts", error);
