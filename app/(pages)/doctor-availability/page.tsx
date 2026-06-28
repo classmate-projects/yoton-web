@@ -4,6 +4,7 @@ import { ReceptionService } from "@/services/reception.service";
 import axios from "axios";
 import { useEffect, useState } from "react";
 import { MdOutlineDateRange, MdSave, MdExpandMore, MdExpandLess } from "react-icons/md";
+import { toast } from "sonner";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -88,10 +89,24 @@ export default function DoctorAvailability() {
         updateSchedule(doctorId, { days: newDays });
     };
 
-    const handleUpdate = (doctorId: string) => {
-        const doctor = doctorAvailability.flatMap(dept => dept.doctors).find(d => d.doctorId === doctorId);
-        const schedule = schedules[doctorId];
-        alert(`Updating schedule for ${doctor?.doctorName}: Days: ${schedule?.days.join(", ")} Time: ${schedule?.startTime} - ${schedule?.endTime}`);
+    const handleUpdateChanges = async (doctorId: string) => {
+        try {
+            const schedule = schedules[doctorId];
+        const payload = {
+            doctorId: doctorId,
+            days: (schedule?.days || []).map(day => DAYS.indexOf(day)),
+            startTime: schedule?.startTime,
+            endTime: schedule?.endTime
+        }
+
+        const data = await ReceptionService.updateSchedule(payload)
+        toast.success(data.message)
+        console.log("Update: ", data)
+        } catch (error) {
+            if(axios.isAxiosError(error)) {
+                console.log("Error: ", error.response?.data)
+            } else console.log("Something went wrong.")
+        }
     };
 
     const toggleDepartment = (deptId: string) => {
@@ -187,7 +202,7 @@ export default function DoctorAvailability() {
                                                                         </td>
                                                                         <td className="p-2">
                                                                             <button
-                                                                                onClick={() => handleUpdate(doc.doctorId)}
+                                                                                onClick={() => handleUpdateChanges(doc.doctorId)}
                                                                                 className="flex items-center gap-1 bg-primary text-white px-3 py-1 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity cursor-pointer"
                                                                             >
                                                                                 <MdSave /> Update
