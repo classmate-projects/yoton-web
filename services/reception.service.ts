@@ -10,5 +10,9 @@ export const ReceptionService = {
     createPatinet: async (payload: ReceptionCreatePatient) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CREATE_PATIENT, payload)
         return data;
+    }, 
+    softDelete: async (id: string) => {
+        const { data } = await api.delete(ENDPOINTS.RECEPTION.SOFT_DELETE(id))
+        return data;
     }
 }
