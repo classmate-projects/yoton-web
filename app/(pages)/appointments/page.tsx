@@ -12,13 +12,17 @@ import axios from "axios";
 import {
   ArrowLeft,
   BadgeIndianRupee,
+  Ban,
   CalendarClock,
   CalendarDays,
+  CalendarPlus,
   Clock,
   GraduationCap,
   Search,
   Stethoscope,
+  UserPlus,
   UserRoundCheck,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -86,6 +90,7 @@ export default function Appointments() {
   const [selectedDate, setSelectedDate] = useState<string>(
     dummyAppointmentSlots[0]?.slots[0]?.date ?? ""
   );
+  const [selectedSlot, setSelectedSlot] = useState<DummySlotType | null>(null);
 
   const specializations = Array.from(
     new Set(dummyDoctors.map((doctor) => doctor.specialization))
@@ -308,7 +313,10 @@ export default function Appointments() {
                   return (
                     <button
                       key={date}
-                      onClick={() => setSelectedDate(date)}
+                      onClick={() => {
+                        setSelectedDate(date);
+                        setSelectedSlot(null);
+                      }}
                       className={`rounded-lg border p-3 text-left transition-colors ${
                         isSelected
                           ? "border-primary bg-primary text-primary-foreground shadow-sm"
@@ -331,53 +339,199 @@ export default function Appointments() {
                 })}
               </div>
 
-              <div className="rounded-lg border border-border">
-                <div className="flex flex-col gap-2 border-b border-border bg-muted/50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">
-                      {formatWeekday(parseDate(selectedDate))},{" "}
-                      {formatDate(parseDate(selectedDate))}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {visibleSlots.length} configured slots from {scheduleWindow}
-                    </p>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+                <div className="rounded-lg border border-border">
+                  <div className="flex flex-col gap-2 border-b border-border bg-muted/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        {formatWeekday(parseDate(selectedDate))},{" "}
+                        {formatDate(parseDate(selectedDate))}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {visibleSlots.length} configured slots from {scheduleWindow}
+                      </p>
+                    </div>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                      <Clock size={16} /> Time ordered
+                    </span>
                   </div>
-                  <span className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                    <Clock size={16} /> Time ordered
-                  </span>
+
+                  {visibleSlots.length > 0 ? (
+                    <div className="grid gap-3 p-4 sm:grid-cols-2 2xl:grid-cols-3">
+                      {visibleSlots.map((slot) => {
+                        const isSelectedSlot =
+                          selectedSlot?.slotId === slot.slotId;
+
+                        return (
+                          <button
+                            key={slot.slotId}
+                            onClick={() => setSelectedSlot(slot)}
+                            className={`rounded-lg border p-4 text-left transition-transform hover:-translate-y-0.5 ${
+                              isSelectedSlot
+                                ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                                : ""
+                            } ${statusCardStyles[slot.status]}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <span className="text-base font-semibold">
+                                {slot.startTime}
+                              </span>
+                              <span className="rounded-md bg-white/20 px-2 py-1 text-[11px] font-semibold uppercase text-white dark:bg-black/20 dark:text-current">
+                                {statusLabels[slot.status]}
+                              </span>
+                            </div>
+                            <span className="mt-2 block text-sm">
+                              Ends at {slot.endTime}
+                            </span>
+                            {slot.patient && (
+                              <span className="mt-2 block truncate text-xs font-medium">
+                                {slot.patient.name}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-sm text-muted-foreground">
+                      No slots configured for this date.
+                    </div>
+                  )}
                 </div>
 
-                {visibleSlots.length > 0 ? (
-                  <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
-                    {visibleSlots.map((slot) => (
-                      <button
-                        key={slot.slotId}
-                        className={`rounded-lg border p-4 text-left transition-transform hover:-translate-y-0.5 ${statusCardStyles[slot.status]}`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <span className="text-base font-semibold">
-                            {slot.startTime}
-                          </span>
-                          <span className="rounded-md bg-white/20 px-2 py-1 text-[11px] font-semibold uppercase text-white dark:bg-black/20 dark:text-current">
-                            {statusLabels[slot.status]}
-                          </span>
+                <aside className="rounded-lg border border-border bg-card p-4">
+                  {selectedSlot ? (
+                    <div className="flex h-full flex-col gap-5">
+                      <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
+                        <div>
+                          <p className="text-sm font-semibold text-primary">
+                            Selected slot
+                          </p>
+                          <h3 className="mt-1 text-xl font-semibold text-foreground">
+                            {selectedSlot.startTime} - {selectedSlot.endTime}
+                          </h3>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {formatWeekday(parseDate(selectedSlot.date))},{" "}
+                            {formatDate(parseDate(selectedSlot.date))}
+                          </p>
                         </div>
-                        <span className="mt-2 block text-sm">
-                          Ends at {slot.endTime}
+                        <span
+                          className={`rounded-lg border px-3 py-1 text-xs font-semibold ${statusLegendStyles[selectedSlot.status]}`}
+                        >
+                          {statusLabels[selectedSlot.status]}
                         </span>
-                        {slot.patient && (
-                          <span className="mt-2 block truncate text-xs font-medium">
-                            {slot.patient.name}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center text-sm text-muted-foreground">
-                    No slots configured for this date.
-                  </div>
-                )}
+                      </div>
+
+                      {selectedSlot.status === "available" && (
+                        <div className="flex flex-col gap-4">
+                          <div className="flex items-center gap-2">
+                            <UserPlus size={18} className="text-primary" />
+                            <h4 className="font-semibold text-foreground">
+                              Book appointment
+                            </h4>
+                          </div>
+
+                          <div className="grid gap-3">
+                            <label className="grid gap-1 text-sm font-semibold text-foreground/90">
+                              Patient name
+                              <input
+                                type="text"
+                                placeholder="Enter patient name"
+                                className="h-10 text-sm"
+                              />
+                            </label>
+                            <label className="grid gap-1 text-sm font-semibold text-foreground/90">
+                              Phone number
+                              <input
+                                type="tel"
+                                placeholder="Enter phone number"
+                                className="h-10 text-sm"
+                              />
+                            </label>
+                            <label className="grid gap-1 text-sm font-semibold text-foreground/90">
+                              Visit type
+                              <select className="h-10 text-sm">
+                                <option>Consultation</option>
+                                <option>Follow-up</option>
+                                <option>Emergency</option>
+                              </select>
+                            </label>
+                            <label className="grid gap-1 text-sm font-semibold text-foreground/90">
+                              Notes
+                              <textarea
+                                placeholder="Reason for visit"
+                                className="min-h-20 text-sm"
+                              />
+                            </label>
+                          </div>
+
+                          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                            <button className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90">
+                              <CalendarPlus size={16} /> Book
+                            </button>
+                            <button className="flex items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-600">
+                              <Ban size={16} /> Block slot
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedSlot.status === "booked" && (
+                        <div className="flex flex-col gap-4">
+                          <div className="rounded-lg border border-border bg-muted/40 p-4">
+                            <p className="text-xs font-semibold uppercase text-muted-foreground">
+                              Patient
+                            </p>
+                            <p className="mt-2 text-lg font-semibold text-foreground">
+                              {selectedSlot.patient?.name ?? "Patient name"}
+                            </p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              Appointment confirmed for this slot.
+                            </p>
+                          </div>
+                          <button className="flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700">
+                            <XCircle size={16} /> Cancel appointment
+                          </button>
+                        </div>
+                      )}
+
+                      {selectedSlot.status === "blocked" && (
+                        <div className="flex flex-col gap-4">
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                            <p className="font-semibold">Slot blocked</p>
+                            <p className="mt-1 text-sm">
+                              This time is reserved for internal scheduling or doctor unavailability.
+                            </p>
+                          </div>
+                          <button className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90">
+                            Make slot available
+                          </button>
+                        </div>
+                      )}
+
+                      {selectedSlot.status === "completed" && (
+                        <div className="rounded-lg border border-border bg-muted/40 p-4">
+                          <p className="font-semibold text-foreground">
+                            Appointment completed
+                          </p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Completed slots are read-only in this screen.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex h-full min-h-80 flex-col items-center justify-center text-center">
+                      <CalendarPlus className="text-muted-foreground/50" size={40} />
+                      <h3 className="mt-4 text-lg font-semibold text-foreground">
+                        Select a slot
+                      </h3>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Choose a slot to book a patient, block availability, or cancel an appointment.
+                      </p>
+                    </div>
+                  )}
+                </aside>
               </div>
             </div>
           </section>
@@ -437,6 +591,7 @@ export default function Appointments() {
 
                           setSelectedDoctor(doctor);
                           setSelectedDate(doctorSlots?.slots[0]?.date ?? "");
+                          setSelectedSlot(null);
                         }}
                         className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
                       >
