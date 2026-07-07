@@ -22,15 +22,26 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-const statusStyles: Record<SlotStatus, string> = {
+const statusCardStyles: Record<SlotStatus, string> = {
   available:
-    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+    "border-emerald-600 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60",
   booked:
-    "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
+    "border-blue-600 bg-blue-600 text-white shadow-sm hover:bg-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60",
   blocked:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+    "border-amber-500 bg-amber-500 text-white shadow-sm hover:bg-amber-600 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/60",
   completed:
-    "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300",
+    "border-slate-600 bg-slate-600 text-white shadow-sm hover:bg-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-900/80",
+};
+
+const statusLegendStyles: Record<SlotStatus, string> = {
+  available:
+    "border-emerald-600 bg-emerald-600 text-white shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+  booked:
+    "border-blue-600 bg-blue-600 text-white shadow-sm dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
+  blocked:
+    "border-amber-500 bg-amber-500 text-white shadow-sm dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+  completed:
+    "border-slate-600 bg-slate-600 text-white shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300",
 };
 
 const statusLabels: Record<SlotStatus, string> = {
@@ -276,7 +287,7 @@ export default function Appointments() {
                   {(Object.keys(statusLabels) as SlotStatus[]).map((status) => (
                     <span
                       key={status}
-                      className={`rounded-lg border px-3 py-1 text-xs font-semibold ${statusStyles[status]}`}
+                      className={`rounded-lg border px-3 py-1 text-xs font-semibold ${statusLegendStyles[status]}`}
                     >
                       {statusLabels[status]}
                     </span>
@@ -341,13 +352,13 @@ export default function Appointments() {
                     {visibleSlots.map((slot) => (
                       <button
                         key={slot.slotId}
-                        className={`rounded-lg border p-4 text-left transition-transform hover:-translate-y-0.5 ${statusStyles[slot.status]}`}
+                        className={`rounded-lg border p-4 text-left transition-transform hover:-translate-y-0.5 ${statusCardStyles[slot.status]}`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <span className="text-base font-semibold">
                             {slot.startTime}
                           </span>
-                          <span className="rounded-md bg-white/60 px-2 py-1 text-[11px] font-semibold uppercase text-current dark:bg-black/20">
+                          <span className="rounded-md bg-white/20 px-2 py-1 text-[11px] font-semibold uppercase text-white dark:bg-black/20 dark:text-current">
                             {statusLabels[slot.status]}
                           </span>
                         </div>
