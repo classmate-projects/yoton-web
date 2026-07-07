@@ -31,7 +31,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 3,
         name: "Patient Entry",
         navLink: "/patient-entry",
-        roles: ["reception", "admin"],
+        roles: ["reception"],
         icon: registrationIcon
     },
 
@@ -39,7 +39,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 4,
         name: "Patient Records",
         navLink: "/patient-records",
-        roles: ["reception", "admin"],
+        roles: ["reception"],
         icon: RecordsIcon
     },
 
