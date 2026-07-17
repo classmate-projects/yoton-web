@@ -2,21 +2,17 @@
 
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
-import { baseUrl } from "@/lib/constants";
+import { getSignalRConnection } from "@/lib/signalR";
+import * as signalR from "@microsoft/signalr";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { RoleService } from "@/services/role.service";
 import { FormEvent, useEffect, useState } from "react";
 import { MdAdminPanelSettings, MdAdd, MdEdit } from "react-icons/md";
 import { toast } from "sonner";
-
-interface FetchedRoles {
-  roleId: string;
-  name: string;
-  description: string;
-  isEditable: boolean;
-  isActive: boolean;
-}
+import axios from "axios";
+import { FetchedRoles } from "@/types/role.type";
+import { useRoleSignalR } from "@/hooks/useRoleSignalR";
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<FetchedRoles[]>([]);
@@ -35,13 +31,15 @@ export default function RoleManagementPage() {
     setEditingRole(null)
   }
 
+  useRoleSignalR(setRoles)
+
 
   // fetch roles
   const fetchRoles = async () => {
     try {
       setIsLoading(true);
-      const data = await RoleService.getAll();
-      setRoles(data);
+      const res = await RoleService.getAll();
+      setRoles(res.data);
     } catch (error) {
       console.error("Failed to fetch roles", error);
     } finally {
@@ -52,6 +50,45 @@ export default function RoleManagementPage() {
   useEffect(() => {
     void fetchRoles();
   }, []);
+
+  
+  // useEffect(() => {
+  //   let connection: signalR.HubConnection | null = null;
+
+  //   console.log("connection: ", connection)
+  
+  //   const connect = async () => {
+  //     connection = await getSignalRConnection();
+  
+  //     connection.on("roleCreated", (newRole: FetchedRoles) => {
+  //       console.log("Ner role: ", newRole )
+  //       setRoles((prev) => [newRole, ...prev]);
+  //     });
+  
+  //     connection.on("roleUpdated", (updatedRole: FetchedRoles) => {
+  //       console.log("role updated: ", updatedRole)
+  //       setRoles((prev) =>
+  //         prev.map((role) =>
+  //           role.roleId === updatedRole.roleId ? updatedRole : role
+  //         )
+  //       );
+  //     });
+  
+  //     connection.on("roleDeleted", (deletedRole: FetchedRoles) => {
+  //       setRoles((prev) =>
+  //         prev.filter((role) => role.roleId !== deletedRole.roleId)
+  //       );
+  //     });
+  //   };
+  
+  //   connect();
+  
+  //   return () => {
+  //     connection?.off("roleCreated");
+  //     connection?.off("roleUpdated");
+  //     connection?.off("roleDeleted");
+  //   };
+  // }, []);
 
 
   // create role
@@ -66,9 +103,12 @@ export default function RoleManagementPage() {
       const data = await RoleService.create(payload);
       toast.success(data.message)
       resetValues()
-      fetchRoles()
     } catch (error) {
-      console.error("Failed to create role", error);
+      if(axios.isAxiosError(error)) {
+        toast.error(error.response?.data.message)
+      } else {
+        toast.error("Something went wrong")
+      }
     }
   }
 
@@ -87,7 +127,6 @@ export default function RoleManagementPage() {
       const data = await RoleService.update(editingRole?.roleId, payload)
       toast.success(data.message)
       resetValues();
-      fetchRoles();
     } catch (error) {
       console.error("Failed to Update role", error);
     }
@@ -113,7 +152,6 @@ export default function RoleManagementPage() {
   const handleRoleDelete = async (id: string) => {
     try {
       const data = await RoleService.delete(id);
-      fetchRoles()
       toast.success(data.message)
     } catch (error) {
       console.error("Failed to Delete role", error);
@@ -150,7 +188,6 @@ export default function RoleManagementPage() {
       }
 
       const data = await RoleService.update(role.roleId, payload);
-      console.log("toggle data: ", data)
       toast.success(data.message)
 
       setRoles((prev) =>
@@ -196,6 +233,11 @@ export default function RoleManagementPage() {
             <div className="flex flex-col gap-3 h-[60dvh] overflow-y-scroll">
               {roles
                 .slice()
+                .sort(
+                  (a, b) =>
+                    new Date(b.createdAt).getTime() -
+                    new Date(a.createdAt).getTime()
+                )
                 .map((role) => (
                   <div
                     key={role.roleId}

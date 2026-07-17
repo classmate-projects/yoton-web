@@ -1,10 +1,10 @@
-import { ENDPOINTS } from "@/helpers/endpoints"
+import { ENDPOINTS } from "@/lib/endpoints"
 import api from "@/lib/axios"
 import { CreateRoleProps, UpdateRoleProps } from "@/types/role.type";
 
 export const RoleService = {
     getAll: async () => {
-        const { data } = await api.get(ENDPOINTS.ROLE.LIST);
+        const { data } = await api.get(ENDPOINTS.ROLE.GET);
         return data;
     },
 

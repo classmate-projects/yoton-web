@@ -1,5 +1,4 @@
 import { apiFetch } from "@/lib/api";
-import { ApiError } from "@/types/api";
 
 export async function POST(req: Request) {
     const {password, token} = await req.json();
@@ -13,7 +12,6 @@ export async function POST(req: Request) {
                 newPassword: password
             }),
         })
-        console.log("data : ", data.body)
 
         return Response.json(data)
     } catch (error: unknown) {

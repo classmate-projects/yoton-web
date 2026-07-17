@@ -3,41 +3,32 @@
 import ToggleButton from "@/components/ToggleButton";
 import BuildingIcon from "@/public/icons/BuildingIcon";
 import { MdAdd, MdExpandMore, MdExpandLess } from "react-icons/md";
-import React, { useEffect, useState } from "react";
+import React, { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
-import { baseUrl } from "@/lib/constants";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SpecializationModal from "@/components/SpecializationModal";
+import { DepartmentSerivce } from "@/services/department.service";
+import { SpecializationService } from "@/services/specialization.service";
+import { SpecializationTypes } from "@/types/specialization.type";
 
 interface Department {
-  departmentId: number;
+  departmentId: string;
   name: string;
   description: string;
   isActive: boolean;
-}
-
-interface Specialization {
-  specializationId: number;
-  name: string;
-  description: string;
-  isActive: boolean;
-  department: {
-    departmentId: number;
-    name: string;
-  };
 }
 
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [specializations, setSpecializations] = useState<Specialization[]>([]);
-  const [expandedDepartments, setExpandedDepartments] = useState<Set<number>>(new Set());
+  const [specializations, setSpecializations] = useState<SpecializationTypes[]>([]);
+  const [expandedDepartments, setExpandedDepartments] = useState<Set<string>>(new Set());
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSpecModalOpen, setIsSpecModalOpen] = useState(false);
   const [initialDeptIdForSpec, setInitialDeptIdForSpec] = useState("");
-  const [editingSpecialization, setEditingSpecialization] = useState<Specialization | null>(null);
+  const [editingSpecialization, setEditingSpecialization] = useState<SpecializationTypes | null>(null);
 
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(
     null,
@@ -70,13 +61,13 @@ export default function DepartmentsPage() {
     setDescription("");
   };
 
-  const openSpecModal = (departmentId: number) => {
+  const openSpecModal = (departmentId: string) => {
     setInitialDeptIdForSpec(String(departmentId));
     setEditingSpecialization(null);
     setIsSpecModalOpen(true);
   };
 
-  const openEditSpecModal = (spec: Specialization) => {
+  const openEditSpecModal = (spec: SpecializationTypes) => {
     setEditingSpecialization(spec);
     setIsSpecModalOpen(true);
   };
@@ -91,7 +82,7 @@ export default function DepartmentsPage() {
     fetchSpecializations();
   };
 
-  const toggleExpand = (id: number) => {
+  const toggleExpand = (id: string) => {
     setExpandedDepartments((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -103,16 +94,13 @@ export default function DepartmentsPage() {
     });
   };
 
+  // department logics
   // fetch departments
   const fetchDepartments = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/department/get-all`);
-      const data = await res.json();
-
-      if (!res.ok)
-        throw new Error(data.message || "Failed to fetch Departments");
-      setDepartments(data);
+      const data = await DepartmentSerivce.getAll();
+      setDepartments(data || []);
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
     } finally {
@@ -120,96 +108,60 @@ export default function DepartmentsPage() {
     }
   };
 
-  // fetch specializations
-  const fetchSpecializations = async () => {
-    try {
-      const res = await fetch(`${baseUrl}/api/specialization/get-all`);
-      const data = await res.json();
-      if (res.ok) {
-        setSpecializations(data);
-      }
-    } catch (error) {
-      console.error("Error fetching specializations:", error);
-    }
-  };
-
-  useEffect(() => {
-    const callApi = () => {
-      fetchDepartments();
-      fetchSpecializations();
-    }
-    callApi()
-  }, []);
-
-  // create or update department
-  const handleSubmitDepartment = async (
-    e: React.FormEvent<HTMLFormElement>,
-  ) => {
+  // create deaprtment
+  const handleCreateDepartment = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setloading(true)
+    if (!name.trim()) return;
 
     try {
-      const res = await fetch(
-        `${baseUrl}/api/department/${isEditing ? `update/${editingDepartment.departmentId}` : "create"}`,
-        {
-          method: isEditing ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            isEditing
-              ? {
-                name,
-                description,
-                isActive: editingDepartment.isActive,
-              }
-              : { name, description },
-          ),
-        },
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(
-          data.message ||
-          (isEditing
-            ? "Failed to update department"
-            : "Failed to create department"),
-        );
-      }
-
-      toast.success(data.message);
+      const payload = { name, description }
+      const data = await DepartmentSerivce.create(payload)
+      setIsModalOpen(false)
       fetchDepartments();
-      closeModal();
+      toast.success(data.message)
     } catch (error) {
-      if (error instanceof Error) toast.error(error.message);
+      console.log("Error: ", error)
     } finally {
       setloading(false)
     }
-  };
+  }
+
+  // update department
+  const handleUpdateDepartment = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setloading(true)
+    if (!editingDepartment) return;
+    try {
+      const payload = {
+        name,
+        description,
+        isActive: editingDepartment?.isActive
+      }
+
+      const data = await DepartmentSerivce.update(editingDepartment.departmentId, payload)
+      setIsModalOpen(false)
+      fetchDepartments()
+      toast.success(data.message)
+    } catch (error) {
+      console.log("Error: ", error)
+    } finally {
+      setloading(false)
+    }
+  }
 
   // toggle department active status
   const handleToggleDepartment = async (department: Department) => {
     const nextIsActive = !department.isActive;
 
     try {
-      const res = await fetch(
-        `${baseUrl}/api/department/update/${department.departmentId}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: department.name,
-            description: department.description,
-            isActive: nextIsActive,
-          }),
-        },
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to update department status");
+      const payload = {
+        name: department.name,
+        description: department.description,
+        isActive: nextIsActive
       }
+      const data = await DepartmentSerivce.update(department.departmentId, payload)
+      toast.success(data.message)
 
       setDepartments((prev) =>
         prev.map((d) =>
@@ -223,21 +175,60 @@ export default function DepartmentsPage() {
     }
   };
 
+  // delete department
+  const handleDelete = async (id: string) => {
+    try {
+      const data = await DepartmentSerivce.delete(id)
+      toast.success(data.message);
+      fetchDepartments();
+    } catch (error) {
+      if (error instanceof Error) toast.error(error.message);
+    }
+  };
+
+  // confirm before delete
+  const confirmDelete = (id: string, name: string) => {
+    toast(
+      <span>
+        Are you sure you want to delete{" "}
+        <b className="text-red-500 ml-1">{name}</b>
+      </span>,
+      {
+        action: {
+          label: "Delete",
+          onClick: () => handleDelete(id),
+        },
+      },
+    );
+  };
+
+  // specialization logic
+  // fetch specializations
+  const fetchSpecializations = async () => {
+    try {
+      const data = await SpecializationService.getAll()
+      setSpecializations(data)
+    } catch (error) {
+      console.error("Error fetching specializations:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchSpecializations();
+    fetchDepartments();
+  }, []);
+
   // toggle specialization active status
-  const handleToggleSpecialization = async (spec: Specialization) => {
+  const handleToggleSpecialization = async (spec: SpecializationTypes) => {
     const nextIsActive = !spec.isActive;
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/update/${spec.specializationId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: spec.name,
-          description: spec.description,
-          departmentId: spec.department.departmentId,
-          isActive: nextIsActive,
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to update specialization status");
+      const payload = {
+        name: spec.name,
+        description: spec.description,
+        departmentId: spec.departmentId,
+        isActive: nextIsActive
+      }
+      await SpecializationService.update(spec.specializationId, payload)
 
       setSpecializations((prev) =>
         prev.map((s) => (s.specializationId === spec.specializationId ? { ...s, isActive: nextIsActive } : s))
@@ -250,13 +241,10 @@ export default function DepartmentsPage() {
   };
 
   // delete specialization
-  const handleDeleteSpecialization = async (id: number) => {
+  const handleDeleteSpecialization = async (id: string) => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/delete/${id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete specialization");
-      toast.success("Specialization deleted");
+      const data = await SpecializationService.delete(id)
+      toast.success(data.message);
       fetchSpecializations();
     } catch (error) {
       toast.error("Failed to delete specialization");
@@ -264,7 +252,7 @@ export default function DepartmentsPage() {
     }
   };
 
-  const confirmDeleteSpec = (id: number, name: string) => {
+  const confirmDeleteSpec = (id: string, name: string) => {
     toast(
       <span>
         Are you sure you want to delete specialization <b className="text-red-500 ml-1">{name}</b>?
@@ -275,42 +263,6 @@ export default function DepartmentsPage() {
           onClick: () => handleDeleteSpecialization(id),
         },
       }
-    );
-  };
-
-  // delete department
-  const handleDelete = async (id: number) => {
-    try {
-      const res = await fetch(`${baseUrl}/api/department/delete/${id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok)
-        throw new Error(data.message || "Failed to delete department.");
-      toast.success(data.message);
-      fetchDepartments();
-    } catch (error) {
-      if (error instanceof Error) toast.error(error.message);
-    }
-  };
-
-  // confirm before delete
-  const confirmDelete = (id: number, name: string) => {
-    toast(
-      <span>
-        Are you sure you want to delete{" "}
-        <b className="text-red-500 ml-1">{name}</b>
-      </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => handleDelete(id),
-        },
-      },
     );
   };
 
@@ -349,7 +301,7 @@ export default function DepartmentsPage() {
             </p>
 
             <form
-              onSubmit={handleSubmitDepartment}
+              onSubmit={isEditing ? handleUpdateDepartment : handleCreateDepartment}
               className="flex flex-col gap-4"
             >
               <div>
@@ -399,7 +351,7 @@ export default function DepartmentsPage() {
                   type="submit"
                   className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full"
                 >
-                  {isEditing ? "Update" : loading ? "Saving..." : "Save"}
+                  {loading ? isEditing ? "Updating..." : "Saving..." : isEditing ? "Update" : "Save"}
                 </button>
               </div>
             </form>
@@ -437,7 +389,7 @@ export default function DepartmentsPage() {
               ) : departments.length > 0 ? (
                 departments.map((department) => {
                   const deptSpecs = specializations.filter(
-                    (s) => s.department.departmentId === department.departmentId
+                    (s) => s.departmentId === department.departmentId
                   );
                   const isExpanded = expandedDepartments.has(department.departmentId);
 

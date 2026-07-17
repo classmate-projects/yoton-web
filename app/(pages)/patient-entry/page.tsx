@@ -7,31 +7,33 @@ import {
   MdExpandMore,
 } from "react-icons/md";
 import { countryDetails } from "@/helpers/countyDetails";
-import { baseUrl } from "@/lib/constants";
+import { ReceptionService } from "@/services/reception.service";
+import { toast } from "sonner";
+import { ReceptionCreatePatientType } from "@/types/reception.type";
 
 export default function PatientEntryPage() {
   const [formData, setFormData] = useState({
-    Name: "",
-    Sex: "",
-    DateOfBirth: "",
-    Phone: "",
-    PhoneCode: "+971",
-    Email: "",
-    Address: "",
-    Nationality: "",
-    PassportNumber: "",
-    NationalID: "",
-    FatherName: "",
-    MotherName: "",
-    PatientType: "Normal",
-    VisaType: "",
-    MaritalStatus: "",
-    Designation: "",
-    ReferralStatus: false,
-    ChronicStatus: false,
-    EmergencyContact: "",
-    EmergencyContactPhone: "",
-    Password: "",
+    name: "",
+    sex: "",
+    dateOfBirth: "",
+    phone: "",
+    phoneCode: "+971",
+    email: "",
+    address: "",
+    nationality: "",
+    passportNumber: "",
+    nationalID: "",
+    fatherName: "",
+    motherName: "",
+    patientType: "Normal",
+    visaType: "",
+    maritalStatus: "",
+    designation: "",
+    referralStatus: false,
+    chronicStatus: false,
+    emergencyContact: "",
+    emergencyContactPhone: "",
+    password: "",
   });
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -55,7 +57,7 @@ export default function PatientEntryPage() {
     setLoading(true);
 
     // Validate that at least one of National ID or Passport Number is filled
-    if (!formData.NationalID && !formData.PassportNumber) {
+    if (!formData.nationalID && !formData.passportNumber) {
       setError("Please provide either National ID or Passport Number");
       setLoading(false);
       return;
@@ -64,27 +66,15 @@ export default function PatientEntryPage() {
     const registeredBy =
       JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ??
       null;
-    const token = localStorage.getItem("yoton_token");
 
-    const payload = {
+    const payload: ReceptionCreatePatientType = {
       ...formData,
-      RegisteredBy: registeredBy,
+      registeredBy,
     };
 
-    console.log("payload submit: ", payload);
-
     try {
-      const res = await fetch(`${baseUrl}/api/reception/create-patient`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      console.log("Patient entry: ", data);
+      const data = await ReceptionService.createPatinet(payload)
+      toast.success(data.message)
       resetForm();
     } catch (error) {
       console.log(error);
@@ -96,27 +86,27 @@ export default function PatientEntryPage() {
 
   const resetForm = () => {
     setFormData({
-      Name: "",
-      Sex: "",
-      DateOfBirth: "",
-      Phone: "",
-      PhoneCode: "+971",
-      Email: "",
-      Address: "",
-      Nationality: "",
-      PassportNumber: "",
-      NationalID: "",
-      FatherName: "",
-      MotherName: "",
-      PatientType: "Normal",
-      VisaType: "",
-      MaritalStatus: "",
-      Designation: "",
-      ReferralStatus: false,
-      ChronicStatus: false,
-      EmergencyContact: "",
-      EmergencyContactPhone: "",
-      Password: "",
+      name: "",
+      sex: "",
+      dateOfBirth: "",
+      phone: "",
+      phoneCode: "+971",
+      email: "",
+      address: "",
+      nationality: "",
+      passportNumber: "",
+      nationalID: "",
+      fatherName: "",
+      motherName: "",
+      patientType: "Normal",
+      visaType: "",
+      maritalStatus: "",
+      designation: "",
+      referralStatus: false,
+      chronicStatus: false,
+      emergencyContact: "",
+      emergencyContactPhone: "",
+      password: "",
     });
   };
 
@@ -147,14 +137,14 @@ export default function PatientEntryPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Name */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Name" className="font-semibold text-foreground/90">
+              <label htmlFor="name" className="font-semibold text-foreground/90">
                 Full Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                id="Name"
-                name="Name"
-                value={formData.Name}
+                id="name"
+                name="name"
+                value={formData.name}
                 onChange={handleInputChange}
                 required
                 placeholder="John Doe"
@@ -164,13 +154,13 @@ export default function PatientEntryPage() {
 
             {/* Sex */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="Sex" className="font-semibold text-foreground/90">
+              <label htmlFor="sex" className="font-semibold text-foreground/90">
                 Sex <span className="text-red-500">*</span>
               </label>
               <select
-                id="Sex"
-                name="Sex"
-                value={formData.Sex}
+                id="sex"
+                name="sex"
+                value={formData.sex}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
@@ -185,16 +175,16 @@ export default function PatientEntryPage() {
             {/* Date of Birth */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="DateOfBirth"
+                htmlFor="dateOfBirth"
                 className="font-semibold text-foreground/90"
               >
                 Date of Birth <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
-                id="DateOfBirth"
-                name="DateOfBirth"
-                value={formData.DateOfBirth}
+                id="dateOfBirth"
+                name="dateOfBirth"
+                value={formData.dateOfBirth}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -204,15 +194,15 @@ export default function PatientEntryPage() {
             {/* Nationality */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="Nationality"
+                htmlFor="nationality"
                 className="font-semibold text-foreground/90"
               >
                 Nationality <span className="text-red-500">*</span>
               </label>
               <select
-                id="Nationality"
-                name="Nationality"
-                value={formData.Nationality}
+                id="nationality"
+                name="nationality"
+                value={formData.nationality}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
@@ -231,16 +221,16 @@ export default function PatientEntryPage() {
             {/* Father Name */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="FatherName"
+                htmlFor="fatherName"
                 className="font-semibold text-foreground/90"
               >
                 Father Name
               </label>
               <input
                 type="text"
-                id="FatherName"
-                name="FatherName"
-                value={formData.FatherName}
+                id="fatherName"
+                name="fatherName"
+                value={formData.fatherName}
                 onChange={handleInputChange}
                 placeholder="Father's Name"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -250,16 +240,16 @@ export default function PatientEntryPage() {
             {/* Mother Name */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="MotherName"
+                htmlFor="motherName"
                 className="font-semibold text-foreground/90"
               >
                 Mother Name
               </label>
               <input
                 type="text"
-                id="MotherName"
-                name="MotherName"
-                value={formData.MotherName}
+                id="motherName"
+                name="motherName"
+                value={formData.motherName}
                 onChange={handleInputChange}
                 placeholder="Mother's Name"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -269,15 +259,15 @@ export default function PatientEntryPage() {
             {/* Marital Status */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="MaritalStatus"
+                htmlFor="maritalStatus"
                 className="font-semibold text-foreground/90"
               >
                 Marital Status <span className="text-red-500">*</span>
               </label>
               <select
-                id="MaritalStatus"
-                name="MaritalStatus"
-                value={formData.MaritalStatus}
+                id="maritalStatus"
+                name="maritalStatus"
+                value={formData.maritalStatus}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
@@ -293,16 +283,16 @@ export default function PatientEntryPage() {
             {/* Designation */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="Designation"
+                htmlFor="designation"
                 className="font-semibold text-foreground/90"
               >
                 Designation
               </label>
               <input
                 type="text"
-                id="Designation"
-                name="Designation"
-                value={formData.Designation}
+                id="designation"
+                name="designation"
+                value={formData.designation}
                 onChange={handleInputChange}
                 placeholder="Engineer"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -331,15 +321,15 @@ export default function PatientEntryPage() {
                 {/* Phone Code Display and Dropdown */}
                 <div className="relative w-20 shrink-0">
                   <div className="absolute left-4 top-2.5 text-foreground font-medium pointer-events-none z-10">
-                    {formData.PhoneCode}
+                    {formData.phoneCode}
                   </div>
                   <div className="absolute right-1 top-2.5 pointer-events-none z-10 text-muted-foreground">
                     <MdExpandMore size={20} />
                   </div>
                   <select
-                    id="PhoneCode"
-                    name="PhoneCode"
-                    value={formData.PhoneCode}
+                    id="phoneCode"
+                    name="phoneCode"
+                    value={formData.phoneCode}
                     onChange={handleInputChange}
                     required
                     className="px-4 py-2.5 border-r border-border ring-transparent! focus:outline-none! rounded-none! text-foreground bg-card w-full shrink-0 appearance-none cursor-pointer"
@@ -360,9 +350,9 @@ export default function PatientEntryPage() {
                 {/* Phone Input */}
                 <input
                   type="tel"
-                  id="Phone"
-                  name="Phone"
-                  value={formData.Phone}
+                  id="phone"
+                  name="phone"
+                  value={formData.phone}
                   onChange={handleInputChange}
                   required
                   placeholder="0501234567"
@@ -378,9 +368,9 @@ export default function PatientEntryPage() {
               </label>
               <input
                 type="email"
-                id="Email"
-                name="Email"
-                value={formData.Email}
+                id="email"
+                name="email"
+                value={formData.email}
                 onChange={handleInputChange}
                 required
                 placeholder="john@example.com"
@@ -395,9 +385,9 @@ export default function PatientEntryPage() {
               </label>
               <input
                 type="text"
-                id="Address"
-                name="Address"
-                value={formData.Address}
+                id="address"
+                name="address"
+                value={formData.address}
                 onChange={handleInputChange}
                 placeholder="Abu Dhabi"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -407,16 +397,16 @@ export default function PatientEntryPage() {
             {/* Emergency Contact */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="EmergencyContact"
+                htmlFor="emergencyContact"
                 className="font-semibold text-foreground/90"
               >
                 Emergency Contact Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                id="EmergencyContact"
-                name="EmergencyContact"
-                value={formData.EmergencyContact}
+                id="emergencyContact"
+                name="emergencyContact"
+                value={formData.emergencyContact}
                 onChange={handleInputChange}
                 required
                 placeholder="Contact Name"
@@ -427,16 +417,16 @@ export default function PatientEntryPage() {
             {/* Emergency Contact Phone */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="EmergencyContactPhone"
+                htmlFor="emergencyContactPhone"
                 className="font-semibold text-foreground/90"
               >
                 Emergency Contact Phone <span className="text-red-500">*</span>
               </label>
               <input
                 type="tel"
-                id="EmergencyContactPhone"
-                name="EmergencyContactPhone"
-                value={formData.EmergencyContactPhone}
+                id="emergencyContactPhone"
+                name="emergencyContactPhone"
+                value={formData.emergencyContactPhone}
                 onChange={handleInputChange}
                 required
                 placeholder="0509876543"
@@ -462,16 +452,16 @@ export default function PatientEntryPage() {
             {/* National ID */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="NationalID"
+                htmlFor="nationalID"
                 className="font-semibold text-foreground/90"
               >
                 National ID
               </label>
               <input
                 type="text"
-                id="NationalID"
-                name="NationalID"
-                value={formData.NationalID}
+                id="nationalID"
+                name="nationalID"
+                value={formData.nationalID}
                 onChange={handleInputChange}
                 placeholder="784-1234-5678901-2"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -481,16 +471,16 @@ export default function PatientEntryPage() {
             {/* Passport Number */}
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="PassportNumber"
+                htmlFor="passportNumber"
                 className="font-semibold text-foreground/90"
               >
                 Passport Number
               </label>
               <input
                 type="text"
-                id="PassportNumber"
-                name="PassportNumber"
-                value={formData.PassportNumber}
+                id="passportNumber"
+                name="passportNumber"
+                value={formData.passportNumber}
                 onChange={handleInputChange}
                 placeholder="A1234567"
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
@@ -500,13 +490,13 @@ export default function PatientEntryPage() {
 
             {/* Visa Type */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="VisaType" className="font-semibold text-foreground/90">
+              <label htmlFor="visaType" className="font-semibold text-foreground/90">
                 Visa Type <span className="text-red-500">*</span>
               </label>
               <select
-                id="VisaType"
-                name="VisaType"
-                value={formData.VisaType}
+                id="visaType"
+                name="visaType"
+                value={formData.visaType}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
@@ -532,15 +522,15 @@ export default function PatientEntryPage() {
             {/* Patient Type */}
             <div className="flex flex-col gap-2 w-1/2">
               <label
-                htmlFor="PatientType"
+                htmlFor="patientType"
                 className="font-semibold text-foreground/90"
               >
                 Patient Type <span className="text-red-500">*</span>
               </label>
               <select
-                id="PatientType"
-                name="PatientType"
-                value={formData.PatientType}
+                id="patientType"
+                name="patientType"
+                value={formData.patientType}
                 onChange={handleInputChange}
                 required
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
@@ -556,14 +546,14 @@ export default function PatientEntryPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  id="ReferralStatus"
-                  name="ReferralStatus"
-                  checked={formData.ReferralStatus}
+                  id="referralStatus"
+                  name="referralStatus"
+                  checked={formData.referralStatus}
                   onChange={handleInputChange}
                   className="cursor-pointer bg-transparent"
                 />
                 <label
-                  htmlFor="ReferralStatus"
+                  htmlFor="referralStatus"
                   className="font-semibold text-foreground/90 cursor-pointer"
                 >
                   Referral Status
@@ -573,14 +563,14 @@ export default function PatientEntryPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  id="ChronicStatus"
-                  name="ChronicStatus"
-                  checked={formData.ChronicStatus}
+                  id="chronicStatus"
+                  name="chronicStatus"
+                  checked={formData.chronicStatus}
                   onChange={handleInputChange}
                   className="cursor-pointer bg-transparent"
                 />
                 <label
-                  htmlFor="ChronicStatus"
+                  htmlFor="chronicStatus"
                   className="font-semibold text-foreground/90 cursor-pointer"
                 >
                   Chronic Status

@@ -3,8 +3,10 @@
 
 import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
-import { baseUrl } from "@/lib/constants";
+import { SpecializationService } from "@/services/specialization.service";
+import { UserService } from "@/services/user.service";
 import { Specialization } from "@/types/Specializations.type";
+import { UserAssignedDoctorCreateType } from "@/types/user.type";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { toast } from "sonner";
@@ -24,8 +26,8 @@ function UserRegistrationForm() {
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
   const [selectedSpecialization, setSelectedSpecialization] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
-  const [consultationFee, setConsultationFee] = useState("");
-  const [experience, setExperience] = useState("");
+  const [consultationFee, setConsultationFee] = useState(0);
+  const [experience, setExperience] = useState(0);
 
 
   const router = useRouter();
@@ -38,12 +40,7 @@ function UserRegistrationForm() {
   // fetch all specializations
   const fetchAllSpecializations = async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/specialization/get-all`)
-      if (!res.ok) {
-        throw new Error("Failed to fetch specializations")
-      }
-
-      const data = await res.json()
+      const data = await SpecializationService.getAll()
       setSpecializations(data)
     } catch (error) {
       console.error("Error: ", error)
@@ -80,11 +77,20 @@ function UserRegistrationForm() {
     }
   }, [editMode]);
 
-  // handle assign doctor if the role is doctor
-  const handleDoctorAssign = async (userId: number) => {
-    console.log("Need to do assign doctor", userId)
+  // reset data
+  const resetdata = () => {
+    setEmail("");
+    setName("");
+    setUsername("");
+    setPhone("");
+    setPassword("");
+    setRole("");
+  }
 
-    const payload = {
+  // handle assign doctor if the role is doctor
+  const handleDoctorAssign = async (userId: string) => {
+    if (!userId) return;
+    const payload: UserAssignedDoctorCreateType = {
       UserId: userId,
       SpecializationId: selectedSpecialization,
       LicenseNumber: licenseNumber,
@@ -93,20 +99,9 @@ function UserRegistrationForm() {
     }
 
     try {
-      const res = await fetch(`${baseUrl}/api/user/assign-doctor`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify(payload)
-      })
-
-      const data = await res.json()
-
-      console.log("Assign doctor: ", data)
+      await UserService.create_assign_doctor(payload)
     } catch (error) {
-      console.error("Error: ", error)
+      console.error(error);
     }
   }
 
@@ -119,37 +114,22 @@ function UserRegistrationForm() {
         return;
       }
 
-      const res = await fetch(`${baseUrl}/api/user/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          username,
-          email,
-          password,
-          role,
-          phone,
-        }),
-      });
-      if (!res.ok) {
-        throw new Error("User registration failed");
+      const payload = {
+        name,
+        username,
+        email,
+        password,
+        role,
+        phone,
       }
 
-      const data = await res.json();
+      const data = await UserService.create(payload)
 
-      if (data.role === "doctor") {
-        handleDoctorAssign(data.userId)
+      if (data.data.role === "doctor") {
+        handleDoctorAssign(data.data.userId)
       }
 
-      setEmail("");
-      setName("");
-      setUsername("");
-      setPhone("");
-      setPassword("");
-      setRole("");
-
+      resetdata()
       sessionStorage.removeItem("editUser");
       toast.success(data.message);
 
@@ -168,27 +148,20 @@ function UserRegistrationForm() {
         return;
       }
 
-      const res = await fetch(`${baseUrl}/api/user/update/${userId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          username,
-          email,
-          role,
-          phone,
-          isActive,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error("User update failed");
+      const payload = {
+        name,
+        email,
+        role,
+        phone,
+        isActive,
       }
 
+      if (!userId) return;
+
+      const data = await UserService.update(userId, payload)
+      toast.success(data.message);
+
       sessionStorage.removeItem("editUser");
-      toast.success("User changes saved successfully!");
       router.push("/user-management");
     } catch (error) {
       console.log("Error updating user:", error);
@@ -471,7 +444,7 @@ function UserRegistrationForm() {
                         type="text"
                         placeholder="eg: 50"
                         value={consultationFee}
-                        onChange={(e) => setConsultationFee(e.target.value)}
+                        onChange={(e) => setConsultationFee(Number(e.target.value))}
                       />
                     </div>
                     <div className="flex flex-col gap-1 w-full">
@@ -480,7 +453,7 @@ function UserRegistrationForm() {
                         type="text"
                         placeholder="eg: 5"
                         value={experience}
-                        onChange={(e) => setExperience(e.target.value)}
+                        onChange={(e) => setExperience(Number(e.target.value))}
                       />
                     </div>
                   </div>

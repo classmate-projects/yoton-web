@@ -1,3 +1,12 @@
+export interface FetchedRoles {
+    roleId: string;
+    name: string;
+    description: string;
+    isEditable: boolean;
+    isActive: boolean;
+    createdAt: string
+  }
+
 export interface CreateRoleProps {
     name: string;
     description: string;

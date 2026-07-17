@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { MdAssignmentInd } from "react-icons/md";
-import { baseUrl } from "@/lib/constants";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { Specialization, User } from "@/types/Specializations.type";
-import { AssignedDoctors, AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
+import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
+import { UserService } from "@/services/user.service";
+import { SpecializationService } from "@/services/specialization.service";
 
 
 export default function AssignDoctor() {
@@ -20,8 +21,8 @@ export default function AssignDoctor() {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [selectedSpecialization, setSelectedSpecialization] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
-  const [consultationFee, setConsultationFee] = useState("");
-  const [experience, setExperience] = useState("");
+  const [consultationFee, setConsultationFee] = useState<string>("");
+  const [experience, setExperience] = useState<string>("");
 
   const [users, setUsers] = useState<User[]>([]);
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
@@ -30,23 +31,15 @@ export default function AssignDoctor() {
   // fetch assigned doctors
   const fetchAssignedDoctors = async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/user/assigned-doctors`)
-      if (!res.ok) throw new Error("Failed to fetch assigned doctors")
-
-      const data: AssignedDoctors = await res.json()
-      console.log("assigned doctors: ", data)
-      setDoctors(data.doctors)
+      const res = await UserService.get_assigned_doctors()
+      setDoctors(res.data)
     } catch (error) {
       console.error("Error", error)
     }
   }
 
-
   useEffect(() => {
-    const callApi = () => {
-      fetchAssignedDoctors()
-    }
-    callApi()
+    fetchAssignedDoctors()
   }, [])
 
   // Fetch users and specializations
@@ -55,18 +48,16 @@ export default function AssignDoctor() {
       try {
         setIsLoading(true);
         const [usersRes, specsRes] = await Promise.all([
-          fetch(`${baseUrl}/api/user/get-all`),
-          fetch(`${baseUrl}/api/specialization/get-all`),
+          await UserService.getAll(),
+          await SpecializationService.getAll(),
         ]);
 
-        if (usersRes.ok) {
-          const usersData = await usersRes.json();
-          setUsers(usersData.users.filter((user: User) => user.role === "doctor"));
+        if (usersRes) {
+          setUsers(usersRes.data.filter((user: User) => user.role === "doctor"));
         }
 
-        if (specsRes.ok) {
-          const specsData = await specsRes.json();
-          setSpecializations(Array.isArray(specsData) ? specsData : []);
+        if (specsRes) {
+          setSpecializations(Array.isArray(specsRes) ? specsRes : []);
         }
       } catch (error) {
         console.error("Failed to fetch data:", error);
@@ -99,36 +90,24 @@ export default function AssignDoctor() {
 
   const handleSave = async () => {
     if (!selectedUser || !selectedSpecialization || !licenseNumber || !consultationFee || !experience) {
-      alert("Please fill in all fields");
+      toast.warning("Please enter all the fields")
       return;
     }
 
     try {
       const payload = {
         UserId: selectedUser.id,
-        SpecializationId: parseInt(selectedSpecialization),
+        SpecializationId: selectedSpecialization,
         LicenseNumber: licenseNumber,
         ConsultationFee: parseFloat(consultationFee),
         ExperienceYears: parseInt(experience),
       };
 
-      const response = await fetch(`${baseUrl}/api/user/assign-doctor`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      const data = await UserService.create_assign_doctor(payload)
 
-      const data = await response.json();
-
-      if (response.ok) {
-        toast.success(data.message);
-        setIsModalOpen(false);
-        fetchAssignedDoctors();
-      } else {
-        toast.error("Failed to assign doctor");
-      }
+      toast.success(data.message);
+      setIsModalOpen(false);
+      fetchAssignedDoctors();
     } catch (error) {
       console.error("Error assigning doctor:", error);
       toast.error("Error assigning doctor");
@@ -375,7 +354,7 @@ export default function AssignDoctor() {
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 px-4 py-2 bg-primary hover:opacity-90 text-white font-semibold rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 bg-primary hover:opacity-90 text-white font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 Save
               </button>

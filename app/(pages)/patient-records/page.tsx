@@ -7,37 +7,18 @@ import { useEffect, useState } from "react";
 import { MdContacts } from "react-icons/md";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { baseUrl } from "@/lib/constants";
-
-interface Patient {
-  opId: number;
-  name: string;
-  email: string;
-  phone: string;
-  address: string;
-}
+import { ReceptionService } from "@/services/reception.service";
+import { PatientGetAllType } from "@/types/reception.type";
 
 export default function PatientRecordsPage() {
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patients, setPatients] = useState<PatientGetAllType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
   const fetchPatients = async () => {
-    const token = localStorage.getItem("yoton_token");
     try {
-      if (!token) {
-        toast.error("Authentication token not found. Please log in again.");
-        return;
-      }
       setIsLoading(true);
-      const res = await fetch(`${baseUrl}/api/reception/get-all/patient`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        }
-      });
-      const data = await res.json();
+      const data = await ReceptionService.getAllPatients()
       setPatients(data.patients || []);
     } catch (error) {
       console.error("Failed to fetch patients", error);
@@ -47,34 +28,20 @@ export default function PatientRecordsPage() {
   };
 
   useEffect(() => {
-    const callFetchPatientApi = () => {
-      fetchPatients();
-    }
-
-    callFetchPatientApi()
+    fetchPatients();
   }, []);
 
-  const handleDelete = async (id: number) => {
-    const token = localStorage.getItem("yoton_token");
+  const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`${baseUrl}/api/reception/soft-delete/${id}`, {
-        method: "DELETE",
-         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        }
-      });
-      if (res.ok) {
-        fetchPatients();
-      } else {
-        toast.error("Failed to delete patient");
-      }
+      const data = await ReceptionService.softDelete(id)
+      toast.success(data.message)
+      fetchPatients();
     } catch (error) {
       console.error("Failed to delete patient", error);
     }
   };
 
-  const confirmDelete = (id: number, name: string) => {
+  const confirmDelete = (id: string, name: string) => {
     toast(
       <span>
         Are you sure you want to delete {" "}
