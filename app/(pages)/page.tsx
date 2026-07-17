@@ -55,22 +55,22 @@ export default function Home() {
   const [totalCounts, setTotalCounts] = useState<TotalCounts | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchTotalCounts = async () => {
-      try {
-        setIsLoading(true);
-        const data = await DashboardService.getCounts();
-        console.log("Data: ", data)
-        setTotalCounts(data);
-      } catch (error) {
-        console.error("Failed to fetch total counts", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  // useEffect(() => {
+  //   const fetchTotalCounts = async () => {
+  //     try {
+  //       setIsLoading(true);
+  //       const data = await DashboardService.getCounts();
+  //       console.log("Data: ", data)
+  //       setTotalCounts(data);
+  //     } catch (error) {
+  //       console.error("Failed to fetch total counts", error);
+  //     } finally {
+  //       setIsLoading(false);
+  //     }
+  //   };
 
-    fetchTotalCounts();
-  }, []);
+  //   fetchTotalCounts();
+  // }, []);
 
   return (
     <div className="mainPage h-full overflow-y-auto">
