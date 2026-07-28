@@ -18,6 +18,8 @@ export const ENDPOINTS = {
         GET_DOCTOR_AVAILABILITY: `/api/reception/doctor-availability`,
         GET_ALL_APPOINTMENTS: `/api/reception/get-all/appointment`,
         CREATE_APPOINTMENT: `/api/reception/create-appointment`,
+        GET_SPECIALIZATIONS_DOCTORS: `/api/reception/specializations-doctors`,
+        GET_DOCTOR_SLOTS: (doctorId: string, date: string) => `/api/reception/doctor-slots/${doctorId}?date=${date}`,
         UPDATE_PATIENT_AND_APPOINTMENT: (patientId: string) => `/api/reception/update-patient-and-appointment/${patientId}`,
         UPLOAD_PROFILE: (id: string) => `/api/reception/${id}/upload-profile`,
         SOFT_DELETE: (id: string) => `/api/reception/soft-delete/${id}`,

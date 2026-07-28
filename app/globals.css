@@ -158,3 +158,45 @@ label.required::after {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* React Big Calendar theming */
+.rbc-calendar {
+  color: var(--foreground);
+}
+.rbc-off-range-bg {
+  background: var(--muted);
+}
+.rbc-today {
+  background: rgba(37, 99, 235, 0.08);
+}
+.rbc-time-header-content,
+.rbc-time-content,
+.rbc-time-gutter,
+.rbc-timeslot-group,
+.rbc-time-view,
+.rbc-month-view,
+.rbc-day-slot .rbc-time-slot {
+  border-color: var(--border) !important;
+}
+.rbc-header {
+  background: var(--muted);
+  color: var(--foreground);
+  padding: 0.5rem 0;
+  border-color: var(--border) !important;
+}
+.rbc-label {
+  color: var(--muted-foreground);
+}
+.rbc-current-time-indicator {
+  background-color: var(--destructive);
+}
+.rbc-event {
+  border: none !important;
+  padding: 4px 6px !important;
+}
+.rbc-event-label {
+  font-size: 0.7rem;
+}
+.rbc-event:focus {
+  outline: 2px solid var(--ring);
+}
