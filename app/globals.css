@@ -159,6 +159,15 @@ label.required::after {
   scrollbar-width: none;
 }
 
+/* Sidebar expand/collapse: applied before hydration by the blocking
+   script in app/layout.tsx to avoid a flash of the wrong state on reload */
+html[data-sidebar="collapsed"] .sidebar-shell {
+  width: 5rem !important;
+}
+html[data-sidebar="collapsed"] .sidebar-label {
+  display: none !important;
+}
+
 /* React Big Calendar theming */
 .rbc-calendar {
   color: var(--foreground);

@@ -1,7 +1,8 @@
 import api from "@/lib/axios"
 import { ENDPOINTS } from "@/lib/endpoints"
-import { ReceptionCreatePatientType, UpdateScheduleTypes } from "@/types/reception.type";
+import { ReceptionCreatePatientType } from "@/types/reception.type";
 import { CreateAppointmentPayload } from "@/types/appointment.type";
+import { UpdateDoctorSchedulePayload } from "@/types/doctorAvailability.type";
 
 export const ReceptionService = {
     getAllPatients: async () => {
@@ -28,8 +29,19 @@ export const ReceptionService = {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DOCTOR_BY_ID(id))
         return data;
     },
-    updateSchedule: async (payload: UpdateScheduleTypes) => {
-        const { data } = await api.put(ENDPOINTS.RECEPTION.UPDATE_SCEDULE, payload)
+    updateDoctorSchedule: async (payload: UpdateDoctorSchedulePayload) => {
+        const { data } = await api.put(ENDPOINTS.RECEPTION.UPDATE_SCEDULE, {
+            DoctorId: payload.doctorId,
+            UpdatedBy: payload.updatedBy,
+            Schedules: payload.schedules.map((s) => ({
+                Day: s.day,
+                StartTime: s.startTime,
+                EndTime: s.endTime,
+                SlotDurationMinutes: s.slotDurationMinutes,
+                BreakStartTime: s.breakStartTime,
+                BreakEndTime: s.breakEndTime,
+            })),
+        })
         return data;
     },
     getSpecializationsWithDoctors: async () => {
