@@ -1,4 +1,5 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
+import { MdPayment } from "react-icons/md";
 
 interface SidebarMenuItem {
     id: number;
@@ -19,6 +20,14 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         icon: dashboardIcon
     },
 
+    {
+        id: 5,
+        name: "User Management",
+        navLink: "/user-management",
+        roles: ["admin"],
+        icon: multipleUsers
+    },
+    
     {
         id: 2,
         name: "Appointments",
@@ -41,14 +50,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         navLink: "/patient-records",
         roles: ["reception"],
         icon: RecordsIcon
-    },
-
-    {
-        id: 5,
-        name: "User Management",
-        navLink: "/user-management",
-        roles: ["admin"],
-        icon: multipleUsers
     },
 
     {
@@ -79,4 +80,11 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         roles: ["reception", "admin"],
         icon: availableDoctor
     },
+    {
+        id: 10,
+        name: "Billing",
+        navLink: "/billing",
+        roles: ["admin", "billing team", "reception"],
+        icon: MdPayment
+    }
 ]
