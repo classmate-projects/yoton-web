@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Pill } from "lucide-react";
 import { MdAdd, MdWarning } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import DatePicker from "@/components/DatePicker";
 import { PharmacyService } from "@/services/pharmacy.service";
 import { ReceptionService } from "@/services/reception.service";
 import { UserService } from "@/services/user.service";
@@ -743,12 +744,11 @@ export default function PharmacyPage() {
               </div>
               <div>
                 <label className="text-sm font-bold text-foreground/90 required">Expiry Date</label>
-                <input
-                  type="date"
+                <DatePicker
                   required
                   value={medExpiry}
-                  onChange={(e) => setMedExpiry(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  onChange={(v) => setMedExpiry(v)}
+                  className="flex w-full items-center justify-between gap-2 mt-1 p-3 rounded-lg border border-border bg-muted text-left text-foreground outline-none transition-all focus-visible:border-primary"
                 />
               </div>
 

@@ -19,13 +19,8 @@ import {
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
 import LoadingSpinner from "@/components/LoadingSpinner";
-
-const toDateInputValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
+import DatePicker from "@/components/DatePicker";
+import { toDateInputValue } from "@/lib/date";
 
 export default function PatientEntryPage() {
   const [formData, setFormData] = useState({
@@ -313,14 +308,16 @@ export default function PatientEntryPage() {
               >
                 Date of Birth <span className="text-red-500">*</span>
               </label>
-              <input
-                type="date"
+              <DatePicker
                 id="dateOfBirth"
                 name="dateOfBirth"
                 value={formData.dateOfBirth}
-                onChange={handleInputChange}
+                onChange={(v) =>
+                  setFormData((prev) => ({ ...prev, dateOfBirth: v }))
+                }
+                max={toDateInputValue(new Date())}
                 required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </div>
 
@@ -846,15 +843,14 @@ export default function PatientEntryPage() {
                     <label className="font-semibold text-foreground/90 text-sm">
                       Date
                     </label>
-                    <input
-                      type="date"
+                    <DatePicker
                       value={consultDate}
-                      min={toDateInputValue(new Date())}
-                      onChange={(e) => {
-                        setConsultDate(e.target.value);
+                      onChange={(v) => {
+                        setConsultDate(v);
                         setSelectedSlot(null);
                       }}
-                      className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                      min={toDateInputValue(new Date())}
+                      className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     />
                   </div>
 

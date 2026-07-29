@@ -24,6 +24,7 @@ import {
   XCircle,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import DatePicker from "@/components/DatePicker";
 import { ReceptionService } from "@/services/reception.service";
 import {
   DoctorDaySlotsType,
@@ -32,13 +33,7 @@ import {
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
 import { VisitType } from "@/types/visit.type";
-
-const toDateInputValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
+import { toDateInputValue } from "@/lib/date";
 
 export default function Appointments() {
   const [isLoadingGrid, setIsLoadingGrid] = useState(true);
@@ -557,16 +552,15 @@ export default function Appointments() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <input
-                    type="date"
+                  <DatePicker
                     value={toDateInputValue(selectedDate)}
                     min={toDateInputValue(new Date())}
-                    onChange={(event) => {
-                      if (event.target.value) {
-                        setSelectedDate(new Date(`${event.target.value}T00:00:00`));
+                    onChange={(v) => {
+                      if (v) {
+                        setSelectedDate(new Date(`${v}T00:00:00`));
                       }
                     }}
-                    className="h-10 w-44 text-sm"
+                    className="flex h-10 w-44 items-center justify-between gap-2 rounded-xl border border-input bg-card px-3 py-1.5 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                   <span className="rounded-lg border border-emerald-600 bg-emerald-600 px-3 py-1 text-xs font-semibold text-white">
                     Available
