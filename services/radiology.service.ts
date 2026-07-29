@@ -1,0 +1,39 @@
+import api from "@/lib/axios";
+import { ENDPOINTS } from "@/lib/endpoints";
+import { CreateRadiologyRequestPayload } from "@/types/radiology.type";
+
+export const RadiologyService = {
+  getAll: async () => {
+    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_ALL);
+    return data;
+  },
+  getPending: async () => {
+    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_PENDING);
+    return data;
+  },
+  getSummary: async () => {
+    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_SUMMARY);
+    return data;
+  },
+  create: async (payload: CreateRadiologyRequestPayload) => {
+    const { data } = await api.post(ENDPOINTS.RADIOLOGY.CREATE, payload);
+    return data;
+  },
+  updateStatus: async (radiologyRequestId: string, status: string, scheduledDate?: string) => {
+    const { data } = await api.post(ENDPOINTS.RADIOLOGY.UPDATE_STATUS, {
+      radiologyRequestId,
+      status,
+      scheduledDate,
+    });
+    return data;
+  },
+  uploadResult: async (radiologyRequestId: string, file: File) => {
+    const form = new FormData();
+    form.append("RadiologyRequestId", radiologyRequestId);
+    form.append("File", file);
+    const { data } = await api.post(ENDPOINTS.RADIOLOGY.UPLOAD_RESULT, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data;
+  },
+};

@@ -10,6 +10,7 @@ interface SpecializationType {
   name: string;
   description: string;
   isActive: boolean;
+  departmentId: string;
   department: DepartmentType;
 }
 

@@ -17,10 +17,12 @@ export interface AppointmentSlotType {
   start: string;
   end: string;
   isAvailable: boolean;
+  isPast: boolean;
   appointmentId: string | null;
   patientId: string | null;
   patientName: string | null;
   status: string | null;
+  isWalkIn: boolean;
 }
 
 export interface DoctorDaySlotsType {

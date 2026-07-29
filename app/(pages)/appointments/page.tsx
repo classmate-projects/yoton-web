@@ -4,14 +4,19 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import Link from "next/link";
 import {
   ArrowLeft,
   BadgeIndianRupee,
   CalendarCheck2,
   CalendarDays,
   CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   GraduationCap,
+  ListChecks,
+  LogIn,
   Search,
   Stethoscope,
   UserRoundCheck,
@@ -26,6 +31,7 @@ import {
   PatientListItemType,
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
+import { VisitType } from "@/types/visit.type";
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -64,6 +70,11 @@ export default function Appointments() {
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [visitQueue, setVisitQueue] = useState<VisitType[]>([]);
+  const [isLoadingQueue, setIsLoadingQueue] = useState(false);
+  const [queuePage, setQueuePage] = useState(1);
+  const QUEUE_PAGE_SIZE = 5;
+
   // ---------------- Fetch specialization/doctor grid ----------------
   const fetchGrid = async () => {
     try {
@@ -94,6 +105,51 @@ export default function Appointments() {
     };
     fetchPatients();
   }, []);
+
+  // ---------------- Fetch visit queue ----------------
+  const fetchVisitQueue = async () => {
+    try {
+      setIsLoadingQueue(true);
+      const data = await ReceptionService.getVisitQueue();
+      setVisitQueue(data.data ?? []);
+    } catch (error) {
+      console.error("Failed to fetch visit queue:", error);
+    } finally {
+      setIsLoadingQueue(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVisitQueue();
+    // Poll so the queue reflects status changes made elsewhere (nursing, billing, etc.)
+    // without requiring a manual refresh.
+    const interval = setInterval(fetchVisitQueue, 20000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const sortedVisitQueue = useMemo(() => {
+    return [...visitQueue].sort((a, b) => {
+      const aTime = new Date(a.appointmentDate ?? a.checkedInAt).getTime();
+      const bTime = new Date(b.appointmentDate ?? b.checkedInAt).getTime();
+      return aTime - bTime;
+    });
+  }, [visitQueue]);
+
+  const queueTotalPages = Math.max(
+    1,
+    Math.ceil(sortedVisitQueue.length / QUEUE_PAGE_SIZE)
+  );
+
+  useEffect(() => {
+    if (queuePage > queueTotalPages) {
+      setQueuePage(queueTotalPages);
+    }
+  }, [queuePage, queueTotalPages]);
+
+  const paginatedVisitQueue = sortedVisitQueue.slice(
+    (queuePage - 1) * QUEUE_PAGE_SIZE,
+    queuePage * QUEUE_PAGE_SIZE
+  );
 
   // ---------------- Fetch slots for selected doctor + date ----------------
   const fetchSlots = async (doctorId: string, date: Date) => {
@@ -172,6 +228,7 @@ export default function Appointments() {
       .join("");
 
   const handleSelectSlot = (slot: DoctorDaySlotsType["slots"][number]) => {
+    if (slot.isPast) return;
     if (slot.isAvailable) {
       setBookingSlot(slot);
       setPatientSearch("");
@@ -223,6 +280,28 @@ export default function Appointments() {
         toast.error(error.response?.data?.message || "Failed to book appointment");
       } else {
         toast.error("Failed to book appointment");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCheckIn = async () => {
+    if (!cancelSlot?.appointmentId) return;
+
+    try {
+      setIsSubmitting(true);
+      const data = await ReceptionService.checkIn({
+        appointmentId: cancelSlot.appointmentId,
+      });
+      toast.success(data.message || "Patient checked in");
+      setCancelSlot(null);
+      fetchVisitQueue();
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || "Failed to check in patient");
+      } else {
+        toast.error("Failed to check in patient");
       }
     } finally {
       setIsSubmitting(false);
@@ -340,6 +419,113 @@ export default function Appointments() {
           </div>
         </div>
 
+        <section className="card p-5">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+              <ListChecks className="text-primary" size={20} /> Visit queue
+            </h2>
+            <button
+              onClick={fetchVisitQueue}
+              className="text-sm font-semibold text-primary hover:opacity-80 cursor-pointer"
+            >
+              Refresh
+            </button>
+          </div>
+          {isLoadingQueue ? (
+            <LoadingSpinner />
+          ) : sortedVisitQueue.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No patients currently in the queue.
+            </p>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs font-semibold uppercase text-muted-foreground border-b border-border">
+                      <th className="pb-2 pr-4">Patient</th>
+                      <th className="pb-2 pr-4">Type</th>
+                      <th className="pb-2 pr-4">Status</th>
+                      <th className="pb-2 pr-4">Appointment time</th>
+                      <th className="pb-2 pr-4">Checked in</th>
+                      <th className="pb-2 pr-4">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedVisitQueue.map((visit) => (
+                      <tr key={visit.visitId} className="border-b border-border last:border-0">
+                        <td className="py-2 pr-4 font-medium text-foreground">
+                          {visit.patientName ?? "Unknown"}
+                        </td>
+                        <td className="py-2 pr-4 text-muted-foreground">
+                          {visit.visitType}
+                        </td>
+                        <td className="py-2 pr-4">
+                          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                            {visit.status}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4 text-muted-foreground">
+                          {visit.appointmentDate
+                            ? format(new Date(visit.appointmentDate), "d MMM, h:mm a")
+                            : "—"}
+                        </td>
+                        <td className="py-2 pr-4 text-muted-foreground">
+                          {format(new Date(visit.checkedInAt), "h:mm a")}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {(visit.status === "CheckedIn" || visit.status === "WithNurse") && visit.patientId && (
+                            <Link
+                              href={`/nursing?patientId=${visit.patientId}&visitId=${visit.visitId}`}
+                              className="text-xs font-semibold text-primary hover:underline"
+                            >
+                              Start Nursing
+                            </Link>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 mt-4">
+                <p className="text-xs text-muted-foreground">
+                  Showing {(queuePage - 1) * QUEUE_PAGE_SIZE + 1}
+                  {"–"}
+                  {Math.min(queuePage * QUEUE_PAGE_SIZE, sortedVisitQueue.length)} of{" "}
+                  {sortedVisitQueue.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQueuePage((p) => Math.max(1, p - 1))}
+                    disabled={queuePage === 1}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors cursor-pointer"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Page {queuePage} of {queueTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setQueuePage((p) => Math.min(queueTotalPages, p + 1))
+                    }
+                    disabled={queuePage === queueTotalPages}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors cursor-pointer"
+                    aria-label="Next page"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+
         {selectedDoctor && (
           <section className="card p-5">
             <div className="flex flex-col gap-5">
@@ -374,6 +560,7 @@ export default function Appointments() {
                   <input
                     type="date"
                     value={toDateInputValue(selectedDate)}
+                    min={toDateInputValue(new Date())}
                     onChange={(event) => {
                       if (event.target.value) {
                         setSelectedDate(new Date(`${event.target.value}T00:00:00`));
@@ -402,16 +589,23 @@ export default function Appointments() {
                     <button
                       key={slot.start}
                       onClick={() => handleSelectSlot(slot)}
-                      className={`group flex flex-col gap-2 rounded-xl border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
-                        slot.isAvailable
-                          ? "border-emerald-600/30 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30"
-                          : "border-blue-600/30 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/30"
+                      disabled={slot.isPast}
+                      title={slot.isPast ? "This slot has already passed" : undefined}
+                      className={`group flex flex-col gap-2 rounded-xl border p-4 text-left shadow-sm transition-all ${
+                        slot.isPast
+                          ? "cursor-not-allowed border-border bg-muted/40 opacity-60"
+                          : "hover:-translate-y-0.5 hover:shadow-md " +
+                            (slot.isAvailable
+                              ? "border-emerald-600/30 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30"
+                              : "border-blue-600/30 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/30")
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span
                           className={`flex items-center gap-1.5 text-sm font-semibold ${
-                            slot.isAvailable
+                            slot.isPast
+                              ? "text-muted-foreground"
+                              : slot.isAvailable
                               ? "text-emerald-700 dark:text-emerald-400"
                               : "text-blue-700 dark:text-blue-400"
                           }`}
@@ -419,7 +613,7 @@ export default function Appointments() {
                           <Clock size={14} />
                           {format(new Date(slot.start), "h:mm a")}
                         </span>
-                        {slot.isAvailable ? (
+                        {!slot.isPast && (slot.isAvailable ? (
                           <CalendarPlus
                             size={16}
                             className="text-emerald-600 dark:text-emerald-400"
@@ -429,19 +623,27 @@ export default function Appointments() {
                             size={16}
                             className="text-blue-600 dark:text-blue-400"
                           />
-                        )}
+                        ))}
                       </div>
                       <span className="text-xs text-muted-foreground">
                         ends {format(new Date(slot.end), "h:mm a")}
                       </span>
                       <span
                         className={`mt-1 truncate rounded-md px-2 py-1 text-xs font-semibold ${
-                          slot.isAvailable
+                          slot.isPast
+                            ? "bg-muted text-muted-foreground"
+                            : slot.isAvailable
                             ? "bg-emerald-600 text-white"
                             : "bg-blue-600 text-white"
                         }`}
                       >
-                        {slot.isAvailable ? "Available" : slot.patientName || "Booked"}
+                        {slot.isPast
+                          ? "Past"
+                          : slot.isAvailable
+                          ? "Available"
+                          : slot.isWalkIn
+                          ? `${slot.patientName || "Patient"} - Walk-in Visit`
+                          : slot.patientName || "Booked"}
                       </span>
                     </button>
                   ))}
@@ -647,17 +849,24 @@ export default function Appointments() {
         </div>
       )}
 
-      {/* Cancel appointment modal */}
+      {/* Manage appointment modal */}
       {cancelSlot && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-xl shadow-2xl max-w-sm w-full p-6 border border-border">
             <h2 className="text-xl font-semibold text-foreground">
-              Cancel appointment
+              Manage appointment
             </h2>
             <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
-              <p className="text-xs font-semibold uppercase text-muted-foreground">
-                Patient
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                  Patient
+                </p>
+                {cancelSlot.isWalkIn && (
+                  <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                    Walk-in Visit
+                  </span>
+                )}
+              </div>
               <p className="mt-1 text-lg font-semibold text-foreground">
                 {cancelSlot.patientName ?? "Patient"}
               </p>
@@ -666,19 +875,26 @@ export default function Appointments() {
                 {format(new Date(cancelSlot.end), "h:mm a")}
               </p>
             </div>
-            <div className="flex gap-3 mt-6">
+            <div className="flex flex-col gap-3 mt-6">
               <button
-                onClick={() => setCancelSlot(null)}
-                className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors"
+                onClick={handleCheckIn}
+                disabled={isSubmitting}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
               >
-                Keep appointment
+                <LogIn size={16} /> Check in patient
               </button>
               <button
                 onClick={handleConfirmCancel}
                 disabled={isSubmitting}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors"
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 <XCircle size={16} /> Cancel appointment
+              </button>
+              <button
+                onClick={() => setCancelSlot(null)}
+                className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>

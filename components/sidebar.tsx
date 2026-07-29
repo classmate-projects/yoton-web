@@ -67,6 +67,7 @@ export default function Sidebar() {
 
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
+    localStorage.removeItem("yoton_token");
     localStorage.removeItem("yoton_user_detail");
     router.push("/login");
   };

@@ -3,6 +3,7 @@ import { ENDPOINTS } from "@/lib/endpoints"
 import { ReceptionCreatePatientType } from "@/types/reception.type";
 import { CreateAppointmentPayload } from "@/types/appointment.type";
 import { UpdateDoctorSchedulePayload } from "@/types/doctorAvailability.type";
+import { CheckInPayload, WalkInPayload, UploadPatientDocumentPayload } from "@/types/visit.type";
 
 export const ReceptionService = {
     getAllPatients: async () => {
@@ -38,9 +39,18 @@ export const ReceptionService = {
                 StartTime: s.startTime,
                 EndTime: s.endTime,
                 SlotDurationMinutes: s.slotDurationMinutes,
-                BreakStartTime: s.breakStartTime,
-                BreakEndTime: s.breakEndTime,
+                Breaks: s.breaks.map((b) => ({
+                    StartTime: b.startTime,
+                    EndTime: b.endTime,
+                    Reason: b.reason,
+                })),
             })),
+            AdminOverride: payload.adminOverride
+                ? {
+                      Username: payload.adminOverride.username,
+                      Password: payload.adminOverride.password,
+                  }
+                : undefined,
         })
         return data;
     },
@@ -64,6 +74,34 @@ export const ReceptionService = {
     },
     cancelAppointment: async (appointmentId: string) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CANCEL(appointmentId))
+        return data;
+    },
+    checkIn: async (payload: CheckInPayload) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.CHECK_IN, payload)
+        return data;
+    },
+    walkIn: async (payload: WalkInPayload) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.WALK_IN, payload)
+        return data;
+    },
+    getVisit: async (id: string) => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT(id))
+        return data;
+    },
+    getVisitQueue: async (status?: string) => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT_QUEUE(status))
+        return data;
+    },
+    uploadDocument: async (patientId: string, payload: UploadPatientDocumentPayload) => {
+        const form = new FormData();
+        form.append("DocumentType", payload.documentType);
+        if (payload.visitId) form.append("VisitId", payload.visitId);
+        if (payload.linkedLabRequestId) form.append("LinkedLabRequestId", payload.linkedLabRequestId);
+        if (payload.linkedRadiologyRequestId) form.append("LinkedRadiologyRequestId", payload.linkedRadiologyRequestId);
+        form.append("File", payload.file);
+        const { data } = await api.post(ENDPOINTS.RECEPTION.UPLOAD_DOCUMENT(patientId), form, {
+            headers: { "Content-Type": "multipart/form-data" },
+        })
         return data;
     },
 
