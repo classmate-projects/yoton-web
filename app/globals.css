@@ -105,6 +105,17 @@
     background-color: var(--card) !important;
     opacity: 1 !important;
   }
+
+  /* Kept inside @layer base so a plain per-input utility class (pl-9, h-10,
+     rounded-lg, ...) can override these defaults through normal cascade-layer
+     ordering, without needing "!important". Living outside @layer previously
+     made this rule unlayered CSS, which always beats layered Tailwind
+     utilities regardless of source order — silently ignoring any page's own
+     padding/sizing overrides unless they also used "!important". */
+  input, select, textarea {
+    @apply flex h-11 w-full rounded-xl border border-input px-4 py-2 text-lg ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all;
+    background-color: var(--card);
+  }
 }
 
 .mainPage {
@@ -116,11 +127,6 @@
   color: var(--card-foreground);
   border: 1px solid var(--border);
   @apply shadow-md rounded-2xl overflow-hidden transition-all duration-300;
-}
-
-input, select, textarea {
-  @apply flex h-11 w-full rounded-xl border border-input px-4 py-2 text-lg ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all;
-  background-color: var(--card);
 }
 
 input[type="password"]::-ms-reveal {
