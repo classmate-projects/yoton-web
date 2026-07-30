@@ -31,9 +31,3 @@ export interface PatientGetAllType {
     address: string;
 }
 
-export interface UpdateScheduleTypes {
-    doctorId: string;
-    days: number[];
-    startTime: string;
-    endTime: string;
-}

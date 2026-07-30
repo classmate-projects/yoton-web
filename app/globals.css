@@ -105,6 +105,17 @@
     background-color: var(--card) !important;
     opacity: 1 !important;
   }
+
+  /* Kept inside @layer base so a plain per-input utility class (pl-9, h-10,
+     rounded-lg, ...) can override these defaults through normal cascade-layer
+     ordering, without needing "!important". Living outside @layer previously
+     made this rule unlayered CSS, which always beats layered Tailwind
+     utilities regardless of source order — silently ignoring any page's own
+     padding/sizing overrides unless they also used "!important". */
+  input, select, textarea {
+    @apply flex h-11 w-full rounded-xl border border-input px-4 py-2 text-lg ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all;
+    background-color: var(--card);
+  }
 }
 
 .mainPage {
@@ -116,11 +127,6 @@
   color: var(--card-foreground);
   border: 1px solid var(--border);
   @apply shadow-md rounded-2xl overflow-hidden transition-all duration-300;
-}
-
-input, select, textarea {
-  @apply flex h-11 w-full rounded-xl border border-input px-4 py-2 text-lg ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all;
-  background-color: var(--card);
 }
 
 input[type="password"]::-ms-reveal {
@@ -157,4 +163,55 @@ label.required::after {
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Sidebar expand/collapse: applied before hydration by the blocking
+   script in app/layout.tsx to avoid a flash of the wrong state on reload */
+html[data-sidebar="collapsed"] .sidebar-shell {
+  width: 5rem !important;
+}
+html[data-sidebar="collapsed"] .sidebar-label {
+  display: none !important;
+}
+
+/* React Big Calendar theming */
+.rbc-calendar {
+  color: var(--foreground);
+}
+.rbc-off-range-bg {
+  background: var(--muted);
+}
+.rbc-today {
+  background: rgba(37, 99, 235, 0.08);
+}
+.rbc-time-header-content,
+.rbc-time-content,
+.rbc-time-gutter,
+.rbc-timeslot-group,
+.rbc-time-view,
+.rbc-month-view,
+.rbc-day-slot .rbc-time-slot {
+  border-color: var(--border) !important;
+}
+.rbc-header {
+  background: var(--muted);
+  color: var(--foreground);
+  padding: 0.5rem 0;
+  border-color: var(--border) !important;
+}
+.rbc-label {
+  color: var(--muted-foreground);
+}
+.rbc-current-time-indicator {
+  background-color: var(--destructive);
+}
+.rbc-event {
+  border: none !important;
+  padding: 4px 6px !important;
+}
+.rbc-event-label {
+  font-size: 0.7rem;
+}
+.rbc-event:focus {
+  outline: 2px solid var(--ring);
 }

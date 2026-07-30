@@ -10,6 +10,7 @@ interface SpecializationType {
   name: string;
   description: string;
   isActive: boolean;
+  departmentId: string;
   department: DepartmentType;
 }
 
@@ -23,6 +24,7 @@ import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SpecializationModal from "@/components/SpecializationModal";
 import { SpecializationService } from "@/services/specialization.service";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 export default function SpecializationPage() {
   const [specializations, setSpecializations] = useState<SpecializationType[]>([]);
@@ -96,6 +98,8 @@ export default function SpecializationPage() {
   useEffect(() => {
     fetchSpecializations();
   }, []);
+
+  useSignalRRefetch(["specializationCreated", "specializationUpdated", "specializationDeleted"], fetchSpecializations);
 
   // handle delete specialization
   const handleDeleteSpecialization = async (id: string) => {

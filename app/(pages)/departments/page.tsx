@@ -12,6 +12,7 @@ import SpecializationModal from "@/components/SpecializationModal";
 import { DepartmentSerivce } from "@/services/department.service";
 import { SpecializationService } from "@/services/specialization.service";
 import { SpecializationTypes } from "@/types/specialization.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 interface Department {
   departmentId: string;
@@ -217,6 +218,9 @@ export default function DepartmentsPage() {
     fetchSpecializations();
     fetchDepartments();
   }, []);
+
+  useSignalRRefetch(["departmentCreated", "departmentUpdated", "departmentDeleted"], fetchDepartments);
+  useSignalRRefetch(["specializationCreated", "specializationUpdated", "specializationDeleted"], fetchSpecializations);
 
   // toggle specialization active status
   const handleToggleSpecialization = async (spec: SpecializationTypes) => {

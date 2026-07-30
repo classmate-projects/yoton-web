@@ -11,9 +11,14 @@ import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import pkg from "@/package.json";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { Sun, Moon, Monitor, ChevronRight, ChevronLeft, LogOut } from "lucide-react";
+
+// useLayoutEffect warns when it runs during SSR; fall back to useEffect there
+// since this hook only ever needs to run on the client anyway.
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -22,7 +27,17 @@ export default function Sidebar() {
   const [mounted, setMounted] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<CurrentUserType | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
+  // Always start expanded so the first client render matches the
+  // server-rendered HTML exactly (no hydration mismatch). The real stored
+  // preference is applied synchronously below, before the browser paints.
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  useIsomorphicLayoutEffect(() => {
+    const stored = localStorage.getItem("yoton_sidebar_expanded");
+    if (stored !== null) {
+      setIsExpanded(stored === "true");
+    }
+  }, []);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -38,8 +53,21 @@ export default function Sidebar() {
     });
   }, []);
 
+  const toggleSidebar = () => {
+    setIsExpanded((prev) => {
+      const next = !prev;
+      localStorage.setItem("yoton_sidebar_expanded", String(next));
+      document.documentElement.setAttribute(
+        "data-sidebar",
+        next ? "expanded" : "collapsed"
+      );
+      return next;
+    });
+  };
+
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
+    localStorage.removeItem("yoton_token");
     localStorage.removeItem("yoton_user_detail");
     router.push("/login");
   };
@@ -52,31 +80,32 @@ export default function Sidebar() {
 
   return (
     <div
-      className={`bg-card sticky top-0 h-screen p-3 border-r border-border z-50 transition-all duration-300 ease-in-out shrink-0 flex flex-col ${isExpanded ? "w-72" : "w-20"
+      className={`sidebar-shell bg-card sticky top-0 h-screen p-3 border-r border-border z-50 transition-all duration-300 ease-in-out shrink-0 flex flex-col ${isExpanded ? "w-72" : "w-20"
         }`}
     >
       <button
         title={isExpanded ? "Collapse" : "Expand"}
-        onClick={() => setIsExpanded((prev) => !prev)}
+        onClick={toggleSidebar}
         className="absolute -right-3 top-10 bg-primary text-primary-foreground rounded-full p-1 shadow-md hover:scale-110 transition-transform cursor-pointer z-50"
       >
         {isExpanded ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
       </button>
 
-      <div className={`flex items-center gap-3 mb-8 ${isExpanded ? "px-2" : "justify-center"}`}>
+      <div className={`flex items-center mb-8 ${isExpanded ? "px-2" : "justify-center"}`}>
         <div className="relative shrink-0">
           <Image src={logo} alt="logo" height={40} width={40} className="rounded-lg shadow-sm" loading="eager" />
         </div>
-        {isExpanded && (
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-bold text-primary truncate">
-              Yoton Health
-            </h1>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold truncate">
-              {currentUser?.role || "Guest"} • {currentUser?.name || "User"}
-            </div>
+        <div
+          className={`sidebar-label overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${isExpanded ? "ml-3 max-w-[200px] opacity-100" : "ml-0 max-w-0 opacity-0"
+            }`}
+        >
+          <h1 className="text-lg font-bold text-primary truncate">
+            Yoton Health
+          </h1>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold truncate">
+            {currentUser?.role || "Guest"} • {currentUser?.name || "User"}
           </div>
-        )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto no-scrollbar">
@@ -91,7 +120,7 @@ export default function Sidebar() {
                     <Link
                       href={item.navLink}
                       title={isExpanded ? "" : item.name}
-                      className={`flex items-center gap-3 py-2.5 px-3 rounded-xl transition-all duration-200 group ${isActive
+                      className={`flex items-center py-2.5 px-3 rounded-xl transition-all duration-200 group ${isActive
                           ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
                           : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                         } ${!isExpanded && "justify-center px-0"}`}
@@ -99,11 +128,12 @@ export default function Sidebar() {
                       <span className={`shrink-0 transition-transform duration-200 text-xl ${isActive ? "scale-110" : "group-hover:scale-110"}`}>
                         <item.icon />
                       </span>
-                      {isExpanded && (
-                        <span className="whitespace-nowrap text-sm font-medium">
-                          {item.name}
-                        </span>
-                      )}
+                      <span
+                        className={`sidebar-label overflow-hidden whitespace-nowrap text-sm font-medium transition-all duration-300 ease-in-out ${isExpanded ? "ml-3 max-w-[160px] opacity-100" : "ml-0 max-w-0 opacity-0"
+                          }`}
+                      >
+                        {item.name}
+                      </span>
                     </Link>
                   </li>
                 );
@@ -127,23 +157,36 @@ export default function Sidebar() {
               title={t.label}
             >
               <t.icon size={16} />
-              {isExpanded && <span className="ml-2 text-xs font-medium">{t.label}</span>}
+              <span
+                className={`sidebar-label overflow-hidden whitespace-nowrap text-xs font-medium transition-all duration-300 ease-in-out ${isExpanded ? "ml-2 max-w-[80px] opacity-100" : "ml-0 max-w-0 opacity-0"
+                  }`}
+              >
+                {t.label}
+              </span>
             </button>
           ))}
         </div>
 
-        <div className={`flex flex-col gap-2 ${!isExpanded && "items-center"}`}>
-          {isExpanded && (
-            <p className="px-2 text-[10px] text-muted-foreground font-mono">v{pkg.version}</p>
-          )}
+        <div className={`flex flex-col ${!isExpanded && "items-center"}`}>
+          <p
+            className={`sidebar-label overflow-hidden whitespace-nowrap px-2 text-[10px] text-muted-foreground font-mono transition-all duration-300 ease-in-out ${isExpanded ? "max-h-6 mb-2 opacity-100" : "max-h-0 mb-0 opacity-0"
+              }`}
+          >
+            v{pkg.version}
+          </p>
           <button
             onClick={handleLogout}
             title="Logout"
-            className={`flex items-center gap-3 text-destructive hover:bg-destructive/10 rounded-xl transition-all duration-200 cursor-pointer hover:bg-red-400/80 ${isExpanded ? "px-3 py-2.5 w-full" : "p-3 justify-center"
+            className={`flex items-center text-destructive hover:bg-destructive/10 rounded-xl transition-all duration-200 cursor-pointer hover:bg-red-400/80 ${isExpanded ? "px-3 py-2.5 w-full" : "p-3 justify-center"
               }`}
           >
             <LogOut size={18} />
-            {isExpanded && <span className="text-sm font-semibold">Logout</span>}
+            <span
+              className={`sidebar-label overflow-hidden whitespace-nowrap text-sm font-semibold transition-all duration-300 ease-in-out ${isExpanded ? "ml-3 max-w-[120px] opacity-100" : "ml-0 max-w-0 opacity-0"
+                }`}
+            >
+              Logout
+            </span>
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
+import { HeartPulse, FlaskConical, ScanLine, Pill } from "lucide-react";
 
 interface SidebarMenuItem {
     id: number;
@@ -16,7 +17,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 1,
         name: "Dashboard",
         navLink: "/",
-        roles: allRoles,
+        roles: allRoles.filter((role) => !["reception", "nurse", "doctor"].includes(role)),
         icon: dashboardIcon
     },
 
@@ -84,7 +85,42 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 10,
         name: "Billing",
         navLink: "/billing",
-        roles: ["admin", "billing team", "reception"],
+        roles: ["admin", "billing team"],
         icon: MdPayment
+    },
+    {
+        id: 11,
+        name: "Doctor Workbench",
+        navLink: "/doctor",
+        roles: ["doctor", "admin"],
+        icon: doctorIcon
+    },
+    {
+        id: 12,
+        name: "Nurse Workbench",
+        navLink: "/nursing",
+        roles: ["nurse", "admin"],
+        icon: HeartPulse
+    },
+    {
+        id: 13,
+        name: "Laboratory",
+        navLink: "/lab",
+        roles: ["admin", "lab technician"],
+        icon: FlaskConical
+    },
+    {
+        id: 14,
+        name: "Radiology",
+        navLink: "/radiology",
+        roles: ["admin", "radiology technician"],
+        icon: ScanLine
+    },
+    {
+        id: 15,
+        name: "Pharmacy",
+        navLink: "/pharmacy",
+        roles: ["admin", "pharmacist"],
+        icon: Pill
     }
 ]

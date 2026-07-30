@@ -1,3 +1,15 @@
+export interface UserType {
+    id: string;
+    name: string;
+    username: string;
+    email: string;
+    role: string;
+    phone: string;
+    isActive: boolean;
+    createdAt: string;
+    lastLogin: string | null;
+}
+
 export interface UserCreateType {
     name: string;
     username: string;

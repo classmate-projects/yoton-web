@@ -1,16 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { 
-  Users, 
-  Stethoscope, 
-  Calendar, 
+import { format, subDays } from "date-fns";
+import {
+  Users,
+  Stethoscope,
+  Calendar,
   FlaskConical,
   Activity,
+  Trophy,
   ArrowUpRight,
   LucideIcon
 } from "lucide-react";
 import { DashboardService } from "@/services/dashboard.service";
+import BarChart, { BarChartPoint } from "@/components/BarChart";
+import TopDoctorsList from "@/components/TopDoctorsList";
+import { RevenuePoint, TopDoctor, WeeklyAppointmentPoint } from "@/types/dashboard.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 interface TotalCounts {
   totalPatients: number;
@@ -24,53 +30,132 @@ interface TotalCounts {
   pendingRadiologyRequests: number;
 }
 
-const StatCard = ({ title, value, subtext, icon: Icon, colorClass }: { title: string, value: number | string, subtext?: string, icon: LucideIcon, colorClass: string }) => (
-  <div className="card group hover:ring-2 hover:ring-primary transition-all duration-300">
-    <div className="p-6">
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">{title}</p>
-          <h3 className="text-3xl font-bold tracking-tight">{value}</h3>
-        </div>
-        <div className={`p-3 rounded-2xl ${colorClass.replace('bg-', 'bg-').replace('text-', 'text-')} bg-current/10 transition-transform group-hover:scale-110 duration-300`}>
-          <Icon size={24} className={colorClass.split(' ')[1]} />
-        </div>
-      </div>
+// The API only returns days that had appointments — backfill the missing days
+// of the last week with 0 so the chart reads as a full 7-day trend.
+const buildWeeklySeries = (points: WeeklyAppointmentPoint[]): BarChartPoint[] => {
+  const countByDate = new Map(points.map((p) => [format(new Date(p.date), "yyyy-MM-dd"), p.count]));
 
-      <div className="flex items-center gap-2">
-        {subtext ? (
-          <p className="text-xs text-muted-foreground font-medium">{subtext}</p>
-        ) : (
-          <div className="flex items-center gap-1 text-emerald-500 text-xs font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full">
-            <ArrowUpRight size={12} />
-            <span>Active</span>
+  return Array.from({ length: 7 }).map((_, i) => {
+    const date = subDays(new Date(), 6 - i);
+    const key = format(date, "yyyy-MM-dd");
+    return {
+      label: format(date, "EEE"),
+      fullLabel: format(date, "EEEE, MMM d"),
+      value: countByDate.get(key) ?? 0,
+    };
+  });
+};
+
+// Revenue has no date filter server-side — keep the chart readable by
+// showing only the most recent 14 days that have billing activity.
+const buildRevenueSeries = (points: RevenuePoint[]): BarChartPoint[] =>
+  points.slice(-14).map((p) => ({
+    label: format(new Date(p.date), "MMM d"),
+    fullLabel: format(new Date(p.date), "EEEE, MMM d"),
+    value: p.total,
+  }));
+
+const StatCard = ({ title, value, subtext, icon: Icon, colorClass }: { title: string, value: number | string, subtext?: string, icon: LucideIcon, colorClass: string }) => {
+  // colorClass is "bg-X text-X" — only the text-X token is used here. Applying
+  // the bg-X token too would fight bg-current/10 for the same background-color
+  // property; whichever utility Tailwind happens to generate later wins,
+  // which previously made a couple of icons render in the same solid color
+  // as their own background (invisible) while others worked by luck.
+  const textClass = colorClass.split(" ")[1];
+
+  return (
+    <div className="card group hover:ring-2 hover:ring-primary transition-all duration-300">
+      <div className="p-6">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">{title}</p>
+            <h3 className="text-3xl font-bold tracking-tight">{value}</h3>
           </div>
-        )}
+          <div className={`p-3 rounded-2xl ${textClass} bg-current/10 transition-transform group-hover:scale-110 duration-300`}>
+            <Icon size={24} className={textClass} />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {subtext ? (
+            <p className="text-xs text-muted-foreground font-medium">{subtext}</p>
+          ) : (
+            <div className="flex items-center gap-1 text-emerald-500 text-xs font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full">
+              <ArrowUpRight size={12} />
+              <span>Active</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default function Home() {
   const [totalCounts, setTotalCounts] = useState<TotalCounts | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // useEffect(() => {
-  //   const fetchTotalCounts = async () => {
-  //     try {
-  //       setIsLoading(true);
-  //       const data = await DashboardService.getCounts();
-  //       console.log("Data: ", data)
-  //       setTotalCounts(data);
-  //     } catch (error) {
-  //       console.error("Failed to fetch total counts", error);
-  //     } finally {
-  //       setIsLoading(false);
-  //     }
-  //   };
+  const [weeklyAppointments, setWeeklyAppointments] = useState<WeeklyAppointmentPoint[]>([]);
+  const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
+  const [topDoctors, setTopDoctors] = useState<TopDoctor[]>([]);
+  const [isActivityLoading, setIsActivityLoading] = useState(true);
 
-  //   fetchTotalCounts();
-  // }, []);
+  const fetchTotalCounts = async () => {
+    try {
+      setIsLoading(true);
+      const data = await DashboardService.getCounts();
+      setTotalCounts(data);
+    } catch (error) {
+      console.error("Failed to fetch total counts", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchActivity = async () => {
+    try {
+      setIsActivityLoading(true);
+      const [weeklyData, revenueData, topDoctorsData] = await Promise.all([
+        DashboardService.getWeeklyAppointments(),
+        DashboardService.getRevenue(),
+        DashboardService.getTopDoctors(),
+      ]);
+      setWeeklyAppointments(weeklyData);
+      setRevenue(revenueData);
+      setTopDoctors(topDoctorsData?.data ?? []);
+    } catch (error) {
+      console.error("Failed to fetch dashboard activity", error);
+    } finally {
+      setIsActivityLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTotalCounts();
+    fetchActivity();
+  }, []);
+
+  // Aggregate dashboard — any activity across the clinic can move these
+  // numbers, so refresh on the broad set of events rather than picking a
+  // narrow subset that would silently miss some future contributor.
+  useSignalRRefetch(
+    [
+      "appointmentCreated",
+      "appointmentCancelled",
+      "appointmentStatusUpdated",
+      "billCreated",
+      "billPaid",
+      "labRequestCreated",
+      "labStatusUpdated",
+      "radiologyRequestCreated",
+      "radiologyStatusUpdated",
+      "patientRegistered",
+    ],
+    () => {
+      fetchTotalCounts();
+      fetchActivity();
+    }
+  );
 
   return (
     <div className="mainPage h-full overflow-y-auto">
@@ -119,31 +204,68 @@ export default function Home() {
       )}
 
       <div className="mt-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
-         <div className="lg:col-span-2 card p-8 flex flex-col items-center justify-center relative overflow-hidden group">
-            <div className="absolute inset-0 bg-primary/5 transition-opacity" />
-            <Activity size={48} className="text-primary/20 mb-6 group-hover:scale-110 transition-transform duration-500" />
-            <h3 className="text-xl font-bold">Activity Timeline</h3>
-            <p className="text-muted-foreground text-center mt-3 max-w-sm text-sm">
-              Real-time patient flow and staff updates will appear here once the websocket service is active.
-            </p>
-            <button className="mt-8 text-xs font-bold uppercase tracking-widest text-primary hover:underline underline-offset-4">
-              View All logs
-            </button>
-         </div>
-
-         <div className="card p-8 flex flex-col items-center justify-center relative overflow-hidden group">
-            <div className="absolute inset-0 bg-linear-to-br from-amber-500/5 to-transparent opacity-50" />
-            <Calendar size={48} className="text-amber-500/20 mb-6 group-hover:scale-110 transition-transform duration-500" />
-            <h3 className="text-xl font-bold">Today&apos;s Schedule</h3>
-            <p className="text-muted-foreground text-center mt-3 max-w-sm text-sm">
-              Your prioritized list of upcoming appointments for the next 24 hours.
-            </p>
-            <div className="mt-8 flex gap-2">
-              <div className="w-8 h-1 rounded-full bg-amber-500/20" />
-              <div className="w-2 h-1 rounded-full bg-amber-500/20" />
-              <div className="w-2 h-1 rounded-full bg-amber-500/20" />
+        <div className="lg:col-span-2 card p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2.5 rounded-xl bg-primary/10">
+              <Activity size={20} className="text-primary" />
             </div>
-         </div>
+            <div>
+              <h3 className="text-lg font-bold">Weekly Appointments</h3>
+              <p className="text-xs text-muted-foreground">Last 7 days</p>
+            </div>
+          </div>
+
+          {isActivityLoading ? (
+            <div className="h-56 animate-pulse bg-muted/50 rounded-xl" />
+          ) : (
+            <BarChart
+              data={buildWeeklySeries(weeklyAppointments)}
+              color="var(--primary)"
+              emptyMessage="No appointments in the last 7 days"
+            />
+          )}
+        </div>
+
+        <div className="card p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2.5 rounded-xl bg-amber-500/10">
+              <Trophy size={20} className="text-amber-500" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold">Top Doctors</h3>
+              <p className="text-xs text-muted-foreground">By appointment volume</p>
+            </div>
+          </div>
+
+          {isActivityLoading ? (
+            <div className="h-56 animate-pulse bg-muted/50 rounded-xl" />
+          ) : (
+            <TopDoctorsList doctors={topDoctors} />
+          )}
+        </div>
+      </div>
+
+      <div className="mt-8 card p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 rounded-xl bg-emerald-500/10">
+            <ArrowUpRight size={20} className="text-emerald-500" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold">Revenue</h3>
+            <p className="text-xs text-muted-foreground">Most recent billing activity</p>
+          </div>
+        </div>
+
+        {isActivityLoading ? (
+          <div className="h-56 animate-pulse bg-muted/50 rounded-xl" />
+        ) : (
+          <BarChart
+            data={buildRevenueSeries(revenue)}
+            color="#059669"
+            formatValue={(v) => `$${v.toLocaleString()}`}
+            emptyMessage="No billing activity recorded yet"
+          />
+        )}
       </div>
     </div>
   );
