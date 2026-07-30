@@ -10,6 +10,7 @@ import { BillingService } from "@/services/billing.service";
 import { ReceptionService } from "@/services/reception.service";
 import { BillingSummaryType, BillType, ChargeableItemType } from "@/types/billing.type";
 import { PatientListItemType } from "@/types/appointment.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -97,18 +98,23 @@ function BillingPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, filter]);
 
+  useSignalRRefetch(["billCreated", "billPaid", "billCancelled", "billItemAdded"], fetchAll);
+
+  const fetchPatients = async () => {
+    try {
+      const data = await ReceptionService.getAllPatients();
+      setPatients(data.patients ?? []);
+    } catch (error) {
+      console.error("Failed to load patients:", error);
+    }
+  };
+
   useEffect(() => {
     if (!checkedAuth) return;
-    const fetchPatients = async () => {
-      try {
-        const data = await ReceptionService.getAllPatients();
-        setPatients(data.patients ?? []);
-      } catch (error) {
-        console.error("Failed to load patients:", error);
-      }
-    };
     fetchPatients();
   }, [checkedAuth]);
+
+  useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
 
   const filteredPatients = useMemo(() => {
     if (!patientSearch.trim()) return [];
@@ -150,6 +156,10 @@ function BillingPageInner() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailBill?.billId, detailBill?.visitId]);
+
+  useSignalRRefetch(["prescriptionDispensed", "labStatusUpdated", "radiologyStatusUpdated"], () => {
+    if (detailBill?.visitId) fetchChargeableItems(detailBill.visitId);
+  });
 
   const handleAddFromSource = async (item: ChargeableItemType) => {
     if (!detailBill) return;

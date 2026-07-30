@@ -8,6 +8,7 @@ import { Specialization, User } from "@/types/Specializations.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { UserService } from "@/services/user.service";
 import { SpecializationService } from "@/services/specialization.service";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 
 export default function AssignDoctor() {
@@ -16,6 +17,7 @@ export default function AssignDoctor() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Modal form state
+  const [editingDoctor, setEditingDoctor] = useState<AssignedDoctorsInfo | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [searchUsername, setSearchUsername] = useState("");
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -41,6 +43,8 @@ export default function AssignDoctor() {
   useEffect(() => {
     fetchAssignedDoctors()
   }, [])
+
+  useSignalRRefetch(["doctorAssigned"], fetchAssignedDoctors);
 
   // Fetch users and specializations
   useEffect(() => {
@@ -79,6 +83,7 @@ export default function AssignDoctor() {
     : [];
 
   const handleAssignDoctor = () => {
+    setEditingDoctor(null);
     setIsModalOpen(true);
     setSearchUsername("");
     setSelectedUser(null);
@@ -86,6 +91,31 @@ export default function AssignDoctor() {
     setLicenseNumber("");
     setConsultationFee("");
     setExperience("");
+  };
+
+  const handleEditDoctor = (doctor: AssignedDoctorsInfo) => {
+    // The assign-doctor endpoint upserts by UserId, so editing reuses the same
+    // save flow — but the user (which doctor this profile belongs to) is
+    // locked, since changing it here would silently edit a different doctor's
+    // profile instead of this one.
+    const matchedUser = users.find((u) => u.id === doctor.userId);
+    const user: User = matchedUser ?? {
+      id: doctor.userId,
+      name: doctor.userName,
+      username: doctor.userName,
+      email: doctor.userEmail,
+      role: "doctor",
+    };
+
+    setEditingDoctor(doctor);
+    setSelectedUser(user);
+    setSearchUsername(user.username);
+    setShowUserDropdown(false);
+    setSelectedSpecialization(doctor.specializationId);
+    setLicenseNumber(doctor.licenseNumber);
+    setConsultationFee(String(doctor.consultationFee));
+    setExperience(String(doctor.experienceYears));
+    setIsModalOpen(true);
   };
 
   const handleSave = async () => {
@@ -107,6 +137,7 @@ export default function AssignDoctor() {
 
       toast.success(data.message);
       setIsModalOpen(false);
+      setEditingDoctor(null);
       fetchAssignedDoctors();
     } catch (error) {
       console.error("Error assigning doctor:", error);
@@ -116,6 +147,7 @@ export default function AssignDoctor() {
 
   const handleCancel = () => {
     setIsModalOpen(false);
+    setEditingDoctor(null);
     setSearchUsername("");
     setSelectedUser(null);
     setSelectedSpecialization("");
@@ -184,11 +216,13 @@ export default function AssignDoctor() {
                   <td className="text-foreground/80">
                     {doctor.experienceYears} years
                   </td>
-                  {/* <td>
-                    <button>Add</button>
-                  </td> */}
                   <td>
-                    <button>Edit</button>
+                    <button
+                      onClick={() => handleEditDoctor(doctor)}
+                      className="text-primary font-semibold hover:underline cursor-pointer"
+                    >
+                      Edit
+                    </button>
                   </td>
                 </tr>
               ))
@@ -213,9 +247,13 @@ export default function AssignDoctor() {
           <div className="bg-card rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-border">
             {/* Modal Header */}
             <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-foreground">Assign Doctor</h2>
+              <h2 className="text-2xl font-semibold text-foreground">
+                {editingDoctor ? "Edit Doctor Assignment" : "Assign Doctor"}
+              </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Fill in the details to assign a new doctor
+                {editingDoctor
+                  ? "Update this doctor's specialization, licence or fee."
+                  : "Fill in the details to assign a new doctor"}
               </p>
             </div>
 
@@ -236,9 +274,10 @@ export default function AssignDoctor() {
                     }}
                     onFocus={() => setShowUserDropdown(true)}
                     placeholder="Search by username or name..."
-                    className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
+                    disabled={!!editingDoctor}
+                    className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground disabled:opacity-70 disabled:cursor-not-allowed"
                   />
-                  {selectedUser && (
+                  {selectedUser && !editingDoctor && (
                     <button
                       onClick={() => {
                         setSelectedUser(null);
@@ -356,7 +395,7 @@ export default function AssignDoctor() {
                 onClick={handleSave}
                 className="flex-1 px-4 py-2 bg-primary hover:opacity-90 text-white font-semibold rounded-lg transition-colors cursor-pointer"
               >
-                Save
+                {editingDoctor ? "Update" : "Save"}
               </button>
             </div>
           </div>

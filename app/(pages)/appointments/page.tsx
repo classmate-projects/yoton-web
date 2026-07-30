@@ -24,6 +24,7 @@ import {
   XCircle,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import DatePicker from "@/components/DatePicker";
 import { ReceptionService } from "@/services/reception.service";
 import {
   DoctorDaySlotsType,
@@ -32,13 +33,8 @@ import {
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
 import { VisitType } from "@/types/visit.type";
-
-const toDateInputValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
+import { toDateInputValue } from "@/lib/date";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 export default function Appointments() {
   const [isLoadingGrid, setIsLoadingGrid] = useState(true);
@@ -93,18 +89,23 @@ export default function Appointments() {
     fetchGrid();
   }, []);
 
+  useSignalRRefetch(["doctorScheduleUpdated"], fetchGrid);
+
   // ---------------- Fetch patients (for booking search) ----------------
+  const fetchPatients = async () => {
+    try {
+      const data = await ReceptionService.getAllPatients();
+      setPatients(data.patients ?? []);
+    } catch (error) {
+      console.error("Failed to fetch patients:", error);
+    }
+  };
+
   useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        const data = await ReceptionService.getAllPatients();
-        setPatients(data.patients ?? []);
-      } catch (error) {
-        console.error("Failed to fetch patients:", error);
-      }
-    };
     fetchPatients();
   }, []);
+
+  useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
 
   // ---------------- Fetch visit queue ----------------
   const fetchVisitQueue = async () => {
@@ -121,11 +122,17 @@ export default function Appointments() {
 
   useEffect(() => {
     fetchVisitQueue();
-    // Poll so the queue reflects status changes made elsewhere (nursing, billing, etc.)
-    // without requiring a manual refresh.
+    // Poll as a fallback in case the SignalR connection below ever drops, so
+    // the queue reflects status changes made elsewhere (nursing, billing,
+    // etc.) even without a live push.
     const interval = setInterval(fetchVisitQueue, 20000);
     return () => clearInterval(interval);
   }, []);
+
+  useSignalRRefetch(
+    ["appointmentCreated", "appointmentCancelled", "appointmentStatusUpdated", "visitCheckedIn", "visitStatusUpdated"],
+    fetchVisitQueue
+  );
 
   const sortedVisitQueue = useMemo(() => {
     return [...visitQueue].sort((a, b) => {
@@ -174,6 +181,10 @@ export default function Appointments() {
       fetchSlots(selectedDoctor.doctorId, selectedDate);
     }
   }, [selectedDoctor, selectedDate]);
+
+  useSignalRRefetch(["appointmentCreated", "appointmentCancelled", "appointmentStatusUpdated"], () => {
+    if (selectedDoctor) fetchSlots(selectedDoctor.doctorId, selectedDate);
+  });
 
   const specializationOptions = specializations.map((s) => ({
     id: s.specializationId,
@@ -557,16 +568,15 @@ export default function Appointments() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <input
-                    type="date"
+                  <DatePicker
                     value={toDateInputValue(selectedDate)}
                     min={toDateInputValue(new Date())}
-                    onChange={(event) => {
-                      if (event.target.value) {
-                        setSelectedDate(new Date(`${event.target.value}T00:00:00`));
+                    onChange={(v) => {
+                      if (v) {
+                        setSelectedDate(new Date(`${v}T00:00:00`));
                       }
                     }}
-                    className="h-10 w-44 text-sm"
+                    className="flex h-10 w-44 items-center justify-between gap-2 rounded-xl border border-input bg-card px-3 py-1.5 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                   <span className="rounded-lg border border-emerald-600 bg-emerald-600 px-3 py-1 text-xs font-semibold text-white">
                     Available
