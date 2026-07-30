@@ -11,6 +11,7 @@ import { LabService } from "@/services/lab.service";
 import { ReceptionService } from "@/services/reception.service";
 import { LabRequestType, LabSummaryType } from "@/types/lab.type";
 import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -92,6 +93,8 @@ export default function LaboratoryPage() {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, filter]);
+
+  useSignalRRefetch(["labRequestCreated", "labStatusUpdated"], fetchAll);
 
   useEffect(() => {
     if (!checkedAuth) return;

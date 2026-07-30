@@ -21,6 +21,7 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import { toDateInputValue } from "@/lib/date";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 export default function PatientEntryPage() {
   const [formData, setFormData] = useState({
@@ -77,29 +78,33 @@ export default function PatientEntryPage() {
     specializations.find((s) => s.specializationId === selectedSpecializationId)
       ?.doctors ?? [];
 
-  useEffect(() => {
+  const fetchSlots = async () => {
     if (!selectedDoctorId || !consultDate) {
       setDaySlots(null);
       return;
     }
-    const fetchSlots = async () => {
-      try {
-        setIsLoadingSlots(true);
-        const data = await ReceptionService.getDoctorSlots(
-          selectedDoctorId,
-          consultDate
-        );
-        setDaySlots(data.data ?? null);
-      } catch (err) {
-        console.error("Failed to fetch doctor slots:", err);
-        toast.error("Failed to load slots for this doctor");
-        setDaySlots(null);
-      } finally {
-        setIsLoadingSlots(false);
-      }
-    };
+    try {
+      setIsLoadingSlots(true);
+      const data = await ReceptionService.getDoctorSlots(
+        selectedDoctorId,
+        consultDate
+      );
+      setDaySlots(data.data ?? null);
+    } catch (err) {
+      console.error("Failed to fetch doctor slots:", err);
+      toast.error("Failed to load slots for this doctor");
+      setDaySlots(null);
+    } finally {
+      setIsLoadingSlots(false);
+    }
+  };
+
+  useEffect(() => {
     fetchSlots();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoctorId, consultDate]);
+
+  useSignalRRefetch(["appointmentCreated", "appointmentCancelled"], fetchSlots);
 
   const closeConsultFlow = () => {
     setRegisteredPatient(null);

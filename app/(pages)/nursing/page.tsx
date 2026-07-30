@@ -27,6 +27,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
 import { EmrPatientListItem, PatientSummaryType } from "@/types/emr.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import {
   NurseDashboardSummaryType,
   NursingChartType,
@@ -101,6 +102,24 @@ function NurseWorkbenchInner() {
     if (!checkedAuth) return;
     fetchWorkbench();
   }, [checkedAuth]);
+
+  useSignalRRefetch(
+    [
+      "visitCheckedIn",
+      "visitStatusUpdated",
+      "patientRegistered",
+      "PatientUpdated",
+      "nursingEncounterStarted",
+      "nursingEncounterEnded",
+      "nursingTaskStatusUpdated",
+      "vitalsRecorded",
+      "injectionRecorded",
+      "dressingRecorded",
+      "bloodSugarRecorded",
+      "ivFluidsRecorded",
+    ],
+    fetchWorkbench
+  );
 
   const updateTaskStatus = async (taskId: string, status: string) => {
     try {

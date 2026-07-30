@@ -20,6 +20,7 @@ import {
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
 import { toDateInputValue } from "@/lib/date";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "Other"];
 
@@ -60,6 +61,8 @@ export default function PatientRecordsPage() {
   useEffect(() => {
     fetchPatients();
   }, []);
+
+  useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
 
   const handleDelete = async (id: string) => {
     try {
@@ -121,6 +124,10 @@ export default function PatientRecordsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoctor, selectedDate]);
+
+  useSignalRRefetch(["appointmentCreated", "appointmentCancelled"], () => {
+    if (selectedDoctor && walkInPatient) fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
+  });
 
   const flattenedDoctors = useMemo(() => {
     const term = doctorSearch.trim().toLowerCase();

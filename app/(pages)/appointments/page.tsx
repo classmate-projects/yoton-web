@@ -34,6 +34,7 @@ import {
 } from "@/types/appointment.type";
 import { VisitType } from "@/types/visit.type";
 import { toDateInputValue } from "@/lib/date";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 export default function Appointments() {
   const [isLoadingGrid, setIsLoadingGrid] = useState(true);
@@ -88,18 +89,23 @@ export default function Appointments() {
     fetchGrid();
   }, []);
 
+  useSignalRRefetch(["doctorScheduleUpdated"], fetchGrid);
+
   // ---------------- Fetch patients (for booking search) ----------------
+  const fetchPatients = async () => {
+    try {
+      const data = await ReceptionService.getAllPatients();
+      setPatients(data.patients ?? []);
+    } catch (error) {
+      console.error("Failed to fetch patients:", error);
+    }
+  };
+
   useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        const data = await ReceptionService.getAllPatients();
-        setPatients(data.patients ?? []);
-      } catch (error) {
-        console.error("Failed to fetch patients:", error);
-      }
-    };
     fetchPatients();
   }, []);
+
+  useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
 
   // ---------------- Fetch visit queue ----------------
   const fetchVisitQueue = async () => {
@@ -116,11 +122,17 @@ export default function Appointments() {
 
   useEffect(() => {
     fetchVisitQueue();
-    // Poll so the queue reflects status changes made elsewhere (nursing, billing, etc.)
-    // without requiring a manual refresh.
+    // Poll as a fallback in case the SignalR connection below ever drops, so
+    // the queue reflects status changes made elsewhere (nursing, billing,
+    // etc.) even without a live push.
     const interval = setInterval(fetchVisitQueue, 20000);
     return () => clearInterval(interval);
   }, []);
+
+  useSignalRRefetch(
+    ["appointmentCreated", "appointmentCancelled", "appointmentStatusUpdated", "visitCheckedIn", "visitStatusUpdated"],
+    fetchVisitQueue
+  );
 
   const sortedVisitQueue = useMemo(() => {
     return [...visitQueue].sort((a, b) => {
@@ -169,6 +181,10 @@ export default function Appointments() {
       fetchSlots(selectedDoctor.doctorId, selectedDate);
     }
   }, [selectedDoctor, selectedDate]);
+
+  useSignalRRefetch(["appointmentCreated", "appointmentCancelled", "appointmentStatusUpdated"], () => {
+    if (selectedDoctor) fetchSlots(selectedDoctor.doctorId, selectedDate);
+  });
 
   const specializationOptions = specializations.map((s) => ({
     id: s.specializationId,

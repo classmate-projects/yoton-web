@@ -18,6 +18,7 @@ import {
 } from "@/types/pharmacy.type";
 import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
 import { UserType } from "@/types/user.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const PRIORITIES = ["Routine", "STAT", "PRN"];
 
@@ -111,6 +112,11 @@ export default function PharmacyPage() {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, prescriptionFilter]);
+
+  useSignalRRefetch(
+    ["prescriptionCreated", "prescriptionDispensed", "medicineAdded", "medicineStockUpdated"],
+    fetchAll
+  );
 
   useEffect(() => {
     if (!checkedAuth) return;

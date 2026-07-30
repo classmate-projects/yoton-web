@@ -25,6 +25,7 @@ import SearchIcon from "@/public/icons/SearchIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { UserService } from "@/services/user.service";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 export default function UserManagement() {
 
@@ -82,6 +83,8 @@ export default function UserManagement() {
   useEffect(() => {
     fetchAllUsers();
   }, []);
+
+  useSignalRRefetch(["userCreated", "userUpdated", "userDeleted"], fetchAllUsers);
 
   // get formatted time
   const getTime = (time?: string) => {

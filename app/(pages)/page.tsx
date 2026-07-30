@@ -16,6 +16,7 @@ import { DashboardService } from "@/services/dashboard.service";
 import BarChart, { BarChartPoint } from "@/components/BarChart";
 import TopDoctorsList from "@/components/TopDoctorsList";
 import { RevenuePoint, TopDoctor, WeeklyAppointmentPoint } from "@/types/dashboard.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 interface TotalCounts {
   totalPatients: number;
@@ -99,40 +100,62 @@ export default function Home() {
   const [topDoctors, setTopDoctors] = useState<TopDoctor[]>([]);
   const [isActivityLoading, setIsActivityLoading] = useState(true);
 
+  const fetchTotalCounts = async () => {
+    try {
+      setIsLoading(true);
+      const data = await DashboardService.getCounts();
+      setTotalCounts(data);
+    } catch (error) {
+      console.error("Failed to fetch total counts", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchActivity = async () => {
+    try {
+      setIsActivityLoading(true);
+      const [weeklyData, revenueData, topDoctorsData] = await Promise.all([
+        DashboardService.getWeeklyAppointments(),
+        DashboardService.getRevenue(),
+        DashboardService.getTopDoctors(),
+      ]);
+      setWeeklyAppointments(weeklyData);
+      setRevenue(revenueData);
+      setTopDoctors(topDoctorsData?.data ?? []);
+    } catch (error) {
+      console.error("Failed to fetch dashboard activity", error);
+    } finally {
+      setIsActivityLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchTotalCounts = async () => {
-      try {
-        setIsLoading(true);
-        const data = await DashboardService.getCounts();
-        setTotalCounts(data);
-      } catch (error) {
-        console.error("Failed to fetch total counts", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    const fetchActivity = async () => {
-      try {
-        setIsActivityLoading(true);
-        const [weeklyData, revenueData, topDoctorsData] = await Promise.all([
-          DashboardService.getWeeklyAppointments(),
-          DashboardService.getRevenue(),
-          DashboardService.getTopDoctors(),
-        ]);
-        setWeeklyAppointments(weeklyData);
-        setRevenue(revenueData);
-        setTopDoctors(topDoctorsData?.data ?? []);
-      } catch (error) {
-        console.error("Failed to fetch dashboard activity", error);
-      } finally {
-        setIsActivityLoading(false);
-      }
-    };
-
     fetchTotalCounts();
     fetchActivity();
   }, []);
+
+  // Aggregate dashboard — any activity across the clinic can move these
+  // numbers, so refresh on the broad set of events rather than picking a
+  // narrow subset that would silently miss some future contributor.
+  useSignalRRefetch(
+    [
+      "appointmentCreated",
+      "appointmentCancelled",
+      "appointmentStatusUpdated",
+      "billCreated",
+      "billPaid",
+      "labRequestCreated",
+      "labStatusUpdated",
+      "radiologyRequestCreated",
+      "radiologyStatusUpdated",
+      "patientRegistered",
+    ],
+    () => {
+      fetchTotalCounts();
+      fetchActivity();
+    }
+  );
 
   return (
     <div className="mainPage h-full overflow-y-auto">
