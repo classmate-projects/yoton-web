@@ -8,9 +8,11 @@ import Link from "next/link";
 import {
   ArrowLeft,
   BadgeIndianRupee,
+  Bell,
   CalendarCheck2,
   CalendarDays,
   CalendarPlus,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -20,18 +22,21 @@ import {
   Search,
   Stethoscope,
   UserRoundCheck,
+  Users,
   X,
   XCircle,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { ReceptionService } from "@/services/reception.service";
 import {
+  AppointmentRequestType,
   DoctorDaySlotsType,
   DoctorGridType,
   PatientListItemType,
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
 import { VisitType } from "@/types/visit.type";
+import { useAppointmentRequestSignalR } from "@/hooks/useAppointmentRequestSignalR";
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -74,6 +79,14 @@ export default function Appointments() {
   const [isLoadingQueue, setIsLoadingQueue] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
   const QUEUE_PAGE_SIZE = 5;
+
+  const [appointmentRequests, setAppointmentRequests] = useState<
+    AppointmentRequestType[]
+  >([]);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [processingRequestId, setProcessingRequestId] = useState<
+    string | null
+  >(null);
 
   // ---------------- Fetch specialization/doctor grid ----------------
   const fetchGrid = async () => {
@@ -126,6 +139,76 @@ export default function Appointments() {
     const interval = setInterval(fetchVisitQueue, 20000);
     return () => clearInterval(interval);
   }, []);
+
+  // ---------------- Fetch pending appointment requests (from mobile self-booking) ----------------
+  const fetchAppointmentRequests = async () => {
+    try {
+      setIsLoadingRequests(true);
+      const data = await ReceptionService.getAppointmentRequests();
+      setAppointmentRequests(data.data ?? []);
+    } catch (error) {
+      console.error("Failed to fetch appointment requests:", error);
+    } finally {
+      setIsLoadingRequests(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAppointmentRequests();
+  }, []);
+
+  // Live-updated the moment a patient submits a request from the mobile app, in addition
+  // to the notification bell in the sidebar.
+  useAppointmentRequestSignalR((event) => {
+    setAppointmentRequests((prev) => {
+      if (prev.some((r) => r.appointmentId === event.appointmentId)) return prev;
+      return [
+        {
+          appointmentId: event.appointmentId,
+          patientId: event.patientId,
+          patientName: event.patientName,
+          doctorId: event.doctorId,
+          doctorName: event.doctorName,
+          appointmentDate: event.appointmentDate,
+          notes: event.notes,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev,
+      ];
+    });
+  });
+
+  const handleRespondToRequest = async (
+    request: AppointmentRequestType,
+    status: "Scheduled" | "Cancelled"
+  ) => {
+    try {
+      setProcessingRequestId(request.appointmentId);
+      const data = await ReceptionService.updateAppointmentStatus(
+        request.appointmentId,
+        status
+      );
+      toast.success(
+        status === "Scheduled"
+          ? "Appointment confirmed"
+          : data.message || "Request declined"
+      );
+      setAppointmentRequests((prev) =>
+        prev.filter((r) => r.appointmentId !== request.appointmentId)
+      );
+      if (selectedDoctor && selectedDoctor.doctorId === request.doctorId) {
+        fetchSlots(selectedDoctor.doctorId, selectedDate);
+      }
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || "Failed to update the request");
+      } else {
+        toast.error("Failed to update the request");
+      }
+    } finally {
+      setProcessingRequestId(null);
+    }
+  };
 
   const sortedVisitQueue = useMemo(() => {
     return [...visitQueue].sort((a, b) => {
@@ -286,17 +369,23 @@ export default function Appointments() {
     }
   };
 
-  const handleCheckIn = async () => {
-    if (!cancelSlot?.appointmentId) return;
+  const handleCheckIn = async (appointmentId?: string) => {
+    const targetId = appointmentId ?? cancelSlot?.appointmentId;
+    if (!targetId) return;
 
     try {
       setIsSubmitting(true);
       const data = await ReceptionService.checkIn({
-        appointmentId: cancelSlot.appointmentId,
+        appointmentId: targetId,
       });
       toast.success(data.message || "Patient checked in");
-      setCancelSlot(null);
+      // Only a single-booking slot closes the modal automatically; a shared
+      // slot stays open so staff can act on the remaining bookings too.
+      if (!cancelSlot || cancelSlot.bookings.length <= 1) {
+        setCancelSlot(null);
+      }
       fetchVisitQueue();
+      if (selectedDoctor) fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
       if (axios.isAxiosError(error)) {
         toast.error(error.response?.data?.message || "Failed to check in patient");
@@ -308,16 +397,17 @@ export default function Appointments() {
     }
   };
 
-  const handleConfirmCancel = async () => {
-    if (!cancelSlot?.appointmentId || !selectedDoctor) return;
+  const handleConfirmCancel = async (appointmentId?: string) => {
+    const targetId = appointmentId ?? cancelSlot?.appointmentId;
+    if (!targetId || !selectedDoctor) return;
 
     try {
       setIsSubmitting(true);
-      const data = await ReceptionService.cancelAppointment(
-        cancelSlot.appointmentId
-      );
+      const data = await ReceptionService.cancelAppointment(targetId);
       toast.success(data.message || "Appointment cancelled");
-      setCancelSlot(null);
+      if (!cancelSlot || cancelSlot.bookings.length <= 1) {
+        setCancelSlot(null);
+      }
       fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -418,6 +508,82 @@ export default function Appointments() {
             </div>
           </div>
         </div>
+
+        <section className="card p-5">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+              <Bell className="text-primary" size={20} /> Pending appointment requests
+              {appointmentRequests.length > 0 && (
+                <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
+                  {appointmentRequests.length}
+                </span>
+              )}
+            </h2>
+            <button
+              onClick={fetchAppointmentRequests}
+              className="text-sm font-semibold text-primary hover:opacity-80 cursor-pointer"
+            >
+              Refresh
+            </button>
+          </div>
+          {isLoadingRequests ? (
+            <LoadingSpinner />
+          ) : appointmentRequests.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No pending requests from the mobile app.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs font-semibold uppercase text-muted-foreground border-b border-border">
+                    <th className="pb-2 pr-4">Patient</th>
+                    <th className="pb-2 pr-4">Doctor</th>
+                    <th className="pb-2 pr-4">Requested time</th>
+                    <th className="pb-2 pr-4">Notes</th>
+                    <th className="pb-2 pr-4">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {appointmentRequests.map((request) => (
+                    <tr key={request.appointmentId} className="border-b border-border last:border-0">
+                      <td className="py-2 pr-4 font-medium text-foreground">
+                        {request.patientName ?? "Unknown"}
+                      </td>
+                      <td className="py-2 pr-4 text-muted-foreground">
+                        {request.doctorName ?? "—"}
+                      </td>
+                      <td className="py-2 pr-4 text-muted-foreground">
+                        {format(new Date(request.appointmentDate), "d MMM, h:mm a")}
+                      </td>
+                      <td className="py-2 pr-4 max-w-[200px] truncate text-muted-foreground">
+                        {request.notes || "—"}
+                      </td>
+                      <td className="py-2 pr-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleRespondToRequest(request, "Scheduled")}
+                            disabled={processingRequestId === request.appointmentId}
+                            className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                          >
+                            <Check size={13} /> Confirm
+                          </button>
+                          <button
+                            onClick={() => handleRespondToRequest(request, "Cancelled")}
+                            disabled={processingRequestId === request.appointmentId}
+                            className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                          >
+                            <X size={13} /> Decline
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
         <section className="card p-5">
           <div className="flex items-center justify-between gap-4 mb-4">
@@ -613,17 +779,27 @@ export default function Appointments() {
                           <Clock size={14} />
                           {format(new Date(slot.start), "h:mm a")}
                         </span>
-                        {!slot.isPast && (slot.isAvailable ? (
-                          <CalendarPlus
-                            size={16}
-                            className="text-emerald-600 dark:text-emerald-400"
-                          />
-                        ) : (
-                          <CalendarCheck2
-                            size={16}
-                            className="text-blue-600 dark:text-blue-400"
-                          />
-                        ))}
+                        <div className="flex items-center gap-1.5">
+                          {slot.maxCapacity > 1 && (
+                            <span
+                              title="Multiple patients can share this slot"
+                              className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground"
+                            >
+                              <Users size={11} /> {slot.bookedCount}/{slot.maxCapacity}
+                            </span>
+                          )}
+                          {!slot.isPast && (slot.isAvailable ? (
+                            <CalendarPlus
+                              size={16}
+                              className="text-emerald-600 dark:text-emerald-400"
+                            />
+                          ) : (
+                            <CalendarCheck2
+                              size={16}
+                              className="text-blue-600 dark:text-blue-400"
+                            />
+                          ))}
+                        </div>
                       </div>
                       <span className="text-xs text-muted-foreground">
                         ends {format(new Date(slot.end), "h:mm a")}
@@ -639,6 +815,12 @@ export default function Appointments() {
                       >
                         {slot.isPast
                           ? "Past"
+                          : slot.maxCapacity > 1
+                          ? slot.isAvailable
+                            ? slot.bookedCount > 0
+                              ? `${slot.bookedCount}/${slot.maxCapacity} booked — open`
+                              : "Available"
+                            : `Full (${slot.bookedCount}/${slot.maxCapacity})`
                           : slot.isAvailable
                           ? "Available"
                           : slot.isWalkIn
@@ -855,41 +1037,90 @@ export default function Appointments() {
           <div className="bg-card rounded-xl shadow-2xl max-w-sm w-full p-6 border border-border">
             <h2 className="text-xl font-semibold text-foreground">
               Manage appointment
+              {cancelSlot.bookings.length > 1 && (
+                <span className="ml-2 rounded-md bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground align-middle">
+                  {cancelSlot.bookings.length} patients sharing this slot
+                </span>
+              )}
             </h2>
-            <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                  Patient
-                </p>
-                {cancelSlot.isWalkIn && (
-                  <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                    Walk-in Visit
-                  </span>
-                )}
+            <p className="mt-1 text-sm text-muted-foreground">
+              {format(new Date(cancelSlot.start), "d MMM yyyy, h:mm a")} -{" "}
+              {format(new Date(cancelSlot.end), "h:mm a")}
+            </p>
+
+            {cancelSlot.bookings.length > 1 ? (
+              <div className="mt-4 flex flex-col gap-3">
+                {cancelSlot.bookings.map((booking) => (
+                  <div
+                    key={booking.appointmentId}
+                    className="rounded-lg border border-border bg-muted/40 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-foreground">
+                        {booking.patientName ?? "Patient"}
+                      </p>
+                      {booking.isWalkIn && (
+                        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                          Walk-in
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        onClick={() => handleCheckIn(booking.appointmentId ?? undefined)}
+                        disabled={isSubmitting}
+                        className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                      >
+                        <LogIn size={13} /> Check in
+                      </button>
+                      <button
+                        onClick={() => handleConfirmCancel(booking.appointmentId ?? undefined)}
+                        disabled={isSubmitting}
+                        className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                      >
+                        <XCircle size={13} /> Cancel
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <p className="mt-1 text-lg font-semibold text-foreground">
-                {cancelSlot.patientName ?? "Patient"}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {format(new Date(cancelSlot.start), "d MMM yyyy, h:mm a")} -{" "}
-                {format(new Date(cancelSlot.end), "h:mm a")}
-              </p>
-            </div>
+            ) : (
+              <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">
+                    Patient
+                  </p>
+                  {cancelSlot.isWalkIn && (
+                    <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                      Walk-in Visit
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-lg font-semibold text-foreground">
+                  {cancelSlot.patientName ?? "Patient"}
+                </p>
+              </div>
+            )}
+
             <div className="flex flex-col gap-3 mt-6">
-              <button
-                onClick={handleCheckIn}
-                disabled={isSubmitting}
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
-              >
-                <LogIn size={16} /> Check in patient
-              </button>
-              <button
-                onClick={handleConfirmCancel}
-                disabled={isSubmitting}
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
-              >
-                <XCircle size={16} /> Cancel appointment
-              </button>
+              {cancelSlot.bookings.length <= 1 && (
+                <>
+                  <button
+                    onClick={() => handleCheckIn()}
+                    disabled={isSubmitting}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+                  >
+                    <LogIn size={16} /> Check in patient
+                  </button>
+                  <button
+                    onClick={() => handleConfirmCancel()}
+                    disabled={isSubmitting}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+                  >
+                    <XCircle size={16} /> Cancel appointment
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => setCancelSlot(null)}
                 className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"

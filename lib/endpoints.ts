@@ -32,6 +32,7 @@ export const ENDPOINTS = {
         GET_VISIT: (id: string) => `/api/reception/visit/${id}`,
         GET_VISIT_QUEUE: (status?: string) => `/api/reception/visit/queue${status ? `?status=${status}` : ""}`,
         UPLOAD_DOCUMENT: (patientId: string) => `/api/reception/patient/${patientId}/document`,
+        GET_APPOINTMENT_REQUESTS: `/api/reception/appointment-requests`,
     },
     ROLE: {
         GET: `/api/role/get-all`,

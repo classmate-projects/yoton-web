@@ -39,6 +39,7 @@ export const ReceptionService = {
                 StartTime: s.startTime,
                 EndTime: s.endTime,
                 SlotDurationMinutes: s.slotDurationMinutes,
+                MaxConcurrentBookings: s.maxConcurrentBookings,
                 Breaks: s.breaks.map((b) => ({
                     StartTime: b.startTime,
                     EndTime: b.endTime,
@@ -74,6 +75,17 @@ export const ReceptionService = {
     },
     cancelAppointment: async (appointmentId: string) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CANCEL(appointmentId))
+        return data;
+    },
+    getAppointmentRequests: async () => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_APPOINTMENT_REQUESTS)
+        return data;
+    },
+    updateAppointmentStatus: async (appointmentId: string, status: string) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.UPDATE_STATUS, {
+            AppointmentId: appointmentId,
+            Status: status,
+        })
         return data;
     },
     checkIn: async (payload: CheckInPayload) => {

@@ -209,3 +209,17 @@ html[data-sidebar="collapsed"] .sidebar-label {
 .rbc-event:focus {
   outline: 2px solid var(--ring);
 }
+
+@keyframes bell-ring {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(15deg); }
+  30% { transform: rotate(-12deg); }
+  45% { transform: rotate(9deg); }
+  60% { transform: rotate(-6deg); }
+  75% { transform: rotate(3deg); }
+}
+
+.animate-bell-ring {
+  animation: bell-ring 0.7s ease-in-out;
+  color: var(--primary) !important;
+}
