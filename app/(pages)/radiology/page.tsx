@@ -11,6 +11,7 @@ import { RadiologyService } from "@/services/radiology.service";
 import { ReceptionService } from "@/services/reception.service";
 import { RadiologyRequestType, RadiologySummaryType } from "@/types/radiology.type";
 import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -92,6 +93,8 @@ export default function RadiologyPage() {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, filter]);
+
+  useSignalRRefetch(["radiologyRequestCreated", "radiologyStatusUpdated"], fetchAll);
 
   useEffect(() => {
     if (!checkedAuth) return;

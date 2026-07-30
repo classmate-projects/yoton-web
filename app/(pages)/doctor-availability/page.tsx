@@ -23,6 +23,7 @@ import {
   ScheduleConflict,
   SpecializationAvailabilityType,
 } from "@/types/doctorAvailability.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const DAYS = [
   "Sunday",
@@ -192,6 +193,8 @@ export default function DoctorAvailability() {
   useEffect(() => {
     fetchAvailability();
   }, []);
+
+  useSignalRRefetch(["doctorScheduleUpdated", "doctorAssigned"], fetchAvailability);
 
   const toggleSpecialization = (specializationId: string) => {
     setExpandedSpecializations((previous) => {

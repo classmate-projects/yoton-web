@@ -1,13 +1,13 @@
 export interface AssignedDoctorsInfo {
     consultationFee: number;
-    doctorId: number;
+    doctorId: string;
     experienceYears: number;
     isActive: boolean;
     licenseNumber: string;
-    specializationId: number;
+    specializationId: string;
     specializationName: string;
     userEmail: string;
-    userId: number;
+    userId: string;
     userName: string;
   }
   

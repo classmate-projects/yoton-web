@@ -17,7 +17,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 1,
         name: "Dashboard",
         navLink: "/",
-        roles: allRoles.filter((role) => role !== "reception"),
+        roles: allRoles.filter((role) => !["reception", "nurse", "doctor"].includes(role)),
         icon: dashboardIcon
     },
 

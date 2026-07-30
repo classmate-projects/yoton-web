@@ -37,6 +37,7 @@ import {
 } from "@/types/emr.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { SpecializationTypes } from "@/types/specialization.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -122,6 +123,20 @@ function DoctorWorkbenchInner() {
     fetchWorkbench();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, selectedDoctorId]);
+
+  useSignalRRefetch(
+    [
+      "appointmentCreated",
+      "appointmentCancelled",
+      "appointmentStatusUpdated",
+      "visitStatusUpdated",
+      "encounterSaved",
+      "encounterFinished",
+      "labStatusUpdated",
+      "radiologyStatusUpdated",
+    ],
+    fetchWorkbench
+  );
 
   useEffect(() => {
     if (!checkedAuth) return;
@@ -971,7 +986,7 @@ function DoctorWorkbenchInner() {
   // ==================== WORKBENCH ====================
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mb-6 flex flex-row items-center justify-between gap-4">
         <div>
           <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
             <Stethoscope className="text-primary" /> Doctor Workbench
@@ -984,7 +999,7 @@ function DoctorWorkbenchInner() {
           <select
             value={selectedDoctorId}
             onChange={(e) => setSelectedDoctorId(e.target.value)}
-            className="h-10 min-w-56 text-sm"
+            className="h-10 w-48 shrink-0 text-sm"
           >
             <option value="">All doctors (system-wide)</option>
             {assignedDoctors.map((d) => (

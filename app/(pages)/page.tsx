@@ -16,6 +16,7 @@ import { DashboardService } from "@/services/dashboard.service";
 import BarChart, { BarChartPoint } from "@/components/BarChart";
 import TopDoctorsList from "@/components/TopDoctorsList";
 import { RevenuePoint, TopDoctor, WeeklyAppointmentPoint } from "@/types/dashboard.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 interface TotalCounts {
   totalPatients: number;
@@ -54,32 +55,41 @@ const buildRevenueSeries = (points: RevenuePoint[]): BarChartPoint[] =>
     value: p.total,
   }));
 
-const StatCard = ({ title, value, subtext, icon: Icon, colorClass }: { title: string, value: number | string, subtext?: string, icon: LucideIcon, colorClass: string }) => (
-  <div className="card group hover:ring-2 hover:ring-primary transition-all duration-300">
-    <div className="p-6">
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">{title}</p>
-          <h3 className="text-3xl font-bold tracking-tight">{value}</h3>
-        </div>
-        <div className={`p-3 rounded-2xl ${colorClass.replace('bg-', 'bg-').replace('text-', 'text-')} bg-current/10 transition-transform group-hover:scale-110 duration-300`}>
-          <Icon size={24} className={colorClass.split(' ')[1]} />
-        </div>
-      </div>
+const StatCard = ({ title, value, subtext, icon: Icon, colorClass }: { title: string, value: number | string, subtext?: string, icon: LucideIcon, colorClass: string }) => {
+  // colorClass is "bg-X text-X" — only the text-X token is used here. Applying
+  // the bg-X token too would fight bg-current/10 for the same background-color
+  // property; whichever utility Tailwind happens to generate later wins,
+  // which previously made a couple of icons render in the same solid color
+  // as their own background (invisible) while others worked by luck.
+  const textClass = colorClass.split(" ")[1];
 
-      <div className="flex items-center gap-2">
-        {subtext ? (
-          <p className="text-xs text-muted-foreground font-medium">{subtext}</p>
-        ) : (
-          <div className="flex items-center gap-1 text-emerald-500 text-xs font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full">
-            <ArrowUpRight size={12} />
-            <span>Active</span>
+  return (
+    <div className="card group hover:ring-2 hover:ring-primary transition-all duration-300">
+      <div className="p-6">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">{title}</p>
+            <h3 className="text-3xl font-bold tracking-tight">{value}</h3>
           </div>
-        )}
+          <div className={`p-3 rounded-2xl ${textClass} bg-current/10 transition-transform group-hover:scale-110 duration-300`}>
+            <Icon size={24} className={textClass} />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {subtext ? (
+            <p className="text-xs text-muted-foreground font-medium">{subtext}</p>
+          ) : (
+            <div className="flex items-center gap-1 text-emerald-500 text-xs font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full">
+              <ArrowUpRight size={12} />
+              <span>Active</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default function Home() {
   const [totalCounts, setTotalCounts] = useState<TotalCounts | null>(null);
@@ -90,40 +100,62 @@ export default function Home() {
   const [topDoctors, setTopDoctors] = useState<TopDoctor[]>([]);
   const [isActivityLoading, setIsActivityLoading] = useState(true);
 
+  const fetchTotalCounts = async () => {
+    try {
+      setIsLoading(true);
+      const data = await DashboardService.getCounts();
+      setTotalCounts(data);
+    } catch (error) {
+      console.error("Failed to fetch total counts", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchActivity = async () => {
+    try {
+      setIsActivityLoading(true);
+      const [weeklyData, revenueData, topDoctorsData] = await Promise.all([
+        DashboardService.getWeeklyAppointments(),
+        DashboardService.getRevenue(),
+        DashboardService.getTopDoctors(),
+      ]);
+      setWeeklyAppointments(weeklyData);
+      setRevenue(revenueData);
+      setTopDoctors(topDoctorsData?.data ?? []);
+    } catch (error) {
+      console.error("Failed to fetch dashboard activity", error);
+    } finally {
+      setIsActivityLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchTotalCounts = async () => {
-      try {
-        setIsLoading(true);
-        const data = await DashboardService.getCounts();
-        setTotalCounts(data);
-      } catch (error) {
-        console.error("Failed to fetch total counts", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    const fetchActivity = async () => {
-      try {
-        setIsActivityLoading(true);
-        const [weeklyData, revenueData, topDoctorsData] = await Promise.all([
-          DashboardService.getWeeklyAppointments(),
-          DashboardService.getRevenue(),
-          DashboardService.getTopDoctors(),
-        ]);
-        setWeeklyAppointments(weeklyData);
-        setRevenue(revenueData);
-        setTopDoctors(topDoctorsData?.data ?? []);
-      } catch (error) {
-        console.error("Failed to fetch dashboard activity", error);
-      } finally {
-        setIsActivityLoading(false);
-      }
-    };
-
     fetchTotalCounts();
     fetchActivity();
   }, []);
+
+  // Aggregate dashboard — any activity across the clinic can move these
+  // numbers, so refresh on the broad set of events rather than picking a
+  // narrow subset that would silently miss some future contributor.
+  useSignalRRefetch(
+    [
+      "appointmentCreated",
+      "appointmentCancelled",
+      "appointmentStatusUpdated",
+      "billCreated",
+      "billPaid",
+      "labRequestCreated",
+      "labStatusUpdated",
+      "radiologyRequestCreated",
+      "radiologyStatusUpdated",
+      "patientRegistered",
+    ],
+    () => {
+      fetchTotalCounts();
+      fetchActivity();
+    }
+  );
 
   return (
     <div className="mainPage h-full overflow-y-auto">

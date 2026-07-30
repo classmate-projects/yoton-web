@@ -10,6 +10,7 @@ import { CalendarDays, Clock, Stethoscope, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import DatePicker from "@/components/DatePicker";
 import { ReceptionService } from "@/services/reception.service";
 import { PatientGetAllType } from "@/types/reception.type";
 import {
@@ -18,15 +19,10 @@ import {
   DoctorGridType,
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
+import { toDateInputValue } from "@/lib/date";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "Other"];
-
-const toDateInputValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
 
 export default function PatientRecordsPage() {
   const [patients, setPatients] = useState<PatientGetAllType[]>([]);
@@ -65,6 +61,8 @@ export default function PatientRecordsPage() {
   useEffect(() => {
     fetchPatients();
   }, []);
+
+  useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
 
   const handleDelete = async (id: string) => {
     try {
@@ -126,6 +124,10 @@ export default function PatientRecordsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoctor, selectedDate]);
+
+  useSignalRRefetch(["appointmentCreated", "appointmentCancelled"], () => {
+    if (selectedDoctor && walkInPatient) fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
+  });
 
   const flattenedDoctors = useMemo(() => {
     const term = doctorSearch.trim().toLowerCase();
@@ -418,16 +420,15 @@ export default function PatientRecordsPage() {
                     <label className="flex items-center gap-1.5 text-sm font-semibold text-foreground/90">
                       <CalendarDays size={16} /> Time slot
                     </label>
-                    <input
-                      type="date"
+                    <DatePicker
                       value={toDateInputValue(selectedDate)}
                       min={toDateInputValue(new Date())}
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          setSelectedDate(new Date(`${event.target.value}T00:00:00`));
+                      onChange={(v) => {
+                        if (v) {
+                          setSelectedDate(new Date(`${v}T00:00:00`));
                         }
                       }}
-                      className="h-9 w-40 text-sm px-2 rounded-lg bg-muted border border-border text-foreground"
+                      className="flex h-9 w-40 items-center justify-between gap-2 rounded-lg border border-border bg-muted px-2 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
 
