@@ -8,6 +8,8 @@ import {
   AppointmentRequestedEvent,
   useAppointmentRequestSignalR,
 } from "@/hooks/useAppointmentRequestSignalR";
+import { ReceptionService } from "@/services/reception.service";
+import { getSignalRConnection } from "@/lib/signalR";
 
 interface NotificationBellProps {
   role: string;
@@ -23,6 +25,78 @@ export default function NotificationBell({ role }: NotificationBellProps) {
   const [isRinging, setIsRinging] = useState(false);
 
   const canSeeRequests = role === "admin" || role === "reception";
+
+  // Live SignalR events only cover requests submitted while this tab is open —
+  // without this, a fresh login or page refresh shows an empty bell even when
+  // Pending requests already exist server-side.
+  useEffect(() => {
+    if (!canSeeRequests) return;
+
+    let isMounted = true;
+    ReceptionService.getAppointmentRequests()
+      .then((data) => {
+        if (!isMounted) return;
+        const existing: AppointmentRequestedEvent[] = (data.data ?? []).map(
+          (request: {
+            appointmentId: string;
+            patientId: string | null;
+            patientName: string | null;
+            doctorId: string | null;
+            doctorName: string | null;
+            appointmentDate: string;
+            notes: string | null;
+          }) => ({
+            appointmentId: request.appointmentId,
+            patientId: request.patientId,
+            patientName: request.patientName,
+            doctorId: request.doctorId,
+            doctorName: request.doctorName,
+            appointmentDate: request.appointmentDate,
+            status: "Pending",
+            notes: request.notes,
+          })
+        );
+        setNotifications(existing.slice(0, 20));
+        setUnreadCount(existing.length);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch pending appointment requests:", error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [canSeeRequests]);
+
+  // Once reception confirms/declines a request (from the Appointments page or
+  // any other tab), drop it here too so the bell can't show an already-resolved
+  // request as if it were still new.
+  useEffect(() => {
+    if (!canSeeRequests) return;
+
+    let isMounted = true;
+    const handleStatusUpdated = (payload: { appointmentId?: string; AppointmentId?: string }) => {
+      if (!isMounted) return;
+      const resolvedId = payload.appointmentId ?? payload.AppointmentId;
+      if (!resolvedId) return;
+      setNotifications((prev) => prev.filter((n) => n.appointmentId !== resolvedId));
+    };
+
+    const connect = async () => {
+      const connection = await getSignalRConnection();
+      if (!isMounted) return;
+      connection.off("appointmentStatusUpdated", handleStatusUpdated);
+      connection.on("appointmentStatusUpdated", handleStatusUpdated);
+    };
+    connect();
+
+    return () => {
+      isMounted = false;
+      getSignalRConnection().then((connection) => {
+        connection.off("appointmentStatusUpdated", handleStatusUpdated);
+      });
+    };
+  }, [canSeeRequests]);
 
   useAppointmentRequestSignalR((event) => {
     if (!canSeeRequests) return;

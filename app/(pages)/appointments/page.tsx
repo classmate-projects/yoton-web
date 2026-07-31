@@ -38,6 +38,7 @@ import {
 } from "@/types/appointment.type";
 import { VisitType } from "@/types/visit.type";
 import { useAppointmentRequestSignalR } from "@/hooks/useAppointmentRequestSignalR";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -431,6 +432,30 @@ export default function Appointments() {
     }
   };
 
+  // A patient-requested (Pending) booking must be confirmed before it can be
+  // checked in — otherwise reception could check a patient in who was never
+  // actually approved, leaving their request stuck in the requests panel.
+  const handleConfirmPendingRequest = async (appointmentId?: string) => {
+    const targetId = appointmentId ?? cancelSlot?.appointmentId;
+    if (!targetId || !selectedDoctor) return;
+
+    try {
+      setIsSubmitting(true);
+      const data = await ReceptionService.updateAppointmentStatus(targetId, "Scheduled");
+      toast.success(data.message || "Appointment confirmed");
+      setAppointmentRequests((prev) => prev.filter((r) => r.appointmentId !== targetId));
+      fetchSlots(selectedDoctor.doctorId, selectedDate);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || "Failed to confirm appointment");
+      } else {
+        toast.error("Failed to confirm appointment");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="py-8 px-10 h-full overflow-y-auto">
       <div className="flex flex-col gap-6">
@@ -750,6 +775,9 @@ export default function Appointments() {
                   <span className="rounded-lg border border-blue-600 bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
                     Booked
                   </span>
+                  <span className="rounded-lg border border-amber-600 bg-amber-600 px-3 py-1 text-xs font-semibold text-white">
+                    Needs confirmation
+                  </span>
                 </div>
               </div>
 
@@ -761,7 +789,11 @@ export default function Appointments() {
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-                  {daySlots!.slots.map((slot) => (
+                  {daySlots!.slots.map((slot) => {
+                  const hasPendingBooking =
+                    slot.status === "Pending" ||
+                    slot.bookings.some((b) => b.status === "Pending");
+                  return (
                     <button
                       key={slot.start}
                       onClick={() => handleSelectSlot(slot)}
@@ -773,6 +805,8 @@ export default function Appointments() {
                           : "hover:-translate-y-0.5 hover:shadow-md " +
                             (slot.isAvailable
                               ? "border-emerald-600/30 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30"
+                              : hasPendingBooking
+                              ? "border-amber-600/30 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30"
                               : "border-blue-600/30 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/30")
                       }`}
                     >
@@ -783,6 +817,8 @@ export default function Appointments() {
                               ? "text-muted-foreground"
                               : slot.isAvailable
                               ? "text-emerald-700 dark:text-emerald-400"
+                              : hasPendingBooking
+                              ? "text-amber-700 dark:text-amber-400"
                               : "text-blue-700 dark:text-blue-400"
                           }`}
                         >
@@ -796,6 +832,14 @@ export default function Appointments() {
                               className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground"
                             >
                               <Users size={11} /> {slot.bookedCount}/{slot.maxCapacity}
+                            </span>
+                          )}
+                          {!slot.isPast && hasPendingBooking && (
+                            <span
+                              title="Awaiting confirmation"
+                              className="flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+                            >
+                              Pending
                             </span>
                           )}
                           {!slot.isPast && (slot.isAvailable ? (
@@ -820,6 +864,8 @@ export default function Appointments() {
                             ? "bg-muted text-muted-foreground"
                             : slot.isAvailable
                             ? "bg-emerald-600 text-white"
+                            : hasPendingBooking
+                            ? "bg-amber-600 text-white"
                             : "bg-blue-600 text-white"
                         }`}
                       >
@@ -830,15 +876,20 @@ export default function Appointments() {
                             ? slot.bookedCount > 0
                               ? `${slot.bookedCount}/${slot.maxCapacity} booked — open`
                               : "Available"
+                            : hasPendingBooking
+                            ? `Needs confirmation (${slot.bookedCount}/${slot.maxCapacity})`
                             : `Full (${slot.bookedCount}/${slot.maxCapacity})`
                           : slot.isAvailable
                           ? "Available"
+                          : slot.status === "Pending"
+                          ? `${slot.patientName || "Patient"} - Pending confirmation`
                           : slot.isWalkIn
                           ? `${slot.patientName || "Patient"} - Walk-in Visit`
                           : slot.patientName || "Booked"}
                       </span>
                     </button>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </div>
@@ -1060,39 +1111,56 @@ export default function Appointments() {
 
             {cancelSlot.bookings.length > 1 ? (
               <div className="mt-4 flex flex-col gap-3">
-                {cancelSlot.bookings.map((booking) => (
-                  <div
-                    key={booking.appointmentId}
-                    className="rounded-lg border border-border bg-muted/40 p-3"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-foreground">
-                        {booking.patientName ?? "Patient"}
-                      </p>
-                      {booking.isWalkIn && (
-                        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                          Walk-in
-                        </span>
-                      )}
+                {cancelSlot.bookings.map((booking) => {
+                  const isPending = booking.status === "Pending";
+                  return (
+                    <div
+                      key={booking.appointmentId}
+                      className="rounded-lg border border-border bg-muted/40 p-3"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-foreground">
+                          {booking.patientName ?? "Patient"}
+                        </p>
+                        {isPending ? (
+                          <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                            Pending confirmation
+                          </span>
+                        ) : booking.isWalkIn ? (
+                          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                            Walk-in
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        {isPending ? (
+                          <button
+                            onClick={() => handleConfirmPendingRequest(booking.appointmentId ?? undefined)}
+                            disabled={isSubmitting}
+                            className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                          >
+                            <Check size={13} /> Confirm
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleCheckIn(booking.appointmentId ?? undefined)}
+                            disabled={isSubmitting}
+                            className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                          >
+                            <LogIn size={13} /> Check in
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleConfirmCancel(booking.appointmentId ?? undefined)}
+                          disabled={isSubmitting}
+                          className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                        >
+                          <XCircle size={13} /> {isPending ? "Decline" : "Cancel"}
+                        </button>
+                      </div>
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <button
-                        onClick={() => handleCheckIn(booking.appointmentId ?? undefined)}
-                        disabled={isSubmitting}
-                        className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50"
-                      >
-                        <LogIn size={13} /> Check in
-                      </button>
-                      <button
-                        onClick={() => handleConfirmCancel(booking.appointmentId ?? undefined)}
-                        disabled={isSubmitting}
-                        className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:border-red-300 hover:text-red-600 disabled:opacity-50"
-                      >
-                        <XCircle size={13} /> Cancel
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
@@ -1100,11 +1168,15 @@ export default function Appointments() {
                   <p className="text-xs font-semibold uppercase text-muted-foreground">
                     Patient
                   </p>
-                  {cancelSlot.isWalkIn && (
+                  {cancelSlot.status === "Pending" ? (
+                    <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                      Pending confirmation
+                    </span>
+                  ) : cancelSlot.isWalkIn ? (
                     <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
                       Walk-in Visit
                     </span>
-                  )}
+                  ) : null}
                 </div>
                 <p className="mt-1 text-lg font-semibold text-foreground">
                   {cancelSlot.patientName ?? "Patient"}
@@ -1115,19 +1187,30 @@ export default function Appointments() {
             <div className="flex flex-col gap-3 mt-6">
               {cancelSlot.bookings.length <= 1 && (
                 <>
-                  <button
-                    onClick={() => handleCheckIn()}
-                    disabled={isSubmitting}
-                    className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
-                  >
-                    <LogIn size={16} /> Check in patient
-                  </button>
+                  {cancelSlot.status === "Pending" ? (
+                    <button
+                      onClick={() => handleConfirmPendingRequest()}
+                      disabled={isSubmitting}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Check size={16} /> Confirm appointment
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleCheckIn()}
+                      disabled={isSubmitting}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+                    >
+                      <LogIn size={16} /> Check in patient
+                    </button>
+                  )}
                   <button
                     onClick={() => handleConfirmCancel()}
                     disabled={isSubmitting}
                     className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
                   >
-                    <XCircle size={16} /> Cancel appointment
+                    <XCircle size={16} />{" "}
+                    {cancelSlot.status === "Pending" ? "Decline request" : "Cancel appointment"}
                   </button>
                 </>
               )}

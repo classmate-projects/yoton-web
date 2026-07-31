@@ -1,25 +1,31 @@
 "use client";
 
 interface EmailSendResponseType {
-  email: string;
   message: string;
-  token: string;
 }
 
 import AskEmailPage from "@/components/forgotPassword/AskEmail";
 import SetPasswordPage from "@/components/forgotPassword/SetPassword";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { toast } from "sonner";
+import { MailCheck } from "lucide-react";
 import logo from "@/public/yoton_logo.png";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Arriving here via the emailed reset link (?token=...) skips straight to
+  // setting a new password — the token itself is never exposed anywhere else,
+  // since echoing it back in the initial API response would let anyone who
+  // merely knows an account's email reset that account's password outright.
+  const tokenFromLink = searchParams.get("token") ?? "";
 
   const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
-  const [showAskEmail, setShowAskEmail] = useState<boolean>(true);
+  const [token] = useState(tokenFromLink);
+  const [emailSent, setEmailSent] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSendingResetLink, setIsSendingResetLink] = useState(false);
@@ -42,11 +48,10 @@ export default function ForgotPasswordPage() {
       });
 
       const data: EmailSendResponseType = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to generate password reset token");
+      if (!res.ok) throw new Error(data.message || "Failed to send reset link");
 
-      setToken(data.token);
-      setShowAskEmail(false);
-      toast.success("Reset link sent to your email!");
+      setEmailSent(true);
+      toast.success(data.message || "Reset link sent to your email!");
     } catch (err) {
       if (err instanceof Error) toast.error(err.message);
     } finally {
@@ -137,23 +142,43 @@ export default function ForgotPasswordPage() {
                 </div>
               </div>
 
-              {showAskEmail ? (
-                <AskEmailPage
-                  email={email}
-                  setEmail={setEmail}
-                  handleEmailSubmit={handleEmailSubmit}
-                  isSending={isSendingResetLink}
-                />
-              ) : (
+              {token ? (
                 <SetPasswordPage
                   password={password}
                   setPassword={setPassword}
                   confirmPassword={confirmPassword}
                   setConfirmPassword={setConfirmPassword}
                   handleSubmitNewPassword={handleSubmitNewPassword}
-                  setshowAskEmail={setShowAskEmail}
+                  setshowAskEmail={() => router.push("/forgot-password")}
                   error={validationError}
                   isSaving={isSavingPassword}
+                />
+              ) : emailSent ? (
+                <div className="text-center">
+                  <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <MailCheck size={22} />
+                  </div>
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-950">
+                    Check your email
+                  </h1>
+                  <p className="mt-3 text-sm leading-6 text-slate-500">
+                    If <b>{email}</b> is registered with us, a password reset
+                    link is on its way. It expires in 30 minutes.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setEmailSent(false)}
+                    className="mt-6 text-sm font-semibold text-primary hover:underline"
+                  >
+                    Use a different email
+                  </button>
+                </div>
+              ) : (
+                <AskEmailPage
+                  email={email}
+                  setEmail={setEmail}
+                  handleEmailSubmit={handleEmailSubmit}
+                  isSending={isSendingResetLink}
                 />
               )}
             </div>
@@ -161,5 +186,17 @@ export default function ForgotPasswordPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    }>
+      <ForgotPasswordPageInner />
+    </Suspense>
   );
 }
