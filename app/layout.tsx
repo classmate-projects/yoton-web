@@ -26,17 +26,10 @@ export default function RootLayout({
       className={`${geistSans.variable} h-full antialiased`}
     >
       <body className="min-h-full">
-        <script
-          suppressHydrationWarning
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var v=localStorage.getItem("yoton_sidebar_expanded");document.documentElement.setAttribute("data-sidebar",v==="false"?"collapsed":"expanded");}catch(e){}})();`,
-          }}
-        />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
-          disableTransitionOnChange
         >
           {children}
           <Toaster

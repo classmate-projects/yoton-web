@@ -6,7 +6,11 @@ export const UserService = {
     getAll: async () => {
         const { data } = await api.get(ENDPOINTS.USER.GET)
         return data;
-    }, 
+    },
+    getAllByRole: async (role: string) => {
+        const { data } = await api.get(ENDPOINTS.USER.GET_BY_ROLE(role))
+        return data;
+    },
 
     create: async (payload: UserCreateType) => {
         const { data } = await api.post(ENDPOINTS.USER.CREATE, payload)

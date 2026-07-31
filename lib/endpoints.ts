@@ -33,6 +33,7 @@ export const ENDPOINTS = {
         GET_VISIT_QUEUE: (status?: string) => `/api/reception/visit/queue${status ? `?status=${status}` : ""}`,
         UPLOAD_DOCUMENT: (patientId: string) => `/api/reception/patient/${patientId}/document`,
         GET_APPOINTMENT_REQUESTS: `/api/reception/appointment-requests`,
+        RESEND_WELCOME_EMAIL: (patientId: string) => `/api/reception/${patientId}/resend-welcome-email`,
     },
     ROLE: {
         GET: `/api/role/get-all`,
@@ -48,6 +49,7 @@ export const ENDPOINTS = {
     },
     USER: {
         GET: `/api/user/get-all`,
+        GET_BY_ROLE: (role: string) => `/api/user/get-all?role=${role}`,
         CREATE: `/api/user/create`,
         UPDATE: (id: string) => `/api/user/update/${id}`,
         DELETE: (id: string) => `/api/user/delete/${id}`,

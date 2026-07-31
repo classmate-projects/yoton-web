@@ -103,6 +103,9 @@ export interface PatientEncounterType {
 export interface EnsureEncounterPayload {
   visitId?: string;
   notes?: string;
+  // Ignored server-side for a real nurse (resolved from their own JWT); admin callers
+  // must supply this explicitly or every write 400s with "NurseId is required".
+  nurseId?: string;
 }
 
 export interface VitalsPayload {
@@ -114,6 +117,7 @@ export interface VitalsPayload {
   respiratoryRate: number;
   oxygenSaturation: number;
   notes?: string;
+  nurseId?: string;
 }
 
 export interface InjectionPayload {
@@ -122,6 +126,7 @@ export interface InjectionPayload {
   dose: string;
   route: string;
   notes?: string;
+  nurseId?: string;
 }
 
 export interface DressingPayload {
@@ -130,6 +135,7 @@ export interface DressingPayload {
   dressingMaterial: string;
   infectionSigns: boolean;
   notes?: string;
+  nurseId?: string;
 }
 
 export interface BloodSugarPayload {
@@ -137,6 +143,7 @@ export interface BloodSugarPayload {
   sugarLevel: number;
   type: string;
   notes?: string;
+  nurseId?: string;
 }
 
 export interface IVFluidsPayload {
@@ -145,4 +152,5 @@ export interface IVFluidsPayload {
   volume: number;
   rate: number;
   notes?: string;
+  nurseId?: string;
 }

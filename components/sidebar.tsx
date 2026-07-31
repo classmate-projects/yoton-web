@@ -7,19 +7,16 @@ interface CurrentUserType {
 
 import logo from "@/public/yoton_logo.png";
 import Image from "next/image";
-import { sidebarMenuItems } from "@/helpers/sidebaritems";
+import { sidebarMenuItems, SidebarGroup } from "@/helpers/sidebaritems";
 import NotificationBell from "@/components/NotificationBell";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import pkg from "@/package.json";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { Sun, Moon, Monitor, ChevronRight, ChevronLeft, LogOut } from "lucide-react";
+import { Sun, Moon, Monitor, LogOut } from "lucide-react";
 
-// useLayoutEffect warns when it runs during SSR; fall back to useEffect there
-// since this hook only ever needs to run on the client anyway.
-const useIsomorphicLayoutEffect =
-  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+const SIDEBAR_GROUPS: SidebarGroup[] = ["User Modules", "Configuration"];
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -28,17 +25,10 @@ export default function Sidebar() {
   const [mounted, setMounted] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<CurrentUserType | null>(null);
-  // Always start expanded so the first client render matches the
-  // server-rendered HTML exactly (no hydration mismatch). The real stored
-  // preference is applied synchronously below, before the browser paints.
-  const [isExpanded, setIsExpanded] = useState(true);
-
-  useIsomorphicLayoutEffect(() => {
-    const stored = localStorage.getItem("yoton_sidebar_expanded");
-    if (stored !== null) {
-      setIsExpanded(stored === "true");
-    }
-  }, []);
+  // Purely hover-driven: collapsed to icons-only by default for every role,
+  // expands on mouse-over, collapses again on mouse-out. No pinned/persisted
+  // state, so server and client both start collapsed — no hydration risk.
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -54,18 +44,6 @@ export default function Sidebar() {
     });
   }, []);
 
-  const toggleSidebar = () => {
-    setIsExpanded((prev) => {
-      const next = !prev;
-      localStorage.setItem("yoton_sidebar_expanded", String(next));
-      document.documentElement.setAttribute(
-        "data-sidebar",
-        next ? "expanded" : "collapsed"
-      );
-      return next;
-    });
-  };
-
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
     localStorage.removeItem("yoton_token");
@@ -79,19 +57,15 @@ export default function Sidebar() {
     { name: "system", icon: Monitor, label: "System" },
   ];
 
+  const userRole = currentUser?.role || "";
+
   return (
     <div
-      className={`sidebar-shell bg-card sticky top-0 h-screen p-3 border-r border-border z-50 transition-all duration-300 ease-in-out shrink-0 flex flex-col ${isExpanded ? "w-72" : "w-20"
+      onMouseEnter={() => setIsExpanded(true)}
+      onMouseLeave={() => setIsExpanded(false)}
+      className={`sidebar-shell bg-card sticky top-0 h-screen p-3 border-r border-border z-50 transition-all duration-300 ease-in-out shrink-0 flex flex-col ${isExpanded ? "w-72" : "w-28"
         }`}
     >
-      <button
-        title={isExpanded ? "Collapse" : "Expand"}
-        onClick={toggleSidebar}
-        className="absolute -right-3 top-10 bg-primary text-primary-foreground rounded-full p-1 shadow-md hover:scale-110 transition-transform cursor-pointer z-50"
-      >
-        {isExpanded ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-      </button>
-
       <div className={`flex items-center mb-8 ${isExpanded ? "px-2" : "flex-col gap-2 justify-center"}`}>
         <div className="relative shrink-0">
           <Image src={logo} alt="logo" height={40} width={40} className="rounded-lg shadow-sm" loading="eager" />
@@ -115,38 +89,45 @@ export default function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto no-scrollbar">
-        <nav>
-          <ul className="flex flex-col gap-1.5">
-            {sidebarMenuItems.map((item) => {
-              const userRole = currentUser?.role || "";
-              if (item.roles.includes(userRole)) {
-                const isActive = pathname === item.navLink;
-                return (
-                  <li key={item.id}>
-                    <Link
-                      href={item.navLink}
-                      title={isExpanded ? "" : item.name}
-                      className={`flex items-center py-2.5 px-3 rounded-xl transition-all duration-200 group ${isActive
-                          ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        } ${!isExpanded && "justify-center px-0"}`}
-                    >
-                      <span className={`shrink-0 transition-transform duration-200 text-xl ${isActive ? "scale-110" : "group-hover:scale-110"}`}>
-                        <item.icon />
-                      </span>
-                      <span
-                        className={`sidebar-label overflow-hidden whitespace-nowrap text-sm font-medium transition-all duration-300 ease-in-out ${isExpanded ? "ml-3 max-w-[160px] opacity-100" : "ml-0 max-w-0 opacity-0"
+        <nav className="flex flex-col gap-4">
+          {SIDEBAR_GROUPS.map((group) => {
+            const items = sidebarMenuItems.filter(
+              (item) => item.group === group && item.roles.includes(userRole)
+            );
+            if (items.length === 0) return null;
+
+            return (
+              <div key={group}>
+                <span className="mb-1.5 block overflow-hidden whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                  {group}
+                </span>
+                {/* Icon-only grid — the item name is no longer shown inline, only as a
+                    native tooltip on hover (title attribute), so the sidebar can stay
+                    narrow while still surfacing every module at a glance. */}
+                <div className={`grid gap-2 ${isExpanded ? "grid-cols-4" : "grid-cols-3"}`}>
+                  {items.map((item) => {
+                    const isActive = pathname === item.navLink;
+                    return (
+                      <Link
+                        key={item.id}
+                        href={item.navLink}
+                        title={item.name}
+                        aria-label={item.name}
+                        className={`aspect-square flex items-center justify-center rounded-xl transition-all duration-200 group ${isActive
+                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                           }`}
                       >
-                        {item.name}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              }
-              return null;
-            })}
-          </ul>
+                        <span className={`shrink-0 transition-transform duration-200 text-xl ${isActive ? "scale-110" : "group-hover:scale-110"}`}>
+                          <item.icon />
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </nav>
       </div>
 
@@ -156,7 +137,7 @@ export default function Sidebar() {
             <button
               key={t.name}
               onClick={() => setTheme(t.name)}
-              className={`flex-1 flex items-center justify-center cursor-pointer p-2 rounded-md transition-all ${mounted && theme === t.name
+              className={`flex-1 flex items-center justify-center cursor-pointer p-2 rounded-md transition-all duration-300 ${mounted && theme === t.name
                   ? "bg-card text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
                 }`}

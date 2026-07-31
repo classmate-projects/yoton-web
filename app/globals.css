@@ -55,6 +55,12 @@
 @layer base {
   * {
     border-color: var(--border);
+    /* Smooths every theme switch (light/dark/system) globally, instead of
+       only the handful of elements that separately opted into transition-*
+       utilities — those still win where they set a different duration. */
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-timing-function: ease;
+    transition-duration: 300ms;
   }
   html {
     @apply h-full antialiased;
@@ -163,15 +169,6 @@ label.required::after {
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
-}
-
-/* Sidebar expand/collapse: applied before hydration by the blocking
-   script in app/layout.tsx to avoid a flash of the wrong state on reload */
-html[data-sidebar="collapsed"] .sidebar-shell {
-  width: 5rem !important;
-}
-html[data-sidebar="collapsed"] .sidebar-label {
-  display: none !important;
 }
 
 /* React Big Calendar theming */

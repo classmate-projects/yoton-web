@@ -26,6 +26,9 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
+import { UserService } from "@/services/user.service";
+import { UserType } from "@/types/user.type";
+import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { EmrPatientListItem, PatientSummaryType } from "@/types/emr.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import {
@@ -52,6 +55,15 @@ function NurseWorkbenchInner() {
   const patientIdParam = searchParams.get("patientId") || undefined;
 
   const [checkedAuth, setCheckedAuth] = useState(false);
+  const [role, setRole] = useState("");
+
+  // Admin has no nurse/doctor identity of their own — every write endpoint that resolves
+  // "which nurse/doctor is this?" from the caller's JWT falls back to requiring an explicit
+  // id for any non-nurse/non-doctor caller, so admin must pick both before writing anything.
+  const [nurses, setNurses] = useState<UserType[]>([]);
+  const [selectedNurseId, setSelectedNurseId] = useState<string>("");
+  const [assignedDoctors, setAssignedDoctors] = useState<AssignedDoctorsInfo[]>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>("");
 
   const [dashboard, setDashboard] = useState<NurseDashboardSummaryType | null>(null);
   const [tasks, setTasks] = useState<NursingTaskType[]>([]);
@@ -74,8 +86,35 @@ function NurseWorkbenchInner() {
       router.replace("/");
       return;
     }
+    setRole(currentRole);
     setCheckedAuth(true);
   }, [router]);
+
+  const isAdmin = role === "admin";
+
+  // Admin write actions require an explicit nurse/doctor id in place of the JWT-derived one
+  // a real nurse/doctor gets automatically — see NursingController.ResolveNurseId and
+  // EmrController.ResolveDoctorScopeAsync.
+  const requireNurseSelected = () => {
+    if (isAdmin && !selectedNurseId) {
+      toast.error("Select a nurse first — you're viewing across all nurses.");
+      return false;
+    }
+    return true;
+  };
+  const requireDoctorSelectedForAllergy = () => {
+    if (isAdmin && !selectedDoctorId) {
+      toast.error("Select a doctor first to attribute this allergy record.");
+      return false;
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    if (!checkedAuth || !isAdmin) return;
+    UserService.getAllByRole("nurse").then((res) => setNurses(res.data || [])).catch(() => {});
+    UserService.get_assigned_doctors().then((res) => setAssignedDoctors(res.data || [])).catch(() => {});
+  }, [checkedAuth, isAdmin]);
 
   // ---------------- WORKBENCH DATA ----------------
   // Patients are fetched system-wide (no doctorId) — any doctor's patient is visible to
@@ -136,14 +175,26 @@ function NurseWorkbenchInner() {
     setSelectedPatientId(patientId);
     setIsLoadingChart(true);
     try {
+      // Reading the chart works fine for admin either way, but starting/resuming an
+      // encounter is a write that requires a nurse identity — skip it (read-only view)
+      // rather than failing the whole patient-open with a raw 400 if none is picked yet.
+      const canStartEncounter = !isAdmin || !!selectedNurseId;
       const [summaryRes, chartRes, encounterRes] = await Promise.all([
         EmrService.getPatientSummary(patientId),
         NursingService.getPatientChart(patientId),
-        NursingService.ensureActiveEncounter(patientId, { visitId: visitIdParam }),
+        canStartEncounter
+          ? NursingService.ensureActiveEncounter(patientId, {
+              visitId: visitIdParam,
+              nurseId: isAdmin ? selectedNurseId : undefined,
+            })
+          : Promise.resolve({ data: null }),
       ]);
       setSummary(summaryRes.data);
       setChart(chartRes.data);
       setEncounterId(encounterRes.data?.patientEncounterId || null);
+      if (!canStartEncounter) {
+        toast("Select a nurse to start recording for this patient.", { icon: "ℹ️" });
+      }
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load patient chart"));
     } finally {
@@ -210,6 +261,7 @@ function NurseWorkbenchInner() {
       toast.error("Blood pressure and heart rate are required");
       return;
     }
+    if (!requireNurseSelected()) return;
     try {
       setSavingVitals(true);
       await NursingService.saveVitals({
@@ -221,6 +273,7 @@ function NurseWorkbenchInner() {
         respiratoryRate: Number(vitalsForm.respiratoryRate || 0),
         oxygenSaturation: Number(vitalsForm.oxygenSaturation || 0),
         notes: vitalsForm.notes.trim() || undefined,
+        nurseId: isAdmin ? selectedNurseId : undefined,
       });
       toast.success("Vitals recorded");
       setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", notes: "" });
@@ -242,6 +295,7 @@ function NurseWorkbenchInner() {
       toast.error("Medicine name and dose are required");
       return;
     }
+    if (!requireNurseSelected()) return;
     try {
       setSavingInjection(true);
       await NursingService.saveInjection({
@@ -250,6 +304,7 @@ function NurseWorkbenchInner() {
         dose: injectionForm.dose.trim(),
         route: injectionForm.route,
         notes: injectionForm.notes.trim() || undefined,
+        nurseId: isAdmin ? selectedNurseId : undefined,
       });
       toast.success("Medication administration recorded");
       setInjectionForm({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
@@ -276,6 +331,7 @@ function NurseWorkbenchInner() {
       toast.error("Wound type and dressing material are required");
       return;
     }
+    if (!requireNurseSelected()) return;
     try {
       setSavingDressing(true);
       await NursingService.saveDressing({
@@ -284,6 +340,7 @@ function NurseWorkbenchInner() {
         dressingMaterial: dressingForm.dressingMaterial,
         infectionSigns: dressingForm.infectionSigns,
         notes: dressingForm.notes.trim() || undefined,
+        nurseId: isAdmin ? selectedNurseId : undefined,
       });
       toast.success("Wound care entry recorded");
       setDressingForm({ woundType: "", dressingMaterial: "", infectionSigns: false, notes: "" });
@@ -305,6 +362,7 @@ function NurseWorkbenchInner() {
       toast.error("Sugar level is required");
       return;
     }
+    if (!requireNurseSelected()) return;
     try {
       setSavingSugar(true);
       await NursingService.saveBloodSugar({
@@ -312,6 +370,7 @@ function NurseWorkbenchInner() {
         sugarLevel: Number(sugarForm.sugarLevel),
         type: sugarForm.type,
         notes: sugarForm.notes.trim() || undefined,
+        nurseId: isAdmin ? selectedNurseId : undefined,
       });
       toast.success("Blood sugar reading recorded");
       setSugarForm({ sugarLevel: "", type: "Random", notes: "" });
@@ -333,6 +392,7 @@ function NurseWorkbenchInner() {
       toast.error("Fluid type, volume, and rate are required");
       return;
     }
+    if (!requireNurseSelected()) return;
     try {
       setSavingIv(true);
       await NursingService.saveIVFluids({
@@ -341,6 +401,7 @@ function NurseWorkbenchInner() {
         volume: Number(ivForm.volume),
         rate: Number(ivForm.rate),
         notes: ivForm.notes.trim() || undefined,
+        nurseId: isAdmin ? selectedNurseId : undefined,
       });
       toast.success("IV fluids entry recorded");
       setIvForm({ fluidType: "", volume: "", rate: "", notes: "" });
@@ -362,12 +423,19 @@ function NurseWorkbenchInner() {
       toast.error("Substance is required");
       return;
     }
+    // Unlike the NursingController writes above, this one goes through EmrController —
+    // real nurses are exempt from its doctorId requirement entirely, but admin isn't.
+    if (!requireDoctorSelectedForAllergy()) return;
     try {
       setSavingAllergy(true);
-      await EmrService.addAllergy(selectedPatientId, {
-        substance: allergyForm.substance.trim(),
-        reaction: allergyForm.reaction.trim() || undefined,
-      });
+      await EmrService.addAllergy(
+        selectedPatientId,
+        {
+          substance: allergyForm.substance.trim(),
+          reaction: allergyForm.reaction.trim() || undefined,
+        },
+        isAdmin ? selectedDoctorId : undefined
+      );
       toast.success("Allergy recorded");
       setAllergyForm({ substance: "", reaction: "" });
       const res = await EmrService.getPatientSummary(selectedPatientId);
@@ -424,13 +492,39 @@ function NurseWorkbenchInner() {
   if (selectedPatientId) {
     return (
       <div className="py-8 px-10 h-full overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-4">
           <button
             onClick={backToWorkbench}
             className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary"
           >
             <ArrowLeft size={16} /> Back to workbench
           </button>
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedNurseId}
+                onChange={(e) => setSelectedNurseId(e.target.value)}
+                title="Nurse identity for recording vitals, injections, dressings, etc."
+                className="h-9 w-44 shrink-0 text-sm"
+              >
+                <option value="">Acting nurse…</option>
+                {nurses.map((n) => (
+                  <option key={n.id} value={n.id}>{n.name}</option>
+                ))}
+              </select>
+              <select
+                value={selectedDoctorId}
+                onChange={(e) => setSelectedDoctorId(e.target.value)}
+                title="Doctor to attribute allergy records to"
+                className="h-9 w-44 shrink-0 text-sm"
+              >
+                <option value="">Acting doctor (for allergies)…</option>
+                {assignedDoctors.map((d) => (
+                  <option key={String(d.doctorId)} value={String(d.doctorId)}>{d.userName}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {encounterId && (
             <button
               onClick={endEncounter}
@@ -774,6 +868,32 @@ function NurseWorkbenchInner() {
             Every patient across all doctors is visible here — open a chart to record vitals and care.
           </p>
         </div>
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedNurseId}
+              onChange={(e) => setSelectedNurseId(e.target.value)}
+              title="Nurse identity for recording vitals, injections, dressings, etc."
+              className="h-9 w-48 shrink-0 text-sm"
+            >
+              <option value="">Acting nurse…</option>
+              {nurses.map((n) => (
+                <option key={n.id} value={n.id}>{n.name}</option>
+              ))}
+            </select>
+            <select
+              value={selectedDoctorId}
+              onChange={(e) => setSelectedDoctorId(e.target.value)}
+              title="Doctor to attribute allergy records to"
+              className="h-9 w-48 shrink-0 text-sm"
+            >
+              <option value="">Acting doctor (for allergies)…</option>
+              {assignedDoctors.map((d) => (
+                <option key={String(d.doctorId)} value={String(d.doctorId)}>{d.userName}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {isLoadingWorkbench ? (
