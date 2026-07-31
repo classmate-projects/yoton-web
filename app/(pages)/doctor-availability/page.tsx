@@ -35,7 +35,7 @@ const DAYS = [
   "Saturday",
 ];
 
-type ScheduleField = "startTime" | "endTime" | "slotDurationMinutes";
+type ScheduleField = "startTime" | "endTime" | "slotDurationMinutes" | "maxConcurrentBookings";
 
 interface EditableBreak {
   id: string;
@@ -49,6 +49,7 @@ interface EditableDaySchedule {
   startTime: string;
   endTime: string;
   slotDurationMinutes: number;
+  maxConcurrentBookings: number;
   breaks: EditableBreak[];
 }
 
@@ -109,6 +110,7 @@ const makeSchedule = (day: number): EditableDaySchedule => ({
   startTime: "09:00",
   endTime: "17:00",
   slotDurationMinutes: 30,
+  maxConcurrentBookings: 1,
   breaks: [],
 });
 
@@ -132,6 +134,7 @@ const toEditable = (
           startTime: s.start,
           endTime: s.end,
           slotDurationMinutes: s.slotDurationMinutes,
+          maxConcurrentBookings: s.maxConcurrentBookings,
           breaks: s.breaks.map((b) => ({
             id: b.breakId,
             startTime: b.start,
@@ -440,6 +443,7 @@ export default function DoctorAvailability() {
           startTime: s.startTime,
           endTime: s.endTime,
           slotDurationMinutes: s.slotDurationMinutes,
+          maxConcurrentBookings: s.maxConcurrentBookings,
           breaks: s.breaks.map((b) => ({
             startTime: b.startTime,
             endTime: b.endTime,
@@ -706,6 +710,7 @@ export default function DoctorAvailability() {
                                                     <th>Start</th>
                                                     <th>End</th>
                                                     <th>Interval</th>
+                                                    <th>Max/slot</th>
                                                     <th>Break Times</th>
                                                     <th>Action</th>
                                                   </tr>
@@ -782,6 +787,25 @@ export default function DoctorAvailability() {
                                                             <option value={60}>60 min</option>
                                                           </select>
                                                         </td>
+                                                        <td>
+                                                          <select
+                                                            value={schedule.maxConcurrentBookings}
+                                                            onChange={(event) =>
+                                                              updateSchedule(
+                                                                doctor.doctorId,
+                                                                schedule.day,
+                                                                "maxConcurrentBookings",
+                                                                Number(event.target.value)
+                                                              )
+                                                            }
+                                                            title="How many patients can be booked into the same slot"
+                                                            className="h-10 min-w-24 text-sm"
+                                                          >
+                                                            <option value={1}>1 patient</option>
+                                                            <option value={2}>2 patients</option>
+                                                            <option value={3}>3 patients</option>
+                                                          </select>
+                                                        </td>
                                                         <td className="min-w-[300px]">
                                                           <div className="flex flex-col gap-2">
                                                             <button
@@ -851,7 +875,7 @@ export default function DoctorAvailability() {
                                                   ) : (
                                                     <tr>
                                                       <td
-                                                        colSpan={6}
+                                                        colSpan={7}
                                                         className="text-center text-muted-foreground"
                                                       >
                                                         No days configured for this doctor.

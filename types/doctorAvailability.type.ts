@@ -10,6 +10,7 @@ export interface DayScheduleType {
   start: string; // "HH:mm"
   end: string; // "HH:mm"
   slotDurationMinutes: number;
+  maxConcurrentBookings: number;
   breaks: BreakType[];
 }
 
@@ -37,6 +38,7 @@ export interface DayScheduleInput {
   startTime: string; // "HH:mm"
   endTime: string; // "HH:mm"
   slotDurationMinutes: number;
+  maxConcurrentBookings: number;
   breaks: BreakInput[];
 }
 

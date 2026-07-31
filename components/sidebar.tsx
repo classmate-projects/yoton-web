@@ -8,6 +8,7 @@ interface CurrentUserType {
 import logo from "@/public/yoton_logo.png";
 import Image from "next/image";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
+import NotificationBell from "@/components/NotificationBell";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import pkg from "@/package.json";
@@ -91,7 +92,7 @@ export default function Sidebar() {
         {isExpanded ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
       </button>
 
-      <div className={`flex items-center mb-8 ${isExpanded ? "px-2" : "justify-center"}`}>
+      <div className={`flex items-center mb-8 ${isExpanded ? "px-2" : "flex-col gap-2 justify-center"}`}>
         <div className="relative shrink-0">
           <Image src={logo} alt="logo" height={40} width={40} className="rounded-lg shadow-sm" loading="eager" />
         </div>
@@ -106,6 +107,11 @@ export default function Sidebar() {
             {currentUser?.role || "Guest"} • {currentUser?.name || "User"}
           </div>
         </div>
+        {mounted && (
+          <div className={isExpanded ? "ml-auto" : ""}>
+            <NotificationBell role={currentUser?.role || ""} />
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto no-scrollbar">

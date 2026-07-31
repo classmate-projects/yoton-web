@@ -13,6 +13,14 @@ export interface SpecializationDoctorsType {
   doctors: DoctorGridType[];
 }
 
+export interface SlotBookingType {
+  appointmentId: string | null;
+  patientId: string | null;
+  patientName: string | null;
+  status: string | null;
+  isWalkIn: boolean;
+}
+
 export interface AppointmentSlotType {
   start: string;
   end: string;
@@ -23,6 +31,9 @@ export interface AppointmentSlotType {
   patientName: string | null;
   status: string | null;
   isWalkIn: boolean;
+  bookedCount: number;
+  maxCapacity: number;
+  bookings: SlotBookingType[];
 }
 
 export interface DoctorDaySlotsType {
@@ -49,4 +60,15 @@ export interface PatientListItemType {
   phone: string;
   address: string;
   dateOfBirth: string | null;
+}
+
+export interface AppointmentRequestType {
+  appointmentId: string;
+  patientId: string | null;
+  patientName: string | null;
+  doctorId: string | null;
+  doctorName: string | null;
+  appointmentDate: string;
+  notes: string | null;
+  createdAt: string;
 }
