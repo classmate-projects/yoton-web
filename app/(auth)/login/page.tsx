@@ -47,6 +47,10 @@ export default function LoginPage() {
           role: data.body.role,
           name: data.body.name,
           userId: data.body.userId,
+          companyId: data.body.companyId,
+          companyName: data.body.companyName,
+          companyLogoUrl: data.body.companyLogoUrl,
+          userImage: data.body.userImage,
         }),
       );
 
@@ -241,6 +245,16 @@ export default function LoginPage() {
                   </Link>
                 </div>
               </form>
+
+              <p className="mt-7 text-center text-sm text-slate-500">
+                New clinic?{" "}
+                <Link
+                  href="/register-company"
+                  className="font-semibold text-primary transition-colors hover:text-primary/75"
+                >
+                  Register here
+                </Link>
+              </p>
             </div>
 
             <p className="mt-8 text-center text-xs text-slate-500 lg:hidden">

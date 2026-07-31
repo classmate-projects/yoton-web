@@ -1,10 +1,5 @@
 "use client";
 
-interface CurrentUserType {
-  role: string;
-  name: string;
-}
-
 import logo from "@/public/yoton_logo.png";
 import Image from "next/image";
 import { sidebarMenuItems, SidebarGroup } from "@/helpers/sidebaritems";
@@ -14,7 +9,12 @@ import { usePathname, useRouter } from "next/navigation";
 import pkg from "@/package.json";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { Sun, Moon, Monitor, LogOut } from "lucide-react";
+import { Sun, Moon, Monitor, LogOut, UserRound } from "lucide-react";
+import { CurrentUserDetail } from "@/types/user.type";
+import { getInitials } from "@/lib/getInitials";
+import { useUnreadAppointmentRequests } from "@/hooks/useUnreadAppointmentRequests";
+import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
+import { backendAssetUrl } from "@/lib/backendAsset";
 
 const SIDEBAR_GROUPS: SidebarGroup[] = ["User Modules", "Configuration"];
 
@@ -24,7 +24,7 @@ export default function Sidebar() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  const [currentUser, setCurrentUser] = useState<CurrentUserType | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUserDetail | null>(null);
   // Purely hover-driven: collapsed to icons-only by default for every role,
   // expands on mouse-over, collapses again on mouse-out. No pinned/persisted
   // state, so server and client both start collapsed — no hydration risk.
@@ -33,15 +33,12 @@ export default function Sidebar() {
   useEffect(() => {
     queueMicrotask(() => {
       setMounted(true);
-      const user = localStorage.getItem("yoton_user_detail");
-      if (user) {
-        try {
-          setCurrentUser(JSON.parse(user));
-        } catch (e) {
-          console.error("Failed to parse user detail", e);
-        }
-      }
+      setCurrentUser(getUserDetail());
     });
+
+    // The sidebar stays mounted while the user is on the settings page, so a
+    // freshly uploaded avatar/logo needs an explicit nudge to show up here.
+    return onUserDetailChange(() => setCurrentUser(getUserDetail()));
   }, []);
 
   const handleLogout = async () => {
@@ -58,6 +55,8 @@ export default function Sidebar() {
   ];
 
   const userRole = currentUser?.role || "";
+  const { canSeeRequests, notifications, unreadCount, isRinging, clearUnread } =
+    useUnreadAppointmentRequests(userRole);
 
   return (
     <div
@@ -67,23 +66,60 @@ export default function Sidebar() {
         }`}
     >
       <div className={`flex items-center mb-8 ${isExpanded ? "px-2" : "flex-col gap-2 justify-center"}`}>
-        <div className="relative shrink-0">
-          <Image src={logo} alt="logo" height={40} width={40} className="rounded-lg shadow-sm" loading="eager" />
+        <div className="relative h-10 w-10 shrink-0">
+          {/* Collapsed: company logo (falls back to the bundled Yoton logo).
+              Expanded (on hover): the signed-in user's own photo, or their
+              initials when no photo has been uploaded. Collapsing reverts to
+              the company logo either way. */}
+          {isExpanded ? (
+            currentUser?.userImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path; not eligible for next/image's static optimization
+              <img
+                src={backendAssetUrl(currentUser.userImage) ?? undefined}
+                alt={currentUser?.name || "User"}
+                className="h-10 w-10 rounded-lg object-cover shadow-sm"
+              />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-sm">
+                {currentUser?.name ? getInitials(currentUser.name) : <UserRound size={18} />}
+              </div>
+            )
+          ) : currentUser?.companyLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path; not eligible for next/image's static optimization
+            <img
+              src={backendAssetUrl(currentUser.companyLogoUrl) ?? undefined}
+              alt={currentUser?.companyName || "Company logo"}
+              className="h-10 w-10 rounded-lg object-cover shadow-sm"
+            />
+          ) : (
+            <Image src={logo} alt="logo" height={40} width={40} className="rounded-lg shadow-sm" loading="eager" />
+          )}
+
+          {!isExpanded && mounted && canSeeRequests && unreadCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-card">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
         </div>
         <div
           className={`sidebar-label overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${isExpanded ? "ml-3 max-w-[200px] opacity-100" : "ml-0 max-w-0 opacity-0"
             }`}
         >
           <h1 className="text-lg font-bold text-primary truncate">
-            Yoton Health
+            {currentUser?.companyName || "Yoton Health"}
           </h1>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold truncate">
             {currentUser?.role || "Guest"} • {currentUser?.name || "User"}
           </div>
         </div>
-        {mounted && (
-          <div className={isExpanded ? "ml-auto" : ""}>
-            <NotificationBell role={currentUser?.role || ""} />
+        {mounted && isExpanded && canSeeRequests && (
+          <div className="ml-auto">
+            <NotificationBell
+              notifications={notifications}
+              unreadCount={unreadCount}
+              isRinging={isRinging}
+              onOpen={clearUnread}
+            />
           </div>
         )}
       </div>
@@ -98,13 +134,17 @@ export default function Sidebar() {
 
             return (
               <div key={group}>
-                <span className="mb-1.5 block overflow-hidden whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                <span
+                  className={`sidebar-label mb-1.5 block overflow-hidden whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 transition-all duration-300 ease-in-out ${isExpanded ? "max-h-4 opacity-100" : "max-h-0 opacity-0"
+                    }`}
+                >
                   {group}
                 </span>
-                {/* Icon-only grid — the item name is no longer shown inline, only as a
-                    native tooltip on hover (title attribute), so the sidebar can stay
-                    narrow while still surfacing every module at a glance. */}
-                <div className={`grid gap-2 ${isExpanded ? "grid-cols-4" : "grid-cols-3"}`}>
+                {/* Collapsed: a single-column icon list (a normal sidebar rail).
+                    Expanded (on hover): icons rearrange into a grid so the wider
+                    sidebar doesn't leave a single narrow column of empty space.
+                    Name is a native tooltip either way (title attribute). */}
+                <div className={isExpanded ? "grid grid-cols-4 gap-2" : "flex flex-col gap-2"}>
                   {items.map((item) => {
                     const isActive = pathname === item.navLink;
                     return (

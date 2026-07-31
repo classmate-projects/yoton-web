@@ -1,4 +1,11 @@
 export const ENDPOINTS = {
+    AUTH: {
+        ME: `/api/auth/me`,
+        UPLOAD_AVATAR: `/api/auth/upload-avatar`,
+    },
+    COMPANY: {
+        UPLOAD_LOGO: `/api/company/upload-logo`,
+    },
     DASHBOARD: {
         GET_COUNTS: `/api/dashboard/counts`,
         GET_WEEKLY_APPOINTMENTS: `/api/dashboard/appointments/weekly`,
