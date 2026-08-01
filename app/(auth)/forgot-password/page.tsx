@@ -22,8 +22,12 @@ function ForgotPasswordPageInner() {
   // since echoing it back in the initial API response would let anyone who
   // merely knows an account's email reset that account's password outright.
   const tokenFromLink = searchParams.get("token") ?? "";
+  // Prefilled when the mobile app hands off here (e.g. "update your default
+  // password" prompt) so the patient isn't retyping an email they already gave
+  // the app moments ago.
+  const emailFromLink = searchParams.get("email") ?? "";
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(emailFromLink);
   const [token] = useState(tokenFromLink);
   const [emailSent, setEmailSent] = useState(false);
   const [password, setPassword] = useState("");
