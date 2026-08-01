@@ -5,8 +5,8 @@ import SearchIcon from "@/public/icons/SearchIcon";
 import Link from "next/link";
 import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
-import { MdContacts, MdOutlinePersonAddAlt1, MdOutlineUploadFile } from "react-icons/md";
-import { CalendarDays, Clock, Stethoscope, X } from "lucide-react";
+import { MdContacts, MdOutlinePersonAddAlt1, MdOutlineUploadFile, MdOutlineMailOutline } from "react-icons/md";
+import { CalendarDays, Clock, Loader2, Stethoscope, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -26,6 +26,7 @@ const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "Other"]
 
 export default function PatientRecordsPage() {
   const [patients, setPatients] = useState<PatientGetAllType[]>([]);
+  const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -206,6 +207,26 @@ export default function PatientRecordsPage() {
     }
   };
 
+  const handleResendWelcomeEmail = async (id: string, name: string) => {
+    try {
+      setResendingEmailId(id);
+      const data = await ReceptionService.resendWelcomeEmail(id);
+      if (data.status === false) {
+        toast.error(data.message || `Couldn't resend the login email to ${name}`);
+      } else {
+        toast.success(data.message || `Login email resent to ${name}`);
+      }
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || "Failed to resend the login email");
+      } else {
+        toast.error("Failed to resend the login email");
+      }
+    } finally {
+      setResendingEmailId(null);
+    }
+  };
+
   const confirmDelete = (id: string, name: string) => {
     toast(
       <span>
@@ -302,6 +323,18 @@ export default function PatientRecordsPage() {
                           title="Upload External Document"
                         >
                           <MdOutlineUploadFile className="text-blue-600" size={18} />
+                        </button>
+                        <button
+                          onClick={() => handleResendWelcomeEmail(patient.opId, patient.name)}
+                          disabled={resendingEmailId === patient.opId}
+                          className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Resend App Login Email"
+                        >
+                          {resendingEmailId === patient.opId ? (
+                            <Loader2 className="text-blue-600 animate-spin" size={18} />
+                          ) : (
+                            <MdOutlineMailOutline className="text-blue-600" size={18} />
+                          )}
                         </button>
                         <button
                           onClick={() => confirmDelete(patient.opId, patient.name)}

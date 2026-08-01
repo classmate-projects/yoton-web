@@ -18,6 +18,10 @@ export const ReceptionService = {
         const { data } = await api.delete(ENDPOINTS.RECEPTION.SOFT_DELETE(id))
         return data;
     },
+    resendWelcomeEmail: async (patientId: string) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.RESEND_WELCOME_EMAIL(patientId))
+        return data;
+    },
     getDoctorAvailability: async () => {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DOCTOR_AVAILABILITY)
         return data;

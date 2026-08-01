@@ -77,6 +77,18 @@ function DoctorWorkbenchInner() {
   const isAdmin = role === "admin";
   const doctorIdParam = isAdmin ? selectedDoctorId || undefined : undefined;
 
+  // Admin can browse "All doctors" read-only, but every write endpoint requires a real
+  // doctorId server-side (EmrController.ResolveDoctorScopeAsync with requireForAdmin:true) —
+  // without this guard, writing while "All doctors" is selected fails with a raw
+  // "doctorId is required" 400 that looks like a broken app rather than a missing selection.
+  const requireDoctorSelected = () => {
+    if (isAdmin && !selectedDoctorId) {
+      toast.error("Select a doctor first — you're viewing across all doctors.");
+      return false;
+    }
+    return true;
+  };
+
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
@@ -210,7 +222,7 @@ function DoctorWorkbenchInner() {
   }, [summary?.latestEncounter?.encounterId]);
 
   const saveEncounter = async () => {
-    if (!selectedPatientId) return;
+    if (!selectedPatientId || !requireDoctorSelected()) return;
     try {
       setIsSavingEncounter(true);
       await EmrService.upsertEncounter(
@@ -249,6 +261,7 @@ function DoctorWorkbenchInner() {
       toast.error("Condition name is required");
       return;
     }
+    if (!requireDoctorSelected()) return;
     try {
       await EmrService.addChronicCondition(
         selectedPatientId,
@@ -275,6 +288,7 @@ function DoctorWorkbenchInner() {
       toast.error("Substance is required");
       return;
     }
+    if (!requireDoctorSelected()) return;
     try {
       await EmrService.addAllergy(
         selectedPatientId,
@@ -303,6 +317,7 @@ function DoctorWorkbenchInner() {
       toast.error("Drug name is required");
       return;
     }
+    if (!requireDoctorSelected()) return;
     try {
       await EmrService.addMedication(
         selectedPatientId,
@@ -413,6 +428,7 @@ function DoctorWorkbenchInner() {
       toast.error("Select a target specialty");
       return;
     }
+    if (!requireDoctorSelected()) return;
     try {
       await EmrService.addReferral(
         selectedPatientId,
@@ -436,7 +452,7 @@ function DoctorWorkbenchInner() {
   const [noteText, setNoteText] = useState("");
 
   const addQuickNote = async () => {
-    if (!selectedPatientId || !noteText.trim()) return;
+    if (!selectedPatientId || !noteText.trim() || !requireDoctorSelected()) return;
     try {
       await EmrService.addQuickNote(selectedPatientId, noteText.trim(), doctorIdParam);
       toast.success("Note added");

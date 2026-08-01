@@ -38,6 +38,7 @@ import {
 } from "@/types/appointment.type";
 import { VisitType } from "@/types/visit.type";
 import { useAppointmentRequestSignalR } from "@/hooks/useAppointmentRequestSignalR";
+import { getInitials } from "@/lib/getInitials";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const toDateInputValue = (date: Date) => {
@@ -313,14 +314,6 @@ export default function Appointments() {
       )
     : 0;
 
-  const getInitials = (name: string) =>
-    name
-      .replace(/^Dr\.\s*/i, "")
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part.charAt(0).toUpperCase())
-      .join("");
 
   const handleSelectSlot = (slot: DoctorDaySlotsType["slots"][number]) => {
     if (slot.isPast) return;
