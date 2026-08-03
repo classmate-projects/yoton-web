@@ -10,27 +10,38 @@ import {
   AlertTriangle,
   Bell,
   CalendarClock,
+  CalendarPlus,
+  ClipboardCheck,
+  ClipboardList,
   FileText,
   FlaskConical,
   HeartPulse,
+  Lock,
   Pill,
   Plus,
   Save,
   Search,
   Share2,
   Stethoscope,
+  Stamp,
   Users,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
+import MedicationOrderModal from "@/components/doctor/MedicationOrderModal";
+import ReviewOfSystemsPanel, { ReviewOfSystemsValue } from "@/components/doctor/ReviewOfSystemsPanel";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
 import { SpecializationService } from "@/services/specialization.service";
 import { LabService } from "@/services/lab.service";
 import { RadiologyService } from "@/services/radiology.service";
+import { ConfigListService } from "@/services/configList.service";
 import {
   ActiveCaseItemType,
+  DoctorConfidentialNoteType,
   DoctorDashboardSummaryType,
   EmrPatientListItem,
+  MedicationPayload,
   PatientSummaryType,
   QuickNoteType,
   TodayScheduleItemType,
@@ -73,6 +84,7 @@ function DoctorWorkbenchInner() {
 
   const [specializations, setSpecializations] = useState<SpecializationTypes[]>([]);
   const [quickNotes, setQuickNotes] = useState<QuickNoteType[]>([]);
+  const [confidentialNotes, setConfidentialNotes] = useState<DoctorConfidentialNoteType[]>([]);
 
   const isAdmin = role === "admin";
   const doctorIdParam = isAdmin ? selectedDoctorId || undefined : undefined;
@@ -160,7 +172,12 @@ function DoctorWorkbenchInner() {
   // ---------------- PATIENT SUMMARY (EMR PANEL) ----------------
   const openPatient = async (patientId: string) => {
     setSelectedPatientId(patientId);
-    await Promise.all([fetchSummary(patientId), fetchQuickNotes(patientId), fetchDocuments(patientId)]);
+    await Promise.all([
+      fetchSummary(patientId),
+      fetchQuickNotes(patientId),
+      fetchDocuments(patientId),
+      fetchConfidentialNotes(patientId),
+    ]);
   };
 
   const fetchSummary = async (patientId: string) => {
@@ -185,10 +202,20 @@ function DoctorWorkbenchInner() {
     }
   };
 
+  const fetchConfidentialNotes = async (patientId: string) => {
+    try {
+      const res = await EmrService.getConfidentialNotes(patientId);
+      setConfidentialNotes(res.data || []);
+    } catch {
+      setConfidentialNotes([]);
+    }
+  };
+
   const backToWorkbench = () => {
     setSelectedPatientId(null);
     setSummary(null);
     setQuickNotes([]);
+    setConfidentialNotes([]);
     fetchWorkbench();
   };
 
@@ -202,20 +229,51 @@ function DoctorWorkbenchInner() {
   }, [checkedAuth, initialPatientIdParam]);
 
   // ---------------- ENCOUNTER FORM ----------------
+  const emptyRos: ReviewOfSystemsValue = {
+    rosConstitutional: "",
+    rosEyeEarNoseMouthThroat: "",
+    rosCardiovascular: "",
+    rosRespiratory: "",
+    rosGastroenterology: "",
+    rosGenitourinary: "",
+    rosMusculoskeletal: "",
+    rosNeurological: "",
+    rosPsychiatric: "",
+    rosEndocrine: "",
+    rosHematologic: "",
+    rosAllergicImmunologic: "",
+    rosIntegumentary: "",
+  };
+
   const [encounterForm, setEncounterForm] = useState({
     chiefComplaint: "",
-    diagnosisCode: "",
-    diagnosisDescription: "",
     plannedProcedures: "",
+    examinationNotes: "",
+    clinicalExamination: "",
+    ...emptyRos,
   });
   const [isSavingEncounter, setIsSavingEncounter] = useState(false);
 
   useEffect(() => {
+    const e = summary?.latestEncounter;
     setEncounterForm({
-      chiefComplaint: summary?.latestEncounter?.chiefComplaint || "",
-      diagnosisCode: summary?.latestEncounter?.diagnosisCode || "",
-      diagnosisDescription: summary?.latestEncounter?.diagnosisDescription || "",
-      plannedProcedures: summary?.latestEncounter?.plannedProcedures || "",
+      chiefComplaint: e?.chiefComplaint || "",
+      plannedProcedures: e?.plannedProcedures || "",
+      examinationNotes: e?.examinationNotes || "",
+      clinicalExamination: e?.clinicalExamination || "",
+      rosConstitutional: e?.rosConstitutional || "",
+      rosEyeEarNoseMouthThroat: e?.rosEyeEarNoseMouthThroat || "",
+      rosCardiovascular: e?.rosCardiovascular || "",
+      rosRespiratory: e?.rosRespiratory || "",
+      rosGastroenterology: e?.rosGastroenterology || "",
+      rosGenitourinary: e?.rosGenitourinary || "",
+      rosMusculoskeletal: e?.rosMusculoskeletal || "",
+      rosNeurological: e?.rosNeurological || "",
+      rosPsychiatric: e?.rosPsychiatric || "",
+      rosEndocrine: e?.rosEndocrine || "",
+      rosHematologic: e?.rosHematologic || "",
+      rosAllergicImmunologic: e?.rosAllergicImmunologic || "",
+      rosIntegumentary: e?.rosIntegumentary || "",
     });
     // Intentionally re-run only when the encounter identity changes, not on every field edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -304,35 +362,19 @@ function DoctorWorkbenchInner() {
   };
 
   // ---------------- MEDICATIONS ----------------
-  const [medicationForm, setMedicationForm] = useState({
-    drugName: "",
-    dosage: "",
-    frequency: "Once daily (QD)",
-    durationDays: "",
-    priority: "Routine",
-  });
+  const [showMedicationModal, setShowMedicationModal] = useState(false);
 
-  const addMedication = async () => {
-    if (!selectedPatientId || !medicationForm.drugName.trim()) {
-      toast.error("Drug name is required");
-      return;
-    }
+  const addMedication = async (payload: MedicationPayload) => {
+    if (!selectedPatientId) return;
     if (!requireDoctorSelected()) return;
     try {
       await EmrService.addMedication(
         selectedPatientId,
-        {
-          encounterId: summary?.latestEncounter?.encounterId,
-          drugName: medicationForm.drugName.trim(),
-          dosage: medicationForm.dosage.trim() || undefined,
-          frequency: medicationForm.frequency || undefined,
-          durationDays: medicationForm.durationDays ? Number(medicationForm.durationDays) : undefined,
-          priority: medicationForm.priority,
-        },
+        { ...payload, encounterId: summary?.latestEncounter?.encounterId },
         doctorIdParam
       );
-      toast.success("Prescription added");
-      setMedicationForm({ drugName: "", dosage: "", frequency: "Once daily (QD)", durationDays: "", priority: "Routine" });
+      toast.success("Medication order added");
+      setShowMedicationModal(false);
       await fetchSummary(selectedPatientId);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to add medication"));
@@ -350,10 +392,51 @@ function DoctorWorkbenchInner() {
     }
   };
 
+  // ---------------- TREATMENTS (non-drug orders; nurse can only mark Done) ----------------
+  const [treatmentForm, setTreatmentForm] = useState({
+    listItemId: undefined as string | undefined,
+    description: "",
+    instructions: "",
+    quantity: "1",
+    isPackage: false,
+    isBillingPending: false,
+  });
+
+  const addTreatment = async () => {
+    if (!selectedPatientId || !treatmentForm.description.trim()) {
+      toast.error("Select a treatment first");
+      return;
+    }
+    if (!requireDoctorSelected()) return;
+    try {
+      await EmrService.addTreatment(
+        selectedPatientId,
+        {
+          encounterId: summary?.latestEncounter?.encounterId,
+          listItemId: treatmentForm.listItemId,
+          description: treatmentForm.description.trim(),
+          instructions: treatmentForm.instructions.trim() || undefined,
+          quantity: treatmentForm.quantity ? Number(treatmentForm.quantity) : 1,
+          isPackage: treatmentForm.isPackage,
+          isBillingPending: treatmentForm.isBillingPending,
+        },
+        doctorIdParam
+      );
+      toast.success("Treatment ordered");
+      setTreatmentForm({ listItemId: undefined, description: "", instructions: "", quantity: "1", isPackage: false, isBillingPending: false });
+      await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to add treatment"));
+    }
+  };
+
   // ---------------- INVESTIGATION ORDERING (LAB / RADIOLOGY) ----------------
   const [orderForm, setOrderForm] = useState({
     category: "Lab" as "Lab" | "Radiology",
     testType: "",
+    listItemId: undefined as string | undefined,
+    quantity: "1",
+    remarks: "",
     priority: "Normal",
     source: "InHouse",
   });
@@ -361,17 +444,21 @@ function DoctorWorkbenchInner() {
 
   const orderInvestigation = async () => {
     if (!selectedPatientId || !orderForm.testType.trim()) {
-      toast.error("Test/scan type is required");
+      toast.error("Select an investigation first");
       return;
     }
     try {
       setIsOrdering(true);
+      const quantity = orderForm.quantity ? Number(orderForm.quantity) : 1;
       if (orderForm.category === "Lab") {
         await LabService.create({
           patientId: selectedPatientId,
           doctorId: doctorIdParam,
           visitId: visitIdParam,
           testType: orderForm.testType.trim(),
+          listItemId: orderForm.listItemId,
+          quantity,
+          remarks: orderForm.remarks.trim() || undefined,
           priority: orderForm.priority,
           source: orderForm.source,
         });
@@ -381,16 +468,108 @@ function DoctorWorkbenchInner() {
           doctorId: doctorIdParam,
           visitId: visitIdParam,
           scanType: orderForm.testType.trim(),
+          listItemId: orderForm.listItemId,
+          quantity,
+          remarks: orderForm.remarks.trim() || undefined,
           priority: orderForm.priority,
           source: orderForm.source,
         });
       }
       toast.success(`${orderForm.category} order placed`);
-      setOrderForm({ category: orderForm.category, testType: "", priority: "Normal", source: "InHouse" });
+      setOrderForm({ category: orderForm.category, testType: "", listItemId: undefined, quantity: "1", remarks: "", priority: "Normal", source: "InHouse" });
     } catch (error) {
       toast.error(errorMessage(error, "Failed to place order"));
     } finally {
       setIsOrdering(false);
+    }
+  };
+
+  // ---------------- CONFIDENTIAL STATEMENT (visible only to this doctor) ----------------
+  const [confidentialText, setConfidentialText] = useState("");
+  const [isSavingConfidential, setIsSavingConfidential] = useState(false);
+
+  const addConfidentialNote = async () => {
+    if (!selectedPatientId || !confidentialText.trim()) return;
+    try {
+      setIsSavingConfidential(true);
+      await EmrService.addConfidentialNote(selectedPatientId, { contentHtml: confidentialText.trim() });
+      toast.success("Confidential statement saved");
+      setConfidentialText("");
+      await fetchConfidentialNotes(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save confidential statement"));
+    } finally {
+      setIsSavingConfidential(false);
+    }
+  };
+
+  // ---------------- DIAGNOSIS ----------------
+  const addDiagnosis = async (listItemId: string) => {
+    if (!selectedPatientId) return;
+    if (!summary?.latestEncounter?.encounterId) {
+      toast.error("Save the encounter before adding a diagnosis");
+      return;
+    }
+    if (!requireDoctorSelected()) return;
+    try {
+      await EmrService.addDiagnosis(
+        selectedPatientId,
+        { encounterId: summary.latestEncounter.encounterId, listItemId },
+        doctorIdParam
+      );
+      toast.success("Diagnosis added");
+      await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to add diagnosis"));
+    }
+  };
+
+  const setPrimaryDiagnosis = async (encounterDiagnosisId: string) => {
+    if (!selectedPatientId) return;
+    try {
+      await EmrService.setPrimaryDiagnosis(encounterDiagnosisId, doctorIdParam);
+      toast.success("Primary diagnosis updated");
+      await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to update primary diagnosis"));
+    }
+  };
+
+  const removeDiagnosis = async (encounterDiagnosisId: string) => {
+    if (!selectedPatientId) return;
+    try {
+      await EmrService.removeDiagnosis(encounterDiagnosisId, doctorIdParam);
+      toast.success("Diagnosis removed");
+      await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to remove diagnosis"));
+    }
+  };
+
+  // ---------------- FOLLOW-UP ----------------
+  const [followUpForm, setFollowUpForm] = useState({ followUpDate: "", instructions: "" });
+
+  const addFollowUp = async () => {
+    if (!selectedPatientId || !followUpForm.followUpDate) {
+      toast.error("Follow-up date is required");
+      return;
+    }
+    if (!requireDoctorSelected()) return;
+    try {
+      await EmrService.addFollowUp(
+        selectedPatientId,
+        {
+          encounterId: summary?.latestEncounter?.encounterId,
+          followUpDate: followUpForm.followUpDate,
+          instructions: followUpForm.instructions.trim() || undefined,
+        },
+        doctorIdParam
+      );
+      toast.success("Follow-up added");
+      setFollowUpForm({ followUpDate: "", instructions: "" });
+      await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to add follow-up"));
     }
   };
 
@@ -553,39 +732,98 @@ function DoctorWorkbenchInner() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 flex flex-col gap-6">
-                {/* Chief complaint / diagnosis */}
-                <div className="card p-6 flex flex-col gap-4">
+                {/* Confidential statement — visible only to this doctor, never shared
+                    with other doctors, nurses, or admin. */}
+                <div className="card p-6 flex flex-col gap-3 border-l-4 border-l-amber-500">
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <FileText size={18} className="text-primary" /> Chief Complaint & Diagnosis
+                    <Lock size={18} className="text-amber-500" /> Confidential Statement
+                    <span className="text-xs font-normal text-muted-foreground ml-1">(visible only to you)</span>
                   </h2>
                   <textarea
-                    placeholder="Describe the patient's primary reason for the visit..."
-                    value={encounterForm.chiefComplaint}
-                    onChange={(e) => setEncounterForm((p) => ({ ...p, chiefComplaint: e.target.value }))}
-                    className="w-full min-h-24 text-sm"
+                    placeholder="Private notes only you can see..."
+                    value={confidentialText}
+                    onChange={(e) => setConfidentialText(e.target.value)}
+                    className="w-full min-h-16 text-sm"
                   />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={addConfidentialNote}
+                    disabled={isSavingConfidential || !confidentialText.trim()}
+                    className="self-start flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Lock size={15} /> Save Privately
+                  </button>
+                  {confidentialNotes.length > 0 && (
+                    <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
+                      {confidentialNotes.map((n) => (
+                        <div key={n.doctorConfidentialNoteId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
+                          <p className="text-foreground">{n.contentHtml}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{formatDateTime(n.createdAt)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Chief complaint / examination notes / review of systems / clinical exam */}
+                <div className="card p-6 flex flex-col gap-4">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <FileText size={18} className="text-primary" /> Encounter Notes
+                  </h2>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Chief complaint</label>
                     <input
                       type="text"
-                      placeholder="Diagnosis code (e.g. E11.9)"
-                      value={encounterForm.diagnosisCode}
-                      onChange={(e) => setEncounterForm((p) => ({ ...p, diagnosisCode: e.target.value }))}
-                      className="h-10 text-sm"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Diagnosis description"
-                      value={encounterForm.diagnosisDescription}
-                      onChange={(e) => setEncounterForm((p) => ({ ...p, diagnosisDescription: e.target.value }))}
+                      placeholder="Patient's primary reason for the visit..."
+                      value={encounterForm.chiefComplaint}
+                      onChange={(e) => setEncounterForm((p) => ({ ...p, chiefComplaint: e.target.value }))}
                       className="h-10 text-sm"
                     />
                   </div>
-                  <textarea
-                    placeholder="Planned procedures..."
-                    value={encounterForm.plannedProcedures}
-                    onChange={(e) => setEncounterForm((p) => ({ ...p, plannedProcedures: e.target.value }))}
-                    className="w-full min-h-16 text-sm"
-                  />
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Examination notes</label>
+                    <textarea
+                      placeholder="Doctor's examination notes..."
+                      value={encounterForm.examinationNotes}
+                      onChange={(e) => setEncounterForm((p) => ({ ...p, examinationNotes: e.target.value }))}
+                      className="w-full min-h-16 text-sm"
+                    />
+                  </div>
+
+                  <details className="group">
+                    <summary className="cursor-pointer text-sm font-semibold text-foreground/90 flex items-center gap-2 list-none">
+                      <ClipboardList size={16} className="text-primary" /> Review of Systems
+                      <span className="text-xs font-normal text-muted-foreground">(click to expand)</span>
+                    </summary>
+                    <div className="mt-3">
+                      <ReviewOfSystemsPanel
+                        value={encounterForm}
+                        onChange={(key, value) => setEncounterForm((p) => ({ ...p, [key]: value }))}
+                      />
+                    </div>
+                  </details>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Clinical examination</label>
+                    <textarea
+                      placeholder="Clinical examination findings..."
+                      value={encounterForm.clinicalExamination}
+                      onChange={(e) => setEncounterForm((p) => ({ ...p, clinicalExamination: e.target.value }))}
+                      className="w-full min-h-16 text-sm"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Planned procedures</label>
+                    <textarea
+                      placeholder="Planned procedures..."
+                      value={encounterForm.plannedProcedures}
+                      onChange={(e) => setEncounterForm((p) => ({ ...p, plannedProcedures: e.target.value }))}
+                      className="w-full min-h-16 text-sm"
+                    />
+                  </div>
+
                   <div className="flex gap-3">
                     <button
                       onClick={saveEncounter}
@@ -604,6 +842,64 @@ function DoctorWorkbenchInner() {
                       </button>
                     )}
                   </div>
+                </div>
+
+                {/* Diagnosis — search from the admin-managed diagnosis catalog; first one
+                    added becomes primary, others secondary, primary can be reassigned. */}
+                <div className="card p-6 flex flex-col gap-3">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <ClipboardList size={18} className="text-primary" /> Diagnosis
+                  </h2>
+                  {summary.diagnoses.length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {summary.diagnoses.map((d) => (
+                        <div
+                          key={d.encounterDiagnosisId}
+                          className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
+                        >
+                          <div className="flex items-center gap-2">
+                            {d.isPrimary && (
+                              <span className="rounded-full bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5">
+                                Primary
+                              </span>
+                            )}
+                            <span className="font-medium">{d.diagnosisName}</span>
+                            {d.diagnosisCode && <span className="text-xs text-muted-foreground">{d.diagnosisCode}</span>}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {!d.isPrimary && (
+                              <button
+                                onClick={() => setPrimaryDiagnosis(d.encounterDiagnosisId)}
+                                className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                              >
+                                <Stamp size={12} /> Make primary
+                              </button>
+                            )}
+                            <button
+                              onClick={() => removeDiagnosis(d.encounterDiagnosisId)}
+                              className="text-xs font-semibold text-red-600 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No diagnoses added yet.</p>
+                  )}
+                  <CatalogSearchInput
+                    placeholder="Search diagnosis..."
+                    fetchOptions={async (search) => {
+                      const res = await ConfigListService.get("Diagnosis", search);
+                      return (res.data || []).map((i: { listItemId: string; name: string; code: string | null }) => ({
+                        id: i.listItemId,
+                        name: i.name,
+                        code: i.code,
+                      }));
+                    }}
+                    onSelect={(opt) => addDiagnosis(opt.id)}
+                  />
                 </div>
 
                 {/* Medical history */}
@@ -707,9 +1003,17 @@ function DoctorWorkbenchInner() {
 
                 {/* Medications */}
                 <div className="card p-6 flex flex-col gap-4">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Pill size={18} className="text-primary" /> Medication Tracking
-                  </h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <Pill size={18} className="text-primary" /> Medication Tracking
+                    </h2>
+                    <button
+                      onClick={() => setShowMedicationModal(true)}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                    >
+                      <Search size={14} /> New Order
+                    </button>
+                  </div>
 
                   <div>
                     <p className="text-sm font-semibold text-foreground/90 mb-2">Current Medications</p>
@@ -720,8 +1024,10 @@ function DoctorWorkbenchInner() {
                             <tr>
                               <th>Drug</th>
                               <th>Dosage</th>
+                              <th>Route</th>
                               <th>Frequency</th>
                               <th>Priority</th>
+                              <th>Instructions</th>
                               <th>Action</th>
                             </tr>
                           </thead>
@@ -729,7 +1035,8 @@ function DoctorWorkbenchInner() {
                             {summary.currentMedications.map((m) => (
                               <tr key={m.medicationId}>
                                 <td className="font-semibold">{m.drugName}</td>
-                                <td>{m.dosage || "—"}</td>
+                                <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
+                                <td>{m.route || "—"}</td>
                                 <td>{m.frequency || "—"}</td>
                                 <td>
                                   {m.priority !== "Routine" ? (
@@ -740,6 +1047,7 @@ function DoctorWorkbenchInner() {
                                     <span className="text-muted-foreground text-xs">Routine</span>
                                   )}
                                 </td>
+                                <td className="text-xs text-muted-foreground max-w-48 truncate">{m.instructions || "—"}</td>
                                 <td>
                                   <button
                                     onClick={() => discontinueMedication(m.medicationId)}
@@ -777,56 +1085,109 @@ function DoctorWorkbenchInner() {
                     </div>
                   )}
 
+                </div>
+
+                {/* Treatments — non-drug orders (dressing changes, physio, etc.); nurse
+                    may only flip Status to Done, never edit the order itself. */}
+                <div className="card p-6 flex flex-col gap-4">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <ClipboardCheck size={18} className="text-primary" /> Treatments
+                  </h2>
+                  {summary.treatments.length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {summary.treatments.map((t) => (
+                        <div key={t.treatmentId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                          <div>
+                            <span className="font-medium">
+                              {t.description} {t.quantity > 1 && <span className="text-xs text-muted-foreground">×{t.quantity}</span>}
+                            </span>
+                            {t.instructions && <span className="text-xs text-muted-foreground ml-2">{t.instructions}</span>}
+                            <div className="flex gap-1 mt-1">
+                              {t.isPackage && (
+                                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-700">Package</span>
+                              )}
+                              {t.isBillingPending && (
+                                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-purple-100 text-purple-700">Billing pending</span>
+                              )}
+                            </div>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${t.status === "Done" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                            {t.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No treatments ordered.</p>
+                  )}
+
                   <div className="border-t border-border pt-4 flex flex-col gap-2">
-                    <p className="text-sm font-semibold text-foreground/90">New Prescription</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        placeholder="Drug name (e.g. Metoprolol)"
-                        value={medicationForm.drugName}
-                        onChange={(e) => setMedicationForm((p) => ({ ...p, drugName: e.target.value }))}
-                        className="h-10 text-sm"
+                    <p className="text-sm font-semibold text-foreground/90">New Treatment</p>
+                    {treatmentForm.description ? (
+                      <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                        <span className="font-medium">{treatmentForm.description}</span>
+                        <button
+                          type="button"
+                          onClick={() => setTreatmentForm((p) => ({ ...p, listItemId: undefined, description: "" }))}
+                          className="text-xs font-semibold text-primary hover:underline"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <CatalogSearchInput
+                        placeholder="Search treatment..."
+                        fetchOptions={async (search) => {
+                          const res = await ConfigListService.get("Treatment", search);
+                          return (res.data || []).map((i: { listItemId: string; name: string; code: string | null }) => ({
+                            id: i.listItemId,
+                            name: i.name,
+                            code: i.code,
+                          }));
+                        }}
+                        onSelect={(opt) => setTreatmentForm((p) => ({ ...p, listItemId: opt.id, description: opt.name }))}
                       />
-                      <input
-                        type="text"
-                        placeholder="Dose (e.g. 50mg)"
-                        value={medicationForm.dosage}
-                        onChange={(e) => setMedicationForm((p) => ({ ...p, dosage: e.target.value }))}
-                        className="h-10 text-sm"
-                      />
-                      <select
-                        value={medicationForm.frequency}
-                        onChange={(e) => setMedicationForm((p) => ({ ...p, frequency: e.target.value }))}
-                        className="h-10 text-sm"
-                      >
-                        <option>Once daily (QD)</option>
-                        <option>Twice daily (BID)</option>
-                        <option>Three times daily (TID)</option>
-                        <option>Four times daily (QID)</option>
-                        <option>As needed (PRN)</option>
-                      </select>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
                       <input
                         type="number"
-                        placeholder="Duration (days)"
-                        value={medicationForm.durationDays}
-                        onChange={(e) => setMedicationForm((p) => ({ ...p, durationDays: e.target.value }))}
+                        min={1}
+                        placeholder="Quantity"
+                        value={treatmentForm.quantity}
+                        onChange={(e) => setTreatmentForm((p) => ({ ...p, quantity: e.target.value }))}
                         className="h-10 text-sm"
                       />
-                      <select
-                        value={medicationForm.priority}
-                        onChange={(e) => setMedicationForm((p) => ({ ...p, priority: e.target.value }))}
+                      <input
+                        type="text"
+                        placeholder="Instructions (optional)"
+                        value={treatmentForm.instructions}
+                        onChange={(e) => setTreatmentForm((p) => ({ ...p, instructions: e.target.value }))}
                         className="h-10 text-sm"
-                      >
-                        <option value="Routine">Routine</option>
-                        <option value="STAT">STAT</option>
-                        <option value="PRN">PRN</option>
-                      </select>
+                      />
+                    </div>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={treatmentForm.isPackage}
+                          onChange={(e) => setTreatmentForm((p) => ({ ...p, isPackage: e.target.checked }))}
+                        />
+                        Package
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={treatmentForm.isBillingPending}
+                          onChange={(e) => setTreatmentForm((p) => ({ ...p, isBillingPending: e.target.checked }))}
+                        />
+                        Pending (don&apos;t bill now — carry to next visit)
+                      </label>
                     </div>
                     <button
-                      onClick={addMedication}
+                      onClick={addTreatment}
                       className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
                     >
-                      <Plus size={15} /> Add Prescription
+                      <Plus size={15} /> Order Treatment
                     </button>
                   </div>
                 </div>
@@ -856,14 +1217,40 @@ function DoctorWorkbenchInner() {
                       Radiology
                     </label>
                   </div>
-                  <input
-                    type="text"
-                    placeholder={orderForm.category === "Lab" ? "Test type (e.g. CBC)" : "Scan type (e.g. MRI Brain)"}
-                    value={orderForm.testType}
-                    onChange={(e) => setOrderForm((p) => ({ ...p, testType: e.target.value }))}
-                    className="h-10 text-sm"
-                  />
+                  {orderForm.testType ? (
+                    <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                      <span className="font-medium">{orderForm.testType}</span>
+                      <button
+                        type="button"
+                        onClick={() => setOrderForm((p) => ({ ...p, listItemId: undefined, testType: "" }))}
+                        className="text-xs font-semibold text-primary hover:underline"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  ) : (
+                    <CatalogSearchInput
+                      placeholder="Search investigation..."
+                      fetchOptions={async (search) => {
+                        const res = await ConfigListService.get("Investigation", search);
+                        return (res.data || []).map((i: { listItemId: string; name: string; code: string | null }) => ({
+                          id: i.listItemId,
+                          name: i.name,
+                          code: i.code,
+                        }));
+                      }}
+                      onSelect={(opt) => setOrderForm((p) => ({ ...p, listItemId: opt.id, testType: opt.name }))}
+                    />
+                  )}
                   <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder="Quantity"
+                      value={orderForm.quantity}
+                      onChange={(e) => setOrderForm((p) => ({ ...p, quantity: e.target.value }))}
+                      className="h-10 text-sm"
+                    />
                     <select
                       value={orderForm.priority}
                       onChange={(e) => setOrderForm((p) => ({ ...p, priority: e.target.value }))}
@@ -872,15 +1259,21 @@ function DoctorWorkbenchInner() {
                       <option value="Normal">Normal</option>
                       <option value="Urgent">Urgent</option>
                     </select>
-                    <select
-                      value={orderForm.source}
-                      onChange={(e) => setOrderForm((p) => ({ ...p, source: e.target.value }))}
-                      className="h-10 text-sm"
-                    >
-                      <option value="InHouse">In-house</option>
-                      <option value="External">External</option>
-                    </select>
                   </div>
+                  <select
+                    value={orderForm.source}
+                    onChange={(e) => setOrderForm((p) => ({ ...p, source: e.target.value }))}
+                    className="h-10 text-sm"
+                  >
+                    <option value="InHouse">In-house</option>
+                    <option value="External">External</option>
+                  </select>
+                  <textarea
+                    placeholder="Remarks for the lab (optional)"
+                    value={orderForm.remarks}
+                    onChange={(e) => setOrderForm((p) => ({ ...p, remarks: e.target.value }))}
+                    className="w-full min-h-12 text-sm"
+                  />
                   <button
                     onClick={orderInvestigation}
                     disabled={isOrdering}
@@ -958,6 +1351,45 @@ function DoctorWorkbenchInner() {
                   )}
                 </div>
 
+                {/* Follow-up — an optional booking, not a confirmed appointment; front
+                    office calls the patient to arrange the actual visit. */}
+                <div className="card p-6 flex flex-col gap-3">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <CalendarPlus size={18} className="text-primary" /> Follow-Up
+                  </h2>
+                  <input
+                    type="date"
+                    value={followUpForm.followUpDate}
+                    onChange={(e) => setFollowUpForm((p) => ({ ...p, followUpDate: e.target.value }))}
+                    className="h-10 text-sm"
+                  />
+                  <textarea
+                    placeholder="Follow-up instructions (optional)"
+                    value={followUpForm.instructions}
+                    onChange={(e) => setFollowUpForm((p) => ({ ...p, instructions: e.target.value }))}
+                    className="w-full min-h-14 text-sm"
+                  />
+                  <button
+                    onClick={addFollowUp}
+                    className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  >
+                    <CalendarPlus size={15} /> Add Follow-Up
+                  </button>
+                  {summary.followUps.length > 0 && (
+                    <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+                      {summary.followUps.map((f) => (
+                        <div
+                          key={f.followUpId}
+                          className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
+                        >
+                          <span className="font-medium">{formatDate(f.followUpDate)}</span>
+                          {f.instructions && <span className="text-xs text-muted-foreground truncate ml-2">{f.instructions}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Quick notes */}
                 <div className="card p-6 flex flex-col gap-3">
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -994,6 +1426,9 @@ function DoctorWorkbenchInner() {
               </div>
             </div>
           </div>
+        )}
+        {showMedicationModal && (
+          <MedicationOrderModal onClose={() => setShowMedicationModal(false)} onSubmit={addMedication} />
         )}
       </div>
     );

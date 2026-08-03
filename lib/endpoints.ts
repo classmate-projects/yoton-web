@@ -87,6 +87,22 @@ export const ENDPOINTS = {
         ADD_QUICK_NOTE: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/quick-note${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_DOCUMENTS: (patientId: string) => `/api/emr/patient/${patientId}/documents`,
         MARK_DOCUMENT_VIEWED: (patientId: string, id: string) => `/api/emr/patient/${patientId}/documents/${id}/mark-viewed`,
+        ADD_TREATMENT: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/treatment${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        ADD_CONFIDENTIAL_NOTE: (patientId: string) => `/api/emr/patient/${patientId}/confidential-note`,
+        GET_CONFIDENTIAL_NOTES: (patientId?: string) => `/api/emr/confidential-notes${patientId ? `?patientId=${patientId}` : ""}`,
+        ADD_DIAGNOSIS: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/diagnosis${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        SET_PRIMARY_DIAGNOSIS: (encounterDiagnosisId: string, doctorId?: string) => `/api/emr/diagnosis/${encounterDiagnosisId}/set-primary${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        REMOVE_DIAGNOSIS: (encounterDiagnosisId: string, doctorId?: string) => `/api/emr/diagnosis/${encounterDiagnosisId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        ADD_FOLLOW_UP: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/follow-up${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        GET_FOLLOW_UPS: (doctorId?: string) => `/api/emr/follow-ups${doctorId ? `?doctorId=${doctorId}` : ""}`,
+    },
+    CONFIG_LIST: {
+        GET: (listType: string, search?: string) => `/api/config-lists/${listType}${search ? `?search=${encodeURIComponent(search)}` : ""}`,
+        CREATE: (listType: string) => `/api/config-lists/${listType}`,
+        BULK_UPLOAD: (listType: string) => `/api/config-lists/${listType}/bulk`,
+        UPDATE: (id: string) => `/api/config-lists/${id}`,
+        SET_ACTIVE: (id: string, isActive: boolean) => `/api/config-lists/${id}/active?isActive=${isActive}`,
+        DELETE: (id: string) => `/api/config-lists/${id}`,
     },
     LAB: {
         GET_ALL: `/api/Lab`,
@@ -95,6 +111,7 @@ export const ENDPOINTS = {
         CREATE: `/api/Lab`,
         UPDATE_STATUS: `/api/Lab/status`,
         UPLOAD_RESULT: `/api/Lab/upload-result`,
+        COLLECT_SAMPLE: `/api/Lab/collect-sample`,
     },
     RADIOLOGY: {
         GET_ALL: `/api/Radiology`,
@@ -143,5 +160,12 @@ export const ENDPOINTS = {
         SAVE_BLOOD_SUGAR: `/api/nursing/blood-sugar`,
         SAVE_IV_FLUIDS: `/api/nursing/iv-fluids`,
         ADD_SPECIAL_REMARK: (patientId: string) => `/api/nursing/patient/${patientId}/special-remark`,
+        ADD_NOTE: (patientId: string) => `/api/nursing/patient/${patientId}/note`,
+        GET_NOTES: (patientId: string) => `/api/nursing/patient/${patientId}/notes`,
+        ADD_CONFIDENTIAL_NOTE: (patientId: string) => `/api/nursing/patient/${patientId}/confidential-note`,
+        GET_CONFIDENTIAL_NOTES: (patientId?: string) => `/api/nursing/confidential-notes${patientId ? `?patientId=${patientId}` : ""}`,
+        ADD_EXAMINATION_NOTE: (patientId: string) => `/api/nursing/patient/${patientId}/examination-note`,
+        MARK_TREATMENT_DONE: (treatmentId: string) => `/api/nursing/treatment/${treatmentId}/mark-done`,
+        ADMINISTER_MEDICATION: (medicationId: string) => `/api/nursing/medication/${medicationId}/administer`,
     }
 }

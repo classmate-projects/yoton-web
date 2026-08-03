@@ -32,9 +32,63 @@ export interface VitalsType {
   temperature: number;
   respiratoryRate: number;
   oxygenSaturation: number;
+  heightCm: number;
+  weightKg: number;
+  bmi: number;
   notes: string | null;
   recordedAt: string;
   isCritical: boolean;
+}
+
+export interface NurseNoteType {
+  nurseNoteId: string;
+  nurseId: string | null;
+  nurseName: string | null;
+  contentHtml: string;
+  createdAt: string;
+}
+
+export interface ConfidentialNoteType {
+  confidentialNoteId: string;
+  patientId: string | null;
+  patientName: string | null;
+  contentHtml: string;
+  createdAt: string;
+}
+
+export interface ExaminationNoteType {
+  examinationNoteId: string;
+  nurseId: string | null;
+  nurseName: string | null;
+  generalAppearance: string | null;
+  painLevel: number;
+  mobility: string | null;
+  clinicalChecks: string | null;
+  createdAt: string;
+}
+
+export interface TreatmentType {
+  treatmentId: string;
+  listItemId: string | null;
+  description: string;
+  instructions: string | null;
+  quantity: number;
+  isPackage: boolean;
+  isBillingPending: boolean;
+  status: string; // Pending, Done
+  createdAt: string;
+  doneAt: string | null;
+  doneByName: string | null;
+}
+
+export interface MedicationAdministrationType {
+  medicationAdministrationId: string;
+  nurseId: string | null;
+  nurseName: string | null;
+  administeredAt: string;
+  doseGiven: string | null;
+  route: string | null;
+  remarks: string | null;
 }
 
 export interface InjectionType {
@@ -88,6 +142,9 @@ export interface NursingChartType {
   ivFluids: IVFluidsType[];
   tasks: NursingTaskType[];
   specialRemarks: SpecialRemarkType[];
+  nurseNotes: NurseNoteType[];
+  examinationNotes: ExaminationNoteType[];
+  treatments: TreatmentType[];
 }
 
 export interface PatientEncounterType {
@@ -116,7 +173,32 @@ export interface VitalsPayload {
   temperature: number;
   respiratoryRate: number;
   oxygenSaturation: number;
+  heightCm: number;
+  weightKg: number;
   notes?: string;
+  nurseId?: string;
+}
+
+export interface NurseNotePayload {
+  encounterId?: string;
+  contentHtml: string;
+  isConfidential: boolean;
+  nurseId?: string;
+}
+
+export interface ExaminationNotePayload {
+  encounterId?: string;
+  generalAppearance?: string;
+  painLevel: number;
+  mobility?: string;
+  clinicalChecks?: string;
+  nurseId?: string;
+}
+
+export interface AdministerMedicationPayload {
+  doseGiven?: string;
+  route?: string;
+  remarks?: string;
   nurseId?: string;
 }
 

@@ -210,7 +210,11 @@ export default function PatientEntryPage() {
       resetForm();
       setRegisteredPatient({ opId: data.data.opId, name: data.data.name });
     } catch (error) {
-      console.log(error);
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || "Failed to register patient");
+      } else {
+        toast.error("Failed to register patient");
+      }
     } finally {
       setLoading(false)
     }

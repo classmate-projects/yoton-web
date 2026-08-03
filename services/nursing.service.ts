@@ -7,6 +7,9 @@ import {
   BloodSugarPayload,
   IVFluidsPayload,
   EnsureEncounterPayload,
+  NurseNotePayload,
+  ExaminationNotePayload,
+  AdministerMedicationPayload,
 } from "@/types/nursing.type";
 import { SpecialRemarkPayload } from "@/types/emr.type";
 
@@ -57,6 +60,34 @@ export const NursingService = {
   },
   saveIVFluids: async (payload: IVFluidsPayload) => {
     const { data } = await api.post(ENDPOINTS.NURSING.SAVE_IV_FLUIDS, payload);
+    return data;
+  },
+  addNote: async (patientId: string, payload: NurseNotePayload) => {
+    const { data } = await api.post(ENDPOINTS.NURSING.ADD_NOTE(patientId), payload);
+    return data;
+  },
+  getNotes: async (patientId: string) => {
+    const { data } = await api.get(ENDPOINTS.NURSING.GET_NOTES(patientId));
+    return data;
+  },
+  addConfidentialNote: async (patientId: string, payload: NurseNotePayload) => {
+    const { data } = await api.post(ENDPOINTS.NURSING.ADD_CONFIDENTIAL_NOTE(patientId), payload);
+    return data;
+  },
+  getConfidentialNotes: async (patientId?: string) => {
+    const { data } = await api.get(ENDPOINTS.NURSING.GET_CONFIDENTIAL_NOTES(patientId));
+    return data;
+  },
+  addExaminationNote: async (patientId: string, payload: ExaminationNotePayload) => {
+    const { data } = await api.post(ENDPOINTS.NURSING.ADD_EXAMINATION_NOTE(patientId), payload);
+    return data;
+  },
+  markTreatmentDone: async (treatmentId: string, nurseId?: string) => {
+    const { data } = await api.put(ENDPOINTS.NURSING.MARK_TREATMENT_DONE(treatmentId), { nurseId });
+    return data;
+  },
+  administerMedication: async (medicationId: string, payload: AdministerMedicationPayload) => {
+    const { data } = await api.post(ENDPOINTS.NURSING.ADMINISTER_MEDICATION(medicationId), payload);
     return data;
   },
 };

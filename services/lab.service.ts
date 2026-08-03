@@ -26,6 +26,10 @@ export const LabService = {
     });
     return data;
   },
+  collectSample: async (labRequestId: string, nurseId?: string) => {
+    const { data } = await api.put(ENDPOINTS.LAB.COLLECT_SAMPLE, { labRequestId, nurseId });
+    return data;
+  },
   uploadResult: async (labRequestId: string, file: File) => {
     const form = new FormData();
     form.append("LabRequestId", labRequestId);

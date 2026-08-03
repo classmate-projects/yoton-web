@@ -18,9 +18,15 @@ const extraProtectedRoutes = [
 const protectedRoutes = [...sidebarMenuItems, ...extraProtectedRoutes];
 
 function matchRoute(pathname: string) {
-  return protectedRoutes.find(
+  const matches = protectedRoutes.filter(
     (item) => pathname === item.navLink || pathname.startsWith(`${item.navLink}/`),
   );
+  if (matches.length === 0) return undefined;
+
+  // Prefer the most specific (longest navLink) match, not array order — otherwise a
+  // more restrictive sub-route (e.g. "/nursing/confidential-notes", nurse-only) could
+  // lose to a broader parent route (e.g. "/nursing", nurse+admin) declared earlier.
+  return matches.reduce((best, item) => (item.navLink.length > best.navLink.length ? item : best));
 }
 
 function firstAllowedRoute(role: string) {

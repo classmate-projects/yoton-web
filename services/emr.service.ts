@@ -6,6 +6,10 @@ import {
   AllergyPayload,
   MedicationPayload,
   ReferralPayload,
+  TreatmentPayload,
+  DoctorConfidentialNotePayload,
+  AddDiagnosisPayload,
+  FollowUpPayload,
 } from "@/types/emr.type";
 
 export const EmrService = {
@@ -57,6 +61,10 @@ export const EmrService = {
     const { data } = await api.post(ENDPOINTS.EMR.ADD_REFERRAL(patientId, doctorId), payload);
     return data;
   },
+  addTreatment: async (patientId: string, payload: TreatmentPayload, doctorId?: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.ADD_TREATMENT(patientId, doctorId), payload);
+    return data;
+  },
   getQuickNotes: async (doctorId?: string, patientId?: string) => {
     const { data } = await api.get(ENDPOINTS.EMR.GET_QUICK_NOTES(doctorId, patientId));
     return data;
@@ -71,6 +79,34 @@ export const EmrService = {
   },
   markDocumentViewed: async (patientId: string, id: string) => {
     const { data } = await api.post(ENDPOINTS.EMR.MARK_DOCUMENT_VIEWED(patientId, id));
+    return data;
+  },
+  addConfidentialNote: async (patientId: string, payload: DoctorConfidentialNotePayload) => {
+    const { data } = await api.post(ENDPOINTS.EMR.ADD_CONFIDENTIAL_NOTE(patientId), payload);
+    return data;
+  },
+  getConfidentialNotes: async (patientId?: string) => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_CONFIDENTIAL_NOTES(patientId));
+    return data;
+  },
+  addDiagnosis: async (patientId: string, payload: AddDiagnosisPayload, doctorId?: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.ADD_DIAGNOSIS(patientId, doctorId), payload);
+    return data;
+  },
+  setPrimaryDiagnosis: async (encounterDiagnosisId: string, doctorId?: string) => {
+    const { data } = await api.put(ENDPOINTS.EMR.SET_PRIMARY_DIAGNOSIS(encounterDiagnosisId, doctorId));
+    return data;
+  },
+  removeDiagnosis: async (encounterDiagnosisId: string, doctorId?: string) => {
+    const { data } = await api.delete(ENDPOINTS.EMR.REMOVE_DIAGNOSIS(encounterDiagnosisId, doctorId));
+    return data;
+  },
+  addFollowUp: async (patientId: string, payload: FollowUpPayload, doctorId?: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.ADD_FOLLOW_UP(patientId, doctorId), payload);
+    return data;
+  },
+  getFollowUps: async (doctorId?: string) => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_FOLLOW_UPS(doctorId));
     return data;
   },
 };
