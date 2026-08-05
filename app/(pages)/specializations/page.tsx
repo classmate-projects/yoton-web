@@ -142,8 +142,10 @@ export default function SpecializationPage() {
             <SpecializationIcon size={36} color="#2563eb" />
             Specializations
           </h1>
-          <p className="text-sm text-gray-500">
-            Manage medical specializations and departments.
+          <p className="text-sm text-gray-500 max-w-xl">
+            Specializations are searchable when linking a doctor account under Assign Doctor, when a doctor
+            refers a patient to another specialty from the Doctor Workbench, and when filtering doctors during
+            appointment booking. Deactivating one hides it from those pickers without deleting existing records.
           </p>
         </div>
         <button

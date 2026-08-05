@@ -278,8 +278,11 @@ export default function DepartmentsPage() {
             <BuildingIcon size={36} color="currentColor" className="text-primary" />
             Departments
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Manage hospital departments, their details, and active status.
+          <p className="text-sm text-muted-foreground max-w-xl">
+            Departments group your clinic into functional areas — every specialization must belong to one.
+            Expand a department below to manage its specializations, which feed the referral dropdown in the
+            Doctor Workbench and the specialty filter when booking appointments. Deactivating a department
+            hides it from those pickers without deleting its records.
           </p>
         </div>
         <button

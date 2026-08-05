@@ -6,6 +6,8 @@ export interface RadiologyRequestType {
   doctorName: string | null;
   visitId: string | null;
   scanType: string | null;
+  listItemId: string | null;
+  quantity: number;
   priority: string;
   source: string;
   price: number | null;
@@ -15,6 +17,8 @@ export interface RadiologyRequestType {
   completedDate: string | null;
   notes: string | null;
   hasResultFile: boolean;
+  resultFilePath: string | null;
+  scanFilePath: string | null;
 }
 
 export interface RadiologySummaryType {
@@ -28,6 +32,9 @@ export interface CreateRadiologyRequestPayload {
   doctorId?: string;
   visitId?: string;
   scanType: string;
+  listItemId?: string;
+  quantity?: number;
+  remarks?: string;
   priority: string;
   source?: string; // InHouse, External
   price?: number;

@@ -34,11 +34,9 @@ export default function NotificationBell({
   }, []);
 
   const toggleOpen = () => {
-    setIsOpen((prev) => {
-      const next = !prev;
-      if (next) onOpen();
-      return next;
-    });
+    const next = !isOpen;
+    setIsOpen(next);
+    if (next) onOpen();
   };
 
   const goToAppointments = () => {

@@ -1,16 +1,25 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
-interface SidebarMenuItem {
+export interface SidebarSubItem {
     id: number;
     name: string;
     navLink: string;
+}
+
+export interface SidebarMenuItem {
+    id: number;
+    name: string;
+    navLink: string; // default/direct page - used when collapsed, and when the item has no subItems
     roles: string[];
     icon: React.ComponentType; // Assuming icons are React components
     group: SidebarGroup;
+    // Admin-only: when present, clicking this tile (while expanded) drills into these
+    // instead of navigating straight to navLink. Leave unset for a plain direct link.
+    subItems?: SidebarSubItem[];
 }
 
 const allRoles = ["admin", "doctor", "nurse", "lab technician", "radiology technician", "pharmacist", "billing team", "reception"];
@@ -60,14 +69,13 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         group: "Configuration"
     },
     {
-        id: 16,
-        name: "Settings",
-        navLink: "/settings",
-        roles: allRoles,
-        icon: Settings,
+        id: 20,
+        name: "Configurable Lists",
+        navLink: "/config-lists",
+        roles: ["admin"],
+        icon: ListPlus,
         group: "Configuration"
     },
-
     // ---------------- User Modules ----------------
     {
         id: 2,
@@ -113,15 +121,51 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 12,
         name: "Nurse Workbench",
         navLink: "/nursing",
-        roles: ["nurse", "admin"],
+        // Doctor included: read-only view of nursing charting for their patients (see
+        // NursingController — write endpoints there stay locked to admin/nurse, and
+        // nursing/page.tsx hides every write form/button when the viewer is a doctor).
+        // "Doctor Workbench" (declared above, id 11) still wins firstAllowedRoute() for a
+        // doctor's post-login landing page since array order is unchanged.
+        roles: ["nurse", "admin", "doctor"],
         icon: HeartPulse,
+        group: "User Modules"
+    },
+    // Order here no longer matters for access control — matchRoute() in
+    // app/(pages)/layout.tsx picks the most specific (longest navLink) match, not the
+    // first array match — but firstAllowedRoute() DOES still use array order to pick a
+    // nurse's post-login landing page, so Nurse Workbench (above) must stay first among
+    // nurse-accessible entries.
+    {
+        id: 17,
+        name: "Doctor Case Sheet",
+        navLink: "/nursing/case-sheet",
+        roles: ["nurse", "admin"],
+        icon: FileText,
+        group: "User Modules"
+    },
+    {
+        id: 18,
+        name: "Doctor Investigations",
+        navLink: "/nursing/investigations",
+        roles: ["nurse", "admin"],
+        icon: FlaskConical,
+        group: "User Modules"
+    },
+    {
+        id: 19,
+        name: "Confidential Notes",
+        navLink: "/nursing/confidential-notes",
+        roles: ["nurse"],
+        icon: Lock,
         group: "User Modules"
     },
     {
         id: 13,
         name: "Laboratory",
         navLink: "/lab",
-        roles: ["admin", "lab technician"],
+        // Doctor included: LabController's class-level [Authorize] already permits
+        // "doctor" (read + order placement) — this just surfaces the existing access.
+        roles: ["admin", "lab technician", "doctor"],
         icon: FlaskConical,
         group: "User Modules"
     },
@@ -129,7 +173,9 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 14,
         name: "Radiology",
         navLink: "/radiology",
-        roles: ["admin", "radiology technician"],
+        // Doctor included: RadiologyController's class-level [Authorize] already
+        // permits "doctor" (read + order placement) — this just surfaces the existing access.
+        roles: ["admin", "radiology technician", "doctor"],
         icon: ScanLine,
         group: "User Modules"
     },
@@ -148,5 +194,18 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         roles: ["admin", "billing team"],
         icon: MdPayment,
         group: "User Modules"
+    },
+
+    // Deliberately declared last: firstAllowedRoute() (app/(pages)/layout.tsx)
+    // picks the first array match for the user's role, and every role can see
+    // Settings — placing it early would win that race and land every non-admin
+    // role on Settings after login instead of their actual work module.
+    {
+        id: 16,
+        name: "Settings",
+        navLink: "/settings",
+        roles: allRoles,
+        icon: Settings,
+        group: "Configuration"
     },
 ]

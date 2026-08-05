@@ -164,8 +164,10 @@ export default function AssignDoctor() {
           <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
             <MdAssignmentInd className="text-primary" /> Assign Doctor
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Manage doctor assignments and availability for departments and specializations.
+          <p className="text-sm text-muted-foreground max-w-xl">
+            Linking a doctor account here creates their clinical profile — specialization, license number,
+            consultation fee, and experience — which drives how they appear in appointment booking, referral
+            targets, and the Doctor Workbench. A user must have the &quot;doctor&quot; role before they can be assigned.
           </p>
         </div>
         <button

@@ -10,20 +10,26 @@ import {
   AlertTriangle,
   Bandage,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   Droplets,
+  FileText,
   Flag,
   HeartPulse,
+  Lock,
   LogOut,
+  Pill,
   PlayCircle,
   Save,
   Search,
   ShieldAlert,
+  Stethoscope,
   Syringe,
   Thermometer,
   Users,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import RichTextEditor from "@/components/RichTextEditor";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
 import { UserService } from "@/services/user.service";
@@ -82,7 +88,7 @@ function NurseWorkbenchInner() {
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
     const currentRole = (detail.role || "").toLowerCase();
-    if (currentRole !== "nurse" && currentRole !== "admin") {
+    if (currentRole !== "nurse" && currentRole !== "admin" && currentRole !== "doctor") {
       router.replace("/");
       return;
     }
@@ -91,6 +97,11 @@ function NurseWorkbenchInner() {
   }, [router]);
 
   const isAdmin = role === "admin";
+  // Doctor gets read-only visibility into nursing charting (see NursingController — every
+  // write endpoint there is locked to admin/nurse specifically). canEdit gates every write
+  // form/button below so a doctor viewer only ever sees data, never an input for it.
+  const isDoctor = role === "doctor";
+  const canEdit = !isDoctor;
 
   // Admin write actions require an explicit nurse/doctor id in place of the JWT-derived one
   // a real nurse/doctor gets automatically — see NursingController.ResolveNurseId and
@@ -251,9 +262,18 @@ function NurseWorkbenchInner() {
     temperature: "",
     respiratoryRate: "",
     oxygenSaturation: "",
+    heightCm: "",
+    weightKg: "",
     notes: "",
   });
   const [savingVitals, setSavingVitals] = useState(false);
+
+  const liveBmi = (() => {
+    const height = Number(vitalsForm.heightCm);
+    const weight = Number(vitalsForm.weightKg);
+    if (!height || !weight) return null;
+    return (weight / Math.pow(height / 100, 2)).toFixed(1);
+  })();
 
   const saveVitals = async () => {
     if (!encounterId) return;
@@ -272,11 +292,13 @@ function NurseWorkbenchInner() {
         temperature: Number(vitalsForm.temperature || 0),
         respiratoryRate: Number(vitalsForm.respiratoryRate || 0),
         oxygenSaturation: Number(vitalsForm.oxygenSaturation || 0),
+        heightCm: Number(vitalsForm.heightCm || 0),
+        weightKg: Number(vitalsForm.weightKg || 0),
         notes: vitalsForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
       });
       toast.success("Vitals recorded");
-      setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", notes: "" });
+      setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", notes: "" });
       await refreshChart();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to save vitals"));
@@ -473,6 +495,121 @@ function NurseWorkbenchInner() {
     }
   };
 
+  // ---------------- NURSE NOTES (rich text + confidential toggle) ----------------
+  const [nurseNoteHtml, setNurseNoteHtml] = useState("");
+  const [nurseNoteConfidential, setNurseNoteConfidential] = useState(false);
+  const [savingNurseNote, setSavingNurseNote] = useState(false);
+
+  const saveNurseNote = async () => {
+    if (!selectedPatientId) return;
+    if (!nurseNoteHtml.trim() || nurseNoteHtml === "<p></p>") {
+      toast.error("Note content is required");
+      return;
+    }
+    if (!requireNurseSelected()) return;
+    try {
+      setSavingNurseNote(true);
+      const payload = {
+        encounterId: encounterId || undefined,
+        contentHtml: nurseNoteHtml,
+        isConfidential: nurseNoteConfidential,
+        nurseId: isAdmin ? selectedNurseId : undefined,
+      };
+      if (nurseNoteConfidential) {
+        await NursingService.addConfidentialNote(selectedPatientId, payload);
+        toast.success("Confidential note saved — visible only to you");
+      } else {
+        await NursingService.addNote(selectedPatientId, payload);
+        toast.success("Nurse note added");
+      }
+      setNurseNoteHtml("");
+      setNurseNoteConfidential(false);
+      await refreshChart();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save note"));
+    } finally {
+      setSavingNurseNote(false);
+    }
+  };
+
+  // ---------------- EXAMINATION NOTES FORM ----------------
+  const [examForm, setExamForm] = useState({
+    generalAppearance: "",
+    painLevel: "0",
+    mobility: "",
+    clinicalChecks: "",
+  });
+  const [savingExam, setSavingExam] = useState(false);
+
+  const saveExaminationNote = async () => {
+    if (!selectedPatientId) return;
+    if (!requireNurseSelected()) return;
+    try {
+      setSavingExam(true);
+      await NursingService.addExaminationNote(selectedPatientId, {
+        encounterId: encounterId || undefined,
+        generalAppearance: examForm.generalAppearance.trim() || undefined,
+        painLevel: Number(examForm.painLevel || 0),
+        mobility: examForm.mobility.trim() || undefined,
+        clinicalChecks: examForm.clinicalChecks.trim() || undefined,
+        nurseId: isAdmin ? selectedNurseId : undefined,
+      });
+      toast.success("Examination note recorded");
+      setExamForm({ generalAppearance: "", painLevel: "0", mobility: "", clinicalChecks: "" });
+      await refreshChart();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save examination note"));
+    } finally {
+      setSavingExam(false);
+    }
+  };
+
+  // ---------------- TREATMENTS (doctor-ordered, mark done only) ----------------
+  const [markingTreatmentId, setMarkingTreatmentId] = useState<string | null>(null);
+
+  const markTreatmentDone = async (treatmentId: string) => {
+    if (!requireNurseSelected()) return;
+    try {
+      setMarkingTreatmentId(treatmentId);
+      await NursingService.markTreatmentDone(treatmentId, isAdmin ? selectedNurseId : undefined);
+      toast.success("Treatment marked done");
+      await refreshChart();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to update treatment"));
+    } finally {
+      setMarkingTreatmentId(null);
+    }
+  };
+
+  // ---------------- PRESCRIBED MEDICATIONS (administer doctor's prescriptions) ----------------
+  const [administeringMedicationId, setAdministeringMedicationId] = useState<string | null>(null);
+  const [administerForm, setAdministerForm] = useState({ doseGiven: "", route: "Oral (PO)", remarks: "" });
+  const [savingAdministration, setSavingAdministration] = useState(false);
+
+  const administerMedication = async (medicationId: string) => {
+    if (!requireNurseSelected()) return;
+    try {
+      setSavingAdministration(true);
+      await NursingService.administerMedication(medicationId, {
+        doseGiven: administerForm.doseGiven.trim() || undefined,
+        route: administerForm.route,
+        remarks: administerForm.remarks.trim() || undefined,
+        nurseId: isAdmin ? selectedNurseId : undefined,
+      });
+      toast.success("Medication administration recorded");
+      setAdministeringMedicationId(null);
+      setAdministerForm({ doseGiven: "", route: "Oral (PO)", remarks: "" });
+      if (selectedPatientId) {
+        const res = await EmrService.getPatientSummary(selectedPatientId);
+        setSummary(res.data);
+      }
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to record administration"));
+    } finally {
+      setSavingAdministration(false);
+    }
+  };
+
   const filteredPatients = patients.filter(
     (p) =>
       p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -499,6 +636,11 @@ function NurseWorkbenchInner() {
           >
             <ArrowLeft size={16} /> Back to workbench
           </button>
+          {isDoctor && (
+            <span className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+              <Lock size={12} /> Read-only view
+            </span>
+          )}
           {isAdmin && (
             <div className="flex items-center gap-2">
               <select
@@ -525,7 +667,7 @@ function NurseWorkbenchInner() {
               </select>
             </div>
           )}
-          {encounterId && (
+          {encounterId && canEdit && (
             <button
               onClick={endEncounter}
               disabled={isEndingEncounter}
@@ -634,37 +776,69 @@ function NurseWorkbenchInner() {
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Thermometer size={18} className="text-primary" /> Vital Signs
                 </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <div className="flex gap-2 col-span-2 sm:col-span-1">
-                    <input type="number" placeholder="Sys" value={vitalsForm.systolic} onChange={(e) => setVitalsForm((p) => ({ ...p, systolic: e.target.value }))} className="h-10 text-sm w-full" />
-                    <input type="number" placeholder="Dia" value={vitalsForm.diastolic} onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic: e.target.value }))} className="h-10 text-sm w-full" />
-                  </div>
-                  <input type="number" placeholder="Heart Rate (BPM)" value={vitalsForm.heartRate} onChange={(e) => setVitalsForm((p) => ({ ...p, heartRate: e.target.value }))} className="h-10 text-sm" />
-                  <input type="number" step="0.1" placeholder="Temp (°C)" value={vitalsForm.temperature} onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value }))} className="h-10 text-sm" />
-                  <input type="number" placeholder="Resp Rate" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm((p) => ({ ...p, respiratoryRate: e.target.value }))} className="h-10 text-sm" />
-                  <input type="number" placeholder="SpO2 (%)" value={vitalsForm.oxygenSaturation} onChange={(e) => setVitalsForm((p) => ({ ...p, oxygenSaturation: e.target.value }))} className="h-10 text-sm" />
-                </div>
-                <textarea placeholder="Notes..." value={vitalsForm.notes} onChange={(e) => setVitalsForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                <button onClick={saveVitals} disabled={savingVitals} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                  <Save size={15} /> Save Vitals
-                </button>
+                {canEdit && (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div className="flex items-center gap-1 col-span-2 sm:col-span-1">
+                        <input type="number" placeholder="Sys" value={vitalsForm.systolic} onChange={(e) => setVitalsForm((p) => ({ ...p, systolic: e.target.value }))} className="h-10 text-sm w-full" />
+                        <span className="text-xs text-muted-foreground shrink-0">/</span>
+                        <input type="number" placeholder="Dia" value={vitalsForm.diastolic} onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic: e.target.value }))} className="h-10 text-sm w-full" />
+                        <span className="text-xs text-muted-foreground shrink-0">mmHg</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input type="number" placeholder="Pulse" value={vitalsForm.heartRate} onChange={(e) => setVitalsForm((p) => ({ ...p, heartRate: e.target.value }))} className="h-10 text-sm w-full" />
+                        <span className="text-xs text-muted-foreground shrink-0">bpm</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input type="number" step="0.1" placeholder="Temp" value={vitalsForm.temperature} onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value }))} className="h-10 text-sm w-full" />
+                        <span className="text-xs text-muted-foreground shrink-0">°C</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input type="number" placeholder="Resp Rate" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm((p) => ({ ...p, respiratoryRate: e.target.value }))} className="h-10 text-sm w-full" />
+                        <span className="text-xs text-muted-foreground shrink-0">br/min</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input type="number" placeholder="SpO2" value={vitalsForm.oxygenSaturation} onChange={(e) => setVitalsForm((p) => ({ ...p, oxygenSaturation: e.target.value }))} className="h-10 text-sm w-full" />
+                        <span className="text-xs text-muted-foreground shrink-0">%</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input type="number" step="0.1" placeholder="Height" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm((p) => ({ ...p, heightCm: e.target.value }))} className="h-10 text-sm w-full" />
+                        <span className="text-xs text-muted-foreground shrink-0">cm</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input type="number" step="0.1" placeholder="Weight" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm((p) => ({ ...p, weightKg: e.target.value }))} className="h-10 text-sm w-full" />
+                        <span className="text-xs text-muted-foreground shrink-0">kg</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input type="text" readOnly disabled placeholder="BMI" value={liveBmi ?? ""} className="h-10 text-sm w-full" />
+                        <span className="text-xs text-muted-foreground shrink-0">kg/m²</span>
+                      </div>
+                    </div>
+                    <textarea placeholder="Notes..." value={vitalsForm.notes} onChange={(e) => setVitalsForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
+                    <button onClick={saveVitals} disabled={savingVitals} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> Save Vitals
+                    </button>
+                  </>
+                )}
 
                 {chart && chart.vitals.length > 0 && (
                   <div className="overflow-x-auto border-t border-border pt-3">
                     <table>
                       <thead>
                         <tr>
-                          <th>Recorded</th><th>BP</th><th>HR</th><th>Temp</th><th>SpO2</th><th></th>
+                          <th>Recorded</th><th>BP</th><th>HR</th><th>Temp</th><th>SpO2</th><th>Ht/Wt</th><th>BMI</th><th></th>
                         </tr>
                       </thead>
                       <tbody>
                         {chart.vitals.slice(0, 5).map((v) => (
                           <tr key={v.vitalsRecordId}>
                             <td className="text-xs">{formatDateTime(v.recordedAt)}</td>
-                            <td>{v.systolic}/{v.diastolic}</td>
-                            <td>{v.heartRate}</td>
+                            <td>{v.systolic}/{v.diastolic} mmHg</td>
+                            <td>{v.heartRate} bpm</td>
                             <td>{v.temperature}°C</td>
                             <td>{v.oxygenSaturation}%</td>
+                            <td className="text-xs">{v.heightCm ? `${v.heightCm}cm` : "—"} / {v.weightKg ? `${v.weightKg}kg` : "—"}</td>
+                            <td>{v.bmi ? v.bmi.toFixed(1) : "—"}</td>
                             <td>
                               {v.isCritical && (
                                 <span className="rounded-full bg-red-100 text-red-700 text-xs px-2 py-0.5 font-semibold">Critical</span>
@@ -685,21 +859,25 @@ function NurseWorkbenchInner() {
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Syringe size={18} className="text-primary" /> Medication Administration
                 </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <input type="text" placeholder="Medicine name (e.g. Paracetamol)" value={injectionForm.medicineName} onChange={(e) => setInjectionForm((p) => ({ ...p, medicineName: e.target.value }))} className="h-10 text-sm" />
-                  <input type="text" placeholder="Dose (e.g. 500mg)" value={injectionForm.dose} onChange={(e) => setInjectionForm((p) => ({ ...p, dose: e.target.value }))} className="h-10 text-sm" />
-                  <select value={injectionForm.route} onChange={(e) => setInjectionForm((p) => ({ ...p, route: e.target.value }))} className="h-10 text-sm sm:col-span-2">
-                    <option>Oral (PO)</option>
-                    <option>Intravenous (IV)</option>
-                    <option>Intramuscular (IM)</option>
-                    <option>Subcutaneous (SC)</option>
-                    <option>Topical</option>
-                  </select>
-                </div>
-                <textarea placeholder="Notes..." value={injectionForm.notes} onChange={(e) => setInjectionForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                <button onClick={saveInjection} disabled={savingInjection} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                  <Save size={15} /> Save Entry
-                </button>
+                {canEdit && (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <input type="text" placeholder="Medicine name (e.g. Paracetamol)" value={injectionForm.medicineName} onChange={(e) => setInjectionForm((p) => ({ ...p, medicineName: e.target.value }))} className="h-10 text-sm" />
+                      <input type="text" placeholder="Dose (e.g. 500mg)" value={injectionForm.dose} onChange={(e) => setInjectionForm((p) => ({ ...p, dose: e.target.value }))} className="h-10 text-sm" />
+                      <select value={injectionForm.route} onChange={(e) => setInjectionForm((p) => ({ ...p, route: e.target.value }))} className="h-10 text-sm sm:col-span-2">
+                        <option>Oral (PO)</option>
+                        <option>Intravenous (IV)</option>
+                        <option>Intramuscular (IM)</option>
+                        <option>Subcutaneous (SC)</option>
+                        <option>Topical</option>
+                      </select>
+                    </div>
+                    <textarea placeholder="Notes..." value={injectionForm.notes} onChange={(e) => setInjectionForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
+                    <button onClick={saveInjection} disabled={savingInjection} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> Save Entry
+                    </button>
+                  </>
+                )}
 
                 {chart && chart.injections.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
@@ -718,30 +896,34 @@ function NurseWorkbenchInner() {
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Bandage size={18} className="text-primary" /> Wound Care
                 </h2>
-                <select value={dressingForm.woundType} onChange={(e) => setDressingForm((p) => ({ ...p, woundType: e.target.value }))} className="h-10 text-sm">
-                  <option value="">Select wound type...</option>
-                  <option>Surgical Incision</option>
-                  <option>Pressure Ulcer</option>
-                  <option>Laceration</option>
-                  <option>Diabetic Ulcer</option>
-                  <option>Burn</option>
-                </select>
-                <select value={dressingForm.dressingMaterial} onChange={(e) => setDressingForm((p) => ({ ...p, dressingMaterial: e.target.value }))} className="h-10 text-sm">
-                  <option value="">Select dressing material...</option>
-                  <option>Alginate Dressing</option>
-                  <option>Gauze</option>
-                  <option>Hydrocolloid</option>
-                  <option>Foam Dressing</option>
-                  <option>Transparent Film</option>
-                </select>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={dressingForm.infectionSigns} onChange={(e) => setDressingForm((p) => ({ ...p, infectionSigns: e.target.checked }))} />
-                  Signs of infection observed (redness, swelling, warmth, or discharge)
-                </label>
-                <textarea placeholder="Notes..." value={dressingForm.notes} onChange={(e) => setDressingForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                <button onClick={saveDressing} disabled={savingDressing} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                  <Save size={15} /> Save Entry
-                </button>
+                {canEdit && (
+                  <>
+                    <select value={dressingForm.woundType} onChange={(e) => setDressingForm((p) => ({ ...p, woundType: e.target.value }))} className="h-10 text-sm">
+                      <option value="">Select wound type...</option>
+                      <option>Surgical Incision</option>
+                      <option>Pressure Ulcer</option>
+                      <option>Laceration</option>
+                      <option>Diabetic Ulcer</option>
+                      <option>Burn</option>
+                    </select>
+                    <select value={dressingForm.dressingMaterial} onChange={(e) => setDressingForm((p) => ({ ...p, dressingMaterial: e.target.value }))} className="h-10 text-sm">
+                      <option value="">Select dressing material...</option>
+                      <option>Alginate Dressing</option>
+                      <option>Gauze</option>
+                      <option>Hydrocolloid</option>
+                      <option>Foam Dressing</option>
+                      <option>Transparent Film</option>
+                    </select>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={dressingForm.infectionSigns} onChange={(e) => setDressingForm((p) => ({ ...p, infectionSigns: e.target.checked }))} />
+                      Signs of infection observed (redness, swelling, warmth, or discharge)
+                    </label>
+                    <textarea placeholder="Notes..." value={dressingForm.notes} onChange={(e) => setDressingForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
+                    <button onClick={saveDressing} disabled={savingDressing} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> Save Entry
+                    </button>
+                  </>
+                )}
 
                 {chart && chart.dressings.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
@@ -764,18 +946,22 @@ function NurseWorkbenchInner() {
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Droplets size={18} className="text-primary" /> Blood Sugar
                 </h2>
-                <div className="grid grid-cols-2 gap-3">
-                  <input type="number" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value }))} className="h-10 text-sm" />
-                  <select value={sugarForm.type} onChange={(e) => setSugarForm((p) => ({ ...p, type: e.target.value }))} className="h-10 text-sm">
-                    <option>Random</option>
-                    <option>Fasting</option>
-                    <option>Post-Prandial</option>
-                  </select>
-                </div>
-                <textarea placeholder="Notes..." value={sugarForm.notes} onChange={(e) => setSugarForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                <button onClick={saveBloodSugar} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                  <Save size={15} /> Save Entry
-                </button>
+                {canEdit && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input type="number" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value }))} className="h-10 text-sm" />
+                      <select value={sugarForm.type} onChange={(e) => setSugarForm((p) => ({ ...p, type: e.target.value }))} className="h-10 text-sm">
+                        <option>Random</option>
+                        <option>Fasting</option>
+                        <option>Post-Prandial</option>
+                      </select>
+                    </div>
+                    <textarea placeholder="Notes..." value={sugarForm.notes} onChange={(e) => setSugarForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
+                    <button onClick={saveBloodSugar} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> Save Entry
+                    </button>
+                  </>
+                )}
 
                 {chart && chart.bloodSugarChecks.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
@@ -794,15 +980,19 @@ function NurseWorkbenchInner() {
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Activity size={18} className="text-primary" /> IV Fluids
                 </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input type="text" placeholder="Fluid type (e.g. Normal Saline)" value={ivForm.fluidType} onChange={(e) => setIvForm((p) => ({ ...p, fluidType: e.target.value }))} className="h-10 text-sm sm:col-span-1" />
-                  <input type="number" placeholder="Volume (ml)" value={ivForm.volume} onChange={(e) => setIvForm((p) => ({ ...p, volume: e.target.value }))} className="h-10 text-sm" />
-                  <input type="number" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value }))} className="h-10 text-sm" />
-                </div>
-                <textarea placeholder="Notes..." value={ivForm.notes} onChange={(e) => setIvForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                <button onClick={saveIVFluids} disabled={savingIv} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                  <Save size={15} /> Save Entry
-                </button>
+                {canEdit && (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <input type="text" placeholder="Fluid type (e.g. Normal Saline)" value={ivForm.fluidType} onChange={(e) => setIvForm((p) => ({ ...p, fluidType: e.target.value }))} className="h-10 text-sm sm:col-span-1" />
+                      <input type="number" placeholder="Volume (ml)" value={ivForm.volume} onChange={(e) => setIvForm((p) => ({ ...p, volume: e.target.value }))} className="h-10 text-sm" />
+                      <input type="number" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value }))} className="h-10 text-sm" />
+                    </div>
+                    <textarea placeholder="Notes..." value={ivForm.notes} onChange={(e) => setIvForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
+                    <button onClick={saveIVFluids} disabled={savingIv} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> Save Entry
+                    </button>
+                  </>
+                )}
 
                 {chart && chart.ivFluids.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
@@ -817,37 +1007,215 @@ function NurseWorkbenchInner() {
               </div>
             </div>
 
+            {canEdit && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Allergies — write-only here; already shown as chips in the header card above */}
+                <div className="card p-6 flex flex-col gap-4">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <AlertTriangle size={18} className="text-primary" /> Allergies
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input type="text" placeholder="Substance (e.g. Penicillin)" value={allergyForm.substance} onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))} className="h-10 text-sm" />
+                    <input type="text" placeholder="Reaction (optional)" value={allergyForm.reaction} onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))} className="h-10 text-sm" />
+                  </div>
+                  <button onClick={saveAllergy} disabled={savingAllergy} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    <Save size={15} /> Add Allergy
+                  </button>
+                </div>
+
+                {/* Special Remarks — write-only here; already shown as chips in the header card above */}
+                <div className="card p-6 flex flex-col gap-4">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Flag size={18} className="text-primary" /> Special Remark
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <select value={remarkForm.remarkType} onChange={(e) => setRemarkForm((p) => ({ ...p, remarkType: e.target.value }))} className="h-10 text-sm">
+                      {REMARK_TYPES.map((type) => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                    <input type="text" placeholder="Description" value={remarkForm.description} onChange={(e) => setRemarkForm((p) => ({ ...p, description: e.target.value }))} className="h-10 text-sm" />
+                  </div>
+                  <button onClick={saveSpecialRemark} disabled={savingRemark} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    <Save size={15} /> Add Remark
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Allergies */}
+              {/* Nurse Notes */}
               <div className="card p-6 flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <AlertTriangle size={18} className="text-primary" /> Allergies
+                  <FileText size={18} className="text-primary" /> Nurse Notes
                 </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <input type="text" placeholder="Substance (e.g. Penicillin)" value={allergyForm.substance} onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))} className="h-10 text-sm" />
-                  <input type="text" placeholder="Reaction (optional)" value={allergyForm.reaction} onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))} className="h-10 text-sm" />
-                </div>
-                <button onClick={saveAllergy} disabled={savingAllergy} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                  <Save size={15} /> Add Allergy
-                </button>
+                {canEdit && (
+                  <>
+                    <RichTextEditor value={nurseNoteHtml} onChange={setNurseNoteHtml} placeholder="Structured note with formatting..." />
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={nurseNoteConfidential} onChange={(e) => setNurseNoteConfidential(e.target.checked)} />
+                      <Lock size={13} className="text-muted-foreground" /> Mark as confidential (visible only to me)
+                    </label>
+                    <button onClick={saveNurseNote} disabled={savingNurseNote} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> {nurseNoteConfidential ? "Save Confidentially" : "Save Note"}
+                    </button>
+                  </>
+                )}
+
+                {chart && chart.nurseNotes.length > 0 && (
+                  <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
+                    {chart.nurseNotes.slice(0, 5).map((n) => (
+                      <div key={n.nurseNoteId} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                        <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: n.contentHtml }} />
+                        <span className="text-xs text-muted-foreground">{n.nurseName || "Nurse"} · {formatDateTime(n.createdAt)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Special Remarks */}
+              {/* Examination Notes */}
               <div className="card p-6 flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Flag size={18} className="text-primary" /> Special Remark
+                  <Stethoscope size={18} className="text-primary" /> Examination Notes
                 </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <select value={remarkForm.remarkType} onChange={(e) => setRemarkForm((p) => ({ ...p, remarkType: e.target.value }))} className="h-10 text-sm">
-                    {REMARK_TYPES.map((type) => (
-                      <option key={type} value={type}>{type}</option>
+                {canEdit && (
+                  <>
+                    <input type="text" placeholder="General appearance" value={examForm.generalAppearance} onChange={(e) => setExamForm((p) => ({ ...p, generalAppearance: e.target.value }))} className="h-10 text-sm" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <input type="number" min={0} max={10} placeholder="Pain level" value={examForm.painLevel} onChange={(e) => setExamForm((p) => ({ ...p, painLevel: e.target.value }))} className="h-10 text-sm w-full" />
+                        <span className="text-xs text-muted-foreground shrink-0">/10</span>
+                      </div>
+                      <input type="text" placeholder="Mobility" value={examForm.mobility} onChange={(e) => setExamForm((p) => ({ ...p, mobility: e.target.value }))} className="h-10 text-sm" />
+                    </div>
+                    <textarea placeholder="Other clinical checks..." value={examForm.clinicalChecks} onChange={(e) => setExamForm((p) => ({ ...p, clinicalChecks: e.target.value }))} className="w-full min-h-14 text-sm" />
+                    <button onClick={saveExaminationNote} disabled={savingExam} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> Save Examination
+                    </button>
+                  </>
+                )}
+
+                {chart && chart.examinationNotes.length > 0 && (
+                  <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
+                    {chart.examinationNotes.slice(0, 5).map((e) => (
+                      <div key={e.examinationNoteId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                        <span className="font-medium">{e.generalAppearance || "—"} · Pain {e.painLevel}/10</span>
+                        <span className="text-xs text-muted-foreground">{formatDateTime(e.createdAt)}</span>
+                      </div>
                     ))}
-                  </select>
-                  <input type="text" placeholder="Description" value={remarkForm.description} onChange={(e) => setRemarkForm((p) => ({ ...p, description: e.target.value }))} className="h-10 text-sm" />
-                </div>
-                <button onClick={saveSpecialRemark} disabled={savingRemark} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                  <Save size={15} /> Add Remark
-                </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Treatments ordered by the doctor — nurse may only mark them Done */}
+              <div className="card p-6 flex flex-col gap-4">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <ClipboardCheck size={18} className="text-primary" /> Doctor's Treatments
+                </h2>
+                {chart && chart.treatments.length > 0 ? (
+                  <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+                    {chart.treatments.map((t) => (
+                      <div key={t.treatmentId} className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-foreground">{t.description}</p>
+                            {t.instructions && <p className="text-xs text-muted-foreground">{t.instructions}</p>}
+                          </div>
+                          {t.status === "Pending" ? (
+                            canEdit ? (
+                              <button
+                                onClick={() => markTreatmentDone(t.treatmentId)}
+                                disabled={markingTreatmentId === t.treatmentId}
+                                className="shrink-0 flex items-center gap-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold py-1 px-2 rounded-lg text-xs transition-colors"
+                              >
+                                <CheckCircle2 size={13} /> Mark Done
+                              </button>
+                            ) : (
+                              <span className="shrink-0 rounded-full bg-amber-100 text-amber-700 text-xs px-2 py-0.5 font-semibold">Pending</span>
+                            )
+                          ) : (
+                            <span className="shrink-0 rounded-full bg-green-100 text-green-700 text-xs px-2 py-0.5 font-semibold">Done</span>
+                          )}
+                        </div>
+                        {t.status === "Done" && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            by {t.doneByName || "nurse"} · {formatDateTime(t.doneAt)}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No treatments ordered.</p>
+                )}
+              </div>
+
+              {/* Prescribed Medications — administer only, nurse cannot add/modify prescriptions */}
+              <div className="card p-6 flex flex-col gap-4">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Pill size={18} className="text-primary" /> Prescribed Medications
+                </h2>
+                {summary.currentMedications.length > 0 ? (
+                  <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+                    {summary.currentMedications.map((m) => (
+                      <div key={m.medicationId} className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-foreground">{m.drugName}</p>
+                            <p className="text-xs text-muted-foreground">{m.dosage} {m.frequency}</p>
+                          </div>
+                          {canEdit && (
+                            <button
+                              onClick={() => setAdministeringMedicationId(administeringMedicationId === m.medicationId ? null : m.medicationId)}
+                              className="shrink-0 flex items-center gap-1 bg-primary/10 hover:bg-primary/20 text-primary font-semibold py-1 px-2 rounded-lg text-xs transition-colors"
+                            >
+                              <Syringe size={13} /> Administer
+                            </button>
+                          )}
+                        </div>
+
+                        {canEdit && administeringMedicationId === m.medicationId && (
+                          <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <input type="text" placeholder="Dose given" value={administerForm.doseGiven} onChange={(ev) => setAdministerForm((p) => ({ ...p, doseGiven: ev.target.value }))} className="h-9 text-sm" />
+                              <select value={administerForm.route} onChange={(ev) => setAdministerForm((p) => ({ ...p, route: ev.target.value }))} className="h-9 text-sm">
+                                <option>Oral (PO)</option>
+                                <option>Intravenous (IV)</option>
+                                <option>Intramuscular (IM)</option>
+                                <option>Subcutaneous (SC)</option>
+                                <option>Topical</option>
+                              </select>
+                            </div>
+                            <input type="text" placeholder="Remarks (optional)" value={administerForm.remarks} onChange={(ev) => setAdministerForm((p) => ({ ...p, remarks: ev.target.value }))} className="h-9 text-sm" />
+                            <button
+                              onClick={() => administerMedication(m.medicationId)}
+                              disabled={savingAdministration}
+                              className="self-start flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                            >
+                              <Save size={13} /> Confirm Administration
+                            </button>
+                          </div>
+                        )}
+
+                        {m.administrations.length > 0 && (
+                          <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
+                            {m.administrations.slice(0, 3).map((a) => (
+                              <div key={a.medicationAdministrationId} className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>{a.doseGiven} · {a.route} {a.remarks ? `· ${a.remarks}` : ""}</span>
+                                <span>{a.nurseName || "Nurse"} · {formatDateTime(a.administeredAt)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No active prescriptions.</p>
+                )}
               </div>
             </div>
           </div>
@@ -983,22 +1351,24 @@ function NurseWorkbenchInner() {
                           {t.status}
                         </span>
                       </div>
-                      <div className="flex gap-2 mt-2">
-                        {t.status === "Pending" && (
+                      {canEdit && (
+                        <div className="flex gap-2 mt-2">
+                          {t.status === "Pending" && (
+                            <button
+                              onClick={() => updateTaskStatus(t.nursingTaskId, "InProgress")}
+                              className="flex-1 flex items-center justify-center gap-1 bg-primary/10 hover:bg-primary/20 text-primary font-semibold py-1.5 rounded-lg text-xs transition-colors"
+                            >
+                              <PlayCircle size={13} /> Start
+                            </button>
+                          )}
                           <button
-                            onClick={() => updateTaskStatus(t.nursingTaskId, "InProgress")}
-                            className="flex-1 flex items-center justify-center gap-1 bg-primary/10 hover:bg-primary/20 text-primary font-semibold py-1.5 rounded-lg text-xs transition-colors"
+                            onClick={() => updateTaskStatus(t.nursingTaskId, "Completed")}
+                            className="flex-1 flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-1.5 rounded-lg text-xs transition-colors"
                           >
-                            <PlayCircle size={13} /> Start
+                            <CheckCircle2 size={13} /> Complete
                           </button>
-                        )}
-                        <button
-                          onClick={() => updateTaskStatus(t.nursingTaskId, "Completed")}
-                          className="flex-1 flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-1.5 rounded-lg text-xs transition-colors"
-                        >
-                          <CheckCircle2 size={13} /> Complete
-                        </button>
-                      </div>
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (

@@ -1,3 +1,5 @@
+import { MedicationAdministrationType, NurseNoteType, TreatmentType } from "./nursing.type";
+
 export interface EmrPatientListItem {
   opId: string;
   name: string;
@@ -26,14 +28,20 @@ export interface AllergyType {
 
 export interface MedicationType {
   medicationId: string;
+  medicineId: string | null;
   drugName: string;
   dosage: string | null;
+  dosageUnit: string | null;
   frequency: string | null;
   durationDays: number | null;
+  orderType: string | null;
+  route: string | null;
+  instructions: string | null;
   priority: string;
   status: string;
   startedAt: string;
   endedAt: string | null;
+  administrations: MedicationAdministrationType[];
 }
 
 export interface SpecialRemarkType {
@@ -64,9 +72,50 @@ export interface EncounterType {
   diagnosisCode: string | null;
   diagnosisDescription: string | null;
   plannedProcedures: string | null;
+  examinationNotes: string | null;
+  clinicalExamination: string | null;
+  rosConstitutional: string | null;
+  rosEyeEarNoseMouthThroat: string | null;
+  rosCardiovascular: string | null;
+  rosRespiratory: string | null;
+  rosGastroenterology: string | null;
+  rosGenitourinary: string | null;
+  rosMusculoskeletal: string | null;
+  rosNeurological: string | null;
+  rosPsychiatric: string | null;
+  rosEndocrine: string | null;
+  rosHematologic: string | null;
+  rosAllergicImmunologic: string | null;
+  rosIntegumentary: string | null;
   status: string;
   createdAt: string;
   updatedAt: string | null;
+}
+
+export interface DoctorConfidentialNoteType {
+  doctorConfidentialNoteId: string;
+  patientId: string | null;
+  patientName: string | null;
+  contentHtml: string;
+  createdAt: string;
+}
+
+export interface EncounterDiagnosisType {
+  encounterDiagnosisId: string;
+  listItemId: string | null;
+  diagnosisCode: string | null;
+  diagnosisName: string;
+  isPrimary: boolean;
+  createdAt: string;
+}
+
+export interface FollowUpType {
+  followUpId: string;
+  patientId: string | null;
+  patientName: string | null;
+  followUpDate: string;
+  instructions: string | null;
+  createdAt: string;
 }
 
 export interface ReferralType {
@@ -94,6 +143,10 @@ export interface PatientSummaryType {
   latestEncounter: EncounterType | null;
   referrals: ReferralType[];
   specialRemarks: SpecialRemarkType[];
+  nurseNotes: NurseNoteType[];
+  treatments: TreatmentType[];
+  diagnoses: EncounterDiagnosisType[];
+  followUps: FollowUpType[];
   documents: PatientDocumentType[];
   unviewedDocumentCount: number;
 }
@@ -137,6 +190,21 @@ export interface EncounterUpsertPayload {
   diagnosisCode?: string;
   diagnosisDescription?: string;
   plannedProcedures?: string;
+  examinationNotes?: string;
+  clinicalExamination?: string;
+  rosConstitutional?: string;
+  rosEyeEarNoseMouthThroat?: string;
+  rosCardiovascular?: string;
+  rosRespiratory?: string;
+  rosGastroenterology?: string;
+  rosGenitourinary?: string;
+  rosMusculoskeletal?: string;
+  rosNeurological?: string;
+  rosPsychiatric?: string;
+  rosEndocrine?: string;
+  rosHematologic?: string;
+  rosAllergicImmunologic?: string;
+  rosIntegumentary?: string;
 }
 
 export interface ChronicConditionPayload {
@@ -152,10 +220,15 @@ export interface AllergyPayload {
 
 export interface MedicationPayload {
   encounterId?: string;
+  medicineId?: string;
   drugName: string;
   dosage?: string;
+  dosageUnit?: string;
   frequency?: string;
   durationDays?: number;
+  orderType?: string;
+  route?: string;
+  instructions?: string;
   priority?: string; // STAT, PRN, Routine
 }
 
@@ -169,4 +242,30 @@ export interface ReferralPayload {
   targetSpecializationId: string;
   priority?: string;
   notes?: string;
+}
+
+export interface TreatmentPayload {
+  encounterId?: string;
+  listItemId?: string;
+  description: string;
+  instructions?: string;
+  quantity?: number;
+  isPackage?: boolean;
+  isBillingPending?: boolean;
+}
+
+export interface DoctorConfidentialNotePayload {
+  contentHtml: string;
+}
+
+export interface AddDiagnosisPayload {
+  encounterId: string;
+  listItemId: string;
+  asPrimary?: boolean;
+}
+
+export interface FollowUpPayload {
+  encounterId?: string;
+  followUpDate: string;
+  instructions?: string;
 }

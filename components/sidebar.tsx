@@ -2,14 +2,14 @@
 
 import logo from "@/public/yoton_logo.png";
 import Image from "next/image";
-import { sidebarMenuItems, SidebarGroup } from "@/helpers/sidebaritems";
+import { sidebarMenuItems, SidebarGroup, SidebarMenuItem } from "@/helpers/sidebaritems";
 import NotificationBell from "@/components/NotificationBell";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import pkg from "@/package.json";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { Sun, Moon, Monitor, LogOut, UserRound } from "lucide-react";
+import { Sun, Moon, Monitor, LogOut, UserRound, ArrowLeft, ChevronRight } from "lucide-react";
 import { CurrentUserDetail } from "@/types/user.type";
 import { getInitials } from "@/lib/getInitials";
 import { useUnreadAppointmentRequests } from "@/hooks/useUnreadAppointmentRequests";
@@ -29,6 +29,10 @@ export default function Sidebar() {
   // expands on mouse-over, collapses again on mouse-out. No pinned/persisted
   // state, so server and client both start collapsed — no hydration risk.
   const [isExpanded, setIsExpanded] = useState(false);
+  // Admin-only drill-down: which User Modules category (if any) is currently
+  // expanded to show its sub-items. Reset whenever the sidebar collapses, so
+  // it always starts back at the top-level module list on the next hover.
+  const [activeCategory, setActiveCategory] = useState<SidebarMenuItem | null>(null);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -58,14 +62,52 @@ export default function Sidebar() {
   const { canSeeRequests, notifications, unreadCount, isRinging, clearUnread } =
     useUnreadAppointmentRequests(userRole);
 
+  // Admin (and only admin) gets the grouped, drill-into-categories layout; every
+  // other role gets a flat list of just their own modules plus Settings, no
+  // grouping or hierarchy at all.
+  const isAdmin = userRole === "admin";
+
+  const visibleGroups = SIDEBAR_GROUPS.map((group) => ({
+    group,
+    items: sidebarMenuItems.filter((item) => item.group === group && item.roles.includes(userRole)),
+  })).filter((g) => g.items.length > 0);
+
+  const flatVisibleItems = sidebarMenuItems.filter((item) => item.roles.includes(userRole));
+
+  // Both states use the same flex-wrap container (see tileContainerClass) — only each
+  // tile's own size changes, via an ordinary width/height transition. Switching between
+  // aspect-square and a fixed size (or between grid and flex containers, as this used to
+  // do) can't be animated by the browser at all, so it snapped instantly while the rail's
+  // width kept animating around it — that mismatch was the "not smooth" part. A plain
+  // pixel-size transition on the tile is what actually animates.
+  const tileClass = (active: boolean, expanded: boolean) =>
+    `relative flex items-center justify-center rounded-xl transition-all duration-300 ease-in-out group ${expanded ? "h-[60px] w-[60px]" : "h-11 w-11"
+    } ${active
+      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+    }`;
+
+  // Constant across both states on purpose — 4 tiles at 60px plus 3 gaps fits the
+  // expanded rail's content width exactly, and the same wrapping row centers a single
+  // 44px tile when collapsed. Keeping the container's own classes unchanged means there's
+  // nothing here for the browser to snap; the reflow falls naturally out of the tiles'
+  // own animated resize.
+  const tileContainerClass = "flex flex-wrap content-start justify-center gap-2";
+
+  const tileIconClass = (active: boolean) =>
+    `shrink-0 transition-transform duration-200 text-xl ${active ? "scale-110" : "group-hover:scale-110"}`;
+
   return (
     <div
       onMouseEnter={() => setIsExpanded(true)}
-      onMouseLeave={() => setIsExpanded(false)}
+      onMouseLeave={() => {
+        setIsExpanded(false);
+        setActiveCategory(null);
+      }}
       className={`sidebar-shell bg-card sticky top-0 h-screen p-3 border-r border-border z-50 transition-all duration-300 ease-in-out shrink-0 flex flex-col ${isExpanded ? "w-72" : "w-28"
         }`}
     >
-      <div className={`flex items-center mb-8 ${isExpanded ? "px-2" : "flex-col gap-2 justify-center"}`}>
+      <div className={`flex items-center transition-all duration-300 ease-in-out ${isExpanded ? "mb-8 px-2" : "mb-4 flex-col gap-2 justify-center"}`}>
         <div className="relative h-10 w-10 shrink-0">
           {/* Collapsed: company logo (falls back to the bundled Yoton logo).
               Expanded (on hover): the signed-in user's own photo, or their
@@ -124,41 +166,97 @@ export default function Sidebar() {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar">
+      <div className="flex-1 overflow-y-auto no-scrollbar scroll-smooth">
         <nav className="flex flex-col gap-4">
-          {SIDEBAR_GROUPS.map((group) => {
-            const items = sidebarMenuItems.filter(
-              (item) => item.group === group && item.roles.includes(userRole)
-            );
-            if (items.length === 0) return null;
-
-            return (
+          {/* Collapsed: a single-column icon list (a normal sidebar rail).
+              Expanded (on hover): icons wrap into a 4-per-row layout, rows
+              growing naturally with however many items a role/category has.
+              Name is a native tooltip either way (title attribute). */}
+          {isAdmin && activeCategory ? (
+            <div>
+              <span
+                className={`sidebar-label block overflow-hidden whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 transition-all duration-300 ease-in-out ${isExpanded ? "max-h-4 mb-1.5 opacity-100" : "max-h-0 mb-0 opacity-0"
+                  }`}
+              >
+                {activeCategory.name}
+              </span>
+              <div className={tileContainerClass}>
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory(null)}
+                  title="Back"
+                  aria-label="Back to modules"
+                  className={tileClass(false, isExpanded)}
+                >
+                  <span className={tileIconClass(false)}>
+                    <ArrowLeft />
+                  </span>
+                </button>
+                {activeCategory.subItems?.map((sub) => {
+                  const isActive = pathname === sub.navLink;
+                  return (
+                    <Link
+                      key={sub.id}
+                      href={sub.navLink}
+                      title={sub.name}
+                      aria-label={sub.name}
+                      className={tileClass(isActive, isExpanded)}
+                    >
+                      <span className={tileIconClass(isActive)}>
+                        <ChevronRight size={20} />
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ) : isAdmin ? (
+            visibleGroups.map(({ group, items }) => (
               <div key={group}>
                 <span
-                  className={`sidebar-label mb-1.5 block overflow-hidden whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 transition-all duration-300 ease-in-out ${isExpanded ? "max-h-4 opacity-100" : "max-h-0 opacity-0"
+                  className={`sidebar-label block overflow-hidden whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 transition-all duration-300 ease-in-out ${isExpanded ? "max-h-4 mb-1.5 opacity-100" : "max-h-0 mb-0 opacity-0"
                     }`}
                 >
                   {group}
                 </span>
-                {/* Collapsed: a single-column icon list (a normal sidebar rail).
-                    Expanded (on hover): icons rearrange into a grid so the wider
-                    sidebar doesn't leave a single narrow column of empty space.
-                    Name is a native tooltip either way (title attribute). */}
-                <div className={isExpanded ? "grid grid-cols-4 gap-2" : "flex flex-col gap-2"}>
+                <div className={tileContainerClass}>
                   {items.map((item) => {
-                    const isActive = pathname === item.navLink;
+                    const hasSubItems = !!item.subItems?.length;
+                    const isActive =
+                      pathname === item.navLink || !!item.subItems?.some((s) => s.navLink === pathname);
+
+                    // Sub-modules only make sense to drill into once the sidebar
+                    // is actually expanded - collapsed icons stay direct links.
+                    if (hasSubItems && isExpanded) {
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setActiveCategory(item)}
+                          title={item.name}
+                          aria-label={item.name}
+                          className={tileClass(isActive, isExpanded)}
+                        >
+                          <span className={tileIconClass(isActive)}>
+                            <item.icon />
+                          </span>
+                          <ChevronRight
+                            size={11}
+                            className={`absolute top-1 right-1 ${isActive ? "opacity-70" : "opacity-40"}`}
+                          />
+                        </button>
+                      );
+                    }
+
                     return (
                       <Link
                         key={item.id}
                         href={item.navLink}
                         title={item.name}
                         aria-label={item.name}
-                        className={`aspect-square flex items-center justify-center rounded-xl transition-all duration-200 group ${isActive
-                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                          }`}
+                        className={tileClass(isActive, isExpanded)}
                       >
-                        <span className={`shrink-0 transition-transform duration-200 text-xl ${isActive ? "scale-110" : "group-hover:scale-110"}`}>
+                        <span className={tileIconClass(isActive)}>
                           <item.icon />
                         </span>
                       </Link>
@@ -166,8 +264,29 @@ export default function Sidebar() {
                   })}
                 </div>
               </div>
-            );
-          })}
+            ))
+          ) : (
+            // End users (doctor, nurse, radiologist, etc.): direct modules +
+            // Settings only, no grouping, no hierarchy.
+            <div className={tileContainerClass}>
+              {flatVisibleItems.map((item) => {
+                const isActive = pathname === item.navLink;
+                return (
+                  <Link
+                    key={item.id}
+                    href={item.navLink}
+                    title={item.name}
+                    aria-label={item.name}
+                    className={tileClass(isActive, isExpanded)}
+                  >
+                    <span className={tileIconClass(isActive)}>
+                      <item.icon />
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </nav>
       </div>
 

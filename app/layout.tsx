@@ -23,7 +23,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} h-full antialiased`}
+      className={`${geistSans.variable} h-full antialiased scroll-smooth`}
     >
       <body className="min-h-full">
         <ThemeProvider
@@ -35,7 +35,7 @@ export default function RootLayout({
           <Toaster
             position="bottom-right"
             richColors
-            duration={1000}
+            duration={3000}
             visibleToasts={1}
           />
         </ThemeProvider>
