@@ -121,7 +121,12 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 12,
         name: "Nurse Workbench",
         navLink: "/nursing",
-        roles: ["nurse", "admin"],
+        // Doctor included: read-only view of nursing charting for their patients (see
+        // NursingController — write endpoints there stay locked to admin/nurse, and
+        // nursing/page.tsx hides every write form/button when the viewer is a doctor).
+        // "Doctor Workbench" (declared above, id 11) still wins firstAllowedRoute() for a
+        // doctor's post-login landing page since array order is unchanged.
+        roles: ["nurse", "admin", "doctor"],
         icon: HeartPulse,
         group: "User Modules"
     },
