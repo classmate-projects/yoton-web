@@ -201,7 +201,7 @@ export default function RoleManagementPage() {
   };
 
   return (
-    <div className="py-8 px-10 h-full overflow-y-auto">
+    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       <div className="flex flex-col gap-1 mb-8">
         <h1 className="text-4xl font-semibold flex items-center gap-3">
           <MdAdminPanelSettings className="text-purple-600" /> Role Management

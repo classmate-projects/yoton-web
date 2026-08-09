@@ -659,7 +659,7 @@ function DoctorWorkbenchInner() {
   // ==================== EMR PANEL ====================
   if (selectedPatientId) {
     return (
-      <div className="py-8 px-10 h-full overflow-y-auto">
+      <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
         <button
           onClick={backToWorkbench}
           className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary mb-6"
@@ -1436,7 +1436,7 @@ function DoctorWorkbenchInner() {
 
   // ==================== WORKBENCH ====================
   return (
-    <div className="py-8 px-10 h-full overflow-y-auto">
+    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       <div className="mb-6 flex flex-row items-center justify-between gap-4">
         <div>
           <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">

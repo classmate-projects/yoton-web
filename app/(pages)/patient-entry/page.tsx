@@ -262,7 +262,7 @@ export default function PatientEntryPage() {
         </div>
 
         {/* Personal Information Section */}
-        <div className="bg-card rounded-lg shadow-md border border-border p-8">
+        <div className="bg-card rounded-lg shadow-md border border-border p-4 sm:p-8">
           <div className="flex items-center gap-3 mb-6">
             <MdOutlinePersonOutline className="text-primary" size={28} />
             <h2 className="text-2xl font-bold text-foreground">
@@ -441,7 +441,7 @@ export default function PatientEntryPage() {
         </div>
 
         {/* Contact Information Section */}
-        <div className="bg-card rounded-lg shadow-md border border-border p-8">
+        <div className="bg-card rounded-lg shadow-md border border-border p-4 sm:p-8">
           <div className="flex items-center gap-3 mb-6">
             <MdOutlineLocalPhone className="text-primary" size={28} />
             <h2 className="text-2xl font-bold text-foreground">
@@ -576,7 +576,7 @@ export default function PatientEntryPage() {
         </div>
 
         {/* Identification Section */}
-        <div className="bg-card rounded-lg shadow-md border border-border p-8">
+        <div className="bg-card rounded-lg shadow-md border border-border p-4 sm:p-8">
           <div className="flex items-center gap-3 mb-6">
             <MdOutlineFilePresent className="text-primary" size={28} />
             <h2 className="text-2xl font-bold text-foreground">Identification</h2>
@@ -651,7 +651,7 @@ export default function PatientEntryPage() {
         </div>
 
         {/* Medical Information Section */}
-        <div className="bg-card rounded-lg shadow-md border border-border p-8">
+        <div className="bg-card rounded-lg shadow-md border border-border p-4 sm:p-8">
           <h2 className="text-2xl font-bold text-foreground mb-6">
             Medical Information
           </h2>

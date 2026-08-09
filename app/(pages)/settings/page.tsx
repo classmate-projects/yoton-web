@@ -81,14 +81,14 @@ export default function SettingsPage() {
 
   if (!me) {
     return (
-      <div className="py-8 px-10">
+      <div className="py-6 px-4 sm:py-8 sm:px-10">
         <p className="text-muted-foreground">Couldn&apos;t load your profile.</p>
       </div>
     );
   }
 
   return (
-    <div className="py-8 px-10 h-full overflow-y-auto">
+    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       <div className="mb-8 flex flex-col gap-1">
         <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
           <SettingsIcon size={36} className="text-primary" />

@@ -169,7 +169,7 @@ function UserRegistrationForm() {
   };
 
   return (
-    <div className=" h-dvh flex flex-col py-8 px-10 gap-4">
+    <div className=" h-dvh flex flex-col py-6 px-4 sm:py-8 sm:px-10 gap-4">
       <div>
         <h1 className="text-4xl font-semibold">
           {editMode ? "Edit Staff Details" : "Staff Registration"}

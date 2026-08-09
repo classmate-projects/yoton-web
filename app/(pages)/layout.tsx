@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import Image from "next/image";
+import { Menu } from "lucide-react";
+import logo from "@/public/yoton_logo.png";
 import Sidebar from "@/components/sidebar";
 import AccessDenied from "@/components/AccessDenied";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -40,6 +43,11 @@ export default function PageLayout({
 }>) {
   const pathname = usePathname();
   const router = useRouter();
+
+  // Mobile-only drawer state. On desktop the sidebar is always in flow (hover
+  // rail), so this is inert there; on mobile the hamburger in the top bar opens
+  // the off-canvas Sidebar and the Sidebar closes itself on navigation.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // null = still checking, so we never flash a page the role can't see (or
   // bounce off the redirect target) before the check lands.
@@ -91,9 +99,25 @@ export default function PageLayout({
 
   return (
     <div className="min-h-full flex flex-row">
-      <Sidebar />
-      <div className="flex-1 min-w-0">
-        {status === "denied" ? <AccessDenied /> : children}
+      <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Mobile-only top bar: the desktop sidebar is off-canvas on small
+            screens, so this gives touch users a way to open it plus a stable
+            branded header. Hidden entirely from lg up. */}
+        <header className="lg:hidden sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-card/95 px-4 py-3 backdrop-blur">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label="Open navigation menu"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+          <Image src={logo} alt="Yoton" priority className="h-8 w-auto" />
+        </header>
+        <div className="flex-1 min-w-0">
+          {status === "denied" ? <AccessDenied /> : children}
+        </div>
       </div>
     </div>
   );

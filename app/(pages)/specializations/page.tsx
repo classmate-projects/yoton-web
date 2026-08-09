@@ -134,7 +134,7 @@ export default function SpecializationPage() {
   };
 
   return (
-    <div className="py-8 px-10 h-full overflow-y-auto">
+    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       {/* Header Section */}
       <div className="flex justify-between items-center gap-4 mb-8">
         <div className="flex flex-col gap-1">
