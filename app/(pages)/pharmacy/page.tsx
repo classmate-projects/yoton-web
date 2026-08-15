@@ -68,6 +68,9 @@ export default function PharmacyPage() {
   const [isMedModalOpen, setIsMedModalOpen] = useState(false);
   const [isSubmittingMed, setIsSubmittingMed] = useState(false);
   const [medName, setMedName] = useState("");
+  const [medGenericName, setMedGenericName] = useState("");
+  const [medIngredient, setMedIngredient] = useState("");
+  const [medDosageForm, setMedDosageForm] = useState("");
   const [medCategory, setMedCategory] = useState("");
   const [medStock, setMedStock] = useState<number>(0);
   const [medPrice, setMedPrice] = useState<number>(0);
@@ -247,6 +250,9 @@ export default function PharmacyPage() {
   // ---------------- MEDICINE FORM ----------------
   const resetMedForm = () => {
     setMedName("");
+    setMedGenericName("");
+    setMedIngredient("");
+    setMedDosageForm("");
     setMedCategory("");
     setMedStock(0);
     setMedPrice(0);
@@ -264,6 +270,9 @@ export default function PharmacyPage() {
       setIsSubmittingMed(true);
       const data = await PharmacyService.addMedicine({
         name: medName,
+        genericName: medGenericName || undefined,
+        ingredient: medIngredient || undefined,
+        dosageForm: medDosageForm || undefined,
         category: medCategory || undefined,
         stock: medStock,
         price: medPrice,
@@ -711,6 +720,37 @@ export default function PharmacyPage() {
                   required
                   value={medName}
                   onChange={(e) => setMedName(e.target.value)}
+                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                />
+              </div>
+              <div className="flex gap-4">
+                <div className="w-full">
+                  <label className="text-sm font-bold text-foreground/90">Generic Name</label>
+                  <input
+                    type="text"
+                    value={medGenericName}
+                    onChange={(e) => setMedGenericName(e.target.value)}
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+                <div className="w-full">
+                  <label className="text-sm font-bold text-foreground/90">Dosage Form</label>
+                  <input
+                    type="text"
+                    placeholder="Tablet, Syrup, Injection..."
+                    value={medDosageForm}
+                    onChange={(e) => setMedDosageForm(e.target.value)}
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-bold text-foreground/90">Ingredient [Strength]</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Paracetamol 500mg"
+                  value={medIngredient}
+                  onChange={(e) => setMedIngredient(e.target.value)}
                   className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                 />
               </div>

@@ -64,6 +64,7 @@ export const ENDPOINTS = {
     EMR: {
         GET_PATIENTS: (doctorId?: string) => `/api/emr/patients${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_PATIENT_SUMMARY: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        GET_INSURANCE_COVERAGE: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/insurance-coverage${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_DASHBOARD_SUMMARY: (doctorId?: string) => `/api/emr/dashboard-summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_TODAY_SCHEDULE: (doctorId?: string) => `/api/emr/schedule/today${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_ACTIVE_CASES: (doctorId?: string) => `/api/emr/active-cases${doctorId ? `?doctorId=${doctorId}` : ""}`,

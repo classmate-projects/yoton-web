@@ -5,7 +5,9 @@ export type ConfigListType =
   | "OrderType"
   | "Route"
   | "DosageUnit"
-  | "Frequency";
+  | "Frequency"
+  | "InsuranceProvider"
+  | "DrugType";
 
 export interface ListItemType {
   listItemId: string;

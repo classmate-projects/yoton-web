@@ -1,6 +1,9 @@
 export interface MedicineType {
   medicineId: string;
   name: string;
+  genericName: string | null;
+  ingredient: string | null;
+  dosageForm: string | null;
   category: string | null;
   stock: number;
   price: number;
@@ -41,6 +44,9 @@ export interface PharmacySummaryType {
 
 export interface AddMedicinePayload {
   name: string;
+  genericName?: string;
+  ingredient?: string;
+  dosageForm?: string;
   category?: string;
   stock: number;
   price: number;

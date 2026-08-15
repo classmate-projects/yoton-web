@@ -26,6 +26,15 @@ export interface AllergyType {
   createdAt: string;
 }
 
+export interface TaperingStepType {
+  medicationTaperingStepId: string;
+  stepOrder: number;
+  dosage: string | null;
+  dosageUnit: string | null;
+  frequency: string | null;
+  durationDays: number | null;
+}
+
 export interface MedicationType {
   medicationId: string;
   medicineId: string | null;
@@ -38,10 +47,18 @@ export interface MedicationType {
   route: string | null;
   instructions: string | null;
   priority: string;
+  drugType: string | null;
+  mealTiming: string | null;
+  plannedEndDate: string | null;
+  totalQuantity: number | null;
+  refillCount: number;
+  prnReason: string | null;
+  requiresCounselling: boolean;
   status: string;
   startedAt: string;
   endedAt: string | null;
   administrations: MedicationAdministrationType[];
+  taperingSteps: TaperingStepType[];
 }
 
 export interface SpecialRemarkType {
@@ -218,6 +235,14 @@ export interface AllergyPayload {
   reaction?: string;
 }
 
+export interface TaperingStepPayload {
+  stepOrder: number;
+  dosage?: string;
+  dosageUnit?: string;
+  frequency?: string;
+  durationDays?: number;
+}
+
 export interface MedicationPayload {
   encounterId?: string;
   medicineId?: string;
@@ -230,6 +255,30 @@ export interface MedicationPayload {
   route?: string;
   instructions?: string;
   priority?: string; // STAT, PRN, Routine
+  drugType?: string;
+  mealTiming?: string;
+  startDate?: string;
+  plannedEndDate?: string;
+  totalQuantity?: number;
+  refillCount?: number;
+  prnReason?: string;
+  requiresCounselling?: boolean;
+  taperingSteps?: TaperingStepPayload[];
+}
+
+export interface InsuranceCoverageRowType {
+  serviceCategory: string;
+  deductible: number | null;
+  deductibleAppliesTo: string | null;
+  coPayPercent: number | null;
+  coPayMin: number | null;
+  coPayMax: number | null;
+  coPayAppliesTo: string | null;
+}
+
+export interface PatientInsuranceCoverageType {
+  paymentType: string;
+  coverages: InsuranceCoverageRowType[];
 }
 
 export interface SpecialRemarkPayload {

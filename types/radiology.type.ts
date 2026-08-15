@@ -11,6 +11,12 @@ export interface RadiologyRequestType {
   priority: string;
   source: string;
   price: number | null;
+  covered: boolean | null;
+  patientShareAmount: number | null;
+  coInsurancePercent: number | null;
+  preAuthStatus: string | null;
+  uccCode: string | null;
+  bodyParts: string | null;
   status: string;
   createdAt: string;
   scheduledDate: string | null;
@@ -38,4 +44,10 @@ export interface CreateRadiologyRequestPayload {
   priority: string;
   source?: string; // InHouse, External
   price?: number;
+  covered?: boolean;
+  patientShareAmount?: number;
+  coInsurancePercent?: number;
+  preAuthStatus?: string;
+  uccCode?: string;
+  bodyParts?: string;
 }

@@ -5,14 +5,17 @@ import {
   MdOutlinePersonOutline,
   MdOutlineLocalPhone,
   MdOutlineFilePresent,
+  MdOutlinePayment,
   MdExpandMore,
   MdClose,
 } from "react-icons/md";
 import { format } from "date-fns";
 import { countryDetails } from "@/helpers/countyDetails";
 import { ReceptionService } from "@/services/reception.service";
+import { ConfigListService } from "@/services/configList.service";
 import { toast } from "sonner";
-import { ReceptionCreatePatientType } from "@/types/reception.type";
+import { ReceptionCreatePatientType, InsuranceCoverageRow } from "@/types/reception.type";
+import { ListItemType } from "@/types/configList.type";
 import {
   AppointmentSlotType,
   DoctorDaySlotsType,
@@ -22,6 +25,41 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import { toDateInputValue } from "@/lib/date";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+
+// Cash needs nothing further; Insurance and Corporate share the exact same
+// eligibility + fee-schedule template, entered once off the patient's card.
+const INSURANCE_SERVICE_CATEGORIES = [
+  "Consultation",
+  "Lab",
+  "Radiology",
+  "Treatment",
+  "Medicine",
+  "Dental",
+  "Maternity",
+] as const;
+
+type CoverageFormRow = {
+  deductible: string;
+  deductibleAppliesTo: string;
+  coPayPercent: string;
+  coPayMin: string;
+  coPayMax: string;
+  coPayAppliesTo: string;
+};
+
+const emptyCoverageRow: CoverageFormRow = {
+  deductible: "",
+  deductibleAppliesTo: "",
+  coPayPercent: "",
+  coPayMin: "",
+  coPayMax: "",
+  coPayAppliesTo: "",
+};
+
+const emptyCoverages = (): Record<string, CoverageFormRow> =>
+  Object.fromEntries(
+    INSURANCE_SERVICE_CATEGORIES.map((category) => [category, { ...emptyCoverageRow }])
+  );
 
 export default function PatientEntryPage() {
   const [formData, setFormData] = useState({
@@ -45,10 +83,60 @@ export default function PatientEntryPage() {
     chronicStatus: false,
     emergencyContact: "",
     emergencyContactPhone: "",
+    paymentType: "Cash",
+    eligibilityMode: "",
+    eligibilityCheckedDate: "",
+    eligibilityID: "",
+    eligibilityVisitID: "",
+    insuranceProvider: "",
+    subInsurance: "",
+    networkType: "",
+    insuranceCardNo: "",
+    extraCardNo: "",
+    insuranceEffectiveFrom: "",
+    insuranceExpiryDate: "",
+    certificateNo: "",
+    dependentsNo: "",
+    insuranceClaimNo: "",
+    maxInsuranceLiability: "",
+    insuranceApprovalLimit: "",
+    maxInsuranceCopay: "",
+    coPayPatientPercent: "",
     password: "",
   });
+  const [coverages, setCoverages] = useState<Record<string, CoverageFormRow>>(emptyCoverages);
+  const [insuranceProviders, setInsuranceProviders] = useState<ListItemType[]>([]);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const isInsuranceOrCorporate = formData.paymentType !== "Cash";
+
+  const updateCoverage = (
+    category: string,
+    field: keyof CoverageFormRow,
+    value: string,
+  ) => {
+    setCoverages((prev) => ({ ...prev, [category]: { ...prev[category], [field]: value } }));
+  };
+
+  // Loaded lazily the first time the payment type flips to Insurance/Corporate,
+  // rather than on every page load — most registrations are Cash.
+  useEffect(() => {
+    if (!isInsuranceOrCorporate || insuranceProviders.length > 0) return;
+    (async () => {
+      try {
+        setIsLoadingProviders(true);
+        const data = await ConfigListService.get("InsuranceProvider");
+        setInsuranceProviders(data.data ?? []);
+      } catch (err) {
+        console.error("Failed to fetch insurance providers:", err);
+        toast.error("Failed to load insurance providers");
+      } finally {
+        setIsLoadingProviders(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInsuranceOrCorporate]);
 
   // ---------------- Post-registration "add consultation?" flow ----------------
   const [registeredPatient, setRegisteredPatient] = useState<{
@@ -195,13 +283,45 @@ export default function PatientEntryPage() {
       return;
     }
 
+    // Cash needs nothing further; Insurance and Corporate share the same
+    // required fields (mirrors ReceptionController.CreatePatient's own check).
+    if (isInsuranceOrCorporate) {
+      if (!formData.insuranceProvider || !formData.insuranceCardNo || !formData.insuranceExpiryDate) {
+        toast.error(
+          `${formData.paymentType} Provider, Card No and Expiry Date are required`
+        );
+        setLoading(false);
+        return;
+      }
+    }
+
     const registeredBy =
       JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ??
       null;
 
+    const toNumberOrUndefined = (value: string) =>
+      value.trim() === "" ? undefined : Number(value);
+
     const payload: ReceptionCreatePatientType = {
       ...formData,
       registeredBy,
+      maxInsuranceLiability: toNumberOrUndefined(formData.maxInsuranceLiability),
+      insuranceApprovalLimit: toNumberOrUndefined(formData.insuranceApprovalLimit),
+      maxInsuranceCopay: toNumberOrUndefined(formData.maxInsuranceCopay),
+      coPayPatientPercent: toNumberOrUndefined(formData.coPayPatientPercent),
+      insuranceCoverages: isInsuranceOrCorporate
+        ? INSURANCE_SERVICE_CATEGORIES.map(
+            (category): InsuranceCoverageRow => ({
+              serviceCategory: category,
+              deductible: toNumberOrUndefined(coverages[category].deductible),
+              deductibleAppliesTo: coverages[category].deductibleAppliesTo || undefined,
+              coPayPercent: toNumberOrUndefined(coverages[category].coPayPercent),
+              coPayMin: toNumberOrUndefined(coverages[category].coPayMin),
+              coPayMax: toNumberOrUndefined(coverages[category].coPayMax),
+              coPayAppliesTo: coverages[category].coPayAppliesTo || undefined,
+            })
+          )
+        : undefined,
     };
 
     try {
@@ -243,8 +363,28 @@ export default function PatientEntryPage() {
       chronicStatus: false,
       emergencyContact: "",
       emergencyContactPhone: "",
+      paymentType: "Cash",
+      eligibilityMode: "",
+      eligibilityCheckedDate: "",
+      eligibilityID: "",
+      eligibilityVisitID: "",
+      insuranceProvider: "",
+      subInsurance: "",
+      networkType: "",
+      insuranceCardNo: "",
+      extraCardNo: "",
+      insuranceEffectiveFrom: "",
+      insuranceExpiryDate: "",
+      certificateNo: "",
+      dependentsNo: "",
+      insuranceClaimNo: "",
+      maxInsuranceLiability: "",
+      insuranceApprovalLimit: "",
+      maxInsuranceCopay: "",
+      coPayPatientPercent: "",
       password: "",
     });
+    setCoverages(emptyCoverages());
   };
 
   return (
@@ -717,6 +857,394 @@ export default function PatientEntryPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Payment Details Section */}
+        <div className="bg-card rounded-lg shadow-md border border-border p-4 sm:p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <MdOutlinePayment className="text-primary" size={28} />
+            <h2 className="text-2xl font-bold text-foreground">Payment Details</h2>
+          </div>
+          <hr className="mb-6 border-border" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Payment Type */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="paymentType" className="font-semibold text-foreground/90">
+                Payment Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="paymentType"
+                name="paymentType"
+                value={formData.paymentType}
+                onChange={handleInputChange}
+                required
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
+              >
+                <option value="Cash">Cash</option>
+                <option value="Insurance">Insurance</option>
+                <option value="Corporate">Corporate</option>
+              </select>
+            </div>
+          </div>
+
+          {isInsuranceOrCorporate && (
+            <div className="flex flex-col gap-6 mt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Eligibility Mode */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="eligibilityMode" className="font-semibold text-foreground/90">
+                    Eligibility Mode
+                  </label>
+                  <select
+                    id="eligibilityMode"
+                    name="eligibilityMode"
+                    value={formData.eligibilityMode}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
+                  >
+                    <option value="">Not Done</option>
+                    <option value="Online">Online</option>
+                    <option value="Manual">Manual</option>
+                  </select>
+                </div>
+
+                {/* Eligibility Checked Date */}
+                <div className="flex flex-col gap-2">
+                  <label className="font-semibold text-foreground/90">Eligibility Checked Date</label>
+                  <DatePicker
+                    value={formData.eligibilityCheckedDate}
+                    onChange={(v) => setFormData((prev) => ({ ...prev, eligibilityCheckedDate: v }))}
+                    max={toDateInputValue(new Date())}
+                    className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+                </div>
+
+                {/* Eligibility ID */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="eligibilityID" className="font-semibold text-foreground/90">Eligibility ID</label>
+                  <input
+                    type="text"
+                    id="eligibilityID"
+                    name="eligibilityID"
+                    value={formData.eligibilityID}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Eligibility Visit ID */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="eligibilityVisitID" className="font-semibold text-foreground/90">Eligibility Visit ID</label>
+                  <input
+                    type="text"
+                    id="eligibilityVisitID"
+                    name="eligibilityVisitID"
+                    value={formData.eligibilityVisitID}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Insurance / Corporate Provider */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="insuranceProvider" className="font-semibold text-foreground/90">
+                    {formData.paymentType} Provider <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="insuranceProvider"
+                    name="insuranceProvider"
+                    value={formData.insuranceProvider}
+                    onChange={handleInputChange}
+                    required
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
+                  >
+                    <option value="">{isLoadingProviders ? "Loading..." : "Select Provider"}</option>
+                    {insuranceProviders.map((p) => (
+                      <option key={p.listItemId} value={p.name}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Sub Insurance */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="subInsurance" className="font-semibold text-foreground/90">Sub Insurance</label>
+                  <input
+                    type="text"
+                    id="subInsurance"
+                    name="subInsurance"
+                    value={formData.subInsurance}
+                    onChange={handleInputChange}
+                    placeholder="Plan / sub-category"
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Network Type */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="networkType" className="font-semibold text-foreground/90">Network Type</label>
+                  <select
+                    id="networkType"
+                    name="networkType"
+                    value={formData.networkType}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
+                  >
+                    <option value="">Select Network Type</option>
+                    <option value="Open Network">Open Network</option>
+                    <option value="Restricted Network">Restricted Network</option>
+                    <option value="Copay Network">Copay Network</option>
+                  </select>
+                </div>
+
+                {/* Insurance/Corporate Card No */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="insuranceCardNo" className="font-semibold text-foreground/90">
+                    {formData.paymentType} Card No <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="insuranceCardNo"
+                    name="insuranceCardNo"
+                    value={formData.insuranceCardNo}
+                    onChange={handleInputChange}
+                    required
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Extra Card No */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="extraCardNo" className="font-semibold text-foreground/90">Extra Card No</label>
+                  <input
+                    type="text"
+                    id="extraCardNo"
+                    name="extraCardNo"
+                    value={formData.extraCardNo}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Effective From */}
+                <div className="flex flex-col gap-2">
+                  <label className="font-semibold text-foreground/90">{formData.paymentType} Effective From</label>
+                  <DatePicker
+                    value={formData.insuranceEffectiveFrom}
+                    onChange={(v) => setFormData((prev) => ({ ...prev, insuranceEffectiveFrom: v }))}
+                    className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+                </div>
+
+                {/* Expiry Date */}
+                <div className="flex flex-col gap-2">
+                  <label className="font-semibold text-foreground/90">
+                    {formData.paymentType} Expiry Date <span className="text-red-500">*</span>
+                  </label>
+                  <DatePicker
+                    value={formData.insuranceExpiryDate}
+                    onChange={(v) => setFormData((prev) => ({ ...prev, insuranceExpiryDate: v }))}
+                    required
+                    className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+                </div>
+
+                {/* Certificate No */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="certificateNo" className="font-semibold text-foreground/90">Certificate No.</label>
+                  <input
+                    type="text"
+                    id="certificateNo"
+                    name="certificateNo"
+                    value={formData.certificateNo}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Dependents No */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="dependentsNo" className="font-semibold text-foreground/90">Dependents No.</label>
+                  <input
+                    type="text"
+                    id="dependentsNo"
+                    name="dependentsNo"
+                    value={formData.dependentsNo}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Insurance Claim No */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="insuranceClaimNo" className="font-semibold text-foreground/90">Insurance Claim No.</label>
+                  <input
+                    type="text"
+                    id="insuranceClaimNo"
+                    name="insuranceClaimNo"
+                    value={formData.insuranceClaimNo}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Max Insurance Liability */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="maxInsuranceLiability" className="font-semibold text-foreground/90">Max. Insurance Liability (AED)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    id="maxInsuranceLiability"
+                    name="maxInsuranceLiability"
+                    value={formData.maxInsuranceLiability}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Insurance Approval Limit */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="insuranceApprovalLimit" className="font-semibold text-foreground/90">Insurance Approval Limit (AED)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    id="insuranceApprovalLimit"
+                    name="insuranceApprovalLimit"
+                    value={formData.insuranceApprovalLimit}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Max Insurance Copay */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="maxInsuranceCopay" className="font-semibold text-foreground/90">Max. Insurance Copay (AED)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    id="maxInsuranceCopay"
+                    name="maxInsuranceCopay"
+                    value={formData.maxInsuranceCopay}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+
+                {/* Co-Pay Patient % */}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="coPayPatientPercent" className="font-semibold text-foreground/90">Co-Pay Patient (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    id="coPayPatientPercent"
+                    name="coPayPatientPercent"
+                    value={formData.coPayPatientPercent}
+                    onChange={handleInputChange}
+                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                  />
+                </div>
+              </div>
+
+              {/* Fee Schedule Grid */}
+              <div className="flex flex-col gap-3">
+                <h3 className="font-semibold text-foreground/90">Fee Schedule</h3>
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Category</th>
+                        <th>Deductible (AED)</th>
+                        <th>Applies To</th>
+                        <th>Co-Pay %</th>
+                        <th>Min (AED)</th>
+                        <th>Max (AED)</th>
+                        <th>Applies To</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {INSURANCE_SERVICE_CATEGORIES.map((category) => {
+                        const row = coverages[category];
+                        const appliesToToggle = (
+                          field: "deductibleAppliesTo" | "coPayAppliesTo",
+                        ) => (
+                          <div className="flex w-fit rounded-md border border-border overflow-hidden text-xs">
+                            {(["All", "Each"] as const).map((option) => (
+                              <button
+                                key={option}
+                                type="button"
+                                onClick={() => updateCoverage(category, field, option)}
+                                className={`px-2 py-1.5 transition-colors cursor-pointer ${
+                                  row[field] === option
+                                    ? "bg-primary text-white"
+                                    : "bg-transparent text-foreground/70 hover:bg-muted"
+                                }`}
+                              >
+                                {option}
+                              </button>
+                            ))}
+                          </div>
+                        );
+
+                        return (
+                          <tr key={category}>
+                            <td className="font-semibold whitespace-nowrap">{category}</td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={row.deductible}
+                                onChange={(e) => updateCoverage(category, "deductible", e.target.value)}
+                                className="w-24 h-9 px-2 py-1 border border-border rounded-md text-sm bg-transparent"
+                              />
+                            </td>
+                            <td>{appliesToToggle("deductibleAppliesTo")}</td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={row.coPayPercent}
+                                onChange={(e) => updateCoverage(category, "coPayPercent", e.target.value)}
+                                className="w-20 h-9 px-2 py-1 border border-border rounded-md text-sm bg-transparent"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={row.coPayMin}
+                                onChange={(e) => updateCoverage(category, "coPayMin", e.target.value)}
+                                className="w-20 h-9 px-2 py-1 border border-border rounded-md text-sm bg-transparent"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={row.coPayMax}
+                                onChange={(e) => updateCoverage(category, "coPayMax", e.target.value)}
+                                className="w-20 h-9 px-2 py-1 border border-border rounded-md text-sm bg-transparent"
+                              />
+                            </td>
+                            <td>{appliesToToggle("coPayAppliesTo")}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}
