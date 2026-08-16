@@ -1278,7 +1278,7 @@ function NurseWorkbenchInner() {
               {/* Treatments ordered by the doctor — nurse may only mark them Done */}
               <div className="card p-6 flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <ClipboardCheck size={18} className="text-primary" /> Doctor's Treatments
+                  <ClipboardCheck size={18} className="text-primary" /> Doctor&apos;s Treatments
                 </h2>
                 {chart && chart.treatments.length > 0 ? (
                   <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">

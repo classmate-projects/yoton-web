@@ -55,7 +55,6 @@ export default function ConfidentialNotesPage() {
     if (!checkedAuth) return;
     EmrService.getPatients().then((res) => setPatients(res.data || [])).catch(() => {});
     fetchNotes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth]);
 
   const saveNote = async () => {

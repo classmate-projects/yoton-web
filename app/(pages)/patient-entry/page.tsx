@@ -332,9 +332,17 @@ export default function PatientEntryPage() {
     const toNumberOrUndefined = (value: string) =>
       value.trim() === "" ? undefined : Number(value);
 
+    // Cash registrations never touch the eligibility/insurance date inputs, so they stay at
+    // their "" default - sending that raw would fail DateOnly? conversion server-side.
+    const toDateOrUndefined = (value: string) =>
+      value.trim() === "" ? undefined : value;
+
     const payload: ReceptionCreatePatientType = {
       ...formData,
       registeredBy,
+      eligibilityCheckedDate: toDateOrUndefined(formData.eligibilityCheckedDate),
+      insuranceEffectiveFrom: toDateOrUndefined(formData.insuranceEffectiveFrom),
+      insuranceExpiryDate: toDateOrUndefined(formData.insuranceExpiryDate),
       maxInsuranceLiability: toNumberOrUndefined(formData.maxInsuranceLiability),
       insuranceApprovalLimit: toNumberOrUndefined(formData.insuranceApprovalLimit),
       maxInsuranceCopay: toNumberOrUndefined(formData.maxInsuranceCopay),

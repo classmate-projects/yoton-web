@@ -258,7 +258,6 @@ export default function MessagesPage() {
         connection.off("presenceChanged", handlePresenceChanged);
       });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDraftChange = (value: string) => {
