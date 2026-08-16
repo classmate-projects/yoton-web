@@ -414,7 +414,7 @@ export default function PharmacyPage() {
 
   return (
     <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
-      <div className="flex justify-between items-center gap-4 mb-8">
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
         <div className="flex flex-col gap-1">
           <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
             <Pill size={34} className="text-primary" />
@@ -517,7 +517,7 @@ export default function PharmacyPage() {
               ) : (
                 medicationGroups.map((group) => (
                   <div key={group.patientId} className="card">
-                    <div className="flex items-center justify-between border-b border-border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-4">
                       <div>
                         <p className="font-semibold text-foreground">{group.patientName}</p>
                         <p className="text-xs text-muted-foreground">{group.doctorName}</p>

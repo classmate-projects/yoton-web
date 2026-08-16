@@ -85,7 +85,7 @@ export default function PrescriptionPrintout({
             </button>
           </div>
         </div>
-        <div className="overflow-y-auto p-6">
+        <div className="overflow-auto p-6">
           <PrintablePrescriptionBody
             companyName={companyName}
             companyLogo={companyLogo}
