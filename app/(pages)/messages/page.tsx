@@ -30,7 +30,14 @@ const errorMessage = (error: unknown, fallback: string) => {
 const formatTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const formatDay = (value: string) => new Date(value).toLocaleDateString();
 const formatBytes = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`);
-const isImage = (contentType: string | null) => !!contentType && contentType.startsWith("image/");
+// IFormFile.ContentType isn't reliably set by every client (mobile camera
+// capture and some drag-and-drop paths often send "application/octet-stream"
+// or omit it entirely), so a missing/generic content type still counts as an
+// image if the filename itself has an image extension - otherwise a real
+// photo silently falls back to the plain file-chip instead of a thumbnail.
+const IMAGE_EXTENSION_RE = /\.(jpe?g|png|gif|webp|bmp|svg|avif|heic|heif)$/i;
+const isImage = (a: { contentType: string | null; fileName: string }) =>
+  (!!a.contentType && a.contentType.toLowerCase().startsWith("image/")) || IMAGE_EXTENSION_RE.test(a.fileName);
 
 function Avatar({ name, url, size = 40, online }: { name: string; url?: string | null; size?: number; online?: boolean }) {
   const resolved = backendAssetUrl(url);
@@ -74,6 +81,9 @@ export default function MessagesPage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [openReactionPickerFor, setOpenReactionPickerFor] = useState<string | null>(null);
   const [typingLabel, setTypingLabel] = useState<string | null>(null);
+  // Attachments whose image actually failed to load (bad/expired URL, etc.) -
+  // falls back to the plain file-chip instead of leaving a broken-image icon.
+  const [brokenImageIds, setBrokenImageIds] = useState<Set<string>>(new Set());
   const threadEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -331,7 +341,14 @@ export default function MessagesPage() {
   };
 
   return (
-    <div className="flex h-full flex-col py-6 px-4 sm:py-8 sm:px-10">
+    // h-screen, not h-full: the shared (pages) layout only sets min-h-full up
+    // the ancestor chain (so ordinary pages can grow taller than the viewport
+    // and let the page scroll), which means a plain h-full here has no
+    // definite height to resolve against and just grows with content too -
+    // the whole page would scroll instead of this panel's own message list.
+    // 100vh doesn't need ancestor cooperation, so it actually pins this page
+    // to the viewport and lets the flex-1 min-h-0 chain below clip properly.
+    <div className="flex h-screen flex-col py-6 px-4 sm:py-8 sm:px-10">
       <div className="flex flex-col gap-1 mb-6 shrink-0">
         <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
           <MessageCircle className="text-primary" /> Messages
@@ -441,7 +458,7 @@ export default function MessagesPage() {
         </div>
 
         {/* Thread */}
-        <div className="hidden sm:flex flex-1 flex-col min-w-0">
+        <div className="hidden sm:flex flex-1 flex-col min-w-0 min-h-0">
           {!activeConversation ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
               Select a conversation to start messaging.
@@ -495,10 +512,17 @@ export default function MessagesPage() {
                           {m.attachments.length > 0 && (
                             <div className="mt-1.5 flex flex-col gap-1.5">
                               {m.attachments.map((a) =>
-                                isImage(a.contentType) ? (
+                                isImage(a) && !brokenImageIds.has(a.chatMessageAttachmentId) ? (
                                   <a key={a.chatMessageAttachmentId} href={backendAssetUrl(a.filePath) ?? "#"} target="_blank" rel="noopener noreferrer">
                                     {/* eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path */}
-                                    <img src={backendAssetUrl(a.filePath) ?? undefined} alt={a.fileName} className="max-h-48 rounded-lg" />
+                                    <img
+                                      src={backendAssetUrl(a.filePath) ?? undefined}
+                                      alt={a.fileName}
+                                      className="max-h-48 rounded-lg"
+                                      onError={() =>
+                                        setBrokenImageIds((prev) => new Set(prev).add(a.chatMessageAttachmentId))
+                                      }
+                                    />
                                   </a>
                                 ) : (
                                   <a

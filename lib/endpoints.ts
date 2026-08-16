@@ -204,5 +204,9 @@ export const ENDPOINTS = {
         GET_NURSE_SHIFTS: (nurseId: string) => `/api/nursing/nurse/${nurseId}/shifts`,
         SET_NURSE_SHIFTS: (nurseId: string) => `/api/nursing/nurse/${nurseId}/shifts`,
         GET_ON_DUTY_NOW: `/api/nursing/on-duty-now`,
+    },
+    RECENT_MODULES: {
+        GET: `/api/recent-modules`,
+        RECORD: `/api/recent-modules`,
     }
 }
