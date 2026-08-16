@@ -65,3 +65,49 @@ export interface IssueMedicinePayload {
   collectedBy: string; // Patient, Nurse
   collectorUserId?: string;
 }
+
+// A doctor-ordered Medication as pharmacy sees it — sourced directly from the same
+// Medication records the doctor workbench writes, so dosage/frequency/route always match
+// exactly what the doctor ordered. Includes pricing (pharmacy needs it); the doctor
+// workbench's own print action never requests this type.
+export interface PharmacyMedicationType {
+  medicationId: string;
+  patientId: string;
+  patientName: string;
+  doctorId: string | null;
+  doctorName: string;
+
+  medicineId: string | null;
+  drugName: string;
+  drugType: string | null;
+  dosage: string | null;
+  dosageUnit: string | null;
+  frequency: string | null;
+  durationDays: number | null;
+  orderType: string | null;
+  route: string | null;
+  mealTiming: string | null;
+  instructions: string | null;
+  priority: string;
+  totalQuantity: number | null;
+  refillCount: number;
+  prnReason: string | null;
+  requiresCounselling: boolean;
+  unitPrice: number | null;
+
+  startedAt: string;
+  plannedEndDate: string | null;
+
+  dispenseStatus: "Pending" | "Prepared" | "Dispensed";
+  preparedByName: string | null;
+  preparedAt: string | null;
+  dispensedByName: string | null;
+  dispensedAt: string | null;
+  collectedBy: string | null;
+  collectorName: string | null;
+}
+
+export interface DispenseMedicationPayload {
+  collectedBy: string; // Patient, Nurse
+  collectorUserId?: string;
+}

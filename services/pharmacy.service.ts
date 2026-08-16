@@ -1,6 +1,6 @@
 import api from "@/lib/axios";
 import { ENDPOINTS } from "@/lib/endpoints";
-import { AddMedicinePayload, CreatePrescriptionPayload, IssueMedicinePayload } from "@/types/pharmacy.type";
+import { AddMedicinePayload, CreatePrescriptionPayload, DispenseMedicationPayload, IssueMedicinePayload } from "@/types/pharmacy.type";
 
 export const PharmacyService = {
   getMedicines: async () => {
@@ -40,6 +40,18 @@ export const PharmacyService = {
   },
   getSummary: async () => {
     const { data } = await api.get(ENDPOINTS.PHARMACY.GET_SUMMARY);
+    return data;
+  },
+  getMedicationQueue: async (status: "pending" | "all") => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_MEDICATION_QUEUE(status));
+    return data;
+  },
+  prepareMedication: async (medicationId: string) => {
+    const { data } = await api.post(ENDPOINTS.PHARMACY.PREPARE_MEDICATION(medicationId));
+    return data;
+  },
+  dispenseMedication: async (medicationId: string, payload: DispenseMedicationPayload) => {
+    const { data } = await api.post(ENDPOINTS.PHARMACY.DISPENSE_MEDICATION(medicationId), payload);
     return data;
   },
 };

@@ -136,6 +136,9 @@ export const ENDPOINTS = {
         CREATE_PRESCRIPTION: `/api/Pharmacy/prescription`,
         ISSUE: `/api/Pharmacy/issue`,
         GET_SUMMARY: `/api/Pharmacy/summary`,
+        GET_MEDICATION_QUEUE: (status: "pending" | "all") => `/api/Pharmacy/medication-queue?status=${status}`,
+        PREPARE_MEDICATION: (medicationId: string) => `/api/Pharmacy/medication/${medicationId}/prepare`,
+        DISPENSE_MEDICATION: (medicationId: string) => `/api/Pharmacy/medication/${medicationId}/dispense`,
     },
     BILLING: {
         GET_ALL: `/api/Billing`,

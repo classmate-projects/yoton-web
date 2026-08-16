@@ -30,6 +30,8 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
 import ReviewOfSystemsPanel, { ReviewOfSystemsValue } from "@/components/doctor/ReviewOfSystemsPanel";
+import PrescriptionPrintout from "@/components/prescription/PrescriptionPrintout";
+import { getUserDetail } from "@/lib/userDetail";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
 import { SpecializationService } from "@/services/specialization.service";
@@ -73,6 +75,8 @@ function DoctorWorkbenchInner() {
 
   const [assignedDoctors, setAssignedDoctors] = useState<AssignedDoctorsInfo[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>("");
+
+  const [showPrescriptionPrint, setShowPrescriptionPrint] = useState(false);
 
   const [dashboard, setDashboard] = useState<DoctorDashboardSummaryType | null>(null);
   const [schedule, setSchedule] = useState<TodayScheduleItemType[]>([]);
@@ -1124,9 +1128,19 @@ function DoctorWorkbenchInner() {
 
                 {/* Medications */}
                 <div className="card p-6 flex flex-col gap-4">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Pill size={18} className="text-primary" /> Medication Tracking
-                  </h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <Pill size={18} className="text-primary" /> Medication Tracking
+                    </h2>
+                    {summary.currentMedications.length > 0 && (
+                      <button
+                        onClick={() => setShowPrescriptionPrint(true)}
+                        className="text-sm font-semibold text-primary hover:underline"
+                      >
+                        Print Prescription
+                      </button>
+                    )}
+                  </div>
 
                   <div>
                     <p className="text-sm font-semibold text-foreground/90 mb-2">Current Medications</p>
@@ -1810,6 +1824,37 @@ function DoctorWorkbenchInner() {
             </div>
           </div>
         </div>
+      )}
+
+      {showPrescriptionPrint && summary && (
+        <PrescriptionPrintout
+          patientName={summary.name}
+          patientNumber={summary.opNumber || summary.opId}
+          patientAge={
+            summary.dateOfBirth
+              ? Math.floor(
+                  (Date.now() - new Date(summary.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+                )
+              : null
+          }
+          patientSex={summary.sex}
+          doctorName={getUserDetail()?.name || "Attending Physician"}
+          visitDate={new Date().toLocaleDateString()}
+          medicines={summary.currentMedications.map((m) => ({
+            drugName: m.drugName,
+            drugType: m.drugType,
+            dosage: m.dosage,
+            dosageUnit: m.dosageUnit,
+            frequency: m.frequency,
+            route: m.route,
+            orderType: m.orderType,
+            durationDays: m.durationDays,
+            instructions: m.instructions,
+            totalQuantity: m.totalQuantity,
+          }))}
+          showPricing={false}
+          onClose={() => setShowPrescriptionPrint(false)}
+        />
       )}
     </div>
   );

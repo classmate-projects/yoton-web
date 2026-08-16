@@ -11,8 +11,10 @@ import DatePicker from "@/components/DatePicker";
 import { PharmacyService } from "@/services/pharmacy.service";
 import { ReceptionService } from "@/services/reception.service";
 import { UserService } from "@/services/user.service";
+import PrescriptionPrintout, { PrescriptionMedicineLine } from "@/components/prescription/PrescriptionPrintout";
 import {
   MedicineType,
+  PharmacyMedicationType,
   PharmacySummaryType,
   PrescriptionType,
 } from "@/types/pharmacy.type";
@@ -37,10 +39,27 @@ export default function PharmacyPage() {
 
   const [summary, setSummary] = useState<PharmacySummaryType | null>(null);
   const [prescriptions, setPrescriptions] = useState<PrescriptionType[]>([]);
+  const [medicationQueue, setMedicationQueue] = useState<PharmacyMedicationType[]>([]);
   const [medicines, setMedicines] = useState<MedicineType[]>([]);
   const [lowStock, setLowStock] = useState<MedicineType[]>([]);
   const [prescriptionFilter, setPrescriptionFilter] = useState<"pending" | "all">("pending");
+  const [prescriptionView, setPrescriptionView] = useState<"doctorOrders" | "walkIn">("doctorOrders");
   const [isLoading, setIsLoading] = useState(true);
+
+  // Doctor-order dispense workflow (Prepared -> Dispensed, per Medication)
+  const [preparingId, setPreparingId] = useState<string | null>(null);
+  const [medDispenseTarget, setMedDispenseTarget] = useState<PharmacyMedicationType | null>(null);
+  const [medCollectedBy, setMedCollectedBy] = useState("Patient");
+  const [medCollectorUserId, setMedCollectorUserId] = useState("");
+  const [isDispensingMed, setIsDispensingMed] = useState(false);
+
+  // Printable prescription — one patient's medications at a time
+  const [printGroup, setPrintGroup] = useState<{
+    patientName: string;
+    patientNumber: string;
+    doctorName: string;
+    items: PharmacyMedicationType[];
+  } | null>(null);
 
   const [patients, setPatients] = useState<PatientListItemType[]>([]);
   const [doctors, setDoctors] = useState<DoctorGridType[]>([]);
@@ -91,24 +110,110 @@ export default function PharmacyPage() {
   const fetchAll = async () => {
     try {
       setIsLoading(true);
-      const [summaryRes, rxRes, medsRes, lowStockRes] = await Promise.all([
+      const [summaryRes, rxRes, medsRes, lowStockRes, queueRes] = await Promise.all([
         PharmacyService.getSummary(),
         prescriptionFilter === "pending"
           ? PharmacyService.getPendingPrescriptions()
           : PharmacyService.getPrescriptions(),
         PharmacyService.getMedicines(),
         PharmacyService.getLowStock(),
+        PharmacyService.getMedicationQueue(prescriptionFilter),
       ]);
       setSummary(summaryRes.data ?? null);
       setPrescriptions(rxRes.data ?? []);
       setMedicines(medsRes.data ?? []);
       setLowStock(lowStockRes.data ?? []);
+      setMedicationQueue(queueRes.data ?? []);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load pharmacy data"));
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Pharmacy's queue is a flat list of Medication rows across every patient — grouped here
+  // so it reads as one prescription per patient (matching how a doctor actually orders and
+  // how a printed prescription should look) rather than an undifferentiated drug list.
+  const medicationGroups = useMemo(() => {
+    const map = new Map<string, { patientId: string; patientName: string; doctorName: string; items: PharmacyMedicationType[] }>();
+    for (const m of medicationQueue) {
+      if (!map.has(m.patientId)) {
+        map.set(m.patientId, { patientId: m.patientId, patientName: m.patientName, doctorName: m.doctorName, items: [] });
+      }
+      map.get(m.patientId)!.items.push(m);
+    }
+    return Array.from(map.values());
+  }, [medicationQueue]);
+
+  const handlePrepare = async (medicationId: string) => {
+    try {
+      setPreparingId(medicationId);
+      const data = await PharmacyService.prepareMedication(medicationId);
+      toast.success(data.message || "Marked as prepared");
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to mark as prepared"));
+    } finally {
+      setPreparingId(null);
+    }
+  };
+
+  const openMedDispenseModal = (item: PharmacyMedicationType) => {
+    setMedDispenseTarget(item);
+    setMedCollectedBy("Patient");
+    setMedCollectorUserId("");
+  };
+
+  const closeMedDispenseModal = () => {
+    setMedDispenseTarget(null);
+    setMedCollectedBy("Patient");
+    setMedCollectorUserId("");
+  };
+
+  const handleMedDispense = async () => {
+    if (!medDispenseTarget) return;
+    if (medCollectedBy === "Nurse" && !medCollectorUserId) {
+      toast.warning("Please select which nurse collected the medicine");
+      return;
+    }
+    try {
+      setIsDispensingMed(true);
+      const data = await PharmacyService.dispenseMedication(medDispenseTarget.medicationId, {
+        collectedBy: medCollectedBy,
+        collectorUserId: medCollectedBy === "Nurse" ? medCollectorUserId : undefined,
+      });
+      toast.success(data.message || "Medicine dispensed");
+      closeMedDispenseModal();
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to dispense medicine"));
+    } finally {
+      setIsDispensingMed(false);
+    }
+  };
+
+  const openPrintForGroup = (group: { patientName: string; doctorName: string; items: PharmacyMedicationType[] }) => {
+    setPrintGroup({
+      patientName: group.patientName,
+      patientNumber: group.items[0]?.patientId ?? "",
+      doctorName: group.doctorName,
+      items: group.items,
+    });
+  };
+
+  const toPrintLine = (m: PharmacyMedicationType): PrescriptionMedicineLine => ({
+    drugName: m.drugName,
+    drugType: m.drugType,
+    dosage: m.dosage,
+    dosageUnit: m.dosageUnit,
+    frequency: m.frequency,
+    route: m.route,
+    orderType: m.orderType,
+    durationDays: m.durationDays,
+    instructions: m.instructions,
+    totalQuantity: m.totalQuantity,
+    unitPrice: m.unitPrice,
+  });
 
   useEffect(() => {
     if (!checkedAuth) return;
@@ -319,14 +424,16 @@ export default function PharmacyPage() {
             Dispense prescriptions and manage medicine inventory.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={tab === "prescriptions" ? openRxModal : () => setIsMedModalOpen(true)}
-          className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150 shrink-0"
-        >
-          <MdAdd size={22} />
-          {tab === "prescriptions" ? "New Prescription" : "Add Medicine"}
-        </button>
+        {(tab === "inventory" || (tab === "prescriptions" && prescriptionView === "walkIn")) && (
+          <button
+            type="button"
+            onClick={tab === "prescriptions" ? openRxModal : () => setIsMedModalOpen(true)}
+            className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150 shrink-0"
+          >
+            <MdAdd size={22} />
+            {tab === "prescriptions" ? "New Walk-in Sale" : "Add Medicine"}
+          </button>
+        )}
       </div>
 
       {/* Summary cards */}
@@ -363,22 +470,137 @@ export default function PharmacyPage() {
 
       {tab === "prescriptions" ? (
         <>
-          <div className="flex gap-2 mb-4">
-            {(["pending", "all"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setPrescriptionFilter(f)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                  prescriptionFilter === f
-                    ? "bg-primary/15 text-primary"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}
-              >
-                {f === "pending" ? "Pending Only" : "All Prescriptions"}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="flex gap-2">
+              {(
+                [
+                  { key: "doctorOrders", label: "Doctor Orders" },
+                  { key: "walkIn", label: "Walk-in Sales" },
+                ] as const
+              ).map((v) => (
+                <button
+                  key={v.key}
+                  onClick={() => setPrescriptionView(v.key)}
+                  className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors cursor-pointer ${
+                    prescriptionView === v.key ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              {(["pending", "all"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setPrescriptionFilter(f)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+                    prescriptionFilter === f
+                      ? "bg-primary/15 text-primary"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {f === "pending" ? "Pending Only" : "All"}
+                </button>
+              ))}
+            </div>
           </div>
 
+          {prescriptionView === "doctorOrders" ? (
+            <div className="flex flex-col gap-4">
+              {isLoading ? (
+                <div className="card py-16 flex justify-center">
+                  <LoadingSpinner />
+                </div>
+              ) : medicationGroups.length === 0 ? (
+                <div className="card py-16 text-center text-muted-foreground">No doctor orders found.</div>
+              ) : (
+                medicationGroups.map((group) => (
+                  <div key={group.patientId} className="card">
+                    <div className="flex items-center justify-between border-b border-border p-4">
+                      <div>
+                        <p className="font-semibold text-foreground">{group.patientName}</p>
+                        <p className="text-xs text-muted-foreground">{group.doctorName}</p>
+                      </div>
+                      <button
+                        onClick={() => openPrintForGroup(group)}
+                        className="text-sm font-semibold text-primary hover:underline"
+                      >
+                        Print Prescription
+                      </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr>
+                            <th className="text-foreground/90">Drug</th>
+                            <th className="text-foreground/90">Dosage</th>
+                            <th className="text-foreground/90">Frequency</th>
+                            <th className="text-foreground/90">Route</th>
+                            <th className="text-foreground/90">Price</th>
+                            <th className="text-foreground/90">Status</th>
+                            <th className="text-center text-foreground/90">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {group.items.map((item) => (
+                            <tr key={item.medicationId} className="hover:bg-muted/30 transition-colors">
+                              <td className="font-semibold text-foreground">{item.drugName}</td>
+                              <td className="text-foreground/80">
+                                {item.dosage ? `${item.dosage}${item.dosageUnit ? ` ${item.dosageUnit}` : ""}` : "—"}
+                              </td>
+                              <td className="text-foreground/80">{item.frequency || "—"}</td>
+                              <td className="text-foreground/80">{item.route || "—"}</td>
+                              <td className="text-foreground/80">
+                                {item.unitPrice != null ? currency(item.unitPrice) : "—"}
+                              </td>
+                              <td>
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                    item.dispenseStatus === "Dispensed"
+                                      ? "bg-emerald-500/10 text-emerald-500"
+                                      : item.dispenseStatus === "Prepared"
+                                      ? "bg-blue-500/10 text-blue-500"
+                                      : "bg-amber-500/10 text-amber-500"
+                                  }`}
+                                >
+                                  {item.dispenseStatus}
+                                </span>
+                              </td>
+                              <td>
+                                <div className="flex justify-center gap-2">
+                                  {item.dispenseStatus === "Pending" && (
+                                    <button
+                                      onClick={() => handlePrepare(item.medicationId)}
+                                      disabled={preparingId === item.medicationId}
+                                      className="px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-60"
+                                    >
+                                      {preparingId === item.medicationId ? "Preparing..." : "Mark Prepared"}
+                                    </button>
+                                  )}
+                                  {item.dispenseStatus === "Prepared" && (
+                                    <button
+                                      onClick={() => openMedDispenseModal(item)}
+                                      className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer"
+                                    >
+                                      Dispense
+                                    </button>
+                                  )}
+                                  {item.dispenseStatus === "Dispensed" && (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
           <div className="card">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -468,6 +690,7 @@ export default function PharmacyPage() {
               </table>
             </div>
           </div>
+          )}
         </>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -873,6 +1096,75 @@ export default function PharmacyPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {medDispenseTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="bg-card w-full max-w-sm rounded-xl border border-border p-6 shadow-2xl mx-4">
+            <h2 className="text-xl font-semibold text-foreground">Dispense medicine</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {medDispenseTarget.drugName} — {medDispenseTarget.patientName}
+            </p>
+
+            <div className="mt-4 flex flex-col gap-3">
+              <label className="text-sm font-bold text-foreground/90">Who is collecting?</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={medCollectedBy === "Patient"} onChange={() => setMedCollectedBy("Patient")} />
+                  Patient
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={medCollectedBy === "Nurse"} onChange={() => setMedCollectedBy("Nurse")} />
+                  Nurse
+                </label>
+              </div>
+              {medCollectedBy === "Nurse" && (
+                <select
+                  value={medCollectorUserId}
+                  onChange={(e) => setMedCollectorUserId(e.target.value)}
+                  className="w-full p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                >
+                  <option value="">Select nurse</option>
+                  {nurses.map((n) => (
+                    <option key={n.id} value={n.id}>{n.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-6 w-full">
+              <button
+                type="button"
+                onClick={closeMedDispenseModal}
+                className="px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground w-full"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleMedDispense}
+                disabled={isDispensingMed}
+                className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full disabled:opacity-60"
+              >
+                {isDispensingMed ? "Dispensing..." : "Confirm Dispense"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {printGroup && (
+        <PrescriptionPrintout
+          patientName={printGroup.patientName}
+          patientNumber={printGroup.patientNumber}
+          doctorName={printGroup.doctorName}
+          visitDate={new Date().toLocaleDateString()}
+          medicines={printGroup.items.map(toPrintLine)}
+          preparedByName={printGroup.items.find((i) => i.preparedByName)?.preparedByName}
+          dispensedByName={printGroup.items.find((i) => i.dispensedByName)?.dispensedByName}
+          showPricing
+          onClose={() => setPrintGroup(null)}
+        />
       )}
     </div>
   );
