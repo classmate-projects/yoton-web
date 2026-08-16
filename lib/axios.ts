@@ -1,4 +1,5 @@
 import axios from "axios";
+import { startApiRequest, endApiRequest } from "./apiLoading";
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_BASE_URL,
@@ -15,11 +16,16 @@ api.interceptors.request.use(
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+
+      startApiRequest();
     }
 
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    if (typeof window !== "undefined") endApiRequest();
+    return Promise.reject(error);
+  }
 );
 
 // A 401 here means the bearer token is missing/expired/invalid — stale local
@@ -30,13 +36,19 @@ api.interceptors.request.use(
 // clear localStorage here, proxy.ts sees the still-present cookie and
 // redirects straight back from /login to "/", looping forever.
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (typeof window !== "undefined") endApiRequest();
+    return response;
+  },
   async (error) => {
-    if (typeof window !== "undefined" && error.response?.status === 401 && window.location.pathname !== "/login") {
-      localStorage.removeItem("yoton_token");
-      localStorage.removeItem("yoton_user_detail");
-      await fetch("/api/logout", { method: "POST" });
-      window.location.href = "/login";
+    if (typeof window !== "undefined") {
+      endApiRequest();
+      if (error.response?.status === 401 && window.location.pathname !== "/login") {
+        localStorage.removeItem("yoton_token");
+        localStorage.removeItem("yoton_user_detail");
+        await fetch("/api/logout", { method: "POST" });
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
   }

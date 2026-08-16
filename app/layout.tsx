@@ -3,6 +3,7 @@ import { Geist } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import ApiLoadingBar from "@/components/ApiLoadingBar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,6 +32,7 @@ export default function RootLayout({
           defaultTheme="system"
           enableSystem
         >
+          <ApiLoadingBar />
           {children}
           <Toaster
             position="bottom-right"
