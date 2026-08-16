@@ -3,8 +3,8 @@ import { ENDPOINTS } from "@/lib/endpoints";
 import { ListItemPayload, ListItemBulkUploadPayload } from "@/types/configList.type";
 
 export const ConfigListService = {
-  get: async (listType: string, search?: string) => {
-    const { data } = await api.get(ENDPOINTS.CONFIG_LIST.GET(listType, search));
+  get: async (listType: string, search?: string, page?: number, pageSize?: number) => {
+    const { data } = await api.get(ENDPOINTS.CONFIG_LIST.GET(listType, search, page, pageSize));
     return data;
   },
   create: async (listType: string, payload: ListItemPayload) => {

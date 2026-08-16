@@ -95,7 +95,14 @@ export const ENDPOINTS = {
         GET_FOLLOW_UPS: (doctorId?: string) => `/api/emr/follow-ups${doctorId ? `?doctorId=${doctorId}` : ""}`,
     },
     CONFIG_LIST: {
-        GET: (listType: string, search?: string) => `/api/config-lists/${listType}${search ? `?search=${encodeURIComponent(search)}` : ""}`,
+        GET: (listType: string, search?: string, page?: number, pageSize?: number) => {
+            const params = new URLSearchParams();
+            if (search) params.set("search", search);
+            if (page) params.set("page", String(page));
+            if (pageSize) params.set("pageSize", String(pageSize));
+            const qs = params.toString();
+            return `/api/config-lists/${listType}${qs ? `?${qs}` : ""}`;
+        },
         CREATE: (listType: string) => `/api/config-lists/${listType}`,
         BULK_UPLOAD: (listType: string) => `/api/config-lists/${listType}/bulk`,
         UPDATE: (id: string) => `/api/config-lists/${id}`,

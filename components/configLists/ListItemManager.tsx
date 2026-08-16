@@ -54,6 +54,11 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
+  const PAGE_SIZE = 100;
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
   // Large lists (ICD codes especially) can run into the thousands, so search runs
   // server-side via the same ?search= param the doctor-workbench pickers already
   // use — debounced so typing doesn't fire a request per keystroke.
@@ -62,14 +67,22 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
     return () => clearTimeout(handle);
   }, [searchTerm]);
 
+  // A new search/list jumps back to page 1 - staying on e.g. page 40 of the old
+  // result set makes no sense against a freshly filtered one.
+  useEffect(() => {
+    setPage(1);
+  }, [listType, debouncedSearch]);
+
   const fetchItems = async () => {
     try {
       setIsLoading(true);
-      const res = await ConfigListService.get(listType, debouncedSearch);
+      const res = await ConfigListService.get(listType, debouncedSearch, page, PAGE_SIZE);
       setItems(res.data || []);
+      setTotalCount(res.totalCount ?? 0);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load list"));
       setItems([]);
+      setTotalCount(0);
     } finally {
       setIsLoading(false);
     }
@@ -78,7 +91,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   useEffect(() => {
     fetchItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listType, debouncedSearch]);
+  }, [listType, debouncedSearch, page]);
 
   const addItem = async () => {
     if (!form.name.trim()) {
@@ -550,6 +563,33 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
             )}
           </tbody>
         </table>
+
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-border text-xs text-muted-foreground">
+          <span>
+            {totalCount === 0
+              ? "0 results"
+              : `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, totalCount)} of ${totalCount}`}
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || isLoading}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || isLoading}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
     </>
   );

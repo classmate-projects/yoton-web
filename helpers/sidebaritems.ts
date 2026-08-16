@@ -8,6 +8,7 @@ export interface SidebarSubItem {
     id: number;
     name: string;
     navLink: string;
+    icon: React.ComponentType;
 }
 
 export interface SidebarMenuItem {
@@ -46,27 +47,16 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     },
     {
         id: 6,
-        name: "Departments",
+        name: "Departments & Staff",
         navLink: "/departments",
         roles: ["admin"],
         icon: buildingIcon,
-        group: "Configuration"
-    },
-    {
-        id: 7,
-        name: "Specializations",
-        navLink: "/specializations",
-        roles: ["admin"],
-        icon: specializationIcon,
-        group: "Configuration"
-    },
-    {
-        id: 8,
-        name: "Assign Doctor",
-        navLink: "/assign-doctor",
-        roles: ["admin"],
-        icon: doctorIcon,
-        group: "Configuration"
+        group: "Configuration",
+        subItems: [
+            { id: 6, name: "Departments", navLink: "/departments", icon: buildingIcon },
+            { id: 7, name: "Specializations", navLink: "/specializations", icon: specializationIcon },
+            { id: 8, name: "Assign Doctor", navLink: "/assign-doctor", icon: doctorIcon },
+        ]
     },
     {
         id: 20,

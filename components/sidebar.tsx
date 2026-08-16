@@ -232,7 +232,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                       className={tileClass(isActive, isExpanded)}
                     >
                       <span className={tileIconClass(isActive)}>
-                        <ChevronRight size={20} />
+                        <sub.icon />
                       </span>
                     </Link>
                   );
