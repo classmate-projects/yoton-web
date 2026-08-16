@@ -88,6 +88,9 @@ function DoctorWorkbenchInner() {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [summary, setSummary] = useState<PatientSummaryType | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  // Date.now() can't be called during render (React treats it as impure) - computed instead
+  // in the "Print Prescription" click handler below, where reading the clock is allowed.
+  const [patientAgeForPrint, setPatientAgeForPrint] = useState<number | null>(null);
 
   const [specializations, setSpecializations] = useState<SpecializationTypes[]>([]);
   const [quickNotes, setQuickNotes] = useState<QuickNoteType[]>([]);
@@ -176,6 +179,22 @@ function DoctorWorkbenchInner() {
       .then((data) => setSpecializations(Array.isArray(data) ? data : []))
       .catch(() => toast.error("Failed to load specialties"));
   }, [checkedAuth]);
+
+  // ---------------- EXTERNAL DOCUMENTS ----------------
+  const [documents, setDocuments] = useState<{ patientDocumentId: string; documentType: string; createdAt: string }[]>([]);
+  const [unviewedDocumentCount, setUnviewedDocumentCount] = useState(0);
+  const [showDocuments, setShowDocuments] = useState(false);
+
+  const fetchDocuments = async (patientId: string) => {
+    try {
+      const res = await EmrService.getDocuments(patientId);
+      setDocuments(res.data?.items || []);
+      setUnviewedDocumentCount(res.data?.unviewedCount || 0);
+    } catch {
+      setDocuments([]);
+      setUnviewedDocumentCount(0);
+    }
+  };
 
   // ---------------- PATIENT SUMMARY (EMR PANEL) ----------------
   const openPatient = async (patientId: string) => {
@@ -633,22 +652,6 @@ function DoctorWorkbenchInner() {
       await fetchSummary(selectedPatientId);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to add follow-up"));
-    }
-  };
-
-  // ---------------- EXTERNAL DOCUMENTS ----------------
-  const [documents, setDocuments] = useState<{ patientDocumentId: string; documentType: string; createdAt: string }[]>([]);
-  const [unviewedDocumentCount, setUnviewedDocumentCount] = useState(0);
-  const [showDocuments, setShowDocuments] = useState(false);
-
-  const fetchDocuments = async (patientId: string) => {
-    try {
-      const res = await EmrService.getDocuments(patientId);
-      setDocuments(res.data?.items || []);
-      setUnviewedDocumentCount(res.data?.unviewedCount || 0);
-    } catch {
-      setDocuments([]);
-      setUnviewedDocumentCount(0);
     }
   };
 
@@ -1134,7 +1137,17 @@ function DoctorWorkbenchInner() {
                     </h2>
                     {summary.currentMedications.length > 0 && (
                       <button
-                        onClick={() => setShowPrescriptionPrint(true)}
+                        onClick={() => {
+                          setPatientAgeForPrint(
+                            summary.dateOfBirth
+                              ? Math.floor(
+                                  (Date.now() - new Date(summary.dateOfBirth).getTime()) /
+                                    (365.25 * 24 * 60 * 60 * 1000)
+                                )
+                              : null
+                          );
+                          setShowPrescriptionPrint(true);
+                        }}
                         className="text-sm font-semibold text-primary hover:underline"
                       >
                         Print Prescription
@@ -1830,13 +1843,7 @@ function DoctorWorkbenchInner() {
         <PrescriptionPrintout
           patientName={summary.name}
           patientNumber={summary.opNumber || summary.opId}
-          patientAge={
-            summary.dateOfBirth
-              ? Math.floor(
-                  (Date.now() - new Date(summary.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
-                )
-              : null
-          }
+          patientAge={patientAgeForPrint}
           patientSex={summary.sex}
           doctorName={getUserDetail()?.name || "Attending Physician"}
           visitDate={new Date().toLocaleDateString()}

@@ -154,7 +154,6 @@ function BillingPageInner() {
     } else {
       setChargeableItems([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailBill?.billId, detailBill?.visitId]);
 
   useSignalRRefetch(["prescriptionDispensed", "labStatusUpdated", "radiologyStatusUpdated"], () => {

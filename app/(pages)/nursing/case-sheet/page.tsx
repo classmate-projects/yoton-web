@@ -221,7 +221,7 @@ export default function DoctorCaseSheetPage() {
       <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground mb-1">
         <FileText className="text-primary" /> Doctor Case Sheet
       </h1>
-      <p className="text-sm text-muted-foreground mb-6">Read-only view of the doctor's notes, diagnosis, and treatment plan.</p>
+      <p className="text-sm text-muted-foreground mb-6">Read-only view of the doctor&apos;s notes, diagnosis, and treatment plan.</p>
 
       {isLoadingPatients ? (
         <LoadingSpinner />
