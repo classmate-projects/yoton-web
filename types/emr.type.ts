@@ -54,6 +54,7 @@ export interface MedicationType {
   refillCount: number;
   prnReason: string | null;
   requiresCounselling: boolean;
+  isHighRisk: boolean;
   status: string;
   startedAt: string;
   endedAt: string | null;

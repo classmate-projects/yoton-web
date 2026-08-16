@@ -144,6 +144,12 @@ export default function PatientEntryPage() {
     name: string;
   } | null>(null);
   const [showConsultForm, setShowConsultForm] = useState(false);
+  // Shown as the first screen after registration when eligibilityMode was "Manual" — gives
+  // reception a chance to attach the offline eligibility form immediately. Skippable; it can
+  // also be attached later from Patient Records' own document upload (same DocumentType).
+  const [needsEligibilityDoc, setNeedsEligibilityDoc] = useState(false);
+  const [eligibilityFile, setEligibilityFile] = useState<File | null>(null);
+  const [uploadingEligibilityDoc, setUploadingEligibilityDoc] = useState(false);
   const [specializations, setSpecializations] = useState<
     SpecializationDoctorsType[]
   >([]);
@@ -203,6 +209,30 @@ export default function PatientEntryPage() {
     setSelectedSlot(null);
     setConsultNotes("");
     setConsultDate(toDateInputValue(new Date()));
+    setNeedsEligibilityDoc(false);
+    setEligibilityFile(null);
+  };
+
+  const handleUploadEligibilityDoc = async () => {
+    if (!registeredPatient || !eligibilityFile) return;
+    setUploadingEligibilityDoc(true);
+    try {
+      await ReceptionService.uploadDocument(registeredPatient.opId, {
+        documentType: "InsuranceEligibility",
+        file: eligibilityFile,
+      });
+      toast.success("Eligibility document attached");
+      setNeedsEligibilityDoc(false);
+      setEligibilityFile(null);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || "Failed to attach document");
+      } else {
+        toast.error("Failed to attach document");
+      }
+    } finally {
+      setUploadingEligibilityDoc(false);
+    }
   };
 
   const handleWantsConsultation = async () => {
@@ -324,11 +354,14 @@ export default function PatientEntryPage() {
         : undefined,
     };
 
+    const wasManualEligibility = formData.eligibilityMode === "Manual";
+
     try {
       const data = await ReceptionService.createPatinet(payload)
       toast.success(data.message)
       resetForm();
       setRegisteredPatient({ opId: data.data.opId, name: data.data.name });
+      setNeedsEligibilityDoc(wasManualEligibility);
     } catch (error) {
       if (axios.isAxiosError(error)) {
         toast.error(error.response?.data?.message || "Failed to register patient");
@@ -1275,7 +1308,40 @@ export default function PatientEntryPage() {
                 : "max-w-md"
             }`}
           >
-            {!showConsultForm ? (
+            {needsEligibilityDoc ? (
+              <>
+                <h2 className="text-xl font-bold text-foreground">
+                  Attach offline eligibility document
+                </h2>
+                <p className="mt-2 text-sm text-foreground/80">
+                  {registeredPatient.name}&apos;s eligibility was marked as checked manually. Attach the
+                  scanned/photographed eligibility form now, or skip and add it later from Patient Records.
+                </p>
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => setEligibilityFile(e.target.files?.[0] ?? null)}
+                  className="mt-4 w-full text-sm text-foreground"
+                />
+                <div className="flex gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setNeedsEligibilityDoc(false)}
+                    className="flex-1 bg-muted hover:bg-muted/80 text-foreground font-semibold py-2.5 px-4 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Skip for now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUploadEligibilityDoc}
+                    disabled={!eligibilityFile || uploadingEligibilityDoc}
+                    className="flex-1 bg-primary hover:opacity-90 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {uploadingEligibilityDoc ? "Attaching..." : "Attach document"}
+                  </button>
+                </div>
+              </>
+            ) : !showConsultForm ? (
               <>
                 <h2 className="text-xl font-bold text-foreground">
                   Patient registered successfully

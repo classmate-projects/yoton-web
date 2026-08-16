@@ -9,6 +9,7 @@ export interface MedicineType {
   price: number;
   expiryDate: string;
   isActive: boolean;
+  isHighRisk: boolean;
 }
 
 export interface PrescriptionItemType {
@@ -51,6 +52,7 @@ export interface AddMedicinePayload {
   stock: number;
   price: number;
   expiryDate: string;
+  isHighRisk?: boolean;
 }
 
 export interface CreatePrescriptionPayload {
@@ -105,6 +107,28 @@ export interface PharmacyMedicationType {
   dispensedAt: string | null;
   collectedBy: string | null;
   collectorName: string | null;
+
+  alternatives: MedicineAlternativeType[];
+
+  // Insurance/eligibility snapshot for this medication's patient — see
+  // Patient.EligibilityMode on the backend ("Not Done" | "Online" | "Manual"). Manual is
+  // what reception/pharmacy call "offline": backed by an uploaded document instead of the
+  // structured eligibilityId/eligibilityVisitId fields.
+  eligibilityMode: "Not Done" | "Online" | "Manual" | null;
+  eligibilityCheckedDate: string | null;
+  eligibilityID: string | null;
+  eligibilityVisitID: string | null;
+  insuranceProvider: string | null;
+  insuranceCardNo: string | null;
+  eligibilityDocumentPath: string | null;
+  eligibilityDocumentUploadedAt: string | null;
+}
+
+export interface MedicineAlternativeType {
+  medicineId: string;
+  name: string;
+  stock: number;
+  price: number;
 }
 
 export interface DispenseMedicationPayload {

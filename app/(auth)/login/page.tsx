@@ -51,6 +51,7 @@ export default function LoginPage() {
           companyName: data.body.companyName,
           companyLogoUrl: data.body.companyLogoUrl,
           userImage: data.body.userImage,
+          hiddenModules: data.body.hiddenModules ?? [],
         }),
       );
 

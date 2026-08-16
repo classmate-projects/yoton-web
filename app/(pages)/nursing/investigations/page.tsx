@@ -93,6 +93,24 @@ export default function DoctorInvestigationsPage() {
     }
   };
 
+  // Fire-and-forget audit trail — the print itself already happened client-side by the time
+  // this is called (see SampleBarcodeLabel's onPrint), so a failure here shouldn't block or
+  // roll back anything the nurse already did.
+  const recordPrint = async (labRequestId: string) => {
+    try {
+      const res = await LabService.recordPrint(labRequestId);
+      setLabs((prev) =>
+        prev.map((l) =>
+          l.labRequestId === labRequestId
+            ? { ...l, printCount: res.printCount, lastPrintedAt: res.lastPrintedAt, lastPrintedByName: res.lastPrintedByName }
+            : l
+        )
+      );
+    } catch {
+      // non-fatal
+    }
+  };
+
   const viewReport = (path: string | null) => {
     const url = backendAssetUrl(path);
     if (url) window.open(url, "_blank");
@@ -176,6 +194,10 @@ export default function DoctorInvestigationsPage() {
                   collectedByName: barcodeLab.sampleCollectedByName || "—",
                   visitId: barcodeLab.visitId,
                 }}
+                onPrint={() => recordPrint(barcodeLab.labRequestId)}
+                printCount={barcodeLab.printCount}
+                lastPrintedByName={barcodeLab.lastPrintedByName}
+                lastPrintedAt={barcodeLab.lastPrintedAt}
               />
             </div>
           )}
@@ -225,7 +247,7 @@ export default function DoctorInvestigationsPage() {
                                 onClick={() => setBarcodeLabId(l.labRequestId)}
                                 className="text-sm font-semibold text-muted-foreground hover:underline"
                               >
-                                Barcode
+                                {l.printCount > 0 ? "Reprint Barcode" : "Barcode"}
                               </button>
                             )}
                             {l.hasResultFile && (

@@ -35,6 +35,10 @@ export interface VitalsType {
   heightCm: number;
   weightKg: number;
   bmi: number;
+  consciousnessLevel: string | null; // Alert, Voice, Pain, Unresponsive
+  supplementalOxygen: boolean;
+  ewsScore: number;
+  ewsBand: "Low" | "Medium" | "High";
   notes: string | null;
   recordedAt: string;
   isCritical: boolean;
@@ -89,6 +93,7 @@ export interface MedicationAdministrationType {
   doseGiven: string | null;
   route: string | null;
   remarks: string | null;
+  witnessName: string | null;
 }
 
 export interface InjectionType {
@@ -175,6 +180,8 @@ export interface VitalsPayload {
   oxygenSaturation: number;
   heightCm: number;
   weightKg: number;
+  consciousnessLevel?: string;
+  supplementalOxygen?: boolean;
   notes?: string;
   nurseId?: string;
 }
@@ -200,6 +207,8 @@ export interface AdministerMedicationPayload {
   route?: string;
   remarks?: string;
   nurseId?: string;
+  witnessUserId?: string;
+  witnessPassword?: string;
 }
 
 export interface InjectionPayload {
@@ -235,4 +244,34 @@ export interface IVFluidsPayload {
   rate: number;
   notes?: string;
   nurseId?: string;
+}
+
+export interface WorkQueueItemType {
+  itemType: "Task" | "Treatment" | "LabSample" | "RadiologySample" | "Medication";
+  sourceId: string;
+  patientId: string | null;
+  patientName: string | null;
+  description: string;
+  priority: string | null;
+  createdAt: string;
+}
+
+export interface NurseShiftType {
+  nurseShiftId: string;
+  day: number; // 0=Sunday .. 6=Saturday, matches .NET DayOfWeek
+  startTime: string; // "HH:MM:SS"
+  endTime: string;
+  isActive: boolean;
+}
+
+export interface NurseShiftInput {
+  day: number;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+}
+
+export interface NurseOnDutyType {
+  nurseId: string | null;
+  nurseName: string | null;
 }

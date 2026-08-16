@@ -13,8 +13,11 @@ import { Sun, Moon, Monitor, LogOut, UserRound, ArrowLeft, ChevronRight } from "
 import { CurrentUserDetail } from "@/types/user.type";
 import { getInitials } from "@/lib/getInitials";
 import { useUnreadAppointmentRequests } from "@/hooks/useUnreadAppointmentRequests";
+import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
+import { useRolePermissionsSync } from "@/hooks/useRolePermissionsSync";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import { stopChatConnection } from "@/lib/chatSignalR";
 
 const SIDEBAR_GROUPS: SidebarGroup[] = ["User Modules", "Configuration"];
 
@@ -67,6 +70,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
 
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
+    await stopChatConnection();
     localStorage.removeItem("yoton_token");
     localStorage.removeItem("yoton_user_detail");
     router.push("/login");
@@ -81,18 +85,27 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const userRole = currentUser?.role || "";
   const { canSeeRequests, notifications, unreadCount, isRinging, clearUnread } =
     useUnreadAppointmentRequests(userRole);
+  const { unreadCount: unreadChatCount, clearUnread: clearUnreadChat } = useUnreadChatCount(!!userRole);
+  useRolePermissionsSync(userRole);
 
   // Admin (and only admin) gets the grouped, drill-into-categories layout; every
   // other role gets a flat list of just their own modules plus Settings, no
   // grouping or hierarchy at all.
   const isAdmin = userRole === "admin";
 
+  // Admin-configured per-role restrictions on top of the baseline roles[] below
+  // (see /role-management "Permissions") - Settings is exempt so no role can ever
+  // be left with nothing reachable.
+  const hiddenModules = currentUser?.hiddenModules ?? [];
+  const isVisible = (item: SidebarMenuItem) =>
+    item.roles.includes(userRole) && (item.navLink === "/settings" || !hiddenModules.includes(item.navLink));
+
   const visibleGroups = SIDEBAR_GROUPS.map((group) => ({
     group,
-    items: sidebarMenuItems.filter((item) => item.group === group && item.roles.includes(userRole)),
+    items: sidebarMenuItems.filter((item) => item.group === group && isVisible(item)),
   })).filter((g) => g.items.length > 0);
 
-  const flatVisibleItems = sidebarMenuItems.filter((item) => item.roles.includes(userRole));
+  const flatVisibleItems = sidebarMenuItems.filter(isVisible);
 
   // Both states use the same flex-wrap container (see tileContainerClass) — only each
   // tile's own size changes, via an ordinary width/height transition. Switching between
@@ -283,11 +296,17 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                         href={item.navLink}
                         title={item.name}
                         aria-label={item.name}
+                        onClick={() => item.navLink === "/messages" && clearUnreadChat()}
                         className={tileClass(isActive, isExpanded)}
                       >
                         <span className={tileIconClass(isActive)}>
                           <item.icon />
                         </span>
+                        {item.navLink === "/messages" && unreadChatCount > 0 && (
+                          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white ring-2 ring-card">
+                            {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                          </span>
+                        )}
                       </Link>
                     );
                   })}
@@ -306,11 +325,17 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                     href={item.navLink}
                     title={item.name}
                     aria-label={item.name}
+                    onClick={() => item.navLink === "/messages" && clearUnreadChat()}
                     className={tileClass(isActive, isExpanded)}
                   >
                     <span className={tileIconClass(isActive)}>
                       <item.icon />
                     </span>
+                    {item.navLink === "/messages" && unreadChatCount > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white ring-2 ring-card">
+                        {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                      </span>
+                    )}
                   </Link>
                 );
               })}

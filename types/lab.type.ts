@@ -33,6 +33,9 @@ export interface LabRequestType {
   resultFilePath: string | null;
   sampleCollectedByName: string | null;
   sampleCollectedAt: string | null;
+  printCount: number;
+  lastPrintedAt: string | null;
+  lastPrintedByName: string | null;
   resultValues: LabResultValueType[];
 }
 

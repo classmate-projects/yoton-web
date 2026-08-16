@@ -22,7 +22,7 @@ import {
 import { toDateInputValue } from "@/lib/date";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
-const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "Other"];
+const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
 
 export default function PatientRecordsPage() {
   const [patients, setPatients] = useState<PatientGetAllType[]>([]);

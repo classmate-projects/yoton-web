@@ -12,7 +12,9 @@ import { PharmacyService } from "@/services/pharmacy.service";
 import { ReceptionService } from "@/services/reception.service";
 import { UserService } from "@/services/user.service";
 import PrescriptionPrintout, { PrescriptionMedicineLine } from "@/components/prescription/PrescriptionPrintout";
+import DispenseLabelPrintout from "@/components/prescription/DispenseLabelPrintout";
 import {
+  MedicineAlternativeType,
   MedicineType,
   PharmacyMedicationType,
   PharmacySummaryType,
@@ -61,6 +63,16 @@ export default function PharmacyPage() {
     items: PharmacyMedicationType[];
   } | null>(null);
 
+  // Dispense label (small per-medicine printable, distinct from the full prescription above)
+  const [labelTarget, setLabelTarget] = useState<PharmacyMedicationType | null>(null);
+
+  // Alternative medicines management (inventory tab)
+  const [alternativesTarget, setAlternativesTarget] = useState<MedicineType | null>(null);
+  const [alternativesList, setAlternativesList] = useState<MedicineAlternativeType[]>([]);
+  const [loadingAlternatives, setLoadingAlternatives] = useState(false);
+  const [addAlternativeId, setAddAlternativeId] = useState("");
+  const [savingAlternative, setSavingAlternative] = useState(false);
+
   const [patients, setPatients] = useState<PatientListItemType[]>([]);
   const [doctors, setDoctors] = useState<DoctorGridType[]>([]);
 
@@ -94,6 +106,7 @@ export default function PharmacyPage() {
   const [medStock, setMedStock] = useState<number>(0);
   const [medPrice, setMedPrice] = useState<number>(0);
   const [medExpiry, setMedExpiry] = useState("");
+  const [medIsHighRisk, setMedIsHighRisk] = useState(false);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -189,6 +202,54 @@ export default function PharmacyPage() {
       toast.error(errorMessage(error, "Failed to dispense medicine"));
     } finally {
       setIsDispensingMed(false);
+    }
+  };
+
+  const openLabelPrint = (item: PharmacyMedicationType) => setLabelTarget(item);
+
+  const openAlternativesManager = async (medicine: MedicineType) => {
+    setAlternativesTarget(medicine);
+    setLoadingAlternatives(true);
+    try {
+      const data = await PharmacyService.getAlternatives(medicine.medicineId);
+      setAlternativesList(data.data ?? []);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to load alternatives"));
+    } finally {
+      setLoadingAlternatives(false);
+    }
+  };
+
+  const closeAlternativesManager = () => {
+    setAlternativesTarget(null);
+    setAlternativesList([]);
+    setAddAlternativeId("");
+  };
+
+  const handleAddAlternative = async () => {
+    if (!alternativesTarget || !addAlternativeId) return;
+    setSavingAlternative(true);
+    try {
+      await PharmacyService.addAlternative(alternativesTarget.medicineId, addAlternativeId);
+      const data = await PharmacyService.getAlternatives(alternativesTarget.medicineId);
+      setAlternativesList(data.data ?? []);
+      setAddAlternativeId("");
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to add alternative"));
+    } finally {
+      setSavingAlternative(false);
+    }
+  };
+
+  const handleRemoveAlternative = async (alternativeId: string) => {
+    if (!alternativesTarget) return;
+    try {
+      await PharmacyService.removeAlternative(alternativesTarget.medicineId, alternativeId);
+      setAlternativesList((prev) => prev.filter((a) => a.medicineId !== alternativeId));
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to remove alternative"));
     }
   };
 
@@ -362,6 +423,7 @@ export default function PharmacyPage() {
     setMedStock(0);
     setMedPrice(0);
     setMedExpiry("");
+    setMedIsHighRisk(false);
   };
 
   const handleAddMedicine = async (e: React.FormEvent) => {
@@ -382,6 +444,7 @@ export default function PharmacyPage() {
         stock: medStock,
         price: medPrice,
         expiryDate: medExpiry,
+        isHighRisk: medIsHighRisk,
       });
       toast.success(data.message || "Medicine added");
       setIsMedModalOpen(false);
@@ -401,6 +464,16 @@ export default function PharmacyPage() {
       fetchAll();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to update stock"));
+    }
+  };
+
+  const toggleHighRisk = async (medicine: MedicineType) => {
+    try {
+      await PharmacyService.setHighRisk(medicine.medicineId, !medicine.isHighRisk);
+      toast.success(medicine.isHighRisk ? "Unflagged as high-risk" : "Flagged as high-risk");
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to update medicine"));
     }
   };
 
@@ -515,12 +588,36 @@ export default function PharmacyPage() {
               ) : medicationGroups.length === 0 ? (
                 <div className="card py-16 text-center text-muted-foreground">No doctor orders found.</div>
               ) : (
-                medicationGroups.map((group) => (
+                medicationGroups.map((group) => {
+                  const eligibility = group.items[0];
+                  return (
                   <div key={group.patientId} className="card">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-4">
                       <div>
                         <p className="font-semibold text-foreground">{group.patientName}</p>
                         <p className="text-xs text-muted-foreground">{group.doctorName}</p>
+                        {eligibility?.eligibilityMode && eligibility.eligibilityMode !== "Not Done" && (
+                          <p className="mt-1 text-xs">
+                            <span className="font-semibold text-foreground/80">Insurance ({eligibility.eligibilityMode}):</span>{" "}
+                            {eligibility.eligibilityMode === "Online" ? (
+                              <span className="text-muted-foreground">
+                                {eligibility.insuranceProvider || "—"}
+                                {eligibility.eligibilityID ? ` · ID ${eligibility.eligibilityID}` : ""}
+                              </span>
+                            ) : eligibility.eligibilityDocumentPath ? (
+                              <a
+                                href={eligibility.eligibilityDocumentPath}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                              >
+                                View attached document
+                              </a>
+                            ) : (
+                              <span className="text-amber-600">No document on file yet</span>
+                            )}
+                          </p>
+                        )}
                       </div>
                       <button
                         onClick={() => openPrintForGroup(group)}
@@ -545,7 +642,14 @@ export default function PharmacyPage() {
                         <tbody className="divide-y divide-border">
                           {group.items.map((item) => (
                             <tr key={item.medicationId} className="hover:bg-muted/30 transition-colors">
-                              <td className="font-semibold text-foreground">{item.drugName}</td>
+                              <td className="font-semibold text-foreground">
+                                {item.drugName}
+                                {item.alternatives.length > 0 && (
+                                  <p className="text-xs font-normal text-muted-foreground">
+                                    Alt: {item.alternatives.map((a) => `${a.name} (${a.stock})`).join(", ")}
+                                  </p>
+                                )}
+                              </td>
                               <td className="text-foreground/80">
                                 {item.dosage ? `${item.dosage}${item.dosageUnit ? ` ${item.dosageUnit}` : ""}` : "—"}
                               </td>
@@ -586,8 +690,13 @@ export default function PharmacyPage() {
                                       Dispense
                                     </button>
                                   )}
-                                  {item.dispenseStatus === "Dispensed" && (
-                                    <span className="text-xs text-muted-foreground">—</span>
+                                  {item.dispenseStatus !== "Pending" && (
+                                    <button
+                                      onClick={() => openLabelPrint(item)}
+                                      className="px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
+                                    >
+                                      Print Label
+                                    </button>
                                   )}
                                 </div>
                               </td>
@@ -597,7 +706,8 @@ export default function PharmacyPage() {
                       </table>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           ) : (
@@ -722,7 +832,14 @@ export default function PharmacyPage() {
                           med.stock < 10 ? "bg-destructive/5" : ""
                         }`}
                       >
-                        <td className="font-semibold text-foreground">{med.name}</td>
+                        <td className="font-semibold text-foreground">
+                          {med.name}
+                          {med.isHighRisk && (
+                            <span className="ml-2 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive align-middle">
+                              High-risk
+                            </span>
+                          )}
+                        </td>
                         <td className="text-foreground/80">{med.category || "—"}</td>
                         <td className={med.stock < 10 ? "text-destructive font-semibold" : "text-foreground/80"}>
                           {med.stock}
@@ -730,7 +847,7 @@ export default function PharmacyPage() {
                         <td className="text-foreground/80">{currency(med.price)}</td>
                         <td className="text-foreground/70 text-sm">{formatDate(med.expiryDate)}</td>
                         <td>
-                          <div className="flex justify-center gap-1">
+                          <div className="flex justify-center items-center gap-1">
                             <button
                               onClick={() => adjustStock(med, -1)}
                               className="w-7 h-7 rounded-md bg-muted hover:bg-muted/80 text-foreground font-bold cursor-pointer"
@@ -742,6 +859,24 @@ export default function PharmacyPage() {
                               className="w-7 h-7 rounded-md bg-muted hover:bg-muted/80 text-foreground font-bold cursor-pointer"
                             >
                               +
+                            </button>
+                            <button
+                              onClick={() => openAlternativesManager(med)}
+                              className="ml-1 px-2 py-1 text-xs font-semibold rounded-md border border-border text-foreground/80 hover:bg-muted cursor-pointer"
+                              title="Manage alternative medicines"
+                            >
+                              Alternatives
+                            </button>
+                            <button
+                              onClick={() => toggleHighRisk(med)}
+                              className={`px-2 py-1 text-xs font-semibold rounded-md border cursor-pointer ${
+                                med.isHighRisk
+                                  ? "border-destructive/30 text-destructive hover:bg-destructive/10"
+                                  : "border-border text-foreground/80 hover:bg-muted"
+                              }`}
+                              title="Toggle high-risk (requires witnessed administration)"
+                            >
+                              {med.isHighRisk ? "Unflag" : "High-risk"}
                             </button>
                           </div>
                         </td>
@@ -1021,6 +1156,11 @@ export default function PharmacyPage() {
                 />
               </div>
 
+              <label className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground">
+                <input type="checkbox" checked={medIsHighRisk} onChange={(e) => setMedIsHighRisk(e.target.checked)} />
+                High-risk medication — requires a second nurse to witness administration
+              </label>
+
               <div className="flex items-center justify-end gap-3 mt-2 w-full">
                 <button
                   type="button"
@@ -1165,6 +1305,98 @@ export default function PharmacyPage() {
           showPricing
           onClose={() => setPrintGroup(null)}
         />
+      )}
+
+      {labelTarget && (
+        <DispenseLabelPrintout
+          patientName={labelTarget.patientName}
+          drugName={labelTarget.drugName}
+          drugType={labelTarget.drugType}
+          dosage={labelTarget.dosage}
+          dosageUnit={labelTarget.dosageUnit}
+          frequency={labelTarget.frequency}
+          instructions={labelTarget.instructions}
+          dispensedDate={labelTarget.dispensedAt ? formatDate(labelTarget.dispensedAt) : new Date().toLocaleDateString()}
+          onClose={() => setLabelTarget(null)}
+        />
+      )}
+
+      {alternativesTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
+            <h2 className="text-xl font-semibold text-foreground">Alternatives for {alternativesTarget.name}</h2>
+            <p className="text-sm text-muted-foreground mt-1 mb-4">
+              Substitute medicines a pharmacist can offer if this one is out of stock.
+            </p>
+
+            {loadingAlternatives ? (
+              <div className="py-8 flex justify-center">
+                <LoadingSpinner />
+              </div>
+            ) : (
+              <>
+                <ul className="flex flex-col gap-2 max-h-52 overflow-y-auto mb-4">
+                  {alternativesList.length === 0 ? (
+                    <li className="text-sm text-muted-foreground">No alternatives linked yet.</li>
+                  ) : (
+                    alternativesList.map((alt) => (
+                      <li
+                        key={alt.medicineId}
+                        className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                      >
+                        <span className="text-foreground">
+                          {alt.name} <span className="text-muted-foreground">({alt.stock} in stock, {currency(alt.price)})</span>
+                        </span>
+                        <button
+                          onClick={() => handleRemoveAlternative(alt.medicineId)}
+                          className="text-xs font-semibold text-destructive hover:underline cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))
+                  )}
+                </ul>
+
+                <div className="flex gap-2">
+                  <select
+                    value={addAlternativeId}
+                    onChange={(e) => setAddAlternativeId(e.target.value)}
+                    className="flex-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
+                  >
+                    <option value="">Select a medicine to link...</option>
+                    {medicines
+                      .filter(
+                        (m) =>
+                          m.medicineId !== alternativesTarget.medicineId &&
+                          !alternativesList.some((a) => a.medicineId === m.medicineId)
+                      )
+                      .map((m) => (
+                        <option key={m.medicineId} value={m.medicineId}>{m.name}</option>
+                      ))}
+                  </select>
+                  <button
+                    onClick={handleAddAlternative}
+                    disabled={!addAlternativeId || savingAlternative}
+                    className="px-4 py-2 text-sm font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    Add
+                  </button>
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end mt-6">
+              <button
+                type="button"
+                onClick={closeAlternativesManager}
+                className="px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

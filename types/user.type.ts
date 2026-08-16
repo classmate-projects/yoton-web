@@ -10,6 +10,9 @@ export interface CurrentUserDetail {
     companyName?: string;
     companyLogoUrl?: string | null;
     userImage?: string | null;
+    // navLinks the admin has hidden from this user's role (see RoleService.setHiddenModules) -
+    // absent/empty means nothing is restricted beyond the baseline roles[] on each sidebar item.
+    hiddenModules?: string[];
 }
 
 export interface UserType {

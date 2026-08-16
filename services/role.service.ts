@@ -22,5 +22,15 @@ export const RoleService = {
         console.log(ENDPOINTS.ROLE.DELETE(id));
         const { data } = await api.delete(ENDPOINTS.ROLE.DELETE(id))
         return data;
+    },
+
+    getHiddenModules: async (id: string) => {
+        const { data } = await api.get(ENDPOINTS.ROLE.GET_HIDDEN_MODULES(id));
+        return data;
+    },
+
+    setHiddenModules: async (id: string, hiddenModules: string[]) => {
+        const { data } = await api.put(ENDPOINTS.ROLE.SET_HIDDEN_MODULES(id), { hiddenModules });
+        return data;
     }
 }

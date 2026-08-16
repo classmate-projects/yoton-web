@@ -10,4 +10,9 @@ export const CompanyService = {
         })
         return data;
     },
+
+    updateSettings: async (payload: { maxDiscountPercent: number | null }) => {
+        const { data } = await api.put(ENDPOINTS.COMPANY.UPDATE_SETTINGS, payload);
+        return data;
+    },
 }

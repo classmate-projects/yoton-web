@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -191,6 +191,15 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         navLink: "/billing",
         roles: ["admin", "billing team"],
         icon: MdPayment,
+        group: "User Modules"
+    },
+    {
+        id: 22,
+        name: "Messages",
+        navLink: "/messages",
+        // Every staff role - "web users chat with each other" has no role restriction.
+        roles: allRoles,
+        icon: MessageCircle,
         group: "User Modules"
     },
 

@@ -54,4 +54,20 @@ export const PharmacyService = {
     const { data } = await api.post(ENDPOINTS.PHARMACY.DISPENSE_MEDICATION(medicationId), payload);
     return data;
   },
+  getAlternatives: async (medicineId: string) => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_ALTERNATIVES(medicineId));
+    return data;
+  },
+  addAlternative: async (medicineId: string, alternativeMedicineId: string) => {
+    const { data } = await api.post(ENDPOINTS.PHARMACY.ADD_ALTERNATIVE(medicineId), { alternativeMedicineId });
+    return data;
+  },
+  removeAlternative: async (medicineId: string, alternativeId: string) => {
+    const { data } = await api.delete(ENDPOINTS.PHARMACY.REMOVE_ALTERNATIVE(medicineId, alternativeId));
+    return data;
+  },
+  setHighRisk: async (medicineId: string, isHighRisk: boolean) => {
+    const { data } = await api.put(ENDPOINTS.PHARMACY.SET_HIGH_RISK(medicineId), { isHighRisk });
+    return data;
+  },
 };

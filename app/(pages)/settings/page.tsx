@@ -20,6 +20,7 @@ interface MeResponse {
   companyId: string;
   companyName: string | null;
   companyLogoUrl: string | null;
+  maxDiscountPercent: number | null;
 }
 
 export default function SettingsPage() {
@@ -32,9 +33,15 @@ export default function SettingsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  const [maxDiscountInput, setMaxDiscountInput] = useState("");
+  const [savingDiscountCap, setSavingDiscountCap] = useState(false);
+
   useEffect(() => {
     AuthService.getMe()
-      .then((data) => setMe(data))
+      .then((data) => {
+        setMe(data);
+        setMaxDiscountInput(data.maxDiscountPercent != null ? String(data.maxDiscountPercent) : "");
+      })
       .catch(() => toast.error("Failed to load your profile"))
       .finally(() => setLoading(false));
   }, []);
@@ -68,6 +75,27 @@ export default function SettingsPage() {
       toast.error("Failed to upload logo");
     } finally {
       setUploadingLogo(false);
+    }
+  };
+
+  const handleSaveDiscountCap = async () => {
+    if (!me) return;
+    const trimmed = maxDiscountInput.trim();
+    const parsed = trimmed === "" ? null : Number(trimmed);
+    if (parsed !== null && (Number.isNaN(parsed) || parsed < 0 || parsed > 100)) {
+      toast.error("Enter a number between 0 and 100, or leave it blank for no cap");
+      return;
+    }
+
+    setSavingDiscountCap(true);
+    try {
+      await CompanyService.updateSettings({ maxDiscountPercent: parsed });
+      setMe({ ...me, maxDiscountPercent: parsed });
+      toast.success("Discount cap updated");
+    } catch {
+      toast.error("Failed to update discount cap");
+    } finally {
+      setSavingDiscountCap(false);
     }
   };
 
@@ -206,6 +234,39 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
+            </div>
+
+            <hr className="my-5 border-border" />
+
+            <h3 className="font-semibold text-foreground mb-1">Maximum billing discount</h3>
+            <p className="text-sm text-muted-foreground mb-3">
+              Caps how large a discount billing staff can apply to a bill. Leave blank for no limit.
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="relative w-32">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.1"
+                  value={maxDiscountInput}
+                  onChange={(e) => setMaxDiscountInput(e.target.value)}
+                  placeholder="No limit"
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-7 text-sm text-foreground"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                  %
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveDiscountCap}
+                disabled={savingDiscountCap}
+                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingDiscountCap && <Loader2 size={15} className="animate-spin" />}
+                Save
+              </button>
             </div>
           </div>
         )}
