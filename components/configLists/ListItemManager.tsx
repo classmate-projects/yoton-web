@@ -3,13 +3,15 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { Download, FileSpreadsheet, Plus, Trash2, Upload, X } from "lucide-react";
+import { Download, FileSpreadsheet, FlaskConical, Plus, Trash2, Upload, X } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
 import EditIcon from "@/public/icons/EditIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
 import { ConfigListService } from "@/services/configList.service";
+import { TestParameterService } from "@/services/testParameter.service";
 import { ConfigListType, ListItemType } from "@/types/configList.type";
+import { TestParameterType } from "@/types/testParameter.type";
 
 const errorMessage = (error: unknown, fallback: string) => {
   if (error && typeof error === "object" && "response" in error) {
@@ -58,6 +60,15 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  // Investigation-only: each test can have its own sub-parameters (e.g. CBC -> Hemoglobin,
+  // WBC Count, ...), each with a normal reference range lab result entry checks values
+  // against. Irrelevant for every other list type, so this stays inert unless opened.
+  const [parametersFor, setParametersFor] = useState<ListItemType | null>(null);
+  const [parameters, setParameters] = useState<TestParameterType[]>([]);
+  const [isLoadingParameters, setIsLoadingParameters] = useState(false);
+  const [newParam, setNewParam] = useState({ name: "", unit: "", normalLow: "", normalHigh: "" });
+  const [isSavingParam, setIsSavingParam] = useState(false);
 
   // Large lists (ICD codes especially) can run into the thousands, so search runs
   // server-side via the same ?search= param the doctor-workbench pickers already
@@ -303,6 +314,67 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
     void uploadExcelInBackground(rows);
   };
 
+  const fetchParameters = async (item: ListItemType) => {
+    try {
+      setIsLoadingParameters(true);
+      const res = await TestParameterService.get(item.listItemId);
+      setParameters(res.data || []);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to load parameters"));
+      setParameters([]);
+    } finally {
+      setIsLoadingParameters(false);
+    }
+  };
+
+  const openParameters = (item: ListItemType) => {
+    setParametersFor(item);
+    setNewParam({ name: "", unit: "", normalLow: "", normalHigh: "" });
+    fetchParameters(item);
+  };
+
+  const closeParameters = () => {
+    setParametersFor(null);
+    setParameters([]);
+  };
+
+  const addParameter = async () => {
+    if (!parametersFor) return;
+    if (!newParam.name.trim()) {
+      toast.error("Parameter name is required");
+      return;
+    }
+    try {
+      setIsSavingParam(true);
+      await TestParameterService.create({
+        listItemId: parametersFor.listItemId,
+        name: newParam.name.trim(),
+        unit: newParam.unit.trim() || undefined,
+        normalLow: newParam.normalLow ? Number(newParam.normalLow) : undefined,
+        normalHigh: newParam.normalHigh ? Number(newParam.normalHigh) : undefined,
+        sortOrder: parameters.length,
+      });
+      toast.success("Parameter added");
+      setNewParam({ name: "", unit: "", normalLow: "", normalHigh: "" });
+      await fetchParameters(parametersFor);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to add parameter"));
+    } finally {
+      setIsSavingParam(false);
+    }
+  };
+
+  const removeParameter = async (parameterId: string) => {
+    if (!parametersFor) return;
+    try {
+      await TestParameterService.remove(parameterId);
+      toast.success("Parameter removed");
+      await fetchParameters(parametersFor);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to remove parameter"));
+    }
+  };
+
   return (
     <>
       <div className="card p-6 mb-6 flex flex-col gap-3">
@@ -541,6 +613,15 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                     </td>
                     <td className="text-center">
                       <div className="flex justify-center items-center">
+                        {listType === "Investigation" && (
+                          <button
+                            onClick={() => openParameters(item)}
+                            title="Manage parameters"
+                            className="hover:bg-primary/10 ring-transparent hover:ring-primary/20 transition-colors duration-150 rounded-full p-2 cursor-pointer mr-2"
+                          >
+                            <FlaskConical size={18} className="text-primary" />
+                          </button>
+                        )}
                         <button
                           onClick={() => removeItem(item.listItemId, item.name)}
                           title="Delete"
@@ -591,6 +672,101 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
           </div>
         </div>
       </div>
+
+      {parametersFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="bg-card w-full max-w-lg rounded-xl border border-border p-6 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-xl font-semibold text-foreground">Parameters — {parametersFor.name}</h2>
+              <button onClick={closeParameters} className="text-muted-foreground hover:text-foreground">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              The lab technician will enter a value against each of these when reporting this test. A value outside
+              the normal range shown here is flagged on the result.
+            </p>
+
+            {isLoadingParameters ? (
+              <div className="py-8 flex justify-center">
+                <LoadingSpinner />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 mb-4">
+                {parameters.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">No parameters configured yet.</p>
+                ) : (
+                  parameters.map((p) => (
+                    <div
+                      key={p.testParameterId}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2"
+                    >
+                      <div className="text-sm">
+                        <span className="font-semibold">{p.name}</span>
+                        {p.unit && <span className="text-muted-foreground"> ({p.unit})</span>}
+                        {(p.normalLow != null || p.normalHigh != null) && (
+                          <span className="text-muted-foreground text-xs ml-2">
+                            Normal: {p.normalLow ?? "—"} – {p.normalHigh ?? "—"}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => removeParameter(p.testParameterId)}
+                        title="Remove"
+                        className="text-muted-foreground hover:text-red-500"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            <div className="border-t border-border pt-4 flex flex-col gap-2">
+              <p className="text-xs font-semibold text-foreground/90">Add parameter</p>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="Name (e.g. Hemoglobin)"
+                  value={newParam.name}
+                  onChange={(e) => setNewParam((p) => ({ ...p, name: e.target.value }))}
+                  className="h-10 text-sm col-span-2"
+                />
+                <input
+                  type="text"
+                  placeholder="Unit (e.g. g/dL)"
+                  value={newParam.unit}
+                  onChange={(e) => setNewParam((p) => ({ ...p, unit: e.target.value }))}
+                  className="h-10 text-sm"
+                />
+                <div />
+                <input
+                  type="number"
+                  placeholder="Normal low"
+                  value={newParam.normalLow}
+                  onChange={(e) => setNewParam((p) => ({ ...p, normalLow: e.target.value }))}
+                  className="h-10 text-sm"
+                />
+                <input
+                  type="number"
+                  placeholder="Normal high"
+                  value={newParam.normalHigh}
+                  onChange={(e) => setNewParam((p) => ({ ...p, normalHigh: e.target.value }))}
+                  className="h-10 text-sm"
+                />
+              </div>
+              <button
+                onClick={addParameter}
+                disabled={isSavingParam}
+                className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                <Plus size={15} /> Add Parameter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

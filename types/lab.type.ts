@@ -1,3 +1,12 @@
+export interface LabResultValueType {
+  parameterName: string;
+  unit: string | null;
+  normalLow: number | null;
+  normalHigh: number | null;
+  value: string;
+  isAbnormal: boolean | null;
+}
+
 export interface LabRequestType {
   labRequestId: string;
   patientId: string | null;
@@ -24,6 +33,7 @@ export interface LabRequestType {
   resultFilePath: string | null;
   sampleCollectedByName: string | null;
   sampleCollectedAt: string | null;
+  resultValues: LabResultValueType[];
 }
 
 export interface LabSummaryType {

@@ -4,14 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
-import { ScanLine } from "lucide-react";
-import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
+import { ScanLine, X } from "lucide-react";
+import { MdAdd, MdOutlineFileUpload, MdOutlineImage } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { RadiologyService } from "@/services/radiology.service";
 import { ReceptionService } from "@/services/reception.service";
 import { RadiologyRequestType, RadiologySummaryType } from "@/types/radiology.type";
 import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { backendAssetUrl } from "@/lib/backendAsset";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -59,6 +60,8 @@ export default function RadiologyPage() {
   const [scheduleFor, setScheduleFor] = useState<RadiologyRequestType | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadingImagesId, setUploadingImagesId] = useState<string | null>(null);
+  const [galleryFor, setGalleryFor] = useState<RadiologyRequestType | null>(null);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -222,6 +225,20 @@ export default function RadiologyPage() {
       toast.error(errorMessage(error, "Failed to upload scan result"));
     } finally {
       setUploadingId(null);
+    }
+  };
+
+  const handleUploadImages = async (request: RadiologyRequestType, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    try {
+      setUploadingImagesId(request.radiologyRequestId);
+      const data = await RadiologyService.uploadImages(request.radiologyRequestId, Array.from(files));
+      toast.success(data.message || "Images uploaded");
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to upload images"));
+    } finally {
+      setUploadingImagesId(null);
     }
   };
 
@@ -527,6 +544,30 @@ export default function RadiologyPage() {
                           {r.hasResultFile && (
                             <span className="text-[11px] text-emerald-500 font-semibold">Result on file</span>
                           )}
+                          <label
+                            title="Attach scan images (X-ray, etc.)"
+                            className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                              uploadingImagesId === r.radiologyRequestId ? "opacity-50" : "hover:bg-primary/10"
+                            }`}
+                          >
+                            <MdOutlineImage size={18} className="text-primary" />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              disabled={uploadingImagesId === r.radiologyRequestId}
+                              onChange={(e) => handleUploadImages(r, e.target.files)}
+                            />
+                          </label>
+                          {r.imageUrls.length > 0 && (
+                            <button
+                              onClick={() => setGalleryFor(r)}
+                              className="text-[11px] font-semibold text-primary hover:underline"
+                            >
+                              {r.imageUrls.length} image{r.imageUrls.length > 1 ? "s" : ""}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -543,6 +584,36 @@ export default function RadiologyPage() {
           </table>
         </div>
       </div>
+
+      {galleryFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md p-4">
+          <div className="bg-card w-full max-w-3xl rounded-xl border border-border p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Scan Images</h2>
+                <p className="text-sm text-muted-foreground">
+                  {galleryFor.patientName} — {galleryFor.scanType}
+                </p>
+              </div>
+              <button onClick={() => setGalleryFor(null)} className="text-muted-foreground hover:text-foreground">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {galleryFor.imageUrls.map((url, i) => (
+                <a key={i} href={backendAssetUrl(url) ?? "#"} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path */}
+                  <img
+                    src={backendAssetUrl(url) ?? undefined}
+                    alt={`Scan image ${i + 1}`}
+                    className="w-full h-32 object-cover rounded-lg border border-border hover:opacity-80 transition-opacity"
+                  />
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

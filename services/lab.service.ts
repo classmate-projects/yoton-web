@@ -39,4 +39,8 @@ export const LabService = {
     });
     return data;
   },
+  saveResultValues: async (labRequestId: string, values: { testParameterId: string; value: string }[]) => {
+    const { data } = await api.post(ENDPOINTS.LAB.SAVE_RESULT_VALUES, { labRequestId, values });
+    return data;
+  },
 };

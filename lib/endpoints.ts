@@ -117,6 +117,7 @@ export const ENDPOINTS = {
         UPDATE_STATUS: `/api/Lab/status`,
         UPLOAD_RESULT: `/api/Lab/upload-result`,
         COLLECT_SAMPLE: `/api/Lab/collect-sample`,
+        SAVE_RESULT_VALUES: `/api/Lab/result-values`,
     },
     RADIOLOGY: {
         GET_ALL: `/api/Radiology`,
@@ -125,6 +126,13 @@ export const ENDPOINTS = {
         CREATE: `/api/Radiology`,
         UPDATE_STATUS: `/api/Radiology/status`,
         UPLOAD_RESULT: `/api/Radiology/upload-result`,
+        UPLOAD_IMAGES: `/api/Radiology/upload-images`,
+    },
+    TEST_PARAMETERS: {
+        GET: (listItemId: string) => `/api/test-parameters?listItemId=${encodeURIComponent(listItemId)}`,
+        CREATE: `/api/test-parameters`,
+        UPDATE: (id: string) => `/api/test-parameters/${id}`,
+        DELETE: (id: string) => `/api/test-parameters/${id}`,
     },
     PHARMACY: {
         GET_MEDICINES: `/api/Pharmacy/medicine`,

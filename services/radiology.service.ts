@@ -36,4 +36,13 @@ export const RadiologyService = {
     });
     return data;
   },
+  uploadImages: async (radiologyRequestId: string, files: File[]) => {
+    const form = new FormData();
+    form.append("RadiologyRequestId", radiologyRequestId);
+    files.forEach((f) => form.append("Files", f));
+    const { data } = await api.post(ENDPOINTS.RADIOLOGY.UPLOAD_IMAGES, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data;
+  },
 };
