@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, ClipboardList } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -146,7 +146,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Doctor Investigations",
         navLink: "/nursing/investigations",
         roles: ["nurse", "admin"],
-        icon: FlaskConical,
+        icon: ClipboardList,
         group: "User Modules"
     },
     {

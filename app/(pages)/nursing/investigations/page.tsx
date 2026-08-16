@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
-import { FlaskConical, ScanLine, Search } from "lucide-react";
+import { FlaskConical, ScanLine, Search, X } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
 import { LabService } from "@/services/lab.service";
@@ -36,6 +36,10 @@ export default function DoctorInvestigationsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [collectingId, setCollectingId] = useState<string | null>(null);
   const [barcodeLabId, setBarcodeLabId] = useState<string | null>(null);
+  // A radiology request can carry several scan images (see imageUrls) rather than one
+  // report file — this opens all of them at once instead of making the nurse hunt for
+  // and click through each image individually.
+  const [galleryFor, setGalleryFor] = useState<RadiologyRequestType | null>(null);
 
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
@@ -298,16 +302,27 @@ export default function DoctorInvestigationsPage() {
                           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold">{r.status}</span>
                         </td>
                         <td>
-                          {r.hasResultFile ? (
-                            <button
-                              onClick={() => viewReport(r.resultFilePath || r.scanFilePath)}
-                              className="text-sm font-semibold text-primary hover:underline"
-                            >
-                              View Report
-                            </button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Not yet dispatched</span>
-                          )}
+                          <div className="flex items-center gap-3">
+                            {r.hasResultFile && (
+                              <button
+                                onClick={() => viewReport(r.resultFilePath || r.scanFilePath)}
+                                className="text-sm font-semibold text-primary hover:underline"
+                              >
+                                View Report
+                              </button>
+                            )}
+                            {r.imageUrls.length > 0 && (
+                              <button
+                                onClick={() => setGalleryFor(r)}
+                                className="text-sm font-semibold text-primary hover:underline"
+                              >
+                                {r.imageUrls.length} image{r.imageUrls.length > 1 ? "s" : ""}
+                              </button>
+                            )}
+                            {!r.hasResultFile && r.imageUrls.length === 0 && (
+                              <span className="text-xs text-muted-foreground">Not yet dispatched</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -318,6 +333,36 @@ export default function DoctorInvestigationsPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {galleryFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md p-4">
+          <div className="bg-card w-full max-w-3xl rounded-xl border border-border p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Scan Images</h2>
+                <p className="text-sm text-muted-foreground">
+                  {galleryFor.patientName} — {galleryFor.scanType}
+                </p>
+              </div>
+              <button onClick={() => setGalleryFor(null)} className="text-muted-foreground hover:text-foreground">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {galleryFor.imageUrls.map((url, i) => (
+                <a key={i} href={backendAssetUrl(url) ?? "#"} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path */}
+                  <img
+                    src={backendAssetUrl(url) ?? undefined}
+                    alt={`Scan image ${i + 1}`}
+                    className="w-full h-32 object-cover rounded-lg border border-border hover:opacity-80 transition-opacity"
+                  />
+                </a>
+              ))}
             </div>
           </div>
         </div>

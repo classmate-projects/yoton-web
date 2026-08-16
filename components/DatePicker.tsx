@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   addMonths,
   eachDayOfInterval,
@@ -84,11 +85,38 @@ export default function DatePicker({
   );
 
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  // Popup is portaled to document.body (see render below) so it can't be
+  // clipped by an ancestor's `overflow: hidden` (e.g. the `.card` class) —
+  // that means it needs its own viewport-relative coordinates instead of
+  // relying on `position: absolute` + a `relative` wrapper.
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+
+  const updateCoords = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const popupWidth = 288; // w-72
+    const estimatedPopupHeight = 380; // conservative estimate; view-dependent
+    let left = rect.left;
+    if (left + popupWidth > window.innerWidth - 8) {
+      left = Math.max(8, rect.right - popupWidth);
+    }
+    let top = rect.bottom + 8;
+    if (top + estimatedPopupHeight > window.innerHeight - 8 && rect.top - estimatedPopupHeight - 8 > 0) {
+      top = rect.top - estimatedPopupHeight - 8;
+    }
+    setCoords({ top, left });
+  };
 
   useEffect(() => {
     if (!open) return;
+    updateCoords();
     const handleClick = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideWrapper = wrapperRef.current?.contains(target);
+      const insidePopup = popupRef.current?.contains(target);
+      if (!insideWrapper && !insidePopup) {
         setOpen(false);
       }
     };
@@ -97,9 +125,13 @@ export default function DatePicker({
     };
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
+    window.addEventListener("scroll", updateCoords, true);
+    window.addEventListener("resize", updateCoords);
     return () => {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("scroll", updateCoords, true);
+      window.removeEventListener("resize", updateCoords);
     };
   }, [open]);
 
@@ -133,6 +165,7 @@ export default function DatePicker({
   return (
     <div ref={wrapperRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         id={id}
         disabled={disabled}
@@ -157,10 +190,12 @@ export default function DatePicker({
         <input type="hidden" name={name} value={value} required={required} />
       )}
 
-      {open && (
+      {open && coords && createPortal(
         <div
+          ref={popupRef}
           role="dialog"
-          className="absolute z-50 mt-2 w-72 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          style={{ position: "fixed", top: coords.top, left: coords.left }}
+          className="z-50 w-72 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
         >
           {view === "days" && (
             <>
@@ -367,7 +402,8 @@ export default function DatePicker({
               </button>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

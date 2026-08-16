@@ -136,9 +136,16 @@
      ordering, without needing "!important". Living outside @layer previously
      made this rule unlayered CSS, which always beats layered Tailwind
      utilities regardless of source order — silently ignoring any page's own
-     padding/sizing overrides unless they also used "!important". */
+     padding/sizing overrides unless they also used "!important".
+
+     min-h-11 (not h-11): several pages set their own, larger vertical padding
+     (e.g. p-3) on top of this base rule. A page's utility-layer padding always
+     wins over this base padding, but a *fixed* h-11 base height would not
+     grow to match — squeezing text-lg's line-height into less room than it
+     needs and clipping descenders/tops in those selects. min-h-11 lets extra
+     padding grow the box instead of clipping the text inside it. */
   input, select, textarea {
-    @apply flex h-11 w-full rounded-xl border border-input px-4 py-2 text-lg ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all;
+    @apply flex min-h-11 w-full rounded-xl border border-input px-4 py-2 text-lg leading-6 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all;
     background-color: var(--card);
   }
 }
