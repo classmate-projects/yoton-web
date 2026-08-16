@@ -16,12 +16,18 @@ export interface SampleBarcodeLabelData {
 
 interface SampleBarcodeLabelProps {
   label: SampleBarcodeLabelData;
+  // Audit trail hook — the print itself is still 100% client-side (window.print()), this
+  // just lets the caller record that a print happened (see LabController.RecordPrint).
+  onPrint?: () => void;
+  printCount?: number;
+  lastPrintedByName?: string | null;
+  lastPrintedAt?: string | null;
 }
 
 // 2cm (height) x 3cm (width) sample-collection label — barcode encodes the lab
 // request id so it can be scanned back to this record; the surrounding text is the
 // human-readable fields the spec requires on the physical label.
-export default function SampleBarcodeLabel({ label }: SampleBarcodeLabelProps) {
+export default function SampleBarcodeLabel({ label, onPrint, printCount, lastPrintedByName, lastPrintedAt }: SampleBarcodeLabelProps) {
   const barcodeRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -36,7 +42,10 @@ export default function SampleBarcodeLabel({ label }: SampleBarcodeLabelProps) {
     });
   }, [label.labRequestId]);
 
-  const print = () => window.print();
+  const print = () => {
+    onPrint?.();
+    window.print();
+  };
 
   return (
     <div>
@@ -54,11 +63,17 @@ export default function SampleBarcodeLabel({ label }: SampleBarcodeLabelProps) {
         )}
       </div>
 
+      {!!printCount && (
+        <p className="no-print mt-2 text-xs text-muted-foreground">
+          Last printed by {lastPrintedByName || "—"}{lastPrintedAt ? ` on ${new Date(lastPrintedAt).toLocaleString()}` : ""} ({printCount}x)
+        </p>
+      )}
+
       <button
         onClick={print}
         className="no-print mt-3 flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
       >
-        <Printer size={15} /> Print Label
+        <Printer size={15} /> {printCount ? "Reprint Label" : "Print Label"}
       </button>
 
       <style jsx global>{`

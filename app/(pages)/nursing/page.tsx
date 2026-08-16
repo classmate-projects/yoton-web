@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import RichTextEditor from "@/components/RichTextEditor";
+import TrendChart from "@/components/TrendChart";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
 import { UserService } from "@/services/user.service";
@@ -40,10 +41,26 @@ import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import {
   NurseDashboardSummaryType,
   NursingChartType,
-  NursingTaskType,
+  WorkQueueItemType,
+  NurseOnDutyType,
 } from "@/types/nursing.type";
 
 const REMARK_TYPES = ["Refusal", "ClinicalConcern", "Other"];
+
+const EWS_BAND_STYLES: Record<string, string> = {
+  Low: "bg-emerald-100 text-emerald-700",
+  Medium: "bg-amber-100 text-amber-700",
+  High: "bg-red-100 text-red-700",
+};
+
+const TREND_METRICS = {
+  ewsScore: { label: "EWS Score", color: "#dc2626", unit: "" },
+  heartRate: { label: "Heart Rate", color: "#2563eb", unit: " bpm" },
+  temperature: { label: "Temperature", color: "#d97706", unit: "°C" },
+  oxygenSaturation: { label: "O2 Saturation", color: "#0891b2", unit: "%" },
+  respiratoryRate: { label: "Respiratory Rate", color: "#7c3aed", unit: " br/min" },
+  systolic: { label: "Systolic BP", color: "#059669", unit: " mmHg" },
+} as const;
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -62,6 +79,7 @@ function NurseWorkbenchInner() {
 
   const [checkedAuth, setCheckedAuth] = useState(false);
   const [role, setRole] = useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
 
   // Admin has no nurse/doctor identity of their own — every write endpoint that resolves
   // "which nurse/doctor is this?" from the caller's JWT falls back to requiring an explicit
@@ -72,7 +90,8 @@ function NurseWorkbenchInner() {
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>("");
 
   const [dashboard, setDashboard] = useState<NurseDashboardSummaryType | null>(null);
-  const [tasks, setTasks] = useState<NursingTaskType[]>([]);
+  const [workQueue, setWorkQueue] = useState<WorkQueueItemType[]>([]);
+  const [onDutyNurses, setOnDutyNurses] = useState<NurseOnDutyType[]>([]);
   const [patients, setPatients] = useState<EmrPatientListItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoadingWorkbench, setIsLoadingWorkbench] = useState(true);
@@ -93,6 +112,7 @@ function NurseWorkbenchInner() {
       return;
     }
     setRole(currentRole);
+    setCurrentUserId(detail.userId || "");
     setCheckedAuth(true);
   }, [router]);
 
@@ -123,9 +143,15 @@ function NurseWorkbenchInner() {
 
   useEffect(() => {
     if (!checkedAuth || !isAdmin) return;
-    UserService.getAllByRole("nurse").then((res) => setNurses(res.data || [])).catch(() => {});
     UserService.get_assigned_doctors().then((res) => setAssignedDoctors(res.data || [])).catch(() => {});
   }, [checkedAuth, isAdmin]);
+
+  // Needed by admin (acting-on-behalf-of picker) AND a real nurse (witness picker for
+  // high-risk medication administration) — not admin-only like assigned-doctors above.
+  useEffect(() => {
+    if (!checkedAuth || !(isAdmin || role === "nurse")) return;
+    UserService.getAllByRole("nurse").then((res) => setNurses(res.data || [])).catch(() => {});
+  }, [checkedAuth, isAdmin, role]);
 
   // ---------------- WORKBENCH DATA ----------------
   // Patients are fetched system-wide (no doctorId) — any doctor's patient is visible to
@@ -133,13 +159,15 @@ function NurseWorkbenchInner() {
   const fetchWorkbench = async () => {
     try {
       setIsLoadingWorkbench(true);
-      const [dashboardRes, tasksRes, patientsRes] = await Promise.all([
+      const [dashboardRes, workQueueRes, onDutyRes, patientsRes] = await Promise.all([
         NursingService.getDashboardSummary(),
-        NursingService.getTasks("pending"),
+        NursingService.getWorkQueue(),
+        NursingService.getOnDutyNow(),
         EmrService.getPatients(),
       ]);
       setDashboard(dashboardRes.data || null);
-      setTasks(tasksRes.data || []);
+      setWorkQueue(workQueueRes.data || []);
+      setOnDutyNurses(onDutyRes.data || []);
       setPatients(patientsRes.data || []);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load workbench data"));
@@ -264,15 +292,42 @@ function NurseWorkbenchInner() {
     oxygenSaturation: "",
     heightCm: "",
     weightKg: "",
+    consciousnessLevel: "Alert",
+    supplementalOxygen: false,
     notes: "",
   });
   const [savingVitals, setSavingVitals] = useState(false);
+  const [vitalsView, setVitalsView] = useState<"table" | "trend">("table");
+  const [trendMetric, setTrendMetric] = useState<"heartRate" | "temperature" | "oxygenSaturation" | "respiratoryRate" | "systolic" | "ewsScore">("ewsScore");
+  const [painView, setPainView] = useState<"table" | "trend">("table");
 
   const liveBmi = (() => {
     const height = Number(vitalsForm.heightCm);
     const weight = Number(vitalsForm.weightKg);
     if (!height || !weight) return null;
     return (weight / Math.pow(height / 100, 2)).toFixed(1);
+  })();
+
+  // Preview only — the server's own calculation (NursingController.CalculateEws) is what's
+  // persisted, same rule as BMI. Mirrors the backend's NEWS2 point table exactly.
+  const liveEws = (() => {
+    const rr = Number(vitalsForm.respiratoryRate);
+    const spo2 = Number(vitalsForm.oxygenSaturation);
+    const temp = Number(vitalsForm.temperature);
+    const sbp = Number(vitalsForm.systolic);
+    const hr = Number(vitalsForm.heartRate);
+    if (!rr || !spo2 || !temp || !sbp || !hr) return null;
+
+    const score = (v: number, bands: [number, number][]) => bands.find(([max]) => v <= max)?.[1] ?? bands[bands.length - 1][1];
+    const rrScore = score(rr, [[8, 3], [11, 1], [20, 0], [24, 2], [Infinity, 3]]);
+    const spo2Score = score(spo2, [[91, 3], [93, 2], [95, 1], [Infinity, 0]]);
+    const o2Score = vitalsForm.supplementalOxygen ? 2 : 0;
+    const tempScore = score(temp, [[35.0, 3], [36.0, 1], [38.0, 0], [39.0, 1], [Infinity, 2]]);
+    const sbpScore = score(sbp, [[90, 3], [100, 2], [110, 1], [219, 0], [Infinity, 3]]);
+    const hrScore = score(hr, [[40, 3], [50, 1], [90, 0], [110, 1], [130, 2], [Infinity, 3]]);
+    const locScore = vitalsForm.consciousnessLevel === "Alert" ? 0 : 3;
+
+    return rrScore + spo2Score + o2Score + tempScore + sbpScore + hrScore + locScore;
   })();
 
   const saveVitals = async () => {
@@ -294,11 +349,13 @@ function NurseWorkbenchInner() {
         oxygenSaturation: Number(vitalsForm.oxygenSaturation || 0),
         heightCm: Number(vitalsForm.heightCm || 0),
         weightKg: Number(vitalsForm.weightKg || 0),
+        consciousnessLevel: vitalsForm.consciousnessLevel,
+        supplementalOxygen: vitalsForm.supplementalOxygen,
         notes: vitalsForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
       });
       toast.success("Vitals recorded");
-      setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", notes: "" });
+      setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, notes: "" });
       await refreshChart();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to save vitals"));
@@ -583,11 +640,18 @@ function NurseWorkbenchInner() {
 
   // ---------------- PRESCRIBED MEDICATIONS (administer doctor's prescriptions) ----------------
   const [administeringMedicationId, setAdministeringMedicationId] = useState<string | null>(null);
-  const [administerForm, setAdministerForm] = useState({ doseGiven: "", route: "Oral (PO)", remarks: "" });
+  const [administerForm, setAdministerForm] = useState({ doseGiven: "", route: "Oral (PO)", remarks: "", witnessUserId: "", witnessPassword: "" });
   const [savingAdministration, setSavingAdministration] = useState(false);
 
-  const administerMedication = async (medicationId: string) => {
+  // High-risk medications need a live, bedside second-nurse check — the witness
+  // authenticates in the moment (their own password, verified server-side), not an async
+  // approval queue. See NursingController.AdministerMedication.
+  const administerMedication = async (medicationId: string, isHighRisk: boolean) => {
     if (!requireNurseSelected()) return;
+    if (isHighRisk && (!administerForm.witnessUserId || !administerForm.witnessPassword)) {
+      toast.error("This is a high-risk medication — a second nurse must witness and confirm with their password");
+      return;
+    }
     try {
       setSavingAdministration(true);
       await NursingService.administerMedication(medicationId, {
@@ -595,10 +659,12 @@ function NurseWorkbenchInner() {
         route: administerForm.route,
         remarks: administerForm.remarks.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
+        witnessUserId: isHighRisk ? administerForm.witnessUserId : undefined,
+        witnessPassword: isHighRisk ? administerForm.witnessPassword : undefined,
       });
       toast.success("Medication administration recorded");
       setAdministeringMedicationId(null);
-      setAdministerForm({ doseGiven: "", route: "Oral (PO)", remarks: "" });
+      setAdministerForm({ doseGiven: "", route: "Oral (PO)", remarks: "", witnessUserId: "", witnessPassword: "" });
       if (selectedPatientId) {
         const res = await EmrService.getPatientSummary(selectedPatientId);
         setSummary(res.data);
@@ -628,7 +694,7 @@ function NurseWorkbenchInner() {
   // ==================== PATIENT CHART ====================
   if (selectedPatientId) {
     return (
-      <div className="py-8 px-10 h-full overflow-y-auto">
+      <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
         <div className="flex items-center justify-between mb-6 gap-4">
           <button
             onClick={backToWorkbench}
@@ -813,6 +879,29 @@ function NurseWorkbenchInner() {
                         <input type="text" readOnly disabled placeholder="BMI" value={liveBmi ?? ""} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">kg/m²</span>
                       </div>
+                      <select
+                        value={vitalsForm.consciousnessLevel}
+                        onChange={(e) => setVitalsForm((p) => ({ ...p, consciousnessLevel: e.target.value }))}
+                        className="h-10 text-sm w-full"
+                        title="Consciousness (AVPU)"
+                      >
+                        <option value="Alert">Alert</option>
+                        <option value="Voice">Voice</option>
+                        <option value="Pain">Pain</option>
+                        <option value="Unresponsive">Unresponsive</option>
+                      </select>
+                      <label className="flex items-center gap-2 h-10 text-sm px-2 rounded-lg border border-border">
+                        <input
+                          type="checkbox"
+                          checked={vitalsForm.supplementalOxygen}
+                          onChange={(e) => setVitalsForm((p) => ({ ...p, supplementalOxygen: e.target.checked }))}
+                        />
+                        On oxygen
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input type="text" readOnly disabled placeholder="EWS" value={liveEws ?? ""} className="h-10 text-sm w-full font-semibold" />
+                        <span className="text-xs text-muted-foreground shrink-0">EWS</span>
+                      </div>
                     </div>
                     <textarea placeholder="Notes..." value={vitalsForm.notes} onChange={(e) => setVitalsForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
                     <button onClick={saveVitals} disabled={savingVitals} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
@@ -822,32 +911,79 @@ function NurseWorkbenchInner() {
                 )}
 
                 {chart && chart.vitals.length > 0 && (
-                  <div className="overflow-x-auto border-t border-border pt-3">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Recorded</th><th>BP</th><th>HR</th><th>Temp</th><th>SpO2</th><th>Ht/Wt</th><th>BMI</th><th></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {chart.vitals.slice(0, 5).map((v) => (
-                          <tr key={v.vitalsRecordId}>
-                            <td className="text-xs">{formatDateTime(v.recordedAt)}</td>
-                            <td>{v.systolic}/{v.diastolic} mmHg</td>
-                            <td>{v.heartRate} bpm</td>
-                            <td>{v.temperature}°C</td>
-                            <td>{v.oxygenSaturation}%</td>
-                            <td className="text-xs">{v.heightCm ? `${v.heightCm}cm` : "—"} / {v.weightKg ? `${v.weightKg}kg` : "—"}</td>
-                            <td>{v.bmi ? v.bmi.toFixed(1) : "—"}</td>
-                            <td>
-                              {v.isCritical && (
-                                <span className="rounded-full bg-red-100 text-red-700 text-xs px-2 py-0.5 font-semibold">Critical</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="border-t border-border pt-3 flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex rounded-lg border border-border overflow-hidden text-xs">
+                        <button
+                          onClick={() => setVitalsView("table")}
+                          className={`px-3 py-1.5 font-semibold ${vitalsView === "table" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted"}`}
+                        >
+                          Table
+                        </button>
+                        <button
+                          onClick={() => setVitalsView("trend")}
+                          className={`px-3 py-1.5 font-semibold ${vitalsView === "trend" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted"}`}
+                        >
+                          Trend
+                        </button>
+                      </div>
+                      {vitalsView === "trend" && (
+                        <select
+                          value={trendMetric}
+                          onChange={(e) => setTrendMetric(e.target.value as typeof trendMetric)}
+                          className="h-8 text-xs"
+                        >
+                          {Object.entries(TREND_METRICS).map(([key, m]) => (
+                            <option key={key} value={key}>{m.label}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    {vitalsView === "table" ? (
+                      <div className="overflow-x-auto">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Recorded</th><th>BP</th><th>HR</th><th>Temp</th><th>SpO2</th><th>Ht/Wt</th><th>BMI</th><th>EWS</th><th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {chart.vitals.slice(0, 5).map((v) => (
+                              <tr key={v.vitalsRecordId}>
+                                <td className="text-xs">{formatDateTime(v.recordedAt)}</td>
+                                <td>{v.systolic}/{v.diastolic} mmHg</td>
+                                <td>{v.heartRate} bpm</td>
+                                <td>{v.temperature}°C</td>
+                                <td>{v.oxygenSaturation}%</td>
+                                <td className="text-xs">{v.heightCm ? `${v.heightCm}cm` : "—"} / {v.weightKg ? `${v.weightKg}kg` : "—"}</td>
+                                <td>{v.bmi ? v.bmi.toFixed(1) : "—"}</td>
+                                <td>
+                                  <span className={`rounded-full text-xs px-2 py-0.5 font-semibold ${EWS_BAND_STYLES[v.ewsBand]}`}>
+                                    {v.ewsScore}
+                                  </span>
+                                </td>
+                                <td>
+                                  {v.isCritical && (
+                                    <span className="rounded-full bg-red-100 text-red-700 text-xs px-2 py-0.5 font-semibold">Critical</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <TrendChart
+                        color={TREND_METRICS[trendMetric].color}
+                        formatValue={(v) => `${v}${TREND_METRICS[trendMetric].unit}`}
+                        data={[...chart.vitals].reverse().map((v) => ({
+                          label: new Date(v.recordedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+                          fullLabel: formatDateTime(v.recordedAt),
+                          value: v[trendMetric],
+                        }))}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -1097,13 +1233,42 @@ function NurseWorkbenchInner() {
                 )}
 
                 {chart && chart.examinationNotes.length > 0 && (
-                  <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
-                    {chart.examinationNotes.slice(0, 5).map((e) => (
-                      <div key={e.examinationNoteId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
-                        <span className="font-medium">{e.generalAppearance || "—"} · Pain {e.painLevel}/10</span>
-                        <span className="text-xs text-muted-foreground">{formatDateTime(e.createdAt)}</span>
+                  <div className="border-t border-border pt-3 flex flex-col gap-3">
+                    <div className="flex rounded-lg border border-border overflow-hidden text-xs w-fit">
+                      <button
+                        onClick={() => setPainView("table")}
+                        className={`px-3 py-1.5 font-semibold ${painView === "table" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted"}`}
+                      >
+                        Table
+                      </button>
+                      <button
+                        onClick={() => setPainView("trend")}
+                        className={`px-3 py-1.5 font-semibold ${painView === "trend" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted"}`}
+                      >
+                        Trend
+                      </button>
+                    </div>
+
+                    {painView === "table" ? (
+                      <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto">
+                        {chart.examinationNotes.slice(0, 5).map((e) => (
+                          <div key={e.examinationNoteId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                            <span className="font-medium">{e.generalAppearance || "—"} · Pain {e.painLevel}/10</span>
+                            <span className="text-xs text-muted-foreground">{formatDateTime(e.createdAt)}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    ) : (
+                      <TrendChart
+                        color="#dc2626"
+                        formatValue={(v) => `${v}/10`}
+                        data={[...chart.examinationNotes].reverse().map((e) => ({
+                          label: new Date(e.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+                          fullLabel: formatDateTime(e.createdAt),
+                          value: e.painLevel,
+                        }))}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -1164,7 +1329,14 @@ function NurseWorkbenchInner() {
                       <div key={m.medicationId} className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-semibold text-foreground">{m.drugName}</p>
+                            <p className="font-semibold text-foreground flex items-center gap-1.5">
+                              {m.drugName}
+                              {m.isHighRisk && (
+                                <span className="flex items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive">
+                                  <ShieldAlert size={10} /> High-risk
+                                </span>
+                              )}
+                            </p>
                             <p className="text-xs text-muted-foreground">{m.dosage} {m.frequency}</p>
                           </div>
                           {canEdit && (
@@ -1190,8 +1362,34 @@ function NurseWorkbenchInner() {
                               </select>
                             </div>
                             <input type="text" placeholder="Remarks (optional)" value={administerForm.remarks} onChange={(ev) => setAdministerForm((p) => ({ ...p, remarks: ev.target.value }))} className="h-9 text-sm" />
+
+                            {m.isHighRisk && (
+                              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 flex flex-col gap-2">
+                                <p className="text-xs font-semibold text-destructive flex items-center gap-1">
+                                  <ShieldAlert size={12} /> High-risk medication — a second nurse must witness this
+                                </p>
+                                <select
+                                  value={administerForm.witnessUserId}
+                                  onChange={(ev) => setAdministerForm((p) => ({ ...p, witnessUserId: ev.target.value }))}
+                                  className="h-9 text-sm"
+                                >
+                                  <option value="">Select witnessing nurse</option>
+                                  {nurses.filter((n) => n.id !== currentUserId).map((n) => (
+                                    <option key={n.id} value={n.id}>{n.name}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="password"
+                                  placeholder="Witness's password"
+                                  value={administerForm.witnessPassword}
+                                  onChange={(ev) => setAdministerForm((p) => ({ ...p, witnessPassword: ev.target.value }))}
+                                  className="h-9 text-sm"
+                                />
+                              </div>
+                            )}
+
                             <button
-                              onClick={() => administerMedication(m.medicationId)}
+                              onClick={() => administerMedication(m.medicationId, m.isHighRisk)}
                               disabled={savingAdministration}
                               className="self-start flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
                             >
@@ -1226,7 +1424,7 @@ function NurseWorkbenchInner() {
 
   // ==================== WORKBENCH ====================
   return (
-    <div className="py-8 px-10 h-full overflow-y-auto">
+    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
@@ -1335,34 +1533,49 @@ function NurseWorkbenchInner() {
             </div>
 
             <div className="card p-6">
-              <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                <ClipboardList size={18} className="text-primary" /> Pending Tasks
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <ClipboardList size={18} className="text-primary" /> Work Queue
+                </h2>
+                {onDutyNurses.length > 0 && (
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title={onDutyNurses.map((n) => n.nurseName).join(", ")}>
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    {onDutyNurses.length} on duty
+                  </span>
+                )}
+              </div>
+              {/* Unifies NursingTask (self-charting), Treatment (doctor-ordered), Lab/
+                  Radiology sample collection, and active Medications into one queue — see
+                  NursingController.GetWorkQueue. Only Task rows carry the Start/Complete
+                  status actions below; the other item types are just click-through to the
+                  patient's chart, since they're driven by their own dedicated workflows. */}
               <div className="flex flex-col gap-3 max-h-[28rem] overflow-y-auto">
-                {tasks.length > 0 ? (
-                  tasks.map((t) => (
-                    <div key={t.nursingTaskId} className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+                {workQueue.length > 0 ? (
+                  workQueue.map((item) => (
+                    <div
+                      key={`${item.itemType}-${item.sourceId}`}
+                      className="rounded-lg border border-border bg-muted/30 px-3 py-2 cursor-pointer hover:bg-muted/50"
+                      onClick={() => item.patientId && openPatient(item.patientId)}
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="font-semibold text-sm text-foreground">{t.taskType}</p>
-                          <p className="text-xs text-muted-foreground">{t.patientName || "Unknown patient"}</p>
+                          <p className="font-semibold text-sm text-foreground">{item.description}</p>
+                          <p className="text-xs text-muted-foreground">{item.patientName || "Unknown patient"}</p>
                         </div>
                         <span className="rounded-full bg-amber-100 text-amber-700 text-xs px-2 py-0.5 font-semibold shrink-0">
-                          {t.status}
+                          {item.priority && item.priority !== "Normal" && item.priority !== "Routine" ? item.priority : item.itemType}
                         </span>
                       </div>
-                      {canEdit && (
-                        <div className="flex gap-2 mt-2">
-                          {t.status === "Pending" && (
-                            <button
-                              onClick={() => updateTaskStatus(t.nursingTaskId, "InProgress")}
-                              className="flex-1 flex items-center justify-center gap-1 bg-primary/10 hover:bg-primary/20 text-primary font-semibold py-1.5 rounded-lg text-xs transition-colors"
-                            >
-                              <PlayCircle size={13} /> Start
-                            </button>
-                          )}
+                      {canEdit && item.itemType === "Task" && (
+                        <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => updateTaskStatus(t.nursingTaskId, "Completed")}
+                            onClick={() => updateTaskStatus(item.sourceId, "InProgress")}
+                            className="flex-1 flex items-center justify-center gap-1 bg-primary/10 hover:bg-primary/20 text-primary font-semibold py-1.5 rounded-lg text-xs transition-colors"
+                          >
+                            <PlayCircle size={13} /> Start
+                          </button>
+                          <button
+                            onClick={() => updateTaskStatus(item.sourceId, "Completed")}
                             className="flex-1 flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-1.5 rounded-lg text-xs transition-colors"
                           >
                             <CheckCircle2 size={13} /> Complete
@@ -1372,7 +1585,7 @@ function NurseWorkbenchInner() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">No pending tasks. Great job!</p>
+                  <p className="text-sm text-muted-foreground">No pending work. Great job!</p>
                 )}
               </div>
             </div>

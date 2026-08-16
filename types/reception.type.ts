@@ -1,3 +1,15 @@
+// Wire shape for a fee-schedule row — deductible/co-pay amounts must be actual JSON
+// numbers (the API's decimal? fields aren't configured to parse numbers from strings).
+export interface InsuranceCoverageRow {
+    serviceCategory: string;
+    deductible?: number;
+    deductibleAppliesTo?: string;
+    coPayPercent?: number;
+    coPayMin?: number;
+    coPayMax?: number;
+    coPayAppliesTo?: string;
+}
+
 export interface ReceptionCreatePatientType {
     name: string;
     sex: string;
@@ -19,6 +31,30 @@ export interface ReceptionCreatePatientType {
     chronicStatus: boolean;
     emergencyContact: string;
     emergencyContactPhone: string;
+
+    // Payment & Insurance — Cash needs nothing else; Insurance/Corporate share the
+    // same eligibility + fee-schedule template.
+    paymentType: string;
+    eligibilityMode?: string;
+    eligibilityCheckedDate?: string;
+    eligibilityID?: string;
+    eligibilityVisitID?: string;
+    insuranceProvider?: string;
+    subInsurance?: string;
+    networkType?: string;
+    insuranceCardNo?: string;
+    extraCardNo?: string;
+    insuranceEffectiveFrom?: string;
+    insuranceExpiryDate?: string;
+    certificateNo?: string;
+    dependentsNo?: string;
+    insuranceClaimNo?: string;
+    maxInsuranceLiability?: number;
+    insuranceApprovalLimit?: number;
+    maxInsuranceCopay?: number;
+    coPayPatientPercent?: number;
+    insuranceCoverages?: InsuranceCoverageRow[];
+
     password: string;
     registeredBy: string;
 }

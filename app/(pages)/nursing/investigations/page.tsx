@@ -93,6 +93,24 @@ export default function DoctorInvestigationsPage() {
     }
   };
 
+  // Fire-and-forget audit trail — the print itself already happened client-side by the time
+  // this is called (see SampleBarcodeLabel's onPrint), so a failure here shouldn't block or
+  // roll back anything the nurse already did.
+  const recordPrint = async (labRequestId: string) => {
+    try {
+      const res = await LabService.recordPrint(labRequestId);
+      setLabs((prev) =>
+        prev.map((l) =>
+          l.labRequestId === labRequestId
+            ? { ...l, printCount: res.printCount, lastPrintedAt: res.lastPrintedAt, lastPrintedByName: res.lastPrintedByName }
+            : l
+        )
+      );
+    } catch {
+      // non-fatal
+    }
+  };
+
   const viewReport = (path: string | null) => {
     const url = backendAssetUrl(path);
     if (url) window.open(url, "_blank");
@@ -122,7 +140,7 @@ export default function DoctorInvestigationsPage() {
   }
 
   return (
-    <div className="py-8 px-10 h-full overflow-y-auto">
+    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
@@ -176,6 +194,10 @@ export default function DoctorInvestigationsPage() {
                   collectedByName: barcodeLab.sampleCollectedByName || "—",
                   visitId: barcodeLab.visitId,
                 }}
+                onPrint={() => recordPrint(barcodeLab.labRequestId)}
+                printCount={barcodeLab.printCount}
+                lastPrintedByName={barcodeLab.lastPrintedByName}
+                lastPrintedAt={barcodeLab.lastPrintedAt}
               />
             </div>
           )}
@@ -225,7 +247,7 @@ export default function DoctorInvestigationsPage() {
                                 onClick={() => setBarcodeLabId(l.labRequestId)}
                                 className="text-sm font-semibold text-muted-foreground hover:underline"
                               >
-                                Barcode
+                                {l.printCount > 0 ? "Reprint Barcode" : "Barcode"}
                               </button>
                             )}
                             {l.hasResultFile && (

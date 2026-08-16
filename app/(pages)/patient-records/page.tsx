@@ -22,7 +22,7 @@ import {
 import { toDateInputValue } from "@/lib/date";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
-const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "Other"];
+const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
 
 export default function PatientRecordsPage() {
   const [patients, setPatients] = useState<PatientGetAllType[]>([]);
@@ -250,7 +250,7 @@ export default function PatientRecordsPage() {
   );
 
   return (
-    <div className="py-8 px-10 h-full overflow-y-auto">
+    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       <div className="flex justify-between items-center gap-1 mb-8">
         <div>
           <h1 className="text-4xl font-semibold flex items-center gap-3">

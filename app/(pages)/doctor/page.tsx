@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -28,24 +28,29 @@ import {
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
-import MedicationOrderModal from "@/components/doctor/MedicationOrderModal";
+import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
 import ReviewOfSystemsPanel, { ReviewOfSystemsValue } from "@/components/doctor/ReviewOfSystemsPanel";
+import PrescriptionPrintout from "@/components/prescription/PrescriptionPrintout";
+import { getUserDetail } from "@/lib/userDetail";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
 import { SpecializationService } from "@/services/specialization.service";
 import { LabService } from "@/services/lab.service";
 import { RadiologyService } from "@/services/radiology.service";
 import { ConfigListService } from "@/services/configList.service";
+import { NursingService } from "@/services/nursing.service";
 import {
   ActiveCaseItemType,
   DoctorConfidentialNoteType,
   DoctorDashboardSummaryType,
   EmrPatientListItem,
   MedicationPayload,
+  PatientInsuranceCoverageType,
   PatientSummaryType,
   QuickNoteType,
   TodayScheduleItemType,
 } from "@/types/emr.type";
+import { VitalsType } from "@/types/nursing.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { SpecializationTypes } from "@/types/specialization.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
@@ -71,6 +76,8 @@ function DoctorWorkbenchInner() {
   const [assignedDoctors, setAssignedDoctors] = useState<AssignedDoctorsInfo[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>("");
 
+  const [showPrescriptionPrint, setShowPrescriptionPrint] = useState(false);
+
   const [dashboard, setDashboard] = useState<DoctorDashboardSummaryType | null>(null);
   const [schedule, setSchedule] = useState<TodayScheduleItemType[]>([]);
   const [activeCases, setActiveCases] = useState<ActiveCaseItemType[]>([]);
@@ -85,6 +92,7 @@ function DoctorWorkbenchInner() {
   const [specializations, setSpecializations] = useState<SpecializationTypes[]>([]);
   const [quickNotes, setQuickNotes] = useState<QuickNoteType[]>([]);
   const [confidentialNotes, setConfidentialNotes] = useState<DoctorConfidentialNoteType[]>([]);
+  const [latestVitals, setLatestVitals] = useState<VitalsType | null>(null);
 
   const isAdmin = role === "admin";
   const doctorIdParam = isAdmin ? selectedDoctorId || undefined : undefined;
@@ -177,6 +185,7 @@ function DoctorWorkbenchInner() {
       fetchQuickNotes(patientId),
       fetchDocuments(patientId),
       fetchConfidentialNotes(patientId),
+      fetchLatestVitals(patientId),
     ]);
   };
 
@@ -190,6 +199,22 @@ function DoctorWorkbenchInner() {
       setSummary(null);
     } finally {
       setIsLoadingSummary(false);
+    }
+  };
+
+  // Nursing already records vitals and doctors are read-authorized on the same chart
+  // endpoint (NursingController class-level [Authorize]) — reused here rather than
+  // duplicating vitals capture on the doctor side.
+  const fetchLatestVitals = async (patientId: string) => {
+    try {
+      const res = await NursingService.getPatientChart(patientId);
+      const vitals: VitalsType[] = res.data?.vitals || [];
+      const latest = [...vitals].sort(
+        (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
+      )[0];
+      setLatestVitals(latest || null);
+    } catch {
+      setLatestVitals(null);
     }
   };
 
@@ -362,11 +387,9 @@ function DoctorWorkbenchInner() {
   };
 
   // ---------------- MEDICATIONS ----------------
-  const [showMedicationModal, setShowMedicationModal] = useState(false);
-
-  const addMedication = async (payload: MedicationPayload) => {
-    if (!selectedPatientId) return;
-    if (!requireDoctorSelected()) return;
+  const addMedication = async (payload: MedicationPayload): Promise<boolean> => {
+    if (!selectedPatientId) return false;
+    if (!requireDoctorSelected()) return false;
     try {
       await EmrService.addMedication(
         selectedPatientId,
@@ -374,10 +397,11 @@ function DoctorWorkbenchInner() {
         doctorIdParam
       );
       toast.success("Medication order added");
-      setShowMedicationModal(false);
       await fetchSummary(selectedPatientId);
+      return true;
     } catch (error) {
       toast.error(errorMessage(error, "Failed to add medication"));
+      return false;
     }
   };
 
@@ -439,8 +463,32 @@ function DoctorWorkbenchInner() {
     remarks: "",
     priority: "Normal",
     source: "InHouse",
+    price: "",
+    uccCode: "",
+    covered: "" as "" | "Yes" | "No",
+    patientShareAmount: "",
+    coInsurancePercent: "",
+    preAuthStatus: "Not Required",
+    bodyParts: "",
   });
   const [isOrdering, setIsOrdering] = useState(false);
+
+  const [insuranceCoverage, setInsuranceCoverage] = useState<PatientInsuranceCoverageType | null>(null);
+  useEffect(() => {
+    if (!selectedPatientId) { setInsuranceCoverage(null); return; }
+    EmrService.getInsuranceCoverage(selectedPatientId, doctorIdParam)
+      .then((res) => setInsuranceCoverage(res.data))
+      .catch(() => setInsuranceCoverage(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPatientId]);
+
+  // Reference info only — matched from the patient's insurance coverage (set during
+  // registration) by service category. Covered/Patient Share/Co-Insurance stay
+  // doctor-editable rather than being silently auto-filled.
+  const matchedCoverage = useMemo(
+    () => insuranceCoverage?.coverages.find((c) => c.serviceCategory === orderForm.category) || null,
+    [insuranceCoverage, orderForm.category]
+  );
 
   const orderInvestigation = async () => {
     if (!selectedPatientId || !orderForm.testType.trim()) {
@@ -450,33 +498,48 @@ function DoctorWorkbenchInner() {
     try {
       setIsOrdering(true);
       const quantity = orderForm.quantity ? Number(orderForm.quantity) : 1;
+      const shared = {
+        patientId: selectedPatientId,
+        doctorId: doctorIdParam,
+        visitId: visitIdParam,
+        listItemId: orderForm.listItemId,
+        quantity,
+        remarks: orderForm.remarks.trim() || undefined,
+        priority: orderForm.priority,
+        source: orderForm.source,
+        price: orderForm.price ? Number(orderForm.price) : undefined,
+        uccCode: orderForm.uccCode.trim() || undefined,
+        covered: orderForm.covered ? orderForm.covered === "Yes" : undefined,
+        patientShareAmount: orderForm.patientShareAmount ? Number(orderForm.patientShareAmount) : undefined,
+        coInsurancePercent: orderForm.coInsurancePercent ? Number(orderForm.coInsurancePercent) : undefined,
+        preAuthStatus: orderForm.preAuthStatus || undefined,
+      };
       if (orderForm.category === "Lab") {
-        await LabService.create({
-          patientId: selectedPatientId,
-          doctorId: doctorIdParam,
-          visitId: visitIdParam,
-          testType: orderForm.testType.trim(),
-          listItemId: orderForm.listItemId,
-          quantity,
-          remarks: orderForm.remarks.trim() || undefined,
-          priority: orderForm.priority,
-          source: orderForm.source,
-        });
+        await LabService.create({ ...shared, testType: orderForm.testType.trim() });
       } else {
         await RadiologyService.create({
-          patientId: selectedPatientId,
-          doctorId: doctorIdParam,
-          visitId: visitIdParam,
+          ...shared,
           scanType: orderForm.testType.trim(),
-          listItemId: orderForm.listItemId,
-          quantity,
-          remarks: orderForm.remarks.trim() || undefined,
-          priority: orderForm.priority,
-          source: orderForm.source,
+          bodyParts: orderForm.bodyParts.trim() || undefined,
         });
       }
       toast.success(`${orderForm.category} order placed`);
-      setOrderForm({ category: orderForm.category, testType: "", listItemId: undefined, quantity: "1", remarks: "", priority: "Normal", source: "InHouse" });
+      setOrderForm({
+        category: orderForm.category,
+        testType: "",
+        listItemId: undefined,
+        quantity: "1",
+        remarks: "",
+        priority: "Normal",
+        source: "InHouse",
+        price: "",
+        uccCode: "",
+        covered: "",
+        patientShareAmount: "",
+        coInsurancePercent: "",
+        preAuthStatus: "Not Required",
+        bodyParts: "",
+      });
     } catch (error) {
       toast.error(errorMessage(error, "Failed to place order"));
     } finally {
@@ -659,7 +722,7 @@ function DoctorWorkbenchInner() {
   // ==================== EMR PANEL ====================
   if (selectedPatientId) {
     return (
-      <div className="py-8 px-10 h-full overflow-y-auto">
+      <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
         <button
           onClick={backToWorkbench}
           className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary mb-6"
@@ -729,6 +792,68 @@ function DoctorWorkbenchInner() {
                 </div>
               )}
             </div>
+
+            {/* Latest Vitals — nurse-recorded, read-only here so the doctor has it in view
+                while prescribing/ordering without leaving the workbench. */}
+            {latestVitals && (
+              <div
+                className={`card px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm ${
+                  latestVitals.isCritical ? "border-l-4 border-l-red-500" : ""
+                }`}
+              >
+                <span className="flex items-center gap-1.5 font-semibold text-foreground/90">
+                  <HeartPulse size={16} className="text-primary" /> Latest Vitals
+                  <span className="font-normal text-xs text-muted-foreground">
+                    ({formatDateTime(latestVitals.recordedAt)})
+                  </span>
+                </span>
+                {[
+                  ["Height", latestVitals.heightCm ? `${latestVitals.heightCm} cm` : null],
+                  ["Weight", latestVitals.weightKg ? `${latestVitals.weightKg} kg` : null],
+                  ["BMI", latestVitals.bmi ? latestVitals.bmi.toFixed(1) : null],
+                  ["Temp", latestVitals.temperature ? `${latestVitals.temperature}°C` : null],
+                  ["Heart rate", latestVitals.heartRate ? `${latestVitals.heartRate} BPM` : null],
+                  [
+                    "B.P",
+                    latestVitals.systolic && latestVitals.diastolic
+                      ? `${latestVitals.systolic}/${latestVitals.diastolic} mmHg`
+                      : null,
+                  ],
+                  [
+                    "B.P (M)",
+                    latestVitals.systolic && latestVitals.diastolic
+                      ? `${Math.round(latestVitals.diastolic + (latestVitals.systolic - latestVitals.diastolic) / 3)} mmHg`
+                      : null,
+                  ],
+                  ["Respiratory", latestVitals.respiratoryRate ? `${latestVitals.respiratoryRate} bpm` : null],
+                  ["O2 Sat", latestVitals.oxygenSaturation ? `${latestVitals.oxygenSaturation}%` : null],
+                ]
+                  .filter(([, value]) => value)
+                  .map(([label, value]) => (
+                    <span key={label} className="text-muted-foreground">
+                      {label}: <span className="font-semibold text-foreground">{value}</span>
+                    </span>
+                  ))}
+              </div>
+            )}
+
+            {/* Drug allergy banner — summarizes what's already on file; the Allergies
+                section further down is where new ones get added. */}
+            {summary.allergies.length > 0 && (
+              <div className="rounded-lg border border-red-300 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 px-4 py-2.5 flex flex-wrap items-center gap-2 text-sm">
+                <AlertTriangle size={16} className="text-red-600 dark:text-red-400 shrink-0" />
+                <span className="font-bold text-red-700 dark:text-red-400">Drug Allergy:</span>
+                {summary.allergies.map((a) => (
+                  <span
+                    key={a.patientAllergyId}
+                    className="rounded-full bg-red-100 dark:bg-red-900/40 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:text-red-400"
+                  >
+                    {a.substance}
+                    {a.reaction ? ` — ${a.reaction}` : ""}
+                  </span>
+                ))}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 flex flex-col gap-6">
@@ -1007,12 +1132,14 @@ function DoctorWorkbenchInner() {
                     <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                       <Pill size={18} className="text-primary" /> Medication Tracking
                     </h2>
-                    <button
-                      onClick={() => setShowMedicationModal(true)}
-                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-                    >
-                      <Search size={14} /> New Order
-                    </button>
+                    {summary.currentMedications.length > 0 && (
+                      <button
+                        onClick={() => setShowPrescriptionPrint(true)}
+                        className="text-sm font-semibold text-primary hover:underline"
+                      >
+                        Print Prescription
+                      </button>
+                    )}
                   </div>
 
                   <div>
@@ -1194,6 +1321,8 @@ function DoctorWorkbenchInner() {
               </div>
 
               <div className="flex flex-col gap-6">
+                <MedicationOrderPanel onSubmit={addMedication} />
+
                 {/* Investigation ordering */}
                 <div className="card p-6 flex flex-col gap-3">
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -1274,6 +1403,103 @@ function DoctorWorkbenchInner() {
                     onChange={(e) => setOrderForm((p) => ({ ...p, remarks: e.target.value }))}
                     className="w-full min-h-12 text-sm"
                   />
+
+                  {orderForm.category === "Radiology" && (
+                    <input
+                      type="text"
+                      placeholder="Body parts (e.g. Chest, Left knee)"
+                      value={orderForm.bodyParts}
+                      onChange={(e) => setOrderForm((p) => ({ ...p, bodyParts: e.target.value }))}
+                      className="h-10 text-sm"
+                    />
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Price (AED)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={orderForm.price}
+                        onChange={(e) => setOrderForm((p) => ({ ...p, price: e.target.value }))}
+                        className="h-10 text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground">UCC code</label>
+                      <input
+                        type="text"
+                        value={orderForm.uccCode}
+                        onChange={(e) => setOrderForm((p) => ({ ...p, uccCode: e.target.value }))}
+                        className="h-10 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Insurance snapshot — reference-only hint pulled from the patient's
+                      coverage on file (set at registration); fields below stay editable. */}
+                  {insuranceCoverage && insuranceCoverage.paymentType !== "Cash" && (
+                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5">
+                      {matchedCoverage
+                        ? `${insuranceCoverage.paymentType} on file for ${orderForm.category}: Co-Insurance ${matchedCoverage.coPayPercent ?? "—"}%, Deductible ${matchedCoverage.deductible ?? "—"} AED (${matchedCoverage.deductibleAppliesTo || "—"})`
+                        : `${insuranceCoverage.paymentType} patient — no ${orderForm.category} coverage on file`}
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Covered</label>
+                      <div className="flex items-center gap-3 h-10 text-sm">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input type="radio" checked={orderForm.covered === "Yes"} onChange={() => setOrderForm((p) => ({ ...p, covered: "Yes" }))} /> Yes
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input type="radio" checked={orderForm.covered === "No"} onChange={() => setOrderForm((p) => ({ ...p, covered: "No" }))} /> No
+                        </label>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Pre-authorization</label>
+                      <select
+                        value={orderForm.preAuthStatus}
+                        onChange={(e) => setOrderForm((p) => ({ ...p, preAuthStatus: e.target.value }))}
+                        className="h-10 text-sm"
+                      >
+                        <option value="Not Required">Not Required</option>
+                        <option value="Required">Required</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Approved">Approved</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Patient share (AED)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={orderForm.patientShareAmount}
+                        onChange={(e) => setOrderForm((p) => ({ ...p, patientShareAmount: e.target.value }))}
+                        className="h-10 text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Co-Insurance (%)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.01}
+                        value={orderForm.coInsurancePercent}
+                        onChange={(e) => setOrderForm((p) => ({ ...p, coInsurancePercent: e.target.value }))}
+                        className="h-10 text-sm"
+                      />
+                    </div>
+                  </div>
+
                   <button
                     onClick={orderInvestigation}
                     disabled={isOrdering}
@@ -1427,16 +1653,13 @@ function DoctorWorkbenchInner() {
             </div>
           </div>
         )}
-        {showMedicationModal && (
-          <MedicationOrderModal onClose={() => setShowMedicationModal(false)} onSubmit={addMedication} />
-        )}
       </div>
     );
   }
 
   // ==================== WORKBENCH ====================
   return (
-    <div className="py-8 px-10 h-full overflow-y-auto">
+    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       <div className="mb-6 flex flex-row items-center justify-between gap-4">
         <div>
           <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
@@ -1601,6 +1824,37 @@ function DoctorWorkbenchInner() {
             </div>
           </div>
         </div>
+      )}
+
+      {showPrescriptionPrint && summary && (
+        <PrescriptionPrintout
+          patientName={summary.name}
+          patientNumber={summary.opNumber || summary.opId}
+          patientAge={
+            summary.dateOfBirth
+              ? Math.floor(
+                  (Date.now() - new Date(summary.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+                )
+              : null
+          }
+          patientSex={summary.sex}
+          doctorName={getUserDetail()?.name || "Attending Physician"}
+          visitDate={new Date().toLocaleDateString()}
+          medicines={summary.currentMedications.map((m) => ({
+            drugName: m.drugName,
+            drugType: m.drugType,
+            dosage: m.dosage,
+            dosageUnit: m.dosageUnit,
+            frequency: m.frequency,
+            route: m.route,
+            orderType: m.orderType,
+            durationDays: m.durationDays,
+            instructions: m.instructions,
+            totalQuantity: m.totalQuantity,
+          }))}
+          showPricing={false}
+          onClose={() => setShowPrescriptionPrint(false)}
+        />
       )}
     </div>
   );

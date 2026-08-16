@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -8,6 +8,7 @@ export interface SidebarSubItem {
     id: number;
     name: string;
     navLink: string;
+    icon: React.ComponentType;
 }
 
 export interface SidebarMenuItem {
@@ -46,27 +47,16 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     },
     {
         id: 6,
-        name: "Departments",
+        name: "Departments & Staff",
         navLink: "/departments",
         roles: ["admin"],
         icon: buildingIcon,
-        group: "Configuration"
-    },
-    {
-        id: 7,
-        name: "Specializations",
-        navLink: "/specializations",
-        roles: ["admin"],
-        icon: specializationIcon,
-        group: "Configuration"
-    },
-    {
-        id: 8,
-        name: "Assign Doctor",
-        navLink: "/assign-doctor",
-        roles: ["admin"],
-        icon: doctorIcon,
-        group: "Configuration"
+        group: "Configuration",
+        subItems: [
+            { id: 6, name: "Departments", navLink: "/departments", icon: buildingIcon },
+            { id: 7, name: "Specializations", navLink: "/specializations", icon: specializationIcon },
+            { id: 8, name: "Assign Doctor", navLink: "/assign-doctor", icon: doctorIcon },
+        ]
     },
     {
         id: 20,
@@ -74,6 +64,14 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         navLink: "/config-lists",
         roles: ["admin"],
         icon: ListPlus,
+        group: "Configuration"
+    },
+    {
+        id: 21,
+        name: "ICD Codes",
+        navLink: "/icd-codes",
+        roles: ["admin"],
+        icon: Hash,
         group: "Configuration"
     },
     // ---------------- User Modules ----------------
@@ -193,6 +191,15 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         navLink: "/billing",
         roles: ["admin", "billing team"],
         icon: MdPayment,
+        group: "User Modules"
+    },
+    {
+        id: 22,
+        name: "Messages",
+        navLink: "/messages",
+        // Every staff role - "web users chat with each other" has no role restriction.
+        roles: allRoles,
+        icon: MessageCircle,
         group: "User Modules"
     },
 

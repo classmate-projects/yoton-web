@@ -1,3 +1,12 @@
+export interface LabResultValueType {
+  parameterName: string;
+  unit: string | null;
+  normalLow: number | null;
+  normalHigh: number | null;
+  value: string;
+  isAbnormal: boolean | null;
+}
+
 export interface LabRequestType {
   labRequestId: string;
   patientId: string | null;
@@ -12,6 +21,11 @@ export interface LabRequestType {
   priority: string;
   source: string;
   price: number | null;
+  covered: boolean | null;
+  patientShareAmount: number | null;
+  coInsurancePercent: number | null;
+  preAuthStatus: string | null;
+  uccCode: string | null;
   status: string;
   requestedDate: string;
   completedDate: string | null;
@@ -19,6 +33,10 @@ export interface LabRequestType {
   resultFilePath: string | null;
   sampleCollectedByName: string | null;
   sampleCollectedAt: string | null;
+  printCount: number;
+  lastPrintedAt: string | null;
+  lastPrintedByName: string | null;
+  resultValues: LabResultValueType[];
 }
 
 export interface LabSummaryType {
@@ -38,4 +56,9 @@ export interface CreateLabRequestPayload {
   priority: string;
   source?: string; // InHouse, External
   price?: number;
+  covered?: boolean;
+  patientShareAmount?: number;
+  coInsurancePercent?: number;
+  preAuthStatus?: string;
+  uccCode?: string;
 }

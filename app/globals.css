@@ -71,6 +71,25 @@
     @apply min-h-full transition-colors duration-500;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Last-resort guard against sideways page scroll on phones: one stray wide
+     element (an over-wide table, an absolutely-positioned popup, a long
+     unbroken string) must never make the whole viewport scroll horizontally —
+     that's what made small screens look "broken". `clip` (not `hidden`) blocks
+     the horizontal scroll WITHOUT creating a scroll container, so the desktop
+     sidebar's and the mobile top bar's `position: sticky` keep working, and
+     `position: fixed` drawers (the mobile nav) are unaffected. Wide tables get
+     their own in-card scroll below, so nothing important is silently clipped. */
+  html,
+  body {
+    overflow-x: clip;
+  }
+
+  /* Long unbroken tokens — patient IDs, emails, URLs — are a classic overflow
+     source on narrow screens. Let them wrap instead of pushing the layout. */
+  body {
+    overflow-wrap: break-word;
+  }
   
   /* Robust Table Styles */
   table {
@@ -133,6 +152,24 @@
   color: var(--card-foreground);
   border: 1px solid var(--border);
   @apply shadow-md rounded-2xl overflow-hidden transition-all duration-300;
+}
+
+/* A card wrapping a data table scrolls horizontally on its own when the table
+   is wider than the screen (many apps here render `<div class="card"><table>`).
+   This keeps every column reachable on a phone while the page itself stays put
+   — overriding only overflow-x, so the rounded top/bottom clipping survives. */
+.card:has(table) {
+  overflow-x: auto;
+}
+
+/* Tighter table cells on small screens so tables need less horizontal room in
+   the first place (the desktop 1rem/1.25rem padding is generous for a phone). */
+@media (max-width: 640px) {
+  th,
+  td {
+    padding: 0.625rem 0.75rem !important;
+    font-size: 0.8125rem !important;
+  }
 }
 
 input[type="password"]::-ms-reveal {

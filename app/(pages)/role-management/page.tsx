@@ -2,17 +2,21 @@
 
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
-import { getSignalRConnection } from "@/lib/signalR";
-import * as signalR from "@microsoft/signalr";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { RoleService } from "@/services/role.service";
 import { FormEvent, useEffect, useState } from "react";
-import { MdAdminPanelSettings, MdAdd, MdEdit } from "react-icons/md";
+import { MdAdminPanelSettings, MdAdd, MdEdit, MdChecklist, MdClose } from "react-icons/md";
 import { toast } from "sonner";
 import axios from "axios";
 import { FetchedRoles } from "@/types/role.type";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
+import { sidebarMenuItems } from "@/helpers/sidebaritems";
+
+// Settings is always reachable regardless of role, so it's not offered as a
+// toggle here — see components/sidebar.tsx and app/(pages)/layout.tsx's matching
+// hardcoded exemptions.
+const toggleableModules = sidebarMenuItems.filter((item) => item.navLink !== "/settings");
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<FetchedRoles[]>([]);
@@ -22,6 +26,12 @@ export default function RoleManagementPage() {
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
   const [editingRole, setEditingRole] = useState<FetchedRoles | null>(null);
+
+  // Module permissions modal
+  const [permissionsRole, setPermissionsRole] = useState<FetchedRoles | null>(null);
+  const [visibleModules, setVisibleModules] = useState<Set<string>>(new Set());
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
+  const [savingPermissions, setSavingPermissions] = useState(false);
 
 
   // reset values
@@ -50,46 +60,6 @@ export default function RoleManagementPage() {
   useEffect(() => {
     void fetchRoles();
   }, []);
-
-  
-  // useEffect(() => {
-  //   let connection: signalR.HubConnection | null = null;
-
-  //   console.log("connection: ", connection)
-  
-  //   const connect = async () => {
-  //     connection = await getSignalRConnection();
-  
-  //     connection.on("roleCreated", (newRole: FetchedRoles) => {
-  //       console.log("Ner role: ", newRole )
-  //       setRoles((prev) => [newRole, ...prev]);
-  //     });
-  
-  //     connection.on("roleUpdated", (updatedRole: FetchedRoles) => {
-  //       console.log("role updated: ", updatedRole)
-  //       setRoles((prev) =>
-  //         prev.map((role) =>
-  //           role.roleId === updatedRole.roleId ? updatedRole : role
-  //         )
-  //       );
-  //     });
-  
-  //     connection.on("roleDeleted", (deletedRole: FetchedRoles) => {
-  //       setRoles((prev) =>
-  //         prev.filter((role) => role.roleId !== deletedRole.roleId)
-  //       );
-  //     });
-  //   };
-  
-  //   connect();
-  
-  //   return () => {
-  //     connection?.off("roleCreated");
-  //     connection?.off("roleUpdated");
-  //     connection?.off("roleDeleted");
-  //   };
-  // }, []);
-
 
   // create role
   const handleCreateRole = async (e: FormEvent) => {
@@ -200,8 +170,57 @@ export default function RoleManagementPage() {
     }
   };
 
+  // open module permissions modal
+  const handleOpenPermissions = async (role: FetchedRoles) => {
+    setPermissionsRole(role);
+    setLoadingPermissions(true);
+    try {
+      const data = await RoleService.getHiddenModules(role.roleId);
+      const hidden = new Set<string>(data.data ?? []);
+      setVisibleModules(new Set(toggleableModules.filter((m) => !hidden.has(m.navLink)).map((m) => m.navLink)));
+    } catch (error) {
+      console.error("Failed to fetch role permissions", error);
+      toast.error("Failed to load current permissions");
+      setVisibleModules(new Set(toggleableModules.map((m) => m.navLink)));
+    } finally {
+      setLoadingPermissions(false);
+    }
+  };
+
+  const handleClosePermissions = () => {
+    setPermissionsRole(null);
+    setVisibleModules(new Set());
+  };
+
+  const handleToggleModule = (navLink: string) => {
+    setVisibleModules((prev) => {
+      const next = new Set(prev);
+      if (next.has(navLink)) next.delete(navLink);
+      else next.add(navLink);
+      return next;
+    });
+  };
+
+  const handleSavePermissions = async () => {
+    if (!permissionsRole) return;
+    setSavingPermissions(true);
+    try {
+      const hiddenModules = toggleableModules
+        .map((m) => m.navLink)
+        .filter((navLink) => !visibleModules.has(navLink));
+      const data = await RoleService.setHiddenModules(permissionsRole.roleId, hiddenModules);
+      toast.success(data.message);
+      handleClosePermissions();
+    } catch (error) {
+      console.error("Failed to update role permissions", error);
+      toast.error("Failed to save permissions");
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
+
   return (
-    <div className="py-8 px-10 h-full overflow-y-auto">
+    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       <div className="flex flex-col gap-1 mb-8">
         <h1 className="text-4xl font-semibold flex items-center gap-3">
           <MdAdminPanelSettings className="text-purple-600" /> Role Management
@@ -251,6 +270,12 @@ export default function RoleManagementPage() {
 
                         <div className="flex gap-2 items-center">
                           <div className="flex items-center gap-2">
+                            <button onClick={() => handleOpenPermissions(role)}
+                              className="cursor-pointer hover:bg-purple-100 ring ring-transparent hover:ring-purple-200 p-2 rounded-full transition-all duration-200"
+                              title={`Manage modules visible to ${role.name}`}
+                            >
+                              <MdChecklist className="text-purple-600" size={18} />
+                            </button>
                             {role.isEditable && (
                               <>
                                 <button onClick={() => handleEditRole(role)}
@@ -341,6 +366,71 @@ export default function RoleManagementPage() {
           </form>
         </div>
       </div>
+
+      {permissionsRole && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="bg-card w-full max-w-lg rounded-xl border border-border p-6 shadow-2xl mx-4">
+            <div className="flex items-start justify-between mb-1">
+              <h2 className="text-2xl font-semibold text-foreground flex items-center gap-2">
+                <MdChecklist className="text-purple-600" />
+                Modules for <span className="capitalize">{permissionsRole.name}</span>
+              </h2>
+              <button
+                onClick={handleClosePermissions}
+                className="cursor-pointer hover:bg-neutral-200 dark:hover:bg-gray-700 p-1.5 rounded-full transition-all duration-200"
+                title="Close"
+              >
+                <MdClose size={20} />
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-6">
+              Uncheck a module to hide it from this role. Settings is always available to every role.
+            </p>
+
+            {loadingPermissions ? (
+              <div className="h-60 flex justify-center items-center">
+                <LoadingSpinner />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1 max-h-[50dvh] overflow-y-auto pr-1">
+                {toggleableModules.map((item) => (
+                  <label
+                    key={item.navLink}
+                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={visibleModules.has(item.navLink)}
+                      onChange={() => handleToggleModule(item.navLink)}
+                      className="h-4 w-4 accent-purple-600 cursor-pointer"
+                    />
+                    <item.icon />
+                    <span className="text-sm font-medium">{item.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={handleClosePermissions}
+                className="w-1/3 border border-neutral-400 text-gray-700 font-semibold py-3 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePermissions}
+                disabled={loadingPermissions || savingPermissions}
+                className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer"
+              >
+                {savingPermissions ? "Saving..." : "Save Permissions"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

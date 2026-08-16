@@ -5,6 +5,17 @@ export const ENDPOINTS = {
     },
     COMPANY: {
         UPLOAD_LOGO: `/api/company/upload-logo`,
+        UPDATE_SETTINGS: `/api/company/settings`,
+    },
+    CHAT: {
+        GET_CONTACTS: (tab: string) => `/api/chat/contacts${tab ? `?tab=${tab}` : ""}`,
+        GET_CONVERSATIONS: `/api/chat/conversations`,
+        START_CONVERSATION: `/api/chat/conversations`,
+        GET_MESSAGES: (conversationId: string) => `/api/chat/conversations/${conversationId}/messages`,
+        SEND_MESSAGE: `/api/chat/messages`,
+        MARK_READ: (conversationId: string) => `/api/chat/conversations/${conversationId}/read`,
+        SET_REACTION: (messageId: string) => `/api/chat/messages/${messageId}/reactions`,
+        GET_PRESENCE: (ids: string) => `/api/chat/presence?ids=${encodeURIComponent(ids)}`,
     },
     DASHBOARD: {
         GET_COUNTS: `/api/dashboard/counts`,
@@ -44,6 +55,8 @@ export const ENDPOINTS = {
         CREATE: `/api/role/create-role`,
         UPDATE: (id: string) => `/api/role/update/${id}`,
         DELETE: (id: string) => `/api/role/delete/${id}`,
+        GET_HIDDEN_MODULES: (id: string) => `/api/role/${id}/hidden-modules`,
+        SET_HIDDEN_MODULES: (id: string) => `/api/role/${id}/hidden-modules`,
     },
     SPECIALIZATION: {
         GET: `/api/specialization/get-all`,
@@ -64,6 +77,7 @@ export const ENDPOINTS = {
     EMR: {
         GET_PATIENTS: (doctorId?: string) => `/api/emr/patients${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_PATIENT_SUMMARY: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        GET_INSURANCE_COVERAGE: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/insurance-coverage${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_DASHBOARD_SUMMARY: (doctorId?: string) => `/api/emr/dashboard-summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_TODAY_SCHEDULE: (doctorId?: string) => `/api/emr/schedule/today${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_ACTIVE_CASES: (doctorId?: string) => `/api/emr/active-cases${doctorId ? `?doctorId=${doctorId}` : ""}`,
@@ -94,7 +108,14 @@ export const ENDPOINTS = {
         GET_FOLLOW_UPS: (doctorId?: string) => `/api/emr/follow-ups${doctorId ? `?doctorId=${doctorId}` : ""}`,
     },
     CONFIG_LIST: {
-        GET: (listType: string, search?: string) => `/api/config-lists/${listType}${search ? `?search=${encodeURIComponent(search)}` : ""}`,
+        GET: (listType: string, search?: string, page?: number, pageSize?: number) => {
+            const params = new URLSearchParams();
+            if (search) params.set("search", search);
+            if (page) params.set("page", String(page));
+            if (pageSize) params.set("pageSize", String(pageSize));
+            const qs = params.toString();
+            return `/api/config-lists/${listType}${qs ? `?${qs}` : ""}`;
+        },
         CREATE: (listType: string) => `/api/config-lists/${listType}`,
         BULK_UPLOAD: (listType: string) => `/api/config-lists/${listType}/bulk`,
         UPDATE: (id: string) => `/api/config-lists/${id}`,
@@ -109,6 +130,8 @@ export const ENDPOINTS = {
         UPDATE_STATUS: `/api/Lab/status`,
         UPLOAD_RESULT: `/api/Lab/upload-result`,
         COLLECT_SAMPLE: `/api/Lab/collect-sample`,
+        SAVE_RESULT_VALUES: `/api/Lab/result-values`,
+        RECORD_PRINT: (id: string) => `/api/Lab/${id}/record-print`,
     },
     RADIOLOGY: {
         GET_ALL: `/api/Radiology`,
@@ -117,6 +140,13 @@ export const ENDPOINTS = {
         CREATE: `/api/Radiology`,
         UPDATE_STATUS: `/api/Radiology/status`,
         UPLOAD_RESULT: `/api/Radiology/upload-result`,
+        UPLOAD_IMAGES: `/api/Radiology/upload-images`,
+    },
+    TEST_PARAMETERS: {
+        GET: (listItemId: string) => `/api/test-parameters?listItemId=${encodeURIComponent(listItemId)}`,
+        CREATE: `/api/test-parameters`,
+        UPDATE: (id: string) => `/api/test-parameters/${id}`,
+        DELETE: (id: string) => `/api/test-parameters/${id}`,
     },
     PHARMACY: {
         GET_MEDICINES: `/api/Pharmacy/medicine`,
@@ -128,6 +158,14 @@ export const ENDPOINTS = {
         CREATE_PRESCRIPTION: `/api/Pharmacy/prescription`,
         ISSUE: `/api/Pharmacy/issue`,
         GET_SUMMARY: `/api/Pharmacy/summary`,
+        GET_MEDICATION_QUEUE: (status: "pending" | "all") => `/api/Pharmacy/medication-queue?status=${status}`,
+        PREPARE_MEDICATION: (medicationId: string) => `/api/Pharmacy/medication/${medicationId}/prepare`,
+        DISPENSE_MEDICATION: (medicationId: string) => `/api/Pharmacy/medication/${medicationId}/dispense`,
+        GET_ALTERNATIVES: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}/alternatives`,
+        ADD_ALTERNATIVE: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}/alternatives`,
+        REMOVE_ALTERNATIVE: (medicineId: string, alternativeId: string) =>
+            `/api/Pharmacy/medicine/${medicineId}/alternatives/${alternativeId}`,
+        SET_HIGH_RISK: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}/high-risk`,
     },
     BILLING: {
         GET_ALL: `/api/Billing`,
@@ -162,5 +200,9 @@ export const ENDPOINTS = {
         ADD_EXAMINATION_NOTE: (patientId: string) => `/api/nursing/patient/${patientId}/examination-note`,
         MARK_TREATMENT_DONE: (treatmentId: string) => `/api/nursing/treatment/${treatmentId}/mark-done`,
         ADMINISTER_MEDICATION: (medicationId: string) => `/api/nursing/medication/${medicationId}/administer`,
+        GET_WORK_QUEUE: `/api/nursing/work-queue`,
+        GET_NURSE_SHIFTS: (nurseId: string) => `/api/nursing/nurse/${nurseId}/shifts`,
+        SET_NURSE_SHIFTS: (nurseId: string) => `/api/nursing/nurse/${nurseId}/shifts`,
+        GET_ON_DUTY_NOW: `/api/nursing/on-duty-now`,
     }
 }

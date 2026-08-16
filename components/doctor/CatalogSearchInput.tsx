@@ -7,6 +7,7 @@ interface CatalogOption {
   id: string;
   name: string;
   code?: string | null;
+  meta?: string | null; // optional subtitle line, e.g. "Generic: Paracetamol · Stock: 120"
 }
 
 interface CatalogSearchInputProps {
@@ -81,10 +82,13 @@ export default function CatalogSearchInput({ placeholder, fetchOptions, onSelect
                   setQuery("");
                   setIsOpen(false);
                 }}
-                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-muted/60"
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60"
               >
-                <span className="text-foreground">{opt.name}</span>
-                {opt.code && <span className="text-xs text-muted-foreground">{opt.code}</span>}
+                <span className="flex flex-col">
+                  <span className="text-foreground">{opt.name}</span>
+                  {opt.meta && <span className="text-xs text-muted-foreground">{opt.meta}</span>}
+                </span>
+                {opt.code && <span className="text-xs text-muted-foreground shrink-0">{opt.code}</span>}
               </button>
             ))
           ) : (

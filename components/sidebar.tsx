@@ -13,22 +13,36 @@ import { Sun, Moon, Monitor, LogOut, UserRound, ArrowLeft, ChevronRight } from "
 import { CurrentUserDetail } from "@/types/user.type";
 import { getInitials } from "@/lib/getInitials";
 import { useUnreadAppointmentRequests } from "@/hooks/useUnreadAppointmentRequests";
+import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
+import { useRolePermissionsSync } from "@/hooks/useRolePermissionsSync";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import { stopChatConnection } from "@/lib/chatSignalR";
 
 const SIDEBAR_GROUPS: SidebarGroup[] = ["User Modules", "Configuration"];
 
-export default function Sidebar() {
+interface SidebarProps {
+  // Mobile drawer state, owned by the dashboard layout (which also renders the
+  // hamburger in the mobile top bar). On desktop these are inert — the rail is
+  // always in flow and expands on hover instead.
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
+export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<CurrentUserDetail | null>(null);
-  // Purely hover-driven: collapsed to icons-only by default for every role,
-  // expands on mouse-over, collapses again on mouse-out. No pinned/persisted
-  // state, so server and client both start collapsed — no hydration risk.
-  const [isExpanded, setIsExpanded] = useState(false);
+  // Desktop: purely hover-driven, collapsed to icons-only by default, expands on
+  // mouse-over. No pinned/persisted state, so server and client both start
+  // collapsed — no hydration risk. On mobile there is no hover, so the drawer
+  // being open (mobileOpen) is what drives the expanded layout instead — see the
+  // derived `isExpanded` below.
+  const [hoverExpanded, setHoverExpanded] = useState(false);
+  const isExpanded = hoverExpanded || mobileOpen;
   // Admin-only drill-down: which User Modules category (if any) is currently
   // expanded to show its sub-items. Reset whenever the sidebar collapses, so
   // it always starts back at the top-level module list on the next hover.
@@ -45,8 +59,18 @@ export default function Sidebar() {
     return onUserDetailChange(() => setCurrentUser(getUserDetail()));
   }, []);
 
+  // Auto-close the mobile drawer whenever the route changes — i.e. after any nav
+  // link is tapped — so the user lands on the page they picked instead of the
+  // drawer staying open over it. Category drill-downs don't change the route, so
+  // they correctly keep the drawer open.
+  useEffect(() => {
+    onMobileClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
+    await stopChatConnection();
     localStorage.removeItem("yoton_token");
     localStorage.removeItem("yoton_user_detail");
     router.push("/login");
@@ -61,18 +85,27 @@ export default function Sidebar() {
   const userRole = currentUser?.role || "";
   const { canSeeRequests, notifications, unreadCount, isRinging, clearUnread } =
     useUnreadAppointmentRequests(userRole);
+  const { unreadCount: unreadChatCount, clearUnread: clearUnreadChat } = useUnreadChatCount(!!userRole);
+  useRolePermissionsSync(userRole);
 
   // Admin (and only admin) gets the grouped, drill-into-categories layout; every
   // other role gets a flat list of just their own modules plus Settings, no
   // grouping or hierarchy at all.
   const isAdmin = userRole === "admin";
 
+  // Admin-configured per-role restrictions on top of the baseline roles[] below
+  // (see /role-management "Permissions") - Settings is exempt so no role can ever
+  // be left with nothing reachable.
+  const hiddenModules = currentUser?.hiddenModules ?? [];
+  const isVisible = (item: SidebarMenuItem) =>
+    item.roles.includes(userRole) && (item.navLink === "/settings" || !hiddenModules.includes(item.navLink));
+
   const visibleGroups = SIDEBAR_GROUPS.map((group) => ({
     group,
-    items: sidebarMenuItems.filter((item) => item.group === group && item.roles.includes(userRole)),
+    items: sidebarMenuItems.filter((item) => item.group === group && isVisible(item)),
   })).filter((g) => g.items.length > 0);
 
-  const flatVisibleItems = sidebarMenuItems.filter((item) => item.roles.includes(userRole));
+  const flatVisibleItems = sidebarMenuItems.filter(isVisible);
 
   // Both states use the same flex-wrap container (see tileContainerClass) — only each
   // tile's own size changes, via an ordinary width/height transition. Switching between
@@ -98,15 +131,24 @@ export default function Sidebar() {
     `shrink-0 transition-transform duration-200 text-xl ${active ? "scale-110" : "group-hover:scale-110"}`;
 
   return (
-    <div
-      onMouseEnter={() => setIsExpanded(true)}
-      onMouseLeave={() => {
-        setIsExpanded(false);
-        setActiveCategory(null);
-      }}
-      className={`sidebar-shell bg-card sticky top-0 h-screen p-3 border-r border-border z-50 transition-all duration-300 ease-in-out shrink-0 flex flex-col ${isExpanded ? "w-72" : "w-28"
-        }`}
-    >
+    <>
+      {/* Mobile-only backdrop; tapping it closes the drawer. Inert on desktop. */}
+      <div
+        onClick={onMobileClose}
+        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 lg:hidden ${mobileOpen ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        aria-hidden="true"
+      />
+      <div
+        onMouseEnter={() => setHoverExpanded(true)}
+        onMouseLeave={() => {
+          setHoverExpanded(false);
+          setActiveCategory(null);
+        }}
+        className={`sidebar-shell bg-card p-3 border-r border-border z-50 transition-all duration-300 ease-in-out flex flex-col
+          fixed inset-y-0 left-0 w-72 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
+          lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shrink-0 ${isExpanded ? "lg:w-72" : "lg:w-28"}`}
+      >
       <div className={`flex items-center transition-all duration-300 ease-in-out ${isExpanded ? "mb-8 px-2" : "mb-4 flex-col gap-2 justify-center"}`}>
         <div className="relative h-10 w-10 shrink-0">
           {/* Collapsed: company logo (falls back to the bundled Yoton logo).
@@ -203,7 +245,7 @@ export default function Sidebar() {
                       className={tileClass(isActive, isExpanded)}
                     >
                       <span className={tileIconClass(isActive)}>
-                        <ChevronRight size={20} />
+                        <sub.icon />
                       </span>
                     </Link>
                   );
@@ -254,11 +296,17 @@ export default function Sidebar() {
                         href={item.navLink}
                         title={item.name}
                         aria-label={item.name}
+                        onClick={() => item.navLink === "/messages" && clearUnreadChat()}
                         className={tileClass(isActive, isExpanded)}
                       >
                         <span className={tileIconClass(isActive)}>
                           <item.icon />
                         </span>
+                        {item.navLink === "/messages" && unreadChatCount > 0 && (
+                          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white ring-2 ring-card">
+                            {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                          </span>
+                        )}
                       </Link>
                     );
                   })}
@@ -277,11 +325,17 @@ export default function Sidebar() {
                     href={item.navLink}
                     title={item.name}
                     aria-label={item.name}
+                    onClick={() => item.navLink === "/messages" && clearUnreadChat()}
                     className={tileClass(isActive, isExpanded)}
                   >
                     <span className={tileIconClass(isActive)}>
                       <item.icon />
                     </span>
+                    {item.navLink === "/messages" && unreadChatCount > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white ring-2 ring-card">
+                        {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -337,5 +391,6 @@ export default function Sidebar() {
         </div>
       </div>
     </div>
+    </>
   );
 }

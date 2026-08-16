@@ -25,7 +25,20 @@ import SearchIcon from "@/public/icons/SearchIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { UserService } from "@/services/user.service";
+import { NursingService } from "@/services/nursing.service";
+import { NurseShiftInput } from "@/types/nursing.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+interface DayShiftRow {
+  active: boolean;
+  startTime: string;
+  endTime: string;
+}
+
+const emptyWeek = (): DayShiftRow[] =>
+  DAY_NAMES.map(() => ({ active: false, startTime: "08:00", endTime: "16:00" }));
 
 export default function UserManagement() {
 
@@ -35,6 +48,11 @@ export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeStatus, setActiveStatus] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
+
+  const [shiftsTarget, setShiftsTarget] = useState<getAllResponse | null>(null);
+  const [shiftsWeek, setShiftsWeek] = useState<DayShiftRow[]>(emptyWeek());
+  const [loadingShifts, setLoadingShifts] = useState(false);
+  const [savingShifts, setSavingShifts] = useState(false);
 
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -129,6 +147,48 @@ export default function UserManagement() {
         },
       },
     );
+  };
+
+  // ---------------- NURSE SHIFTS ----------------
+  const openShiftsManager = async (user: getAllResponse) => {
+    setShiftsTarget(user);
+    setShiftsWeek(emptyWeek());
+    setLoadingShifts(true);
+    try {
+      const res = await NursingService.getNurseShifts(user.id);
+      const week = emptyWeek();
+      for (const s of res.data ?? []) {
+        // TimeSpan serializes as "hh:mm:ss" — <input type="time"> wants "hh:mm".
+        week[s.day] = { active: s.isActive, startTime: s.startTime.slice(0, 5), endTime: s.endTime.slice(0, 5) };
+      }
+      setShiftsWeek(week);
+    } catch {
+      toast.error("Failed to load shifts");
+    } finally {
+      setLoadingShifts(false);
+    }
+  };
+
+  const closeShiftsManager = () => {
+    setShiftsTarget(null);
+    setShiftsWeek(emptyWeek());
+  };
+
+  const saveShifts = async () => {
+    if (!shiftsTarget) return;
+    setSavingShifts(true);
+    try {
+      const shifts: NurseShiftInput[] = shiftsWeek
+        .map((row, day) => ({ day, startTime: `${row.startTime}:00`, endTime: `${row.endTime}:00`, isActive: row.active }))
+        .filter((row) => row.isActive);
+      await NursingService.setNurseShifts(shiftsTarget.id, shifts);
+      toast.success("Shifts updated");
+      closeShiftsManager();
+    } catch {
+      toast.error("Failed to update shifts");
+    } finally {
+      setSavingShifts(false);
+    }
   };
 
   // toggle user
@@ -276,6 +336,16 @@ export default function UserManagement() {
                           onChange={() => handleToggleUser(user)}
                         />
 
+                        {user.role.toLowerCase() === "nurse" && (
+                          <button
+                            onClick={() => openShiftsManager(user)}
+                            title="Manage Shifts"
+                            className="hover:bg-purple-100 p-2 rounded-full transition-colors cursor-pointer text-xs font-semibold text-purple-600"
+                          >
+                            Shifts
+                          </button>
+                        )}
+
                         <button
                           onClick={() => handleDelete(user.id, user.name)}
                           title="Delete User"
@@ -309,6 +379,77 @@ export default function UserManagement() {
           </tbody>
         </table>
       </div>
+
+      {shiftsTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="bg-card w-full max-w-lg rounded-xl border border-border p-6 shadow-2xl mx-4">
+            <h2 className="text-xl font-semibold text-foreground">Shifts for {shiftsTarget.name}</h2>
+            <p className="text-sm text-muted-foreground mt-1 mb-4">
+              Recurring weekly on-duty windows — informational only, does not restrict which patients this nurse can access.
+            </p>
+
+            {loadingShifts ? (
+              <div className="py-8 flex justify-center">
+                <LoadingSpinner />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {DAY_NAMES.map((dayName, day) => (
+                  <div key={day} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
+                    <label className="flex items-center gap-2 w-28 shrink-0 text-sm font-medium">
+                      <input
+                        type="checkbox"
+                        checked={shiftsWeek[day].active}
+                        onChange={(e) =>
+                          setShiftsWeek((prev) => prev.map((r, i) => (i === day ? { ...r, active: e.target.checked } : r)))
+                        }
+                      />
+                      {dayName}
+                    </label>
+                    <input
+                      type="time"
+                      disabled={!shiftsWeek[day].active}
+                      value={shiftsWeek[day].startTime}
+                      onChange={(e) =>
+                        setShiftsWeek((prev) => prev.map((r, i) => (i === day ? { ...r, startTime: e.target.value } : r)))
+                      }
+                      className="h-9 text-sm flex-1 disabled:opacity-40"
+                    />
+                    <span className="text-xs text-muted-foreground">to</span>
+                    <input
+                      type="time"
+                      disabled={!shiftsWeek[day].active}
+                      value={shiftsWeek[day].endTime}
+                      onChange={(e) =>
+                        setShiftsWeek((prev) => prev.map((r, i) => (i === day ? { ...r, endTime: e.target.value } : r)))
+                      }
+                      className="h-9 text-sm flex-1 disabled:opacity-40"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={closeShiftsManager}
+                className="w-1/3 border border-neutral-400 text-gray-700 font-semibold py-3 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveShifts}
+                disabled={loadingShifts || savingShifts}
+                className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer"
+              >
+                {savingShifts ? "Saving..." : "Save Shifts"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

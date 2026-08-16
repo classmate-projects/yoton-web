@@ -10,6 +10,7 @@ import {
   NurseNotePayload,
   ExaminationNotePayload,
   AdministerMedicationPayload,
+  NurseShiftInput,
 } from "@/types/nursing.type";
 import { SpecialRemarkPayload } from "@/types/emr.type";
 
@@ -88,6 +89,22 @@ export const NursingService = {
   },
   administerMedication: async (medicationId: string, payload: AdministerMedicationPayload) => {
     const { data } = await api.post(ENDPOINTS.NURSING.ADMINISTER_MEDICATION(medicationId), payload);
+    return data;
+  },
+  getWorkQueue: async () => {
+    const { data } = await api.get(ENDPOINTS.NURSING.GET_WORK_QUEUE);
+    return data;
+  },
+  getNurseShifts: async (nurseId: string) => {
+    const { data } = await api.get(ENDPOINTS.NURSING.GET_NURSE_SHIFTS(nurseId));
+    return data;
+  },
+  setNurseShifts: async (nurseId: string, shifts: NurseShiftInput[]) => {
+    const { data } = await api.put(ENDPOINTS.NURSING.SET_NURSE_SHIFTS(nurseId), { shifts });
+    return data;
+  },
+  getOnDutyNow: async () => {
+    const { data } = await api.get(ENDPOINTS.NURSING.GET_ON_DUTY_NOW);
     return data;
   },
 };

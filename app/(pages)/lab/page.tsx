@@ -7,10 +7,14 @@ import { toast } from "sonner";
 import { FlaskConical } from "lucide-react";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import { LabService } from "@/services/lab.service";
 import { ReceptionService } from "@/services/reception.service";
+import { ConfigListService } from "@/services/configList.service";
+import { TestParameterService } from "@/services/testParameter.service";
 import { LabRequestType, LabSummaryType } from "@/types/lab.type";
 import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
+import { TestParameterType } from "@/types/testParameter.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -54,11 +58,21 @@ export default function LaboratoryPage() {
   const [selectedPatient, setSelectedPatient] = useState<PatientListItemType | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [testType, setTestType] = useState("");
+  const [testListItemId, setTestListItemId] = useState<string | undefined>(undefined);
   const [priority, setPriority] = useState("Normal");
   const [source, setSource] = useState("InHouse");
   const [price, setPrice] = useState("");
 
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+
+  // Structured per-parameter result entry (admin-configured under the Investigation catalog
+  // — see ListItemManager's "Parameters" action). Only offered when the request's TestType
+  // was picked from the catalog (has a ListItemId) and that test actually has parameters.
+  const [resultEntryTarget, setResultEntryTarget] = useState<LabRequestType | null>(null);
+  const [resultEntryParameters, setResultEntryParameters] = useState<TestParameterType[]>([]);
+  const [resultEntryValues, setResultEntryValues] = useState<Record<string, string>>({});
+  const [isLoadingResultParams, setIsLoadingResultParams] = useState(false);
+  const [isSavingResultValues, setIsSavingResultValues] = useState(false);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -132,6 +146,7 @@ export default function LaboratoryPage() {
     setSelectedPatient(null);
     setSelectedDoctorId("");
     setTestType("");
+    setTestListItemId(undefined);
     setPriority("Normal");
     setSource("InHouse");
     setPrice("");
@@ -160,6 +175,7 @@ export default function LaboratoryPage() {
         patientId: selectedPatient.opId,
         doctorId: selectedDoctorId || undefined,
         testType,
+        listItemId: testListItemId,
         priority,
         source,
         price: price ? Number(price) : undefined,
@@ -202,6 +218,61 @@ export default function LaboratoryPage() {
     }
   };
 
+  const openResultEntry = async (request: LabRequestType) => {
+    if (!request.listItemId) return;
+    setResultEntryTarget(request);
+    setResultEntryValues({});
+    try {
+      setIsLoadingResultParams(true);
+      const res = await TestParameterService.get(request.listItemId);
+      const params: TestParameterType[] = res.data || [];
+      setResultEntryParameters(params);
+      // Pre-fill from any previously saved values, matched by parameter name (the saved
+      // result snapshots name/unit/range rather than the parameter id).
+      const prefill: Record<string, string> = {};
+      params.forEach((p) => {
+        const existing = request.resultValues.find((v) => v.parameterName === p.name);
+        if (existing) prefill[p.testParameterId] = existing.value;
+      });
+      setResultEntryValues(prefill);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to load test parameters"));
+      setResultEntryParameters([]);
+    } finally {
+      setIsLoadingResultParams(false);
+    }
+  };
+
+  const closeResultEntry = () => {
+    setResultEntryTarget(null);
+    setResultEntryParameters([]);
+    setResultEntryValues({});
+  };
+
+  const handleSaveResultValues = async () => {
+    if (!resultEntryTarget) return;
+    const values = Object.entries(resultEntryValues)
+      .filter(([, v]) => v.trim())
+      .map(([testParameterId, value]) => ({ testParameterId, value: value.trim() }));
+
+    if (values.length === 0) {
+      toast.warning("Enter at least one parameter value");
+      return;
+    }
+
+    try {
+      setIsSavingResultValues(true);
+      const data = await LabService.saveResultValues(resultEntryTarget.labRequestId, values);
+      toast.success(data.message || "Result values saved");
+      closeResultEntry();
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save result values"));
+    } finally {
+      setIsSavingResultValues(false);
+    }
+  };
+
   if (!checkedAuth) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -211,8 +282,8 @@ export default function LaboratoryPage() {
   }
 
   return (
-    <div className="py-8 px-10 h-full overflow-y-auto">
-      <div className="flex justify-between items-center gap-4 mb-8">
+    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
         <div className="flex flex-col gap-1">
           <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
             <FlaskConical size={34} className="text-primary" />
@@ -325,14 +396,27 @@ export default function LaboratoryPage() {
 
               <div>
                 <label className="text-sm font-bold text-foreground/90 required">Test Type</label>
-                <input
-                  type="text"
-                  required
+                <CatalogSearchInput
+                  placeholder="Search investigation catalog..."
                   value={testType}
-                  onChange={(e) => setTestType(e.target.value)}
-                  placeholder="e.g. Complete Blood Count"
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  fetchOptions={async (search) => {
+                    const res = await ConfigListService.get("Investigation", search);
+                    return (res.data || []).map((i: { listItemId: string; name: string; code: string | null }) => ({
+                      id: i.listItemId,
+                      name: i.name,
+                      code: i.code,
+                    }));
+                  }}
+                  onSelect={(option) => {
+                    setTestType(option.name);
+                    setTestListItemId(option.id);
+                  }}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {testType
+                    ? `Selected: ${testType}${testListItemId ? "" : " (not from catalog — free text, no configured parameters)"}`
+                    : "Pick from the catalog to enable structured result-parameter entry."}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -421,7 +505,23 @@ export default function LaboratoryPage() {
                   return (
                     <tr key={r.labRequestId} className="hover:bg-muted/30 transition-colors">
                       <td className="font-semibold text-foreground">{r.patientName}</td>
-                      <td className="text-foreground/80">{r.testType}</td>
+                      <td className="text-foreground/80">
+                        {r.testType}
+                        {r.resultValues.length > 0 && (
+                          <div className="mt-1 flex flex-col gap-0.5">
+                            {r.resultValues.map((v, i) => (
+                              <span
+                                key={i}
+                                className={`text-[11px] ${v.isAbnormal ? "font-semibold text-red-600" : "text-muted-foreground"}`}
+                              >
+                                {v.parameterName}: {v.value}
+                                {v.unit ? ` ${v.unit}` : ""}
+                                {v.isAbnormal ? " ⚠" : ""}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
                       <td className="text-foreground/80">{r.doctorName}</td>
                       <td>
                         <span
@@ -448,6 +548,14 @@ export default function LaboratoryPage() {
                               className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
                             >
                               Mark {nextStatus}
+                            </button>
+                          )}
+                          {r.listItemId && (
+                            <button
+                              onClick={() => openResultEntry(r)}
+                              className="px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                            >
+                              Enter Results
                             </button>
                           )}
                           <label
@@ -483,6 +591,67 @@ export default function LaboratoryPage() {
           </table>
         </div>
       </div>
+
+      {resultEntryTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-semibold text-foreground">Enter Results — {resultEntryTarget.testType}</h2>
+            <p className="text-sm text-muted-foreground mt-1 mb-4">{resultEntryTarget.patientName}</p>
+
+            {isLoadingResultParams ? (
+              <div className="py-8 flex justify-center">
+                <LoadingSpinner />
+              </div>
+            ) : resultEntryParameters.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No parameters configured for this test yet — ask an admin to add them under Configurable Lists.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {resultEntryParameters.map((p) => (
+                  <div key={p.testParameterId}>
+                    <label className="text-sm font-bold text-foreground/90">
+                      {p.name}
+                      {p.unit && <span className="text-muted-foreground font-normal"> ({p.unit})</span>}
+                    </label>
+                    {(p.normalLow != null || p.normalHigh != null) && (
+                      <p className="text-xs text-muted-foreground">
+                        Normal range: {p.normalLow ?? "—"} – {p.normalHigh ?? "—"}
+                      </p>
+                    )}
+                    <input
+                      type="text"
+                      value={resultEntryValues[p.testParameterId] || ""}
+                      onChange={(e) =>
+                        setResultEntryValues((prev) => ({ ...prev, [p.testParameterId]: e.target.value }))
+                      }
+                      className="w-full mt-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 mt-6 w-full">
+              <button
+                type="button"
+                onClick={closeResultEntry}
+                className="px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground w-full"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveResultValues}
+                disabled={isSavingResultValues || resultEntryParameters.length === 0}
+                className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full disabled:opacity-60"
+              >
+                {isSavingResultValues ? "Saving..." : "Save Results"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

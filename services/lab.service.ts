@@ -39,4 +39,12 @@ export const LabService = {
     });
     return data;
   },
+  saveResultValues: async (labRequestId: string, values: { testParameterId: string; value: string }[]) => {
+    const { data } = await api.post(ENDPOINTS.LAB.SAVE_RESULT_VALUES, { labRequestId, values });
+    return data;
+  },
+  recordPrint: async (id: string) => {
+    const { data } = await api.put(ENDPOINTS.LAB.RECORD_PRINT(id));
+    return data;
+  },
 };
