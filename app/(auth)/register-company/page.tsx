@@ -72,6 +72,8 @@ export default function RegisterCompanyPage() {
           companyLogoUrl: data.body.companyLogoUrl,
           userImage: data.body.userImage,
           hiddenModules: data.body.hiddenModules ?? [],
+          currencyCode: data.body.currencyCode,
+          currencySymbol: data.body.currencySymbol,
         }),
       );
 

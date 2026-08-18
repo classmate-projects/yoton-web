@@ -40,6 +40,7 @@ import { VisitType } from "@/types/visit.type";
 import { useAppointmentRequestSignalR } from "@/hooks/useAppointmentRequestSignalR";
 import { getInitials } from "@/lib/getInitials";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { getCurrencySymbol } from "@/lib/currency";
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -528,7 +529,7 @@ export default function Appointments() {
               <div>
                 <p className="text-sm text-muted-foreground">Average fee</p>
                 <p className="mt-1 text-3xl font-semibold">
-                  INR {averageFee}
+                  {getCurrencySymbol()} {averageFee}
                 </p>
               </div>
               <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -744,7 +745,7 @@ export default function Appointments() {
                       {selectedDoctor.name}
                     </h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {selectedDoctor.specializationName} • INR{" "}
+                      {selectedDoctor.specializationName} • {getCurrencySymbol()}{" "}
                       {selectedDoctor.consultationFee} • {selectedDoctor.experienceYears}{" "}
                       years experience
                     </p>
@@ -928,7 +929,7 @@ export default function Appointments() {
                                   </p>
                                 </div>
                                 <span className="w-fit rounded-lg border border-primary/20 bg-primary/10 px-3 py-1 text-sm font-semibold text-primary">
-                                  INR {doctor.consultationFee}
+                                  {getCurrencySymbol()} {doctor.consultationFee}
                                 </span>
                               </div>
 

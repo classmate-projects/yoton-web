@@ -8,6 +8,7 @@ import { CompanyService } from "@/services/company.service";
 import { getInitials } from "@/lib/getInitials";
 import { patchUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface MeResponse {
@@ -21,6 +22,8 @@ interface MeResponse {
   companyName: string | null;
   companyLogoUrl: string | null;
   maxDiscountPercent: number | null;
+  currencyCode: string;
+  currencySymbol: string;
 }
 
 export default function SettingsPage() {
@@ -36,11 +39,15 @@ export default function SettingsPage() {
   const [maxDiscountInput, setMaxDiscountInput] = useState("");
   const [savingDiscountCap, setSavingDiscountCap] = useState(false);
 
+  const [currencyCode, setCurrencyCode] = useState("INR");
+  const [savingCurrency, setSavingCurrency] = useState(false);
+
   useEffect(() => {
     AuthService.getMe()
       .then((data) => {
         setMe(data);
         setMaxDiscountInput(data.maxDiscountPercent != null ? String(data.maxDiscountPercent) : "");
+        setCurrencyCode(data.currencyCode || "INR");
       })
       .catch(() => toast.error("Failed to load your profile"))
       .finally(() => setLoading(false));
@@ -96,6 +103,23 @@ export default function SettingsPage() {
       toast.error("Failed to update discount cap");
     } finally {
       setSavingDiscountCap(false);
+    }
+  };
+
+  const handleSaveCurrency = async () => {
+    if (!me) return;
+    setSavingCurrency(true);
+    try {
+      const data = await CompanyService.updateSettings({ currencyCode });
+      setMe({ ...me, currencyCode: data.currencyCode, currencySymbol: data.currencySymbol });
+      // Every other open tab/page reads the symbol from this same localStorage key
+      // (see lib/currency.ts) - patch it so amounts update without a re-login.
+      patchUserDetail({ currencyCode: data.currencyCode, currencySymbol: data.currencySymbol });
+      toast.success("Currency updated");
+    } catch {
+      toast.error("Failed to update currency");
+    } finally {
+      setSavingCurrency(false);
     }
   };
 
@@ -265,6 +289,36 @@ export default function SettingsPage() {
                 className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {savingDiscountCap && <Loader2 size={15} className="animate-spin" />}
+                Save
+              </button>
+            </div>
+
+            <hr className="my-5 border-border" />
+
+            <h3 className="font-semibold text-foreground mb-1">Currency</h3>
+            <p className="text-sm text-muted-foreground mb-3">
+              Controls how amounts are displayed across billing, pharmacy, appointments, and
+              prescription printouts for every user at {me.companyName ?? "your organization"}.
+            </p>
+            <div className="flex items-center gap-3">
+              <select
+                value={currencyCode}
+                onChange={(e) => setCurrencyCode(e.target.value)}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+              >
+                {SUPPORTED_CURRENCIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleSaveCurrency}
+                disabled={savingCurrency}
+                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingCurrency && <Loader2 size={15} className="animate-spin" />}
                 Save
               </button>
             </div>

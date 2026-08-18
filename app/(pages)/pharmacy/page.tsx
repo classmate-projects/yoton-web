@@ -23,6 +23,7 @@ import {
 import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
 import { UserType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { formatCurrency } from "@/lib/currency";
 
 const PRIORITIES = ["Routine", "STAT", "PRN"];
 
@@ -32,7 +33,7 @@ const errorMessage = (error: unknown, fallback: string) =>
 const formatDate = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleDateString() : "—";
 
-const currency = (value: number) => `$${value.toFixed(2)}`;
+const currency = (value: number) => formatCurrency(value);
 
 export default function PharmacyPage() {
   const router = useRouter();

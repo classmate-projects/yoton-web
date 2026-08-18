@@ -85,7 +85,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
 
   useEffect(() => {
     RecentModulesService.get()
-      .then((res) => setRecentLinks(res.data || []))
+      .then((res) => setRecentLinks(Array.from(new Set(res.data || []))))
       .catch(() => {
         // Fetch failed - recents just start empty for this load rather than blocking the page.
       });
