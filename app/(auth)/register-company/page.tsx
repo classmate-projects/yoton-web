@@ -74,6 +74,7 @@ export default function RegisterCompanyPage() {
           hiddenModules: data.body.hiddenModules ?? [],
           currencyCode: data.body.currencyCode,
           currencySymbol: data.body.currencySymbol,
+          idleTimeoutMinutes: data.body.idleTimeoutMinutes,
         }),
       );
 

@@ -7,7 +7,8 @@ import NotificationBell from "@/components/NotificationBell";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import pkg from "@/package.json";
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTheme } from "next-themes";
 import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight } from "lucide-react";
 import { CurrentUserDetail } from "@/types/user.type";
@@ -17,7 +18,7 @@ import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
 import { useRolePermissionsSync } from "@/hooks/useRolePermissionsSync";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
-import { stopChatConnection } from "@/lib/chatSignalR";
+import { logout } from "@/lib/auth";
 import { RecentModulesService } from "@/services/recentModules.service";
 
 const SIDEBAR_GROUPS: SidebarGroup[] = ["User Modules", "Configuration"];
@@ -66,6 +67,14 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   // expanded inline, in place, among its siblings. Reset whenever the sidebar
   // collapses, so it always starts back at the top-level module list next time.
   const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
+  // The trigger tile lives inside the nav's own overflow-y-auto scroll container, which
+  // clips anything poking out past its right edge (setting overflow on one axis makes the
+  // other axis clip too) - so the flyout itself is portaled straight to document.body and
+  // positioned in viewport coordinates instead of being laid out as a DOM child of the tile.
+  const expandedTriggerRef = useRef<HTMLDivElement | null>(null);
+  const flyoutRef = useRef<HTMLDivElement | null>(null);
+  const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null);
+  const expandedItem = sidebarMenuItems.find((item) => item.id === expandedItemId) ?? null;
 
   const toggleSidebarExpanded = () => {
     setClickExpanded((prev) => {
@@ -74,6 +83,41 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       return next;
     });
   };
+
+  // Positions the portaled flyout against the trigger's actual on-screen rect once it's
+  // mounted (ref assignment happens during commit, before this effect runs).
+  useEffect(() => {
+    if (expandedItemId === null) {
+      setFlyoutPos(null);
+      return;
+    }
+    const rect = expandedTriggerRef.current?.getBoundingClientRect();
+    if (rect) setFlyoutPos({ top: rect.top, left: rect.right + 8 });
+  }, [expandedItemId]);
+
+  // Closes the flyout on an outside click (matches NotificationBell's pattern) or on a
+  // scroll of the nav's own container, since a stale viewport position would otherwise
+  // leave the flyout floating away from its tile.
+  useEffect(() => {
+    if (expandedItemId === null) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (expandedTriggerRef.current?.contains(target)) return;
+      if (flyoutRef.current?.contains(target)) return;
+      setExpandedItemId(null);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+
+    const navScrollEl = expandedTriggerRef.current?.closest("[data-sidebar-scroll]");
+    const handleScroll = () => setExpandedItemId(null);
+    navScrollEl?.addEventListener("scroll", handleScroll);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      navScrollEl?.removeEventListener("scroll", handleScroll);
+    };
+  }, [expandedItemId]);
 
   // Recently-visited modules, most recent first, capped at MAX_RECENTS — shown
   // as an always-visible quick-access rail (see recentItems below) regardless of
@@ -123,10 +167,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   }, [pathname]);
 
   const handleLogout = async () => {
-    await fetch("/api/logout", { method: "POST" });
-    await stopChatConnection();
-    localStorage.removeItem("yoton_token");
-    localStorage.removeItem("yoton_user_detail");
+    await logout();
     router.push("/login");
   };
 
@@ -323,6 +364,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             visually true. */}
         <div
           inert={!isExpanded}
+          data-sidebar-scroll
           className={`flex-1 overflow-y-auto no-scrollbar scroll-smooth transition-opacity ${isExpanded ? "duration-200 delay-150 opacity-100" : "duration-100 opacity-0"
             }`}
         >
@@ -345,16 +387,24 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
 
                       // Sub-modules only make sense to drill into once the sidebar
                       // is actually expanded - collapsed icons stay direct links.
+                      // The flyout list itself is portaled (rendered once, below) rather
+                      // than nested here, so it isn't clipped by this scroll container.
                       if (hasSubItems && isExpanded) {
                         return (
-                          <Fragment key={item.id}>
+                          <div
+                            key={item.id}
+                            ref={isItemExpanded ? expandedTriggerRef : undefined}
+                          >
                             <button
                               type="button"
                               onClick={() => setExpandedItemId(isItemExpanded ? null : item.id)}
                               title={item.name}
                               aria-label={item.name}
                               aria-expanded={isItemExpanded}
-                              className={tileClass(isActive || isItemExpanded)}
+                              // Blue fill means "you're on this page right now" (isActive) - an
+                              // open-but-not-active flyout gets a lighter ring instead, so the
+                              // two states never look like the same thing selected twice.
+                              className={`${tileClass(isActive)} ${!isActive && isItemExpanded ? "ring-2 ring-primary/50 text-primary" : ""}`}
                             >
                               <span className={tileIconClass(isActive || isItemExpanded)}>
                                 <item.icon />
@@ -365,31 +415,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                                   }`}
                               />
                             </button>
-                            {/* Inline expansion, in place, right where the parent tile
-                                sits — a basis-full child in the same flex-wrap row
-                                forces a line break, so this reads as a panel attached
-                                to the tile above rather than a whole new screen. */}
-                            {isItemExpanded && (
-                              <div className="flex w-full flex-wrap gap-2 rounded-xl bg-muted/50 p-2">
-                                {item.subItems?.map((sub) => {
-                                  const subActive = pathname === sub.navLink;
-                                  return (
-                                    <Link
-                                      key={sub.id}
-                                      href={sub.navLink}
-                                      title={sub.name}
-                                      aria-label={sub.name}
-                                      className={tileClass(subActive)}
-                                    >
-                                      <span className={tileIconClass(subActive)}>
-                                        <sub.icon />
-                                      </span>
-                                    </Link>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </Fragment>
+                          </div>
                         );
                       }
 
@@ -446,6 +472,40 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             )}
           </nav>
         </div>
+
+        {/* Portaled flyout: rendered once at document.body in viewport ("fixed")
+            coordinates, positioned from expandedTriggerRef in the effect above -
+            keeps it out of the nav's overflow-y-auto scroll container, which
+            would otherwise clip it. */}
+        {mounted && expandedItem && flyoutPos &&
+          createPortal(
+            <div
+              ref={flyoutRef}
+              style={{ position: "fixed", top: flyoutPos.top, left: flyoutPos.left }}
+              className="z-[100] w-56 rounded-xl border border-border bg-card p-1.5 shadow-lg shadow-black/10"
+            >
+              {expandedItem.subItems?.map((sub) => {
+                const subActive = pathname === sub.navLink;
+                return (
+                  <Link
+                    key={sub.id}
+                    href={sub.navLink}
+                    onClick={() => setExpandedItemId(null)}
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${subActive
+                        ? "bg-primary text-primary-foreground font-semibold"
+                        : "text-foreground hover:bg-accent hover:text-accent-foreground"
+                      }`}
+                  >
+                    <span className="shrink-0 text-lg">
+                      <sub.icon />
+                    </span>
+                    <span className="truncate">{sub.name}</span>
+                  </Link>
+                );
+              })}
+            </div>,
+            document.body
+          )}
 
         <div className="mt-auto pt-4 flex flex-col gap-4 border-t border-border">
           <div className={`flex items-center gap-1 bg-muted p-1 rounded-lg ${!isExpanded && "flex-col"}`}>

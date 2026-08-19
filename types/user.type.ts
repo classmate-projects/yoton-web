@@ -17,6 +17,9 @@ export interface CurrentUserDetail {
     // for the single place every page should read this from rather than hardcoding a symbol.
     currencyCode?: string;
     currencySymbol?: string;
+    // Minutes of inactivity before an auto-logout - same value for every signed-in user,
+    // no per-user override. See hooks/useIdleLogout.ts.
+    idleTimeoutMinutes?: number;
 }
 
 export interface UserType {

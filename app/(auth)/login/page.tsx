@@ -54,6 +54,7 @@ export default function LoginPage() {
           hiddenModules: data.body.hiddenModules ?? [],
           currencyCode: data.body.currencyCode,
           currencySymbol: data.body.currencySymbol,
+          idleTimeoutMinutes: data.body.idleTimeoutMinutes,
         }),
       );
 

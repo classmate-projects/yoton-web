@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import { ArrowLeft, FileText, Search, Stethoscope } from "lucide-react";
@@ -15,14 +14,14 @@ const errorMessage = (error: unknown, fallback: string) =>
 const formatDateTime = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString() : "—";
 
-// Fully read-only render of the doctor's case sheet — reuses the same EMR summary
-// endpoint the Doctor Workbench and Nurse Workbench's "Clinical Snapshot" already call.
-// No inputs, no save actions: a nurse cannot modify doctor notes, diagnosis, or
-// treatment plans from here.
-export default function DoctorCaseSheetPage() {
-  const router = useRouter();
-  const [checkedAuth, setCheckedAuth] = useState(false);
-
+// Fully read-only render of a patient's record — reuses the same EMR summary endpoint
+// the Doctor Workbench and Nurse Workbench's "Clinical Snapshot" already call. No inputs,
+// no save actions: nobody can modify doctor notes, diagnosis, or treatment plans from
+// here, so it's safe for every staff role to see, not just nurse/admin (see
+// EmrController.GetPatients/GetPatientSummary for the matching backend access). No
+// client-side role check either - the (pages)/layout.tsx route guard already gates access
+// centrally off sidebaritems.ts's "Electronic Medical Record" entry (roles: allRoles).
+export default function ElectronicMedicalRecordPage() {
   const [patients, setPatients] = useState<EmrPatientListItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoadingPatients, setIsLoadingPatients] = useState(true);
@@ -32,22 +31,11 @@ export default function DoctorCaseSheetPage() {
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
 
   useEffect(() => {
-    const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
-    const role = (detail.role || "").toLowerCase();
-    if (role !== "nurse" && role !== "admin") {
-      router.replace("/");
-      return;
-    }
-    setCheckedAuth(true);
-  }, [router]);
-
-  useEffect(() => {
-    if (!checkedAuth) return;
     EmrService.getPatients()
       .then((res) => setPatients(res.data || []))
       .catch((error) => toast.error(errorMessage(error, "Failed to load patients")))
       .finally(() => setIsLoadingPatients(false));
-  }, [checkedAuth]);
+  }, []);
 
   const openPatient = async (patientId: string) => {
     setSelectedPatientId(patientId);
@@ -68,14 +56,6 @@ export default function DoctorCaseSheetPage() {
       p.opId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  if (!checkedAuth) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <LoadingSpinner />
-      </div>
-    );
-  }
 
   if (selectedPatientId) {
     return (
@@ -219,7 +199,7 @@ export default function DoctorCaseSheetPage() {
   return (
     <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground mb-1">
-        <FileText className="text-primary" /> Doctor Case Sheet
+        <FileText className="text-primary" /> Electronic Medical Record
       </h1>
       <p className="text-sm text-muted-foreground mb-6">Read-only view of the doctor&apos;s notes, diagnosis, and treatment plan.</p>
 
@@ -259,7 +239,7 @@ export default function DoctorCaseSheetPage() {
                           onClick={() => openPatient(p.opId)}
                           className="text-sm font-semibold text-primary hover:underline"
                         >
-                          View Case Sheet
+                          View Record
                         </button>
                       </td>
                     </tr>

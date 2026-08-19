@@ -38,6 +38,12 @@ const statusBadgeClass = (status: string) => {
 export default function RadiologyPage() {
   const router = useRouter();
   const [checkedAuth, setCheckedAuth] = useState(false);
+  const [role, setRole] = useState("");
+  // Nurses can view this module (see sidebaritems.ts) but only to check on requests a
+  // doctor already ordered - ordering, advancing status, and uploading results/images
+  // stay radiology technician/admin actions, matching RadiologyController's own
+  // authorization (nurse only ever gets the class-level read access there).
+  const isNurse = role === "nurse";
 
   const [summary, setSummary] = useState<RadiologySummaryType | null>(null);
   const [requests, setRequests] = useState<RadiologyRequestType[]>([]);
@@ -67,10 +73,11 @@ export default function RadiologyPage() {
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
     const currentRole = (detail.role || "").toLowerCase();
-    if (currentRole !== "radiology technician" && currentRole !== "admin") {
+    if (currentRole !== "radiology technician" && currentRole !== "admin" && currentRole !== "nurse") {
       router.replace("/");
       return;
     }
+    setRole(currentRole);
     setCheckedAuth(true);
   }, [router]);
 
@@ -214,6 +221,11 @@ export default function RadiologyPage() {
     }
   };
 
+  const viewReport = (path: string | null | undefined) => {
+    const url = backendAssetUrl(path);
+    if (url) window.open(url, "_blank");
+  };
+
   const handleUploadResult = async (request: RadiologyRequestType, file: File | undefined) => {
     if (!file) return;
     try {
@@ -262,14 +274,16 @@ export default function RadiologyPage() {
             Schedule and track X-Ray, MRI, CT and ultrasound requests.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150 shrink-0"
-        >
-          <MdAdd size={22} />
-          New Scan Request
-        </button>
+        {!isNurse && (
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150 shrink-0"
+          >
+            <MdAdd size={22} />
+            New Scan Request
+          </button>
+        )}
       </div>
 
       {/* Summary cards */}
@@ -519,7 +533,7 @@ export default function RadiologyPage() {
                       </td>
                       <td>
                         <div className="flex justify-center items-center gap-2">
-                          {nextStatus && (
+                          {!isNurse && nextStatus && (
                             <button
                               onClick={() => advanceStatus(r)}
                               className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
@@ -527,39 +541,48 @@ export default function RadiologyPage() {
                               Mark {nextStatus}
                             </button>
                           )}
-                          <label
-                            title="Upload scan result"
-                            className={`p-1.5 rounded-full transition-all cursor-pointer ${
-                              uploadingId === r.radiologyRequestId ? "opacity-50" : "hover:bg-primary/10"
-                            }`}
-                          >
-                            <MdOutlineFileUpload size={18} className="text-primary" />
-                            <input
-                              type="file"
-                              className="hidden"
-                              disabled={uploadingId === r.radiologyRequestId}
-                              onChange={(e) => handleUploadResult(r, e.target.files?.[0])}
-                            />
-                          </label>
-                          {r.hasResultFile && (
-                            <span className="text-[11px] text-emerald-500 font-semibold">Result on file</span>
+                          {!isNurse && (
+                            <label
+                              title="Upload scan result"
+                              className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                                uploadingId === r.radiologyRequestId ? "opacity-50" : "hover:bg-primary/10"
+                              }`}
+                            >
+                              <MdOutlineFileUpload size={18} className="text-primary" />
+                              <input
+                                type="file"
+                                className="hidden"
+                                disabled={uploadingId === r.radiologyRequestId}
+                                onChange={(e) => handleUploadResult(r, e.target.files?.[0])}
+                              />
+                            </label>
                           )}
-                          <label
-                            title="Attach scan images (X-ray, etc.)"
-                            className={`p-1.5 rounded-full transition-all cursor-pointer ${
-                              uploadingImagesId === r.radiologyRequestId ? "opacity-50" : "hover:bg-primary/10"
-                            }`}
-                          >
-                            <MdOutlineImage size={18} className="text-primary" />
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              className="hidden"
-                              disabled={uploadingImagesId === r.radiologyRequestId}
-                              onChange={(e) => handleUploadImages(r, e.target.files)}
-                            />
-                          </label>
+                          {r.hasResultFile && (
+                            <button
+                              onClick={() => viewReport(r.resultFilePath || r.scanFilePath)}
+                              className="text-[11px] font-semibold text-primary hover:underline"
+                            >
+                              View Report
+                            </button>
+                          )}
+                          {!isNurse && (
+                            <label
+                              title="Attach scan images (X-ray, etc.)"
+                              className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                                uploadingImagesId === r.radiologyRequestId ? "opacity-50" : "hover:bg-primary/10"
+                              }`}
+                            >
+                              <MdOutlineImage size={18} className="text-primary" />
+                              <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                disabled={uploadingImagesId === r.radiologyRequestId}
+                                onChange={(e) => handleUploadImages(r, e.target.files)}
+                              />
+                            </label>
+                          )}
                           {r.imageUrls.length > 0 && (
                             <button
                               onClick={() => setGalleryFor(r)}

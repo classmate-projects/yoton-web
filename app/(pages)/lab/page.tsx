@@ -8,20 +8,27 @@ import { FlaskConical } from "lucide-react";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
+import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
 import { LabService } from "@/services/lab.service";
 import { ReceptionService } from "@/services/reception.service";
 import { ConfigListService } from "@/services/configList.service";
 import { TestParameterService } from "@/services/testParameter.service";
+import { UserService } from "@/services/user.service";
 import { LabRequestType, LabSummaryType } from "@/types/lab.type";
 import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
 import { TestParameterType } from "@/types/testParameter.type";
+import { UserType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { backendAssetUrl } from "@/lib/backendAsset";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
 
 const formatDateTime = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString() : "—";
+
+const formatDate = (value: string | null | undefined) =>
+  value ? new Date(value).toLocaleDateString() : "—";
 
 const STATUS_FLOW = ["Requested", "SampleCollected", "Processing", "Completed", "Delivered"];
 
@@ -43,6 +50,12 @@ const statusBadgeClass = (status: string) => {
 export default function LaboratoryPage() {
   const router = useRouter();
   const [checkedAuth, setCheckedAuth] = useState(false);
+  const [role, setRole] = useState("");
+  const isAdmin = role === "admin";
+  // Nurses can view this module and collect samples (see sidebaritems.ts) but everything
+  // past that - advancing status, uploading results, structured result entry - stays lab
+  // technician/admin, matching LabController's own authorization.
+  const isNurse = role === "nurse";
 
   const [summary, setSummary] = useState<LabSummaryType | null>(null);
   const [requests, setRequests] = useState<LabRequestType[]>([]);
@@ -65,6 +78,13 @@ export default function LaboratoryPage() {
 
   const [uploadingId, setUploadingId] = useState<string | null>(null);
 
+  // Sample collection (nurse's action - see LabController.CollectSample) and the barcode
+  // label that follows it, moved in from the old standalone "Doctor Investigations" page.
+  const [nurses, setNurses] = useState<UserType[]>([]);
+  const [selectedNurseId, setSelectedNurseId] = useState("");
+  const [collectingId, setCollectingId] = useState<string | null>(null);
+  const [barcodeLabId, setBarcodeLabId] = useState<string | null>(null);
+
   // Structured per-parameter result entry (admin-configured under the Investigation catalog
   // — see ListItemManager's "Parameters" action). Only offered when the request's TestType
   // was picked from the catalog (has a ListItemId) and that test actually has parameters.
@@ -78,10 +98,11 @@ export default function LaboratoryPage() {
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
     const currentRole = (detail.role || "").toLowerCase();
-    if (currentRole !== "lab technician" && currentRole !== "admin") {
+    if (currentRole !== "lab technician" && currentRole !== "admin" && currentRole !== "nurse") {
       router.replace("/");
       return;
     }
+    setRole(currentRole);
     setCheckedAuth(true);
   }, [router]);
 
@@ -105,6 +126,9 @@ export default function LaboratoryPage() {
   useEffect(() => {
     if (!checkedAuth) return;
     fetchAll();
+    if (isAdmin) {
+      UserService.getAllByRole("nurse").then((res) => setNurses(res.data || [])).catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, filter]);
 
@@ -190,6 +214,52 @@ export default function LaboratoryPage() {
     }
   };
 
+  const requireNurseSelected = () => {
+    if (isAdmin && !selectedNurseId) {
+      toast.error("Select a nurse first — you're viewing across all nurses.");
+      return false;
+    }
+    return true;
+  };
+
+  const collectSample = async (labRequestId: string) => {
+    if (!requireNurseSelected()) return;
+    try {
+      setCollectingId(labRequestId);
+      await LabService.collectSample(labRequestId, isAdmin ? selectedNurseId : undefined);
+      toast.success("Sample collected");
+      setBarcodeLabId(labRequestId);
+      await fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to collect sample"));
+    } finally {
+      setCollectingId(null);
+    }
+  };
+
+  // Fire-and-forget audit trail — the print itself already happened client-side by the time
+  // this is called (see SampleBarcodeLabel's onPrint), so a failure here shouldn't block or
+  // roll back anything already done.
+  const recordPrint = async (labRequestId: string) => {
+    try {
+      const res = await LabService.recordPrint(labRequestId);
+      setRequests((prev) =>
+        prev.map((l) =>
+          l.labRequestId === labRequestId
+            ? { ...l, printCount: res.printCount, lastPrintedAt: res.lastPrintedAt, lastPrintedByName: res.lastPrintedByName }
+            : l
+        )
+      );
+    } catch {
+      // non-fatal
+    }
+  };
+
+  const viewReport = (path: string | null | undefined) => {
+    const url = backendAssetUrl(path);
+    if (url) window.open(url, "_blank");
+  };
+
   const advanceStatus = async (request: LabRequestType) => {
     const currentIndex = STATUS_FLOW.indexOf(request.status);
     const next = STATUS_FLOW[currentIndex + 1];
@@ -273,6 +343,8 @@ export default function LaboratoryPage() {
     }
   };
 
+  const barcodeLab = requests.find((l) => l.labRequestId === barcodeLabId);
+
   if (!checkedAuth) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -293,14 +365,31 @@ export default function LaboratoryPage() {
             Track sample collection, processing, and delivery of lab test requests.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150 shrink-0"
-        >
-          <MdAdd size={22} />
-          New Lab Request
-        </button>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <select
+              value={selectedNurseId}
+              onChange={(e) => setSelectedNurseId(e.target.value)}
+              title="Nurse identity for collecting samples"
+              className="h-9 w-48 shrink-0 text-sm"
+            >
+              <option value="">Acting nurse…</option>
+              {nurses.map((n) => (
+                <option key={n.id} value={n.id}>{n.name}</option>
+              ))}
+            </select>
+          )}
+          {!isNurse && (
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150 shrink-0"
+            >
+              <MdAdd size={22} />
+              New Lab Request
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -478,6 +567,27 @@ export default function LaboratoryPage() {
         </div>
       )}
 
+      {barcodeLab && (
+        <div className="card p-6 flex flex-col items-start gap-2 mb-6">
+          <h2 className="text-lg font-semibold text-foreground">Sample Label — {barcodeLab.testType}</h2>
+          <SampleBarcodeLabel
+            label={{
+              labRequestId: barcodeLab.labRequestId,
+              testName: barcodeLab.testType || "Lab Test",
+              doctorName: barcodeLab.doctorName || "Unassigned",
+              date: formatDate(barcodeLab.sampleCollectedAt || barcodeLab.requestedDate),
+              mrn: barcodeLab.patientId || "—",
+              collectedByName: barcodeLab.sampleCollectedByName || "—",
+              visitId: barcodeLab.visitId,
+            }}
+            onPrint={() => recordPrint(barcodeLab.labRequestId)}
+            printCount={barcodeLab.printCount}
+            lastPrintedByName={barcodeLab.lastPrintedByName}
+            lastPrintedAt={barcodeLab.lastPrintedAt}
+          />
+        </div>
+      )}
+
       <div className="card">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -541,8 +651,25 @@ export default function LaboratoryPage() {
                         </span>
                       </td>
                       <td>
-                        <div className="flex justify-center items-center gap-2">
-                          {nextStatus && (
+                        <div className="flex flex-wrap justify-center items-center gap-2">
+                          {(isNurse || isAdmin) && r.status === "Requested" && (
+                            <button
+                              onClick={() => collectSample(r.labRequestId)}
+                              disabled={collectingId === r.labRequestId}
+                              className="px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              Collect Sample
+                            </button>
+                          )}
+                          {(isNurse || isAdmin) && r.sampleCollectedByName && (
+                            <button
+                              onClick={() => setBarcodeLabId(r.labRequestId)}
+                              className="px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
+                            >
+                              {r.printCount > 0 ? "Reprint Barcode" : "Barcode"}
+                            </button>
+                          )}
+                          {!isNurse && nextStatus && (
                             <button
                               onClick={() => advanceStatus(r)}
                               className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
@@ -550,7 +677,7 @@ export default function LaboratoryPage() {
                               Mark {nextStatus}
                             </button>
                           )}
-                          {r.listItemId && (
+                          {!isNurse && r.listItemId && (
                             <button
                               onClick={() => openResultEntry(r)}
                               className="px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer"
@@ -558,22 +685,29 @@ export default function LaboratoryPage() {
                               Enter Results
                             </button>
                           )}
-                          <label
-                            title="Upload result file"
-                            className={`p-1.5 rounded-full transition-all cursor-pointer ${
-                              uploadingId === r.labRequestId ? "opacity-50" : "hover:bg-primary/10"
-                            }`}
-                          >
-                            <MdOutlineFileUpload size={18} className="text-primary" />
-                            <input
-                              type="file"
-                              className="hidden"
-                              disabled={uploadingId === r.labRequestId}
-                              onChange={(e) => handleUploadResult(r, e.target.files?.[0])}
-                            />
-                          </label>
+                          {!isNurse && (
+                            <label
+                              title="Upload result file"
+                              className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                                uploadingId === r.labRequestId ? "opacity-50" : "hover:bg-primary/10"
+                              }`}
+                            >
+                              <MdOutlineFileUpload size={18} className="text-primary" />
+                              <input
+                                type="file"
+                                className="hidden"
+                                disabled={uploadingId === r.labRequestId}
+                                onChange={(e) => handleUploadResult(r, e.target.files?.[0])}
+                              />
+                            </label>
+                          )}
                           {r.hasResultFile && (
-                            <span className="text-[11px] text-emerald-500 font-semibold">Result on file</span>
+                            <button
+                              onClick={() => viewReport(r.resultFilePath)}
+                              className="text-[11px] font-semibold text-primary hover:underline"
+                            >
+                              View Report
+                            </button>
                           )}
                         </div>
                       </td>

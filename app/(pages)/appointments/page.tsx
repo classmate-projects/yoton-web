@@ -19,6 +19,7 @@ import {
   GraduationCap,
   ListChecks,
   LogIn,
+  RefreshCw,
   Search,
   Stethoscope,
   UserRoundCheck,
@@ -143,12 +144,16 @@ export default function Appointments() {
 
   useEffect(() => {
     fetchVisitQueue();
-    // Poll as a fallback in case the SignalR connection below ever drops, so
-    // the queue reflects status changes made elsewhere (nursing, billing,
-    // etc.) even without a live push.
-    const interval = setInterval(fetchVisitQueue, 20000);
+    // Long-interval safety net only, not the primary refresh mechanism - every stage
+    // transition (check-in, nursing, doctor, investigations, pharmacy, billing) now
+    // broadcasts visitCheckedIn/visitStatusUpdated (see useSignalRRefetch below), so this
+    // is just insurance against a dropped connection instead of the 20s poll this used to
+    // be running unconditionally for every open tab.
+    const interval = setInterval(fetchVisitQueue, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], fetchVisitQueue);
 
   // ---------------- Fetch pending appointment requests (from mobile self-booking) ----------------
   const fetchAppointmentRequests = async () => {
@@ -551,9 +556,11 @@ export default function Appointments() {
             </h2>
             <button
               onClick={fetchAppointmentRequests}
-              className="text-sm font-semibold text-primary hover:opacity-80 cursor-pointer"
+              title="Refresh"
+              aria-label="Refresh"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 cursor-pointer"
             >
-              Refresh
+              <RefreshCw size={16} />
             </button>
           </div>
           {isLoadingRequests ? (
@@ -622,9 +629,11 @@ export default function Appointments() {
             </h2>
             <button
               onClick={fetchVisitQueue}
-              className="text-sm font-semibold text-primary hover:opacity-80 cursor-pointer"
+              title="Refresh"
+              aria-label="Refresh"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 cursor-pointer"
             >
-              Refresh
+              <RefreshCw size={16} />
             </button>
           </div>
           {isLoadingQueue ? (

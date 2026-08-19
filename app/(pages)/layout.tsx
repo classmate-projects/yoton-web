@@ -9,6 +9,7 @@ import Sidebar from "@/components/sidebar";
 import AccessDenied from "@/components/AccessDenied";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
+import { useIdleLogout } from "@/hooks/useIdleLogout";
 
 // Pages that are reachable by URL (e.g. from a button on an admin page) but
 // intentionally left out of the sidebar itself — still need the same
@@ -25,9 +26,8 @@ interface ProtectedRoute {
 const extraProtectedRoutes: ProtectedRoute[] = [
   { navLink: "/role-management", roles: ["admin"] },
   { navLink: "/user-registration", roles: ["admin"] },
-  // Only reachable via the merged "Departments & Staff" tile's subItems, so they share
-  // its permission rather than having their own.
-  { navLink: "/specializations", roles: ["admin"], moduleKey: "/departments" },
+  // Only reachable via the merged "Departments & Staff" tile's subItems, so it shares
+  // its permission rather than having its own.
   { navLink: "/assign-doctor", roles: ["admin"], moduleKey: "/departments" },
 ];
 
@@ -68,6 +68,8 @@ export default function PageLayout({
 }>) {
   const pathname = usePathname();
   const router = useRouter();
+
+  useIdleLogout();
 
   // Mobile-only drawer state. On desktop the sidebar is always in flow (hover
   // rail), so this is inert there; on mobile the hamburger in the top bar opens

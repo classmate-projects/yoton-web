@@ -113,9 +113,21 @@ export default function MessagesPage() {
 
   // Presence only applies to real staff accounts ("User") - a Patient or the virtual
   // Reception inbox has no single online/offline state worth showing.
-  useEffect(() => {
+  //
+  // Keyed on the sorted id *set* (a string), not tabConversations itself: that array is a
+  // new reference on every incoming message anywhere (see handleMessage's setConversations
+  // below), which would otherwise re-fire this REST call once per message across the whole
+  // inbox even though the actual set of people to track rarely changes. Ongoing online/
+  // offline changes come from the "presenceChanged" SignalR event instead - this effect only
+  // needs to (re)seed presence when the set of contacts itself changes.
+  const presenceUserIdsKey = useMemo(() => {
     const ids = tabConversations.filter((c) => c.otherType === "User").map((c) => c.otherId);
-    if (ids.length === 0) return;
+    return Array.from(new Set(ids)).sort().join(",");
+  }, [tabConversations]);
+
+  useEffect(() => {
+    if (!presenceUserIdsKey) return;
+    const ids = presenceUserIdsKey.split(",");
     ChatService.getPresence(ids)
       .then((res) => {
         const map: Record<string, boolean> = {};
@@ -123,7 +135,7 @@ export default function MessagesPage() {
         setPresence((prev) => ({ ...prev, ...map }));
       })
       .catch(() => {});
-  }, [tabConversations]);
+  }, [presenceUserIdsKey]);
 
   useEffect(() => {
     setShowContactPicker(false);

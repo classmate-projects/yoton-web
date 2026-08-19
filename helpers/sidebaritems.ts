@@ -1,6 +1,6 @@
-import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
+import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, ClipboardList } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -54,8 +54,11 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         group: "Configuration",
         subItems: [
             { id: 6, name: "Departments", navLink: "/departments", icon: buildingIcon },
-            { id: 7, name: "Specializations", navLink: "/specializations", icon: specializationIcon },
             { id: 8, name: "Assign Doctor", navLink: "/assign-doctor", icon: doctorIcon },
+            // Same page as the "Doctors Availability" User Modules tile - the query
+            // param is what tells the page to render editable for admin here specifically
+            // (see doctor-availability/page.tsx's canEdit check).
+            { id: 23, name: "Doctors Availability", navLink: "/doctor-availability?mode=edit", icon: availableDoctor },
         ]
     },
     {
@@ -100,14 +103,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         group: "User Modules"
     },
     {
-        id: 9,
-        name: "Doctors Availability",
-        navLink: "/doctor-availability",
-        roles: ["reception", "admin"],
-        icon: availableDoctor,
-        group: "User Modules"
-    },
-    {
         id: 11,
         name: "Doctor Workbench",
         navLink: "/doctor",
@@ -134,22 +129,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     // nurse's post-login landing page, so Nurse Workbench (above) must stay first among
     // nurse-accessible entries.
     {
-        id: 17,
-        name: "Doctor Case Sheet",
-        navLink: "/nursing/case-sheet",
-        roles: ["nurse", "admin"],
-        icon: FileText,
-        group: "User Modules"
-    },
-    {
-        id: 18,
-        name: "Doctor Investigations",
-        navLink: "/nursing/investigations",
-        roles: ["nurse", "admin"],
-        icon: ClipboardList,
-        group: "User Modules"
-    },
-    {
         id: 19,
         name: "Confidential Notes",
         navLink: "/nursing/confidential-notes",
@@ -163,7 +142,10 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         navLink: "/lab",
         // Doctor included: LabController's class-level [Authorize] already permits
         // "doctor" (read + order placement) — this just surfaces the existing access.
-        roles: ["admin", "lab technician", "doctor"],
+        // Nurse included: doctor orders it here, nurse collects the sample and prints its
+        // barcode label here too (formerly the standalone "Doctor Investigations" page,
+        // now folded into this module's own table - see lab/page.tsx's isNurse gating).
+        roles: ["admin", "lab technician", "doctor", "nurse"],
         icon: FlaskConical,
         group: "User Modules"
     },
@@ -173,7 +155,9 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         navLink: "/radiology",
         // Doctor included: RadiologyController's class-level [Authorize] already
         // permits "doctor" (read + order placement) — this just surfaces the existing access.
-        roles: ["admin", "radiology technician", "doctor"],
+        // Nurse included: same reasoning as Laboratory above - a nurse can check on a scan
+        // a doctor ordered and view its report/images, but not create or process requests.
+        roles: ["admin", "radiology technician", "doctor", "nurse"],
         icon: ScanLine,
         group: "User Modules"
     },
@@ -191,6 +175,35 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         navLink: "/billing",
         roles: ["admin", "billing team"],
         icon: MdPayment,
+        group: "User Modules"
+    },
+    // Declared after every role-specific primary workbench above (same reasoning as
+    // Messages/Settings below): everyone can see this, including roles whose actual home
+    // module is Doctor Workbench, Nurse Workbench, Laboratory, Radiology, Pharmacy, or
+    // Billing - placing it earlier would win firstAllowedRoute() for those roles and land
+    // them here after login instead of their real work module.
+    {
+        id: 9,
+        name: "Doctors Availability",
+        navLink: "/doctor-availability",
+        // Everyone gets a read-only view here, including admin - admin's own editable
+        // entry point lives under Configuration > Departments & Staff instead (see its
+        // "?mode=edit" subItem above). Reception is the one role that can still edit
+        // straight from this plain link (see the page's own canEdit check).
+        roles: allRoles,
+        icon: availableDoctor,
+        group: "User Modules"
+    },
+    // Same "declared after every role-specific workbench" reasoning as Doctors
+    // Availability just above - a read-only view every role can see (formerly "Doctor
+    // Case Sheet"; renamed since it's really a patient's full record, not one doctor's
+    // private notes), not any one role's actual home module.
+    {
+        id: 17,
+        name: "Electronic Medical Record",
+        navLink: "/nursing/case-sheet",
+        roles: allRoles,
+        icon: FileText,
         group: "User Modules"
     },
     {

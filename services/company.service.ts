@@ -11,7 +11,14 @@ export const CompanyService = {
         return data;
     },
 
-    updateSettings: async (payload: { maxDiscountPercent?: number | null; currencyCode?: string }) => {
+    updateSettings: async (payload: {
+        maxDiscountPercent?: number | null;
+        country?: string;
+        currencyCode?: string;
+        pediatricMaxAgeYears?: number;
+        geriatricMinAgeYears?: number;
+        idleTimeoutMinutes?: number;
+    }) => {
         const { data } = await api.put(ENDPOINTS.COMPANY.UPDATE_SETTINGS, payload);
         return data;
     },
