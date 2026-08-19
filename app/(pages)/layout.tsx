@@ -8,6 +8,7 @@ import logo from "@/public/yoton_logo.png";
 import Sidebar from "@/components/sidebar";
 import AccessDenied from "@/components/AccessDenied";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 
@@ -69,7 +70,7 @@ export default function PageLayout({
   const pathname = usePathname();
   const router = useRouter();
 
-  useIdleLogout();
+  const { warningSecondsLeft, stayLoggedIn } = useIdleLogout();
 
   // Mobile-only drawer state. On desktop the sidebar is always in flow (hover
   // rail), so this is inert there; on mobile the hamburger in the top bar opens
@@ -149,6 +150,9 @@ export default function PageLayout({
           {status === "denied" ? <AccessDenied /> : children}
         </div>
       </div>
+      {warningSecondsLeft !== null && (
+        <SessionTimeoutModal secondsLeft={warningSecondsLeft} onStayLoggedIn={stayLoggedIn} />
+      )}
     </div>
   );
 }

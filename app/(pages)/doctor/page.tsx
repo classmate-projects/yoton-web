@@ -11,6 +11,7 @@ import {
   Bell,
   CalendarClock,
   CalendarPlus,
+  Check,
   ClipboardCheck,
   ClipboardList,
   FileText,
@@ -25,12 +26,14 @@ import {
   Stethoscope,
   Stamp,
   Users,
+  X,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
 import ReviewOfSystemsPanel, { ReviewOfSystemsValue } from "@/components/doctor/ReviewOfSystemsPanel";
 import PrescriptionPrintout from "@/components/prescription/PrescriptionPrintout";
+import FloatingSaveRevertBar from "@/components/FloatingSaveRevertBar";
 import { getUserDetail } from "@/lib/userDetail";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
@@ -44,6 +47,7 @@ import {
   DoctorConfidentialNoteType,
   DoctorDashboardSummaryType,
   EmrPatientListItem,
+  EncounterCorrectionType,
   MedicationPayload,
   PatientInsuranceCoverageType,
   PatientSummaryType,
@@ -53,6 +57,7 @@ import {
 import { VitalsType } from "@/types/nursing.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { SpecializationTypes } from "@/types/specialization.type";
+import { UserType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -296,11 +301,19 @@ function DoctorWorkbenchInner() {
     clinicalExamination: "",
     ...emptyRos,
   });
+  // Baseline the form is compared against to detect unsaved edits — only meaningful for
+  // admin viewing a Completed (locked) encounter, where the floating Save/Revert bar and
+  // the "propose correction" flow kick in instead of the normal direct save.
+  const [encounterFormSnapshot, setEncounterFormSnapshot] = useState(encounterForm);
   const [isSavingEncounter, setIsSavingEncounter] = useState(false);
+
+  const isCompletedEncounter = summary?.latestEncounter?.status === "Completed";
+  const isEncounterDirty =
+    isAdmin && isCompletedEncounter && JSON.stringify(encounterForm) !== JSON.stringify(encounterFormSnapshot);
 
   useEffect(() => {
     const e = summary?.latestEncounter;
-    setEncounterForm({
+    const loaded = {
       chiefComplaint: e?.chiefComplaint || "",
       plannedProcedures: e?.plannedProcedures || "",
       examinationNotes: e?.examinationNotes || "",
@@ -318,7 +331,9 @@ function DoctorWorkbenchInner() {
       rosHematologic: e?.rosHematologic || "",
       rosAllergicImmunologic: e?.rosAllergicImmunologic || "",
       rosIntegumentary: e?.rosIntegumentary || "",
-    });
+    };
+    setEncounterForm(loaded);
+    setEncounterFormSnapshot(loaded);
     // Intentionally re-run only when the encounter identity changes, not on every field edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.latestEncounter?.encounterId]);
@@ -338,6 +353,102 @@ function DoctorWorkbenchInner() {
       toast.error(errorMessage(error, "Failed to save encounter"));
     } finally {
       setIsSavingEncounter(false);
+    }
+  };
+
+  const revertEncounterForm = () => setEncounterForm(encounterFormSnapshot);
+
+  // ---------------- ENCOUNTER CORRECTIONS (admin proposing, doctor acknowledging) ----------------
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const [correctionDoctors, setCorrectionDoctors] = useState<UserType[]>([]);
+  const [selectedCorrectionDoctorId, setSelectedCorrectionDoctorId] = useState("");
+  const [isProposingCorrection, setIsProposingCorrection] = useState(false);
+  const [encounterCorrections, setEncounterCorrections] = useState<EncounterCorrectionType[]>([]);
+
+  const fetchEncounterCorrections = async () => {
+    if (!selectedPatientId || !summary?.latestEncounter) return;
+    try {
+      const res = await EmrService.getEncounterCorrections(selectedPatientId, summary.latestEncounter.encounterId);
+      setEncounterCorrections(res.data || []);
+    } catch {
+      setEncounterCorrections([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isCompletedEncounter) fetchEncounterCorrections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary?.latestEncounter?.encounterId, isCompletedEncounter]);
+
+  const openCorrectionModal = () => {
+    if (correctionDoctors.length === 0) {
+      UserService.getAllByRole("doctor")
+        .then((res) => setCorrectionDoctors(res.data || []))
+        .catch(() => toast.error("Failed to load doctor list"));
+    }
+    setSelectedCorrectionDoctorId("");
+    setShowCorrectionModal(true);
+  };
+
+  const submitCorrection = async () => {
+    if (!selectedPatientId || !summary?.latestEncounter || !selectedCorrectionDoctorId) {
+      toast.error("Select the doctor this correction should go to");
+      return;
+    }
+    try {
+      setIsProposingCorrection(true);
+      await EmrService.proposeEncounterCorrection(selectedPatientId, summary.latestEncounter.encounterId, {
+        ...encounterForm,
+        targetUserId: selectedCorrectionDoctorId,
+      });
+      toast.success("Correction sent — it applies once the doctor acknowledges it");
+      setEncounterFormSnapshot(encounterForm);
+      setShowCorrectionModal(false);
+      await fetchEncounterCorrections();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to send correction"));
+    } finally {
+      setIsProposingCorrection(false);
+    }
+  };
+
+  // ---------------- MY PENDING CORRECTIONS (doctor acknowledging admin's edits) ----------------
+  const [myPendingCorrections, setMyPendingCorrections] = useState<EncounterCorrectionType[]>([]);
+  const [resolvingCorrectionId, setResolvingCorrectionId] = useState<string | null>(null);
+
+  const fetchMyPendingCorrections = async () => {
+    if (isAdmin) return;
+    try {
+      const res = await EmrService.getMyPendingCorrections();
+      setMyPendingCorrections(res.data || []);
+    } catch {
+      setMyPendingCorrections([]);
+    }
+  };
+
+  useEffect(() => {
+    if (checkedAuth) fetchMyPendingCorrections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkedAuth]);
+
+  useSignalRRefetch(["encounterCorrectionProposed", "encounterCorrectionResolved"], fetchMyPendingCorrections);
+
+  const resolveCorrection = async (correctionId: string, action: "acknowledge" | "reject") => {
+    try {
+      setResolvingCorrectionId(correctionId);
+      if (action === "acknowledge") {
+        await EmrService.acknowledgeCorrection(correctionId);
+        toast.success("Correction applied to the encounter");
+      } else {
+        await EmrService.rejectCorrection(correctionId);
+        toast.success("Correction rejected");
+      }
+      await fetchMyPendingCorrections();
+      if (selectedPatientId) await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to resolve correction"));
+    } finally {
+      setResolvingCorrectionId(null);
     }
   };
 
@@ -898,6 +1009,20 @@ function DoctorWorkbenchInner() {
                     <FileText size={18} className="text-primary" /> Encounter Notes
                   </h2>
 
+                  {isCompletedEncounter && (
+                    <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      {isAdmin
+                        ? "This encounter is finalized — edits here are proposed as a correction, not saved directly."
+                        : "This encounter is finalized and locked. Ask an admin to request a correction if it needs to change."}
+                    </div>
+                  )}
+
+                  {encounterCorrections.some((c) => c.status === "Pending") && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                      A correction is pending the doctor&apos;s acknowledgment.
+                    </div>
+                  )}
+
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold text-muted-foreground">Chief complaint</label>
                     <input
@@ -905,7 +1030,8 @@ function DoctorWorkbenchInner() {
                       placeholder="Patient's primary reason for the visit..."
                       value={encounterForm.chiefComplaint}
                       onChange={(e) => setEncounterForm((p) => ({ ...p, chiefComplaint: e.target.value }))}
-                      className="h-10 text-sm"
+                      disabled={isCompletedEncounter && !isAdmin}
+                      className="h-10 text-sm disabled:opacity-60"
                     />
                   </div>
 
@@ -915,7 +1041,8 @@ function DoctorWorkbenchInner() {
                       placeholder="Doctor's examination notes..."
                       value={encounterForm.examinationNotes}
                       onChange={(e) => setEncounterForm((p) => ({ ...p, examinationNotes: e.target.value }))}
-                      className="w-full min-h-16 text-sm"
+                      disabled={isCompletedEncounter && !isAdmin}
+                      className="w-full min-h-16 text-sm disabled:opacity-60"
                     />
                   </div>
 
@@ -928,6 +1055,7 @@ function DoctorWorkbenchInner() {
                       <ReviewOfSystemsPanel
                         value={encounterForm}
                         onChange={(key, value) => setEncounterForm((p) => ({ ...p, [key]: value }))}
+                        disabled={isCompletedEncounter && !isAdmin}
                       />
                     </div>
                   </details>
@@ -938,7 +1066,8 @@ function DoctorWorkbenchInner() {
                       placeholder="Clinical examination findings..."
                       value={encounterForm.clinicalExamination}
                       onChange={(e) => setEncounterForm((p) => ({ ...p, clinicalExamination: e.target.value }))}
-                      className="w-full min-h-16 text-sm"
+                      disabled={isCompletedEncounter && !isAdmin}
+                      className="w-full min-h-16 text-sm disabled:opacity-60"
                     />
                   </div>
 
@@ -948,18 +1077,21 @@ function DoctorWorkbenchInner() {
                       placeholder="Planned procedures..."
                       value={encounterForm.plannedProcedures}
                       onChange={(e) => setEncounterForm((p) => ({ ...p, plannedProcedures: e.target.value }))}
-                      className="w-full min-h-16 text-sm"
+                      disabled={isCompletedEncounter && !isAdmin}
+                      className="w-full min-h-16 text-sm disabled:opacity-60"
                     />
                   </div>
 
                   <div className="flex gap-3">
-                    <button
-                      onClick={saveEncounter}
-                      disabled={isSavingEncounter}
-                      className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      <Save size={15} /> Save Encounter
-                    </button>
+                    {!isCompletedEncounter && (
+                      <button
+                        onClick={saveEncounter}
+                        disabled={isSavingEncounter}
+                        className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                      >
+                        <Save size={15} /> Save Encounter
+                      </button>
+                    )}
                     {summary.latestEncounter && summary.latestEncounter.status !== "Completed" && (
                       <button
                         onClick={finishEncounter}
@@ -971,6 +1103,59 @@ function DoctorWorkbenchInner() {
                     )}
                   </div>
                 </div>
+
+                {isEncounterDirty && (
+                  <FloatingSaveRevertBar
+                    message="Unsaved correction"
+                    saveLabel="Send correction"
+                    onRevert={revertEncounterForm}
+                    onSave={openCorrectionModal}
+                    isSaving={isProposingCorrection}
+                  />
+                )}
+
+                {showCorrectionModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+                    <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
+                      <h2 className="text-xl font-semibold mb-1 text-foreground">Send correction to doctor</h2>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        This encounter is finalized — the doctor you pick must acknowledge your changes before they apply.
+                      </p>
+                      <div className="flex flex-col gap-1 mb-6">
+                        <label className="text-sm font-bold text-foreground/90 required">Doctor</label>
+                        <select
+                          value={selectedCorrectionDoctorId}
+                          onChange={(e) => setSelectedCorrectionDoctorId(e.target.value)}
+                          className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                        >
+                          <option value="">Select doctor…</option>
+                          {correctionDoctors.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setShowCorrectionModal(false)}
+                          className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={submitCorrection}
+                          disabled={isProposingCorrection || !selectedCorrectionDoctorId}
+                          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                        >
+                          <Save size={15} /> Send correction
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Diagnosis — search from the admin-managed diagnosis catalog; first one
                     added becomes primary, others secondary, primary can be reassigned. */}
@@ -1702,6 +1887,54 @@ function DoctorWorkbenchInner() {
         <LoadingSpinner />
       ) : (
         <div className="flex flex-col gap-6">
+          {/* Corrections an admin proposed for one of this doctor's finalized encounters —
+              inert until acknowledged, see EncounterCorrection.cs. */}
+          {!isAdmin && myPendingCorrections.length > 0 && (
+            <div className="card p-6 flex flex-col gap-3 border-l-4 border-l-amber-500">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Bell size={18} className="text-amber-500" /> Pending Corrections
+                <span className="text-xs font-normal text-muted-foreground ml-1">
+                  ({myPendingCorrections.length} awaiting your review)
+                </span>
+              </h2>
+              <div className="flex flex-col gap-2">
+                {myPendingCorrections.map((c) => (
+                  <div key={c.encounterCorrectionId} className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <div>
+                        <span className="font-semibold text-foreground">{c.patientName || "Patient"}</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          proposed by {c.proposedByName || "an admin"} · {formatDateTime(c.createdAt)}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => resolveCorrection(c.encounterCorrectionId, "acknowledge")}
+                          disabled={resolvingCorrectionId === c.encounterCorrectionId}
+                          className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                        >
+                          <Check size={13} /> Accept
+                        </button>
+                        <button
+                          onClick={() => resolveCorrection(c.encounterCorrectionId, "reject")}
+                          disabled={resolvingCorrectionId === c.encounterCorrectionId}
+                          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
+                        >
+                          <X size={13} /> Reject
+                        </button>
+                      </div>
+                    </div>
+                    {c.chiefComplaint && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-semibold">Chief complaint:</span> {c.chiefComplaint}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <StatCard icon={<Users size={18} />} label="Patients Under Care" value={dashboard?.patientsUnderCare ?? 0} />

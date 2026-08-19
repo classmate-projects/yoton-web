@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Loader2,
   Settings as SettingsIcon,
+  Trash2,
   Upload,
   UserRound,
 } from "lucide-react";
@@ -102,6 +103,24 @@ export default function SettingsPage() {
       toast.error("Failed to upload photo");
     } finally {
       setUploadingAvatar(false);
+    }
+  };
+
+  const [deletingAvatar, setDeletingAvatar] = useState(false);
+
+  const handleAvatarDelete = async () => {
+    if (!me) return;
+    setDeletingAvatar(true);
+    try {
+      await AuthService.deleteAvatar();
+      setMe({ ...me, userImage: null });
+      patchUserDetail({ userImage: null });
+      setAvatarFile(null);
+      toast.success("Profile photo removed");
+    } catch {
+      toast.error("Failed to remove photo");
+    } finally {
+      setDeletingAvatar(false);
     }
   };
 
@@ -219,8 +238,8 @@ export default function SettingsPage() {
   const handleSaveIdleTimeout = async () => {
     if (!me) return;
     const minutes = Number(idleTimeoutInput.trim());
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 480) {
-      toast.error("Enter a whole number of minutes between 1 and 480");
+    if (!Number.isInteger(minutes) || minutes < 2 || minutes > 480) {
+      toast.error("Enter a whole number of minutes between 2 and 480");
       return;
     }
 
@@ -355,6 +374,17 @@ export default function SettingsPage() {
                     {uploadingAvatar ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
                     Upload
                   </button>
+                  {me.userImage && (
+                    <button
+                      type="button"
+                      onClick={handleAvatarDelete}
+                      disabled={deletingAvatar}
+                      className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {deletingAvatar ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                      Remove
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -596,13 +626,15 @@ export default function SettingsPage() {
             <p className="text-sm text-muted-foreground mb-5">
               Minutes of inactivity before a signed-in session is automatically logged out —
               staff on the web app and patients on the mobile app alike. One value for
-              everyone; there&apos;s no per-user override.
+              everyone; there&apos;s no per-user override. A warning with a 30-second
+              countdown appears before the session actually ends, so a minimum of 2 minutes
+              is enforced.
             </p>
             <div className="flex items-center gap-3">
               <div className="relative w-32">
                 <input
                   type="number"
-                  min={1}
+                  min={2}
                   max={480}
                   step="1"
                   value={idleTimeoutInput}

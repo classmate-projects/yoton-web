@@ -225,6 +225,60 @@ export interface EncounterUpsertPayload {
   rosIntegumentary?: string;
 }
 
+export interface ProposeEncounterCorrectionPayload {
+  targetUserId: string;
+  chiefComplaint?: string;
+  diagnosisCode?: string;
+  diagnosisDescription?: string;
+  plannedProcedures?: string;
+  examinationNotes?: string;
+  clinicalExamination?: string;
+  rosConstitutional?: string;
+  rosEyeEarNoseMouthThroat?: string;
+  rosCardiovascular?: string;
+  rosRespiratory?: string;
+  rosGastroenterology?: string;
+  rosGenitourinary?: string;
+  rosMusculoskeletal?: string;
+  rosNeurological?: string;
+  rosPsychiatric?: string;
+  rosEndocrine?: string;
+  rosHematologic?: string;
+  rosAllergicImmunologic?: string;
+  rosIntegumentary?: string;
+}
+
+export interface EncounterCorrectionType {
+  encounterCorrectionId: string;
+  encounterId: string;
+  patientId: string | null;
+  patientName: string | null;
+  proposedByUserId: string | null;
+  proposedByName: string | null;
+  status: "Pending" | "Acknowledged" | "Rejected";
+  chiefComplaint: string | null;
+  diagnosisCode: string | null;
+  diagnosisDescription: string | null;
+  plannedProcedures: string | null;
+  examinationNotes: string | null;
+  clinicalExamination: string | null;
+  rosConstitutional: string | null;
+  rosEyeEarNoseMouthThroat: string | null;
+  rosCardiovascular: string | null;
+  rosRespiratory: string | null;
+  rosGastroenterology: string | null;
+  rosGenitourinary: string | null;
+  rosMusculoskeletal: string | null;
+  rosNeurological: string | null;
+  rosPsychiatric: string | null;
+  rosEndocrine: string | null;
+  rosHematologic: string | null;
+  rosAllergicImmunologic: string | null;
+  rosIntegumentary: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
 export interface ChronicConditionPayload {
   name: string;
   diagnosedYear?: number;

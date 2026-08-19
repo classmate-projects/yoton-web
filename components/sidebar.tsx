@@ -10,16 +10,21 @@ import pkg from "@/package.json";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "next-themes";
-import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight } from "lucide-react";
+import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight, Search } from "lucide-react";
 import { CurrentUserDetail } from "@/types/user.type";
 import { getInitials } from "@/lib/getInitials";
 import { useUnreadAppointmentRequests } from "@/hooks/useUnreadAppointmentRequests";
 import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
 import { useRolePermissionsSync } from "@/hooks/useRolePermissionsSync";
+import { useRoleSignalR } from "@/hooks/useRoleSignalR";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { logout } from "@/lib/auth";
 import { RecentModulesService } from "@/services/recentModules.service";
+import { RoleService } from "@/services/role.service";
+import { FetchedRoles } from "@/types/role.type";
+import { getRoleIcon } from "@/helpers/roleIcons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 const SIDEBAR_GROUPS: SidebarGroup[] = ["User Modules", "Configuration"];
 
@@ -75,6 +80,50 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const flyoutRef = useRef<HTMLDivElement | null>(null);
   const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null);
   const expandedItem = sidebarMenuItems.find((item) => item.id === expandedItemId) ?? null;
+
+  // Admin-only: the "User Modules" group shows one tile per staff role instead of the
+  // flat module list - each tile's flyout previews what a real user in that role actually
+  // sees (their own User Modules, minus whatever that role has hidden - see
+  // RoleService.getHiddenModules). Mirrors the module drill-down mechanism above (own
+  // state/refs, since the two flyout "content" shapes differ) rather than sharing it.
+  const [roles, setRoles] = useState<FetchedRoles[]>([]);
+  const [roleSearch, setRoleSearch] = useState("");
+  const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
+  const [roleHiddenModulesCache, setRoleHiddenModulesCache] = useState<Record<string, string[]>>({});
+  const roleTriggerRef = useRef<HTMLDivElement | null>(null);
+  const roleFlyoutRef = useRef<HTMLDivElement | null>(null);
+  const [roleFlyoutPos, setRoleFlyoutPos] = useState<{ top: number; left: number } | null>(null);
+  const expandedRole = roles.find((r) => r.roleId === expandedRoleId) ?? null;
+
+  useEffect(() => {
+    if (expandedRoleId === null) {
+      setRoleFlyoutPos(null);
+      return;
+    }
+    const rect = roleTriggerRef.current?.getBoundingClientRect();
+    if (rect) setRoleFlyoutPos({ top: rect.top, left: rect.right + 8 });
+  }, [expandedRoleId]);
+
+  useEffect(() => {
+    if (expandedRoleId === null) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (roleTriggerRef.current?.contains(target)) return;
+      if (roleFlyoutRef.current?.contains(target)) return;
+      setExpandedRoleId(null);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+
+    const navScrollEl = roleTriggerRef.current?.closest("[data-sidebar-scroll]");
+    const handleScroll = () => setExpandedRoleId(null);
+    navScrollEl?.addEventListener("scroll", handleScroll);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      navScrollEl?.removeEventListener("scroll", handleScroll);
+    };
+  }, [expandedRoleId]);
 
   const toggleSidebarExpanded = () => {
     setClickExpanded((prev) => {
@@ -187,6 +236,38 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   // other role gets a flat list of just their own modules plus Settings, no
   // grouping or hierarchy at all.
   const isAdmin = userRole === "admin";
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    RoleService.getAll()
+      .then((res) => setRoles(res.data ?? []))
+      .catch(() => {});
+  }, [isAdmin]);
+
+  // A role created/edited/deleted elsewhere (e.g. Role Management, in another tab) shows
+  // up in this admin's role tiles immediately instead of needing a refresh.
+  useRoleSignalR(setRoles);
+
+  const toggleRoleFlyout = (roleId: string) => {
+    setExpandedRoleId((prev) => (prev === roleId ? null : roleId));
+    if (!(roleId in roleHiddenModulesCache)) {
+      RoleService.getHiddenModules(roleId)
+        .then((res) => setRoleHiddenModulesCache((prev) => ({ ...prev, [roleId]: res.data ?? [] })))
+        .catch(() => setRoleHiddenModulesCache((prev) => ({ ...prev, [roleId]: [] })));
+    }
+  };
+
+  // What a real user in the expanded role would actually see in their own User Modules
+  // section - same roles[]/hidden-modules filtering the module list itself uses, just
+  // evaluated for that role instead of the signed-in admin.
+  const expandedRoleModules = expandedRole
+    ? sidebarMenuItems.filter(
+        (item) =>
+          item.group === "User Modules" &&
+          item.roles.includes(expandedRole.name) &&
+          !(roleHiddenModulesCache[expandedRole.roleId] ?? []).includes(item.navLink)
+      )
+    : [];
 
   // Admin-configured per-role restrictions on top of the baseline roles[] below
   // (see /role-management "Permissions") - Settings is exempt so no role can ever
@@ -378,8 +459,58 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                   >
                     {group}
                   </span>
+                  {group === "User Modules" && isExpanded && (
+                    <div className="relative mb-2 px-1">
+                      <Search
+                        size={13}
+                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+                      />
+                      <input
+                        type="text"
+                        value={roleSearch}
+                        onChange={(e) => setRoleSearch(e.target.value)}
+                        placeholder="Search roles..."
+                        className="w-full rounded-lg border border-border bg-muted/30 py-1.5 pl-8 pr-2 text-xs outline-none focus:border-primary"
+                      />
+                    </div>
+                  )}
                   <div className={tileContainerClass}>
-                    {items.map((item) => {
+                    {group === "User Modules"
+                      ? // Admin sees one tile per staff role instead of the flat module
+                        // list - a preview into what each role's own sidebar looks like,
+                        // not admin's own module shortcuts (admin already has every
+                        // module reachable via the roles this drills into).
+                        roles
+                          .filter((r) => r.isActive && r.name.toLowerCase() !== "admin")
+                          .filter((r) => r.name.toLowerCase().includes(roleSearch.trim().toLowerCase()))
+                          .map((role) => {
+                            const isRoleExpanded = expandedRoleId === role.roleId;
+                            return (
+                              <div
+                                key={role.roleId}
+                                ref={isRoleExpanded ? roleTriggerRef : undefined}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => toggleRoleFlyout(role.roleId)}
+                                  title={role.name}
+                                  aria-label={role.name}
+                                  aria-expanded={isRoleExpanded}
+                                  className={`${tileClass(false)} ${isRoleExpanded ? "ring-2 ring-primary/50 text-primary" : ""} capitalize`}
+                                >
+                                  <span className={tileIconClass(isRoleExpanded)}>
+                                    <FontAwesomeIcon icon={getRoleIcon(role.iconKey)} size="lg" />
+                                  </span>
+                                  <ChevronRight
+                                    size={11}
+                                    className={`absolute top-1 right-1 transition-transform duration-200 ${isRoleExpanded ? "rotate-90" : ""} ${isRoleExpanded ? "opacity-70" : "opacity-40"
+                                      }`}
+                                  />
+                                </button>
+                              </div>
+                            );
+                          })
+                      : items.map((item) => {
                       const hasSubItems = !!item.subItems?.length;
                       const isItemExpanded = expandedItemId === item.id;
                       const isActive =
@@ -503,6 +634,41 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                   </Link>
                 );
               })}
+            </div>,
+            document.body
+          )}
+
+        {/* Role flyout: same portal-out-of-the-scroll-container reasoning as the module
+            flyout above, just listing that role's own User Modules instead of one item's
+            subItems. Shown with each module's real name/icon so it reads as "here's what
+            this role's sidebar looks like," not admin's own shortcuts. */}
+        {mounted && expandedRole && roleFlyoutPos &&
+          createPortal(
+            <div
+              ref={roleFlyoutRef}
+              style={{ position: "fixed", top: roleFlyoutPos.top, left: roleFlyoutPos.left }}
+              className="z-[100] w-56 rounded-xl border border-border bg-card p-1.5 shadow-lg shadow-black/10"
+            >
+              <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 capitalize">
+                {expandedRole.name}
+              </p>
+              {expandedRoleModules.length === 0 ? (
+                <p className="px-3 py-2 text-sm text-muted-foreground">No modules visible to this role.</p>
+              ) : (
+                expandedRoleModules.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={item.navLink}
+                    onClick={() => setExpandedRoleId(null)}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <span className="shrink-0 text-lg">
+                      <item.icon />
+                    </span>
+                    <span className="truncate">{item.name}</span>
+                  </Link>
+                ))
+              )}
             </div>,
             document.body
           )}

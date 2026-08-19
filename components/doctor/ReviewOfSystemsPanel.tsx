@@ -35,11 +35,12 @@ const SYSTEMS: { key: keyof ReviewOfSystemsValue; label: string }[] = [
 interface ReviewOfSystemsPanelProps {
   value: ReviewOfSystemsValue;
   onChange: (key: keyof ReviewOfSystemsValue, value: string) => void;
+  disabled?: boolean;
 }
 
 // Each system gets its own independently-stored text area — compact by default, but a
 // plain <textarea> is user-resizable, so the doctor can drag it taller when needed.
-export default function ReviewOfSystemsPanel({ value, onChange }: ReviewOfSystemsPanelProps) {
+export default function ReviewOfSystemsPanel({ value, onChange, disabled }: ReviewOfSystemsPanelProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {SYSTEMS.map((system) => (
@@ -49,7 +50,8 @@ export default function ReviewOfSystemsPanel({ value, onChange }: ReviewOfSystem
             placeholder={`${system.label} findings...`}
             value={value[system.key]}
             onChange={(e) => onChange(system.key, e.target.value)}
-            className="w-full min-h-14 text-sm"
+            disabled={disabled}
+            className="w-full min-h-14 text-sm disabled:opacity-60"
           />
         </div>
       ))}
