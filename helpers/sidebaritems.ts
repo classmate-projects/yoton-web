@@ -114,12 +114,15 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 12,
         name: "Nurse Workbench",
         navLink: "/nursing",
-        // Doctor included: read-only view of nursing charting for their patients (see
-        // NursingController — write endpoints there stay locked to admin/nurse, and
-        // nursing/page.tsx hides every write form/button when the viewer is a doctor).
-        // "Doctor Workbench" (declared above, id 11) still wins firstAllowedRoute() for a
-        // doctor's post-login landing page since array order is unchanged.
-        roles: ["nurse", "admin", "doctor"],
+        // Doctor no longer gets this as a standalone module - their read-only view of a
+        // patient's nursing chart (vitals, nurse notes, special remarks, examination notes)
+        // now lives inline inside Doctor Workbench's own patient panel instead (see
+        // app/(pages)/doctor/page.tsx's "Nurse Entries" card), so they never need to leave
+        // the patient file they're already looking at. This also blocks direct-URL access to
+        // /nursing for doctor via (pages)/layout.tsx's route guard (matchRoute reads this
+        // same roles array) - nursing/page.tsx's isDoctor/canEdit read-only branch is now
+        // unreachable dead code, left in place rather than stripped out of an already-large file.
+        roles: ["nurse", "admin"],
         icon: HeartPulse,
         group: "User Modules"
     },

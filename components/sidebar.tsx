@@ -13,7 +13,7 @@ import { useTheme } from "next-themes";
 import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight, Search } from "lucide-react";
 import { CurrentUserDetail } from "@/types/user.type";
 import { getInitials } from "@/lib/getInitials";
-import { useUnreadAppointmentRequests } from "@/hooks/useUnreadAppointmentRequests";
+import { useAlertCenter } from "@/hooks/useAlertCenter";
 import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
 import { useRolePermissionsSync } from "@/hooks/useRolePermissionsSync";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
@@ -227,8 +227,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   ];
 
   const userRole = currentUser?.role || "";
-  const { canSeeRequests, notifications, unreadCount, isRinging, clearUnread } =
-    useUnreadAppointmentRequests(userRole);
+  const { canSeeAlerts, alerts, unreadCount, isRinging, clearUnread } =
+    useAlertCenter(userRole, currentUser?.userId);
   const { unreadCount: unreadChatCount, clearUnread: clearUnreadChat } = useUnreadChatCount(!!userRole);
   useRolePermissionsSync(userRole);
 
@@ -369,7 +369,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
               <Image src={logo} alt="logo" height={40} width={40} className="rounded-lg shadow-sm" loading="eager" />
             )}
 
-            {!isExpanded && mounted && canSeeRequests && unreadCount > 0 && (
+            {!isExpanded && mounted && canSeeAlerts && unreadCount > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-card">
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
@@ -387,10 +387,10 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
               {currentUser?.role || "Guest"} • {currentUser?.name || "User"}
             </div>
           </div>
-          {mounted && isExpanded && canSeeRequests && (
+          {mounted && isExpanded && canSeeAlerts && (
             <div className="ml-auto">
               <NotificationBell
-                notifications={notifications}
+                alerts={alerts}
                 unreadCount={unreadCount}
                 isRinging={isRinging}
                 onOpen={clearUnread}

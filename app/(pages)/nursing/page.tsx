@@ -805,6 +805,41 @@ function NurseWorkbenchInner() {
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <ClipboardList size={18} className="text-primary" /> Clinical Snapshot
                 </h2>
+
+                {/* Doctor's encounter - surfaced here instead of the nurse needing to go
+                    find it on the "Electronic Medical Record" page separately. */}
+                {(summary.latestEncounter?.chiefComplaint ||
+                  summary.diagnoses.length > 0 ||
+                  summary.latestEncounter?.examinationNotes ||
+                  summary.latestEncounter?.clinicalExamination) && (
+                  <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-3">
+                    <p className="text-sm font-semibold text-foreground/90 flex items-center gap-1.5">
+                      <Stethoscope size={14} className="text-primary" /> Doctor&apos;s Encounter
+                    </p>
+                    {summary.latestEncounter?.chiefComplaint && (
+                      <p className="text-sm text-foreground">
+                        <span className="font-semibold">Chief complaint:</span> {summary.latestEncounter.chiefComplaint}
+                      </p>
+                    )}
+                    {summary.diagnoses.length > 0 && (
+                      <p className="text-sm text-foreground">
+                        <span className="font-semibold">Diagnosis:</span>{" "}
+                        {summary.diagnoses.map((d) => d.diagnosisName).join(", ")}
+                      </p>
+                    )}
+                    {summary.latestEncounter?.clinicalExamination && (
+                      <p className="text-sm text-foreground">
+                        <span className="font-semibold">Clinical examination:</span> {summary.latestEncounter.clinicalExamination}
+                      </p>
+                    )}
+                    {summary.latestEncounter?.examinationNotes && (
+                      <p className="text-sm text-foreground">
+                        <span className="font-semibold">Examination notes:</span> {summary.latestEncounter.examinationNotes}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div>
                   <p className="text-sm font-semibold text-foreground/90 mb-2">Chronic Conditions</p>
                   {summary.chronicConditions.length > 0 ? (

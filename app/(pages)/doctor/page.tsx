@@ -18,6 +18,7 @@ import {
   FlaskConical,
   HeartPulse,
   Lock,
+  NotebookPen,
   Pill,
   Plus,
   Save,
@@ -25,6 +26,7 @@ import {
   Share2,
   Stethoscope,
   Stamp,
+  StickyNote,
   Users,
   X,
 } from "lucide-react";
@@ -52,9 +54,10 @@ import {
   PatientInsuranceCoverageType,
   PatientSummaryType,
   QuickNoteType,
+  SpecialRemarkType,
   TodayScheduleItemType,
 } from "@/types/emr.type";
-import { VitalsType } from "@/types/nursing.type";
+import { VitalsType, NurseNoteType, ExaminationNoteType } from "@/types/nursing.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { SpecializationTypes } from "@/types/specialization.type";
 import { UserType } from "@/types/user.type";
@@ -101,6 +104,11 @@ function DoctorWorkbenchInner() {
   const [quickNotes, setQuickNotes] = useState<QuickNoteType[]>([]);
   const [confidentialNotes, setConfidentialNotes] = useState<DoctorConfidentialNoteType[]>([]);
   const [latestVitals, setLatestVitals] = useState<VitalsType | null>(null);
+  // Nurse-entered data for the open patient - surfaced here instead of doctor needing a
+  // separate "Nurse Workbench" module (removed from their sidebar; see helpers/sidebaritems.ts).
+  const [nurseSpecialRemarks, setNurseSpecialRemarks] = useState<SpecialRemarkType[]>([]);
+  const [nurseNotes, setNurseNotes] = useState<NurseNoteType[]>([]);
+  const [nurseExaminationNotes, setNurseExaminationNotes] = useState<ExaminationNoteType[]>([]);
 
   const isAdmin = role === "admin";
   const doctorIdParam = isAdmin ? selectedDoctorId || undefined : undefined;
@@ -226,9 +234,11 @@ function DoctorWorkbenchInner() {
     }
   };
 
-  // Nursing already records vitals and doctors are read-authorized on the same chart
+  // Nursing already records this and doctors are read-authorized on the same chart
   // endpoint (NursingController class-level [Authorize]) — reused here rather than
-  // duplicating vitals capture on the doctor side.
+  // duplicating capture on the doctor side. Pulls the full nursing chart, not just vitals,
+  // so nurse notes/special remarks/examination notes for this patient are visible inline
+  // in the doctor's own patient panel instead of requiring a separate module.
   const fetchLatestVitals = async (patientId: string) => {
     try {
       const res = await NursingService.getPatientChart(patientId);
@@ -237,8 +247,14 @@ function DoctorWorkbenchInner() {
         (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
       )[0];
       setLatestVitals(latest || null);
+      setNurseSpecialRemarks(res.data?.specialRemarks || []);
+      setNurseNotes(res.data?.nurseNotes || []);
+      setNurseExaminationNotes(res.data?.examinationNotes || []);
     } catch {
       setLatestVitals(null);
+      setNurseSpecialRemarks([]);
+      setNurseNotes([]);
+      setNurseExaminationNotes([]);
     }
   };
 
@@ -265,6 +281,10 @@ function DoctorWorkbenchInner() {
     setSummary(null);
     setQuickNotes([]);
     setConfidentialNotes([]);
+    setLatestVitals(null);
+    setNurseSpecialRemarks([]);
+    setNurseNotes([]);
+    setNurseExaminationNotes([]);
     fetchWorkbench();
   };
 
@@ -948,6 +968,67 @@ function DoctorWorkbenchInner() {
                       {label}: <span className="font-semibold text-foreground">{value}</span>
                     </span>
                   ))}
+              </div>
+            )}
+
+            {/* Nurse Entries — this patient's nurse-recorded remarks/notes/examination,
+                surfaced here instead of a separate Nurse Workbench module (removed from the
+                doctor's sidebar - see helpers/sidebaritems.ts). Read-only, same data the
+                nurse enters via NursingController.GetPatientChart. */}
+            {(nurseSpecialRemarks.length > 0 || nurseNotes.length > 0 || nurseExaminationNotes.length > 0) && (
+              <div className="card p-5 flex flex-col gap-4">
+                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <StickyNote size={16} className="text-primary" /> Nurse Entries
+                </h2>
+
+                {nurseSpecialRemarks.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                      <AlertTriangle size={13} /> Special Remarks
+                    </p>
+                    {nurseSpecialRemarks.map((r) => (
+                      <div key={r.specialRemarkId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
+                        <p className="text-foreground">
+                          <span className="font-semibold">{r.remarkType}:</span> {r.description}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">{formatDateTime(r.createdAt)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {nurseNotes.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                      <StickyNote size={13} /> Nurse Notes
+                    </p>
+                    {nurseNotes.map((n) => (
+                      <div key={n.nurseNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                        <p className="text-foreground">{n.contentHtml}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{n.nurseName ?? "Nurse"} · {formatDateTime(n.createdAt)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {nurseExaminationNotes.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                      <NotebookPen size={13} /> Examination Notes
+                    </p>
+                    {nurseExaminationNotes.map((e) => (
+                      <div key={e.examinationNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm flex flex-col gap-1">
+                        {e.generalAppearance && (
+                          <p><span className="font-semibold">General appearance:</span> {e.generalAppearance}</p>
+                        )}
+                        <p><span className="font-semibold">Pain level:</span> {e.painLevel}/10</p>
+                        {e.mobility && <p><span className="font-semibold">Mobility:</span> {e.mobility}</p>}
+                        {e.clinicalChecks && <p><span className="font-semibold">Clinical checks:</span> {e.clinicalChecks}</p>}
+                        <p className="text-xs text-muted-foreground mt-1">{e.nurseName ?? "Nurse"} · {formatDateTime(e.createdAt)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
