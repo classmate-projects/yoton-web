@@ -21,10 +21,10 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit, isSen
                 <p className="text-sm font-semibold uppercase text-primary">
                     Password recovery
                 </p>
-                <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
+                <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground">
                     Forgot your password?
                 </h1>
-                <p className="mt-3 text-sm leading-6 text-slate-500">
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
                     Enter your email address and we&apos;ll send you a secure reset
                     link to verify your account.
                 </p>
@@ -36,12 +36,12 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit, isSen
                 <div className="space-y-2">
                     <label
                         htmlFor="email"
-                        className="text-sm font-semibold text-slate-700"
+                        className="text-sm font-semibold text-foreground/90"
                     >
                         Email Address
                     </label>
                     <div className="relative">
-                        <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                        <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                             <Mail size={18} />
                         </span>
                         <input
@@ -51,7 +51,7 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit, isSen
                             onChange={e => setEmail(e.target.value)}
                             name="email"
                             placeholder="name@company.com"
-                            className="h-12 rounded-2xl border-slate-200! bg-slate-50! pl-12! pr-4 text-base! text-slate-950! placeholder:text-slate-400! focus-visible:bg-white!  focus-visible:ring-transparent!"
+                            className="h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-4 text-base! text-foreground! placeholder:text-muted-foreground! focus-visible:bg-card!  focus-visible:ring-transparent!"
                             autoComplete="email"
                             required
                         />
@@ -61,7 +61,7 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit, isSen
                 <button
                     type="submit"
                     disabled={isSending || !email}
-                    className="group flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-semibold text-primary-foreground shadow-lg shadow-blue-500/20 transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+                    className="group flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
                 >
                     {isSending ? (
                         <>
@@ -77,7 +77,7 @@ export default function AskEmailPage({ email, setEmail, handleEmailSubmit, isSen
 
                 <Link
                     href="/login"
-                    className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-500 transition-colors hover:text-primary"
+                    className="flex items-center justify-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-primary"
                 >
                     <ArrowLeft size={16} />
                     Return to login

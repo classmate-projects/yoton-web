@@ -22,7 +22,7 @@ import logo from "@/public/yoton_logo.png";
 import { RegisterCompanyPayload } from "@/types/company.type";
 
 const inputClass =
-  "h-12 rounded-2xl border-slate-200! bg-slate-50! pl-12! pr-4 text-base! text-slate-950 placeholder:text-slate-400! focus-visible:bg-white! focus-visible:ring-transparent!";
+  "h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-4 text-base! text-foreground placeholder:text-muted-foreground! focus-visible:bg-card! focus-visible:ring-transparent!";
 
 export default function RegisterCompanyPage() {
   const router = useRouter();
@@ -87,10 +87,10 @@ export default function RegisterCompanyPage() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#f6f9fc] px-5 py-10 text-foreground">
+    <main className="min-h-screen w-full bg-background px-5 py-10 text-foreground">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-6xl items-center justify-center">
-        <div className="grid w-full overflow-hidden rounded-4xl border border-white bg-white shadow-[0_24px_80px_rgba(15,23,42,0.12)] lg:grid-cols-[0.8fr_1.2fr]">
-          <section className="hidden bg-[#0b5968] p-10 text-white lg:flex lg:flex-col lg:justify-between">
+        <div className="card grid w-full overflow-hidden rounded-4xl shadow-[0_24px_80px_rgba(15,23,42,0.12)] lg:grid-cols-[0.8fr_1.2fr]">
+          <section className="hidden bg-[color-mix(in_srgb,var(--primary)_85%,black)] p-10 text-white lg:flex lg:flex-col lg:justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-xl">
                 <Image
@@ -129,7 +129,7 @@ export default function RegisterCompanyPage() {
           <section className="flex items-center justify-center p-6 sm:p-10">
             <div className="w-full max-w-xl">
               <div className="mb-8 flex items-center justify-center gap-3 lg:hidden">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-md">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card shadow-md">
                   <Image
                     src={logo}
                     alt="Yoton Health"
@@ -147,10 +147,10 @@ export default function RegisterCompanyPage() {
                 <p className="text-sm font-semibold uppercase text-primary">
                   Get started
                 </p>
-                <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
+                <h2 className="mt-2 text-3xl font-bold tracking-tight text-foreground">
                   Register your organization
                 </h2>
-                <p className="mt-3 text-sm leading-6 text-slate-500">
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
                   This creates your organization and an admin account for you
                   to sign in with right away.
                 </p>
@@ -158,12 +158,12 @@ export default function RegisterCompanyPage() {
 
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-4">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     Organization details
                   </p>
 
                   <div className="relative">
-                    <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                       <Building2 size={18} />
                     </span>
                     <input
@@ -178,7 +178,7 @@ export default function RegisterCompanyPage() {
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                         <Mail size={18} />
                       </span>
                       <input
@@ -191,7 +191,7 @@ export default function RegisterCompanyPage() {
                       />
                     </div>
                     <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                         <Phone size={18} />
                       </span>
                       <input
@@ -205,7 +205,7 @@ export default function RegisterCompanyPage() {
                   </div>
 
                   <div className="relative">
-                    <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                       <MapPin size={18} />
                     </span>
                     <input
@@ -218,14 +218,14 @@ export default function RegisterCompanyPage() {
                   </div>
                 </div>
 
-                <div className="space-y-4 border-t border-slate-100 pt-5">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                <div className="space-y-4 border-t border-border pt-5">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     Your admin account
                   </p>
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                         <UserRound size={18} />
                       </span>
                       <input
@@ -238,7 +238,7 @@ export default function RegisterCompanyPage() {
                       />
                     </div>
                     <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                         <UserRound size={18} />
                       </span>
                       <input
@@ -254,7 +254,7 @@ export default function RegisterCompanyPage() {
                   </div>
 
                   <div className="relative">
-                    <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                       <Mail size={18} />
                     </span>
                     <input
@@ -269,7 +269,7 @@ export default function RegisterCompanyPage() {
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                         <LockKeyhole size={18} />
                       </span>
                       <input
@@ -285,13 +285,13 @@ export default function RegisterCompanyPage() {
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         aria-label={showPassword ? "Hide password" : "Show password"}
-                        className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                        className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       >
                         {showPassword ? <Eye size={17} /> : <EyeOff size={17} />}
                       </button>
                     </div>
                     <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                         <Phone size={18} />
                       </span>
                       <input
@@ -307,7 +307,7 @@ export default function RegisterCompanyPage() {
 
                 <button
                   disabled={loading}
-                  className="group flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-semibold text-primary-foreground shadow-lg shadow-blue-500/20 transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+                  className="group flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
                   type="submit"
                 >
                   {loading ? (
@@ -327,7 +327,7 @@ export default function RegisterCompanyPage() {
                 </button>
               </form>
 
-              <p className="mt-7 text-center text-sm text-slate-500">
+              <p className="mt-7 text-center text-sm text-muted-foreground">
                 Already have a workspace?{" "}
                 <Link
                   href="/login"
