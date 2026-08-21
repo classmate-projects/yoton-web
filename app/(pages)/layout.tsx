@@ -39,7 +39,8 @@ const extraProtectedRoutes: ProtectedRoute[] = [
 
 // Settings and Confidential Notes are never part of the allow-list (see
 // helpers/sidebaritems.ts's comments on each) - Settings is always reachable, and
-// Confidential Notes has its own hardcoded nurse-only rule instead.
+// Confidential Notes has its own hardcoded nurse-only rule instead. Check-in is a normal
+// admin-grantable module like any other (see Role Management).
 const protectedRoutes: ProtectedRoute[] = [
   ...sidebarMenuItems
     .filter((item) => item.navLink !== "/settings")

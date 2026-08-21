@@ -214,5 +214,11 @@ export const ENDPOINTS = {
     RECENT_MODULES: {
         GET: `/api/recent-modules`,
         RECORD: `/api/recent-modules`,
-    }
+    },
+    ATTENDANCE: {
+        GET_TODAY: `/api/attendance/today`,
+        CHECK_IN: `/api/attendance/check-in`,
+        CHECK_OUT: `/api/attendance/check-out`,
+        GET_HISTORY: (days?: number) => `/api/attendance/history${days ? `?days=${days}` : ""}`,
+    },
 }
