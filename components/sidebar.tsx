@@ -19,6 +19,7 @@ import { useRolePermissionsSync } from "@/hooks/useRolePermissionsSync";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import { getAvatarColor } from "@/lib/avatarColor";
 import { logout } from "@/lib/auth";
 import { RecentModulesService } from "@/services/recentModules.service";
 import { RoleService } from "@/services/role.service";
@@ -354,7 +355,10 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                   className="h-10 w-10 rounded-lg object-cover shadow-sm"
                 />
               ) : (
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-sm">
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold text-white shadow-sm"
+                  style={{ backgroundColor: getAvatarColor(currentUser?.userId || currentUser?.name) }}
+                >
                   {currentUser?.name ? getInitials(currentUser.name) : <UserRound size={18} />}
                 </div>
               )

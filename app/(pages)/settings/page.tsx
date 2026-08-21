@@ -17,6 +17,7 @@ import { CompanyService } from "@/services/company.service";
 import { getInitials } from "@/lib/getInitials";
 import { patchUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import { getAvatarColor } from "@/lib/avatarColor";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { countryDetails } from "@/helpers/countyDetails";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -347,7 +348,10 @@ export default function SettingsPage() {
                   className="h-16 w-16 rounded-xl object-cover shadow-sm shrink-0"
                 />
               ) : (
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground shadow-sm">
+                <div
+                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl text-lg font-bold text-white shadow-sm"
+                  style={{ backgroundColor: getAvatarColor(me.userId || me.name) }}
+                >
                   {me.name ? getInitials(me.name) : <UserRound size={24} />}
                 </div>
               )}
