@@ -15,7 +15,6 @@ export interface SidebarMenuItem {
     id: number;
     name: string;
     navLink: string; // default/direct page - used when collapsed, and when the item has no subItems
-    roles: string[];
     icon: React.ComponentType; // Assuming icons are React components
     group: SidebarGroup;
     // Admin-only: when present, clicking this tile (while expanded) drills into these
@@ -23,7 +22,13 @@ export interface SidebarMenuItem {
     subItems?: SidebarSubItem[];
 }
 
-const allRoles = ["admin", "doctor", "nurse", "lab technician", "radiology technician", "pharmacist", "billing team", "reception"];
+// Which modules a role can reach is entirely dynamic now - a per-role allow-list managed in
+// Role Management and stored server-side (Cli_RoleModulePermissions), synced into
+// yoton_user_detail.allowedModules on login and kept live via useRolePermissionsSync. Every
+// item below is a candidate module any role (built-in or custom) can be granted, admin always
+// implicitly has all of them (see app/(pages)/layout.tsx and components/sidebar.tsx's isAdmin
+// checks), and "/settings" plus "/nursing/confidential-notes" are the two permanent exceptions
+// that never go through the allow-list at all - see their own entries below.
 
 // Rendered as two labeled sections in the sidebar (see components/sidebar.tsx) —
 // item order within each group is display order, so keep related items together.
@@ -33,7 +38,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 1,
         name: "Dashboard",
         navLink: "/",
-        roles: allRoles.filter((role) => !["reception", "nurse", "doctor"].includes(role)),
         icon: dashboardIcon,
         group: "Configuration"
     },
@@ -41,7 +45,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 5,
         name: "User Management",
         navLink: "/user-management",
-        roles: ["admin"],
         icon: multipleUsers,
         group: "Configuration"
     },
@@ -49,7 +52,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 6,
         name: "Departments & Staff",
         navLink: "/departments",
-        roles: ["admin"],
         icon: buildingIcon,
         group: "Configuration",
         subItems: [
@@ -65,7 +67,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 20,
         name: "Configurable Lists",
         navLink: "/config-lists",
-        roles: ["admin"],
         icon: ListPlus,
         group: "Configuration"
     },
@@ -73,7 +74,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 21,
         name: "ICD Codes",
         navLink: "/icd-codes",
-        roles: ["admin"],
         icon: Hash,
         group: "Configuration"
     },
@@ -82,7 +82,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 2,
         name: "Appointments",
         navLink: "/appointments",
-        roles: ["reception", "admin"],
         icon: calendarIcon,
         group: "User Modules"
     },
@@ -90,7 +89,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 3,
         name: "Patient Entry",
         navLink: "/patient-entry",
-        roles: ["reception"],
         icon: registrationIcon,
         group: "User Modules"
     },
@@ -98,7 +96,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 4,
         name: "Patient Records",
         navLink: "/patient-records",
-        roles: ["reception"],
         icon: RecordsIcon,
         group: "User Modules"
     },
@@ -106,7 +103,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 11,
         name: "Doctor Workbench",
         navLink: "/doctor",
-        roles: ["doctor", "admin"],
         icon: doctorIcon,
         group: "User Modules"
     },
@@ -114,28 +110,17 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 12,
         name: "Nurse Workbench",
         navLink: "/nursing",
-        // Doctor no longer gets this as a standalone module - their read-only view of a
-        // patient's nursing chart (vitals, nurse notes, special remarks, examination notes)
-        // now lives inline inside Doctor Workbench's own patient panel instead (see
-        // app/(pages)/doctor/page.tsx's "Nurse Entries" card), so they never need to leave
-        // the patient file they're already looking at. This also blocks direct-URL access to
-        // /nursing for doctor via (pages)/layout.tsx's route guard (matchRoute reads this
-        // same roles array) - nursing/page.tsx's isDoctor/canEdit read-only branch is now
-        // unreachable dead code, left in place rather than stripped out of an already-large file.
-        roles: ["nurse", "admin"],
         icon: HeartPulse,
         group: "User Modules"
     },
-    // Order here no longer matters for access control — matchRoute() in
-    // app/(pages)/layout.tsx picks the most specific (longest navLink) match, not the
-    // first array match — but firstAllowedRoute() DOES still use array order to pick a
-    // nurse's post-login landing page, so Nurse Workbench (above) must stay first among
-    // nurse-accessible entries.
+    // Nurse-only and excluded from the allow-list system entirely (see the two hardcoded
+    // exemptions in app/(pages)/layout.tsx and components/sidebar.tsx) - NursingController's
+    // confidential-note endpoints hard-filter to the creating nurse and refuse even admin, so
+    // this can never be a module an admin grants to another role.
     {
         id: 19,
         name: "Confidential Notes",
         navLink: "/nursing/confidential-notes",
-        roles: ["nurse"],
         icon: Lock,
         group: "User Modules"
     },
@@ -143,12 +128,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 13,
         name: "Laboratory",
         navLink: "/lab",
-        // Doctor included: LabController's class-level [Authorize] already permits
-        // "doctor" (read + order placement) — this just surfaces the existing access.
-        // Nurse included: doctor orders it here, nurse collects the sample and prints its
-        // barcode label here too (formerly the standalone "Doctor Investigations" page,
-        // now folded into this module's own table - see lab/page.tsx's isNurse gating).
-        roles: ["admin", "lab technician", "doctor", "nurse"],
         icon: FlaskConical,
         group: "User Modules"
     },
@@ -156,11 +135,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 14,
         name: "Radiology",
         navLink: "/radiology",
-        // Doctor included: RadiologyController's class-level [Authorize] already
-        // permits "doctor" (read + order placement) — this just surfaces the existing access.
-        // Nurse included: same reasoning as Laboratory above - a nurse can check on a scan
-        // a doctor ordered and view its report/images, but not create or process requests.
-        roles: ["admin", "radiology technician", "doctor", "nurse"],
         icon: ScanLine,
         group: "User Modules"
     },
@@ -168,7 +142,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 15,
         name: "Pharmacy",
         navLink: "/pharmacy",
-        roles: ["admin", "pharmacist"],
         icon: Pill,
         group: "User Modules"
     },
@@ -176,36 +149,22 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 10,
         name: "Billing",
         navLink: "/billing",
-        roles: ["admin", "billing team"],
         icon: MdPayment,
         group: "User Modules"
     },
-    // Declared after every role-specific primary workbench above (same reasoning as
-    // Messages/Settings below): everyone can see this, including roles whose actual home
-    // module is Doctor Workbench, Nurse Workbench, Laboratory, Radiology, Pharmacy, or
-    // Billing - placing it earlier would win firstAllowedRoute() for those roles and land
-    // them here after login instead of their real work module.
     {
         id: 9,
         name: "Doctors Availability",
         navLink: "/doctor-availability",
-        // Everyone gets a read-only view here, including admin - admin's own editable
-        // entry point lives under Configuration > Departments & Staff instead (see its
-        // "?mode=edit" subItem above). Reception is the one role that can still edit
-        // straight from this plain link (see the page's own canEdit check).
-        roles: allRoles,
         icon: availableDoctor,
         group: "User Modules"
     },
-    // Same "declared after every role-specific workbench" reasoning as Doctors
-    // Availability just above - a read-only view every role can see (formerly "Doctor
-    // Case Sheet"; renamed since it's really a patient's full record, not one doctor's
-    // private notes), not any one role's actual home module.
+    // Formerly "Doctor Case Sheet"; renamed since it's really a patient's full record, not
+    // one doctor's private notes.
     {
         id: 17,
         name: "Electronic Medical Record",
         navLink: "/nursing/case-sheet",
-        roles: allRoles,
         icon: FileText,
         group: "User Modules"
     },
@@ -213,21 +172,17 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 22,
         name: "Messages",
         navLink: "/messages",
-        // Every staff role - "web users chat with each other" has no role restriction.
-        roles: allRoles,
         icon: MessageCircle,
         group: "User Modules"
     },
 
-    // Deliberately declared last: firstAllowedRoute() (app/(pages)/layout.tsx)
-    // picks the first array match for the user's role, and every role can see
-    // Settings — placing it early would win that race and land every non-admin
-    // role on Settings after login instead of their actual work module.
+    // Always reachable regardless of role or allow-list - see app/(pages)/layout.tsx and
+    // components/sidebar.tsx's matching hardcoded "/settings" exemptions, so no role can ever
+    // be left with zero reachable pages.
     {
         id: 16,
         name: "Settings",
         navLink: "/settings",
-        roles: allRoles,
         icon: Settings,
         group: "Configuration"
     },

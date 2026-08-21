@@ -113,7 +113,8 @@ export default function PharmacyPage() {
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
     const currentRole = (detail.role || "").toLowerCase();
-    if (currentRole !== "pharmacist" && currentRole !== "admin") {
+    const allowedModules: string[] = detail.allowedModules || [];
+    if (currentRole !== "admin" && !allowedModules.includes("/pharmacy")) {
       router.replace("/");
       return;
     }

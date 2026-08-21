@@ -17,10 +17,10 @@ const formatDateTime = (value: string | null | undefined) =>
 // Fully read-only render of a patient's record — reuses the same EMR summary endpoint
 // the Doctor Workbench and Nurse Workbench's "Clinical Snapshot" already call. No inputs,
 // no save actions: nobody can modify doctor notes, diagnosis, or treatment plans from
-// here, so it's safe for every staff role to see, not just nurse/admin (see
+// here, so it's safe for every role granted this module to see (see
 // EmrController.GetPatients/GetPatientSummary for the matching backend access). No
 // client-side role check either - the (pages)/layout.tsx route guard already gates access
-// centrally off sidebaritems.ts's "Electronic Medical Record" entry (roles: allRoles).
+// centrally off this page's own allowedModules entry ("/nursing/case-sheet").
 export default function ElectronicMedicalRecordPage() {
   const [patients, setPatients] = useState<EmrPatientListItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");

@@ -98,7 +98,8 @@ export default function LaboratoryPage() {
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
     const currentRole = (detail.role || "").toLowerCase();
-    if (currentRole !== "lab technician" && currentRole !== "admin" && currentRole !== "nurse") {
+    const allowedModules: string[] = detail.allowedModules || [];
+    if (currentRole !== "admin" && !allowedModules.includes("/lab")) {
       router.replace("/");
       return;
     }

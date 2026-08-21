@@ -52,7 +52,7 @@ export default function LoginPage() {
           companyName: data.body.companyName,
           companyLogoUrl: data.body.companyLogoUrl,
           userImage: data.body.userImage,
-          hiddenModules: data.body.hiddenModules ?? [],
+          allowedModules: data.body.allowedModules ?? [],
           currencyCode: data.body.currencyCode,
           currencySymbol: data.body.currencySymbol,
           idleTimeoutMinutes: data.body.idleTimeoutMinutes,

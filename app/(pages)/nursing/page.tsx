@@ -107,7 +107,8 @@ function NurseWorkbenchInner() {
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
     const currentRole = (detail.role || "").toLowerCase();
-    if (currentRole !== "nurse" && currentRole !== "admin" && currentRole !== "doctor") {
+    const allowedModules: string[] = detail.allowedModules || [];
+    if (currentRole !== "admin" && !allowedModules.includes("/nursing")) {
       router.replace("/");
       return;
     }

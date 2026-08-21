@@ -10,9 +10,10 @@ export interface CurrentUserDetail {
     companyName?: string;
     companyLogoUrl?: string | null;
     userImage?: string | null;
-    // navLinks the admin has hidden from this user's role (see RoleService.setHiddenModules) -
-    // absent/empty means nothing is restricted beyond the baseline roles[] on each sidebar item.
-    hiddenModules?: string[];
+    // navLinks the admin has granted this user's role (see RoleService.setAllowedModules) -
+    // absent/empty means this role can reach nothing beyond the permanent "/settings"
+    // exemption. Ignored entirely for role === "admin", who always has every module.
+    allowedModules?: string[];
     // Admin-configurable in Settings (CompanyController.UpdateSettings) - see lib/currency.ts
     // for the single place every page should read this from rather than hardcoding a symbol.
     currencyCode?: string;

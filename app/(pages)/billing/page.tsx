@@ -69,7 +69,8 @@ function BillingPageInner() {
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
     const currentRole = (detail.role || "").toLowerCase();
-    if (currentRole !== "billing team" && currentRole !== "admin") {
+    const allowedModules: string[] = detail.allowedModules || [];
+    if (currentRole !== "admin" && !allowedModules.includes("/billing")) {
       router.replace("/");
       return;
     }

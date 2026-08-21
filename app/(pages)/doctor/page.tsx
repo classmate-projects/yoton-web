@@ -129,7 +129,8 @@ function DoctorWorkbenchInner() {
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
     const currentRole = (detail.role || "").toLowerCase();
-    if (currentRole !== "doctor" && currentRole !== "admin") {
+    const allowedModules: string[] = detail.allowedModules || [];
+    if (currentRole !== "admin" && !allowedModules.includes("/doctor")) {
       router.replace("/");
       return;
     }

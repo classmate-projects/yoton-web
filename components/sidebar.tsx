@@ -41,16 +41,18 @@ interface NavigableEntry {
   navLink: string;
   name: string;
   icon: React.ComponentType;
-  roles: string[];
+  // Which allowedModules entry governs this entry - undefined means "use navLink itself".
+  // Sub-items share their parent's module key since SidebarSubItem doesn't carry its own
+  // (matches app/(pages)/layout.tsx's extraProtectedRoutes.moduleKey for /assign-doctor).
+  moduleKey?: string;
 }
 
 // Every directly-visitable route the sidebar knows about, top-level items and
 // their sub-items alike — used to resolve "recently visited" entries back to
-// an icon/name/link regardless of which level they live at. Sub-items inherit
-// their parent's roles since SidebarSubItem doesn't carry its own.
+// an icon/name/link regardless of which level they live at.
 const NAVIGABLE_ENTRIES: NavigableEntry[] = sidebarMenuItems.flatMap((item) => [
-  { navLink: item.navLink, name: item.name, icon: item.icon, roles: item.roles },
-  ...(item.subItems?.map((sub) => ({ navLink: sub.navLink, name: sub.name, icon: sub.icon, roles: item.roles })) ?? []),
+  { navLink: item.navLink, name: item.name, icon: item.icon },
+  ...(item.subItems?.map((sub) => ({ navLink: sub.navLink, name: sub.name, icon: sub.icon, moduleKey: item.navLink })) ?? []),
 ]);
 
 const MAX_RECENTS = 6;
@@ -84,13 +86,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
 
   // Admin-only: the "User Modules" group shows one tile per staff role instead of the
   // flat module list - each tile's flyout previews what a real user in that role actually
-  // sees (their own User Modules, minus whatever that role has hidden - see
-  // RoleService.getHiddenModules). Mirrors the module drill-down mechanism above (own
-  // state/refs, since the two flyout "content" shapes differ) rather than sharing it.
+  // sees (their own granted modules - see RoleService.getAllowedModules). Mirrors the
+  // module drill-down mechanism above (own state/refs, since the two flyout "content"
+  // shapes differ) rather than sharing it.
   const [roles, setRoles] = useState<FetchedRoles[]>([]);
   const [roleSearch, setRoleSearch] = useState("");
   const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
-  const [roleHiddenModulesCache, setRoleHiddenModulesCache] = useState<Record<string, string[]>>({});
+  const [roleAllowedModulesCache, setRoleAllowedModulesCache] = useState<Record<string, string[]>>({});
   const roleTriggerRef = useRef<HTMLDivElement | null>(null);
   const roleFlyoutRef = useRef<HTMLDivElement | null>(null);
   const [roleFlyoutPos, setRoleFlyoutPos] = useState<{ top: number; left: number } | null>(null);
@@ -251,33 +253,37 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
 
   const toggleRoleFlyout = (roleId: string) => {
     setExpandedRoleId((prev) => (prev === roleId ? null : roleId));
-    if (!(roleId in roleHiddenModulesCache)) {
-      RoleService.getHiddenModules(roleId)
-        .then((res) => setRoleHiddenModulesCache((prev) => ({ ...prev, [roleId]: res.data ?? [] })))
-        .catch(() => setRoleHiddenModulesCache((prev) => ({ ...prev, [roleId]: [] })));
+    if (!(roleId in roleAllowedModulesCache)) {
+      RoleService.getAllowedModules(roleId)
+        .then((res) => setRoleAllowedModulesCache((prev) => ({ ...prev, [roleId]: res.data ?? [] })))
+        .catch(() => setRoleAllowedModulesCache((prev) => ({ ...prev, [roleId]: [] })));
     }
   };
 
   // What a real user in the expanded role would actually see in their own User Modules
-  // section - same roles[]/hidden-modules filtering the module list itself uses, just
-  // evaluated for that role instead of the signed-in admin.
+  // section - same allow-list the module list itself uses, just evaluated for that role
+  // instead of the signed-in admin. Confidential Notes is excluded even for a "nurse"
+  // preview since it isn't part of the allow-list at all (see its own hardcoded rule).
   const expandedRoleModules = expandedRole
     ? sidebarMenuItems.filter(
         (item) =>
           item.group === "User Modules" &&
-          item.roles.includes(expandedRole.name) &&
-          !(roleHiddenModulesCache[expandedRole.roleId] ?? []).includes(item.navLink)
+          item.navLink !== "/nursing/confidential-notes" &&
+          (roleAllowedModulesCache[expandedRole.roleId] ?? []).includes(item.navLink)
       )
     : [];
 
-  // Admin-configured per-role restrictions on top of the baseline roles[] below
-  // (see /role-management "Permissions") - Settings is exempt so no role can ever
-  // be left with nothing reachable.
-  const hiddenModules = currentUser?.hiddenModules ?? [];
-  const isVisible = (item: SidebarMenuItem) =>
-    item.roles.includes(userRole) && (item.navLink === "/settings" || !hiddenModules.includes(item.navLink));
-  const isEntryVisible = (entry: NavigableEntry) =>
-    entry.roles.includes(userRole) && (entry.navLink === "/settings" || !hiddenModules.includes(entry.navLink));
+  // Admin-granted per-role module access (see /role-management "Permissions") - Settings
+  // is exempt so no role can ever be left with nothing reachable, and Confidential Notes
+  // stays nurse-only regardless of any role's allow-list (see its own hardcoded rule).
+  const allowedModules = currentUser?.allowedModules ?? [];
+  const isModuleAllowed = (navLink: string) => {
+    if (navLink === "/settings") return true;
+    if (navLink === "/nursing/confidential-notes") return userRole === "nurse";
+    return isAdmin || allowedModules.includes(navLink);
+  };
+  const isVisible = (item: SidebarMenuItem) => isModuleAllowed(item.navLink);
+  const isEntryVisible = (entry: NavigableEntry) => isModuleAllowed(entry.moduleKey ?? entry.navLink);
 
   const visibleGroups = SIDEBAR_GROUPS.map((group) => ({
     group,

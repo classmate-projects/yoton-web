@@ -4,11 +4,11 @@ import { patchUserDetail } from "@/lib/userDetail";
 
 interface RolePermissionsUpdatedPayload {
   roleName: string;
-  hiddenModules: string[];
+  allowedModules: string[];
 }
 
 // Keeps an already-open session's sidebar in sync when an admin changes what that
-// session's role can see (RoleController.SetHiddenModules) - without this, the change
+// session's role can see (RoleController.SetAllowedModules) - without this, the change
 // would only take effect the next time the affected user logs in. patchUserDetail's own
 // onUserDetailChange event is what the sidebar already listens to for re-rendering (same
 // mechanism used for live avatar/logo updates), so this hook only needs to update storage.
@@ -19,7 +19,7 @@ export function useRolePermissionsSync(userRole: string) {
 
     const handleUpdated = (payload: RolePermissionsUpdatedPayload) => {
       if (payload.roleName !== userRole) return;
-      patchUserDetail({ hiddenModules: payload.hiddenModules });
+      patchUserDetail({ allowedModules: payload.allowedModules });
     };
 
     const connect = async () => {

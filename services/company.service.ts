@@ -12,6 +12,7 @@ export const CompanyService = {
     },
 
     updateSettings: async (payload: {
+        name?: string;
         maxDiscountPercent?: number | null;
         country?: string;
         currencyCode?: string;

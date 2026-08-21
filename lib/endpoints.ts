@@ -56,8 +56,8 @@ export const ENDPOINTS = {
         CREATE: `/api/role/create-role`,
         UPDATE: (id: string) => `/api/role/update/${id}`,
         DELETE: (id: string) => `/api/role/delete/${id}`,
-        GET_HIDDEN_MODULES: (id: string) => `/api/role/${id}/hidden-modules`,
-        SET_HIDDEN_MODULES: (id: string) => `/api/role/${id}/hidden-modules`,
+        GET_ALLOWED_MODULES: (id: string) => `/api/role/${id}/allowed-modules`,
+        SET_ALLOWED_MODULES: (id: string) => `/api/role/${id}/allowed-modules`,
     },
     SPECIALIZATION: {
         GET: `/api/specialization/get-all`,

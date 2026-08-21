@@ -58,6 +58,9 @@ export default function SettingsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  const [companyNameInput, setCompanyNameInput] = useState("");
+  const [savingCompanyName, setSavingCompanyName] = useState(false);
+
   const [maxDiscountInput, setMaxDiscountInput] = useState("");
   const [savingDiscountCap, setSavingDiscountCap] = useState(false);
 
@@ -79,6 +82,7 @@ export default function SettingsPage() {
     AuthService.getMe()
       .then((data) => {
         setMe(data);
+        setCompanyNameInput(data.companyName || "");
         setMaxDiscountInput(data.maxDiscountPercent != null ? String(data.maxDiscountPercent) : "");
         setCountry(data.country || "");
         setCurrencyCode(data.currencyCode || "INR");
@@ -138,6 +142,30 @@ export default function SettingsPage() {
       toast.error("Failed to upload logo");
     } finally {
       setUploadingLogo(false);
+    }
+  };
+
+  const handleSaveCompanyName = async () => {
+    if (!me) return;
+    const trimmed = companyNameInput.trim();
+    if (!trimmed) {
+      toast.error("Company name cannot be empty");
+      return;
+    }
+
+    setSavingCompanyName(true);
+    try {
+      const data = await CompanyService.updateSettings({ name: trimmed });
+      setMe({ ...me, companyName: data.name });
+      setCompanyNameInput(data.name);
+      // Sidebar and header both read the company name from here - patch it so it
+      // updates immediately instead of waiting for a re-login.
+      patchUserDetail({ companyName: data.name });
+      toast.success("Company name updated");
+    } catch {
+      toast.error("Failed to update company name");
+    } finally {
+      setSavingCompanyName(false);
     }
   };
 
@@ -429,7 +457,27 @@ export default function SettingsPage() {
               )}
 
               <div className="flex-1">
-                <p className="font-semibold text-foreground">{me.companyName ?? "Your organization"}</p>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Company name
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="text"
+                    value={companyNameInput}
+                    onChange={(e) => setCompanyNameInput(e.target.value)}
+                    placeholder="Your organization"
+                    className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveCompanyName}
+                    disabled={savingCompanyName || !companyNameInput.trim() || companyNameInput.trim() === (me.companyName ?? "")}
+                    className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingCompanyName && <Loader2 size={15} className="animate-spin" />}
+                    Save
+                  </button>
+                </div>
 
                 <div className="mt-3 flex items-center gap-3">
                   <input
