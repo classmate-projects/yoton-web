@@ -24,13 +24,13 @@ export const RoleService = {
         return data;
     },
 
-    getHiddenModules: async (id: string) => {
-        const { data } = await api.get(ENDPOINTS.ROLE.GET_HIDDEN_MODULES(id));
+    getAllowedModules: async (id: string) => {
+        const { data } = await api.get(ENDPOINTS.ROLE.GET_ALLOWED_MODULES(id));
         return data;
     },
 
-    setHiddenModules: async (id: string, hiddenModules: string[]) => {
-        const { data } = await api.put(ENDPOINTS.ROLE.SET_HIDDEN_MODULES(id), { hiddenModules });
+    setAllowedModules: async (id: string, allowedModules: string[]) => {
+        const { data } = await api.put(ENDPOINTS.ROLE.SET_ALLOWED_MODULES(id), { allowedModules });
         return data;
     }
 }

@@ -3,6 +3,7 @@
 import { Printer, X } from "lucide-react";
 import { getUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import { formatCurrency } from "@/lib/currency";
 
 export interface PrescriptionMedicineLine {
   drugName: string;
@@ -237,7 +238,7 @@ function PrintablePrescriptionBody({
               <td className="py-1.5 pr-2">{m.instructions || "—"}</td>
               {showPricing && (
                 <td className="py-1.5 text-right">
-                  {m.unitPrice != null ? `$${((m.unitPrice ?? 0) * (m.totalQuantity ?? 1)).toFixed(2)}` : "—"}
+                  {m.unitPrice != null ? formatCurrency((m.unitPrice ?? 0) * (m.totalQuantity ?? 1)) : "—"}
                 </td>
               )}
             </tr>
@@ -249,7 +250,7 @@ function PrintablePrescriptionBody({
               <td colSpan={4} className="pt-2 text-right font-semibold">
                 Total
               </td>
-              <td className="pt-2 text-right font-semibold">${total.toFixed(2)}</td>
+              <td className="pt-2 text-right font-semibold">{formatCurrency(total)}</td>
             </tr>
           </tfoot>
         )}

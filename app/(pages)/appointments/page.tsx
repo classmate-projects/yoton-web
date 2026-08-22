@@ -19,6 +19,7 @@ import {
   GraduationCap,
   ListChecks,
   LogIn,
+  RefreshCw,
   Search,
   Stethoscope,
   UserRoundCheck,
@@ -40,6 +41,7 @@ import { VisitType } from "@/types/visit.type";
 import { useAppointmentRequestSignalR } from "@/hooks/useAppointmentRequestSignalR";
 import { getInitials } from "@/lib/getInitials";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { getCurrencySymbol } from "@/lib/currency";
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -142,12 +144,16 @@ export default function Appointments() {
 
   useEffect(() => {
     fetchVisitQueue();
-    // Poll as a fallback in case the SignalR connection below ever drops, so
-    // the queue reflects status changes made elsewhere (nursing, billing,
-    // etc.) even without a live push.
-    const interval = setInterval(fetchVisitQueue, 20000);
+    // Long-interval safety net only, not the primary refresh mechanism - every stage
+    // transition (check-in, nursing, doctor, investigations, pharmacy, billing) now
+    // broadcasts visitCheckedIn/visitStatusUpdated (see useSignalRRefetch below), so this
+    // is just insurance against a dropped connection instead of the 20s poll this used to
+    // be running unconditionally for every open tab.
+    const interval = setInterval(fetchVisitQueue, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], fetchVisitQueue);
 
   // ---------------- Fetch pending appointment requests (from mobile self-booking) ----------------
   const fetchAppointmentRequests = async () => {
@@ -528,7 +534,7 @@ export default function Appointments() {
               <div>
                 <p className="text-sm text-muted-foreground">Average fee</p>
                 <p className="mt-1 text-3xl font-semibold">
-                  INR {averageFee}
+                  {getCurrencySymbol()} {averageFee}
                 </p>
               </div>
               <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -550,9 +556,11 @@ export default function Appointments() {
             </h2>
             <button
               onClick={fetchAppointmentRequests}
-              className="text-sm font-semibold text-primary hover:opacity-80 cursor-pointer"
+              title="Refresh"
+              aria-label="Refresh"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 cursor-pointer"
             >
-              Refresh
+              <RefreshCw size={16} />
             </button>
           </div>
           {isLoadingRequests ? (
@@ -621,9 +629,11 @@ export default function Appointments() {
             </h2>
             <button
               onClick={fetchVisitQueue}
-              className="text-sm font-semibold text-primary hover:opacity-80 cursor-pointer"
+              title="Refresh"
+              aria-label="Refresh"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 cursor-pointer"
             >
-              Refresh
+              <RefreshCw size={16} />
             </button>
           </div>
           {isLoadingQueue ? (
@@ -744,7 +754,7 @@ export default function Appointments() {
                       {selectedDoctor.name}
                     </h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {selectedDoctor.specializationName} • INR{" "}
+                      {selectedDoctor.specializationName} • {getCurrencySymbol()}{" "}
                       {selectedDoctor.consultationFee} • {selectedDoctor.experienceYears}{" "}
                       years experience
                     </p>
@@ -928,7 +938,7 @@ export default function Appointments() {
                                   </p>
                                 </div>
                                 <span className="w-fit rounded-lg border border-primary/20 bg-primary/10 px-3 py-1 text-sm font-semibold text-primary">
-                                  INR {doctor.consultationFee}
+                                  {getCurrencySymbol()} {doctor.consultationFee}
                                 </span>
                               </div>
 

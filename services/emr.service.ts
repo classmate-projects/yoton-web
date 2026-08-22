@@ -10,6 +10,7 @@ import {
   DoctorConfidentialNotePayload,
   AddDiagnosisPayload,
   FollowUpPayload,
+  ProposeEncounterCorrectionPayload,
 } from "@/types/emr.type";
 
 export const EmrService = {
@@ -43,6 +44,26 @@ export const EmrService = {
   },
   finishEncounter: async (encounterId: string, doctorId?: string) => {
     const { data } = await api.put(ENDPOINTS.EMR.FINISH_ENCOUNTER(encounterId, doctorId));
+    return data;
+  },
+  proposeEncounterCorrection: async (patientId: string, encounterId: string, payload: ProposeEncounterCorrectionPayload) => {
+    const { data } = await api.post(ENDPOINTS.EMR.PROPOSE_ENCOUNTER_CORRECTION(patientId, encounterId), payload);
+    return data;
+  },
+  getEncounterCorrections: async (patientId: string, encounterId: string) => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_ENCOUNTER_CORRECTIONS(patientId, encounterId));
+    return data;
+  },
+  getMyPendingCorrections: async () => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_MY_PENDING_CORRECTIONS());
+    return data;
+  },
+  acknowledgeCorrection: async (correctionId: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.ACKNOWLEDGE_CORRECTION(correctionId));
+    return data;
+  },
+  rejectCorrection: async (correctionId: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.REJECT_CORRECTION(correctionId));
     return data;
   },
   addChronicCondition: async (patientId: string, payload: ChronicConditionPayload, doctorId?: string) => {

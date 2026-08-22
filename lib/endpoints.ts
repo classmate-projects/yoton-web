@@ -2,6 +2,7 @@ export const ENDPOINTS = {
     AUTH: {
         ME: `/api/auth/me`,
         UPLOAD_AVATAR: `/api/auth/upload-avatar`,
+        DELETE_AVATAR: `/api/auth/avatar`,
     },
     COMPANY: {
         UPLOAD_LOGO: `/api/company/upload-logo`,
@@ -55,8 +56,8 @@ export const ENDPOINTS = {
         CREATE: `/api/role/create-role`,
         UPDATE: (id: string) => `/api/role/update/${id}`,
         DELETE: (id: string) => `/api/role/delete/${id}`,
-        GET_HIDDEN_MODULES: (id: string) => `/api/role/${id}/hidden-modules`,
-        SET_HIDDEN_MODULES: (id: string) => `/api/role/${id}/hidden-modules`,
+        GET_ALLOWED_MODULES: (id: string) => `/api/role/${id}/allowed-modules`,
+        SET_ALLOWED_MODULES: (id: string) => `/api/role/${id}/allowed-modules`,
     },
     SPECIALIZATION: {
         GET: `/api/specialization/get-all`,
@@ -106,6 +107,11 @@ export const ENDPOINTS = {
         REMOVE_DIAGNOSIS: (encounterDiagnosisId: string, doctorId?: string) => `/api/emr/diagnosis/${encounterDiagnosisId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         ADD_FOLLOW_UP: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/follow-up${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_FOLLOW_UPS: (doctorId?: string) => `/api/emr/follow-ups${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        PROPOSE_ENCOUNTER_CORRECTION: (patientId: string, encounterId: string) => `/api/emr/patient/${patientId}/encounter/${encounterId}/propose-correction`,
+        GET_ENCOUNTER_CORRECTIONS: (patientId: string, encounterId: string) => `/api/emr/patient/${patientId}/encounter/${encounterId}/corrections`,
+        GET_MY_PENDING_CORRECTIONS: () => `/api/emr/my-pending-corrections`,
+        ACKNOWLEDGE_CORRECTION: (correctionId: string) => `/api/emr/encounter/correction/${correctionId}/acknowledge`,
+        REJECT_CORRECTION: (correctionId: string) => `/api/emr/encounter/correction/${correctionId}/reject`,
     },
     CONFIG_LIST: {
         GET: (listType: string, search?: string, page?: number, pageSize?: number) => {
@@ -208,5 +214,11 @@ export const ENDPOINTS = {
     RECENT_MODULES: {
         GET: `/api/recent-modules`,
         RECORD: `/api/recent-modules`,
-    }
+    },
+    ATTENDANCE: {
+        GET_TODAY: `/api/attendance/today`,
+        CHECK_IN: `/api/attendance/check-in`,
+        CHECK_OUT: `/api/attendance/check-out`,
+        GET_HISTORY: (days?: number) => `/api/attendance/history${days ? `?days=${days}` : ""}`,
+    },
 }

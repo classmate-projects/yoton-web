@@ -12,11 +12,21 @@ import axios from "axios";
 import { FetchedRoles } from "@/types/role.type";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
+import { DEFAULT_ROLE_ICON_KEY, getRoleIcon } from "@/helpers/roleIcons";
+import RoleIconPicker from "@/components/RoleIconPicker";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
-// Settings is always reachable regardless of role, so it's not offered as a
-// toggle here — see components/sidebar.tsx and app/(pages)/layout.tsx's matching
-// hardcoded exemptions.
-const toggleableModules = sidebarMenuItems.filter((item) => item.navLink !== "/settings");
+// Settings is always reachable regardless of role, and Confidential Notes is nurse-only
+// and excludes even admin (NursingController's confidential-note endpoints refuse admin
+// outright) - neither is ever offered as a toggle here. See components/sidebar.tsx and
+// app/(pages)/layout.tsx's matching hardcoded exemptions.
+// Every module is offered to every role, built-in or brand new - access is now a per-role
+// allow-list (Cli_RoleModulePermissions) rather than a hardcoded roles[] array that a
+// hidden-modules table could only narrow, so there's no "eligibility" left to filter by.
+// A role with no configuration yet (a freshly created one) simply starts fully unchecked.
+const allToggleableModules = sidebarMenuItems.filter(
+  (item) => item.navLink !== "/settings" && item.navLink !== "/nursing/confidential-notes",
+);
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<FetchedRoles[]>([]);
@@ -25,6 +35,7 @@ export default function RoleManagementPage() {
   // New Role Form
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
+  const [iconKey, setIconKey] = useState<string>(DEFAULT_ROLE_ICON_KEY);
   const [editingRole, setEditingRole] = useState<FetchedRoles | null>(null);
 
   // Module permissions modal
@@ -38,6 +49,7 @@ export default function RoleManagementPage() {
   const resetValues = () => {
     setRoleName("")
     setDescription("")
+    setIconKey(DEFAULT_ROLE_ICON_KEY)
     setEditingRole(null)
   }
 
@@ -67,7 +79,8 @@ export default function RoleManagementPage() {
     try {
       const payload = {
         name: roleName,
-        description
+        description,
+        iconKey
       }
 
       const data = await RoleService.create(payload);
@@ -91,7 +104,8 @@ export default function RoleManagementPage() {
       const payload = {
         name: roleName,
         description,
-        isActive: editingRole?.isActive
+        isActive: editingRole?.isActive,
+        iconKey
       }
 
       const data = await RoleService.update(editingRole?.roleId, payload)
@@ -107,6 +121,7 @@ export default function RoleManagementPage() {
     setEditingRole(role);
     setRoleName(role.name);
     setDescription(role.description || "");
+    setIconKey(role.iconKey || DEFAULT_ROLE_ICON_KEY);
     // Scroll to form if needed
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -115,6 +130,7 @@ export default function RoleManagementPage() {
     setEditingRole(null);
     setRoleName("");
     setDescription("");
+    setIconKey(DEFAULT_ROLE_ICON_KEY);
   };
 
 
@@ -154,7 +170,10 @@ export default function RoleManagementPage() {
       const payload = {
         name: role.name,
         description: role.description,
-        isActive: nextIsActive
+        isActive: nextIsActive,
+        // Preserve the current icon - RoleController.Update overwrites IconKey
+        // unconditionally, so omitting this would silently clear it on a plain toggle.
+        iconKey: role.iconKey || undefined
       }
 
       const data = await RoleService.update(role.roleId, payload);
@@ -175,13 +194,14 @@ export default function RoleManagementPage() {
     setPermissionsRole(role);
     setLoadingPermissions(true);
     try {
-      const data = await RoleService.getHiddenModules(role.roleId);
-      const hidden = new Set<string>(data.data ?? []);
-      setVisibleModules(new Set(toggleableModules.filter((m) => !hidden.has(m.navLink)).map((m) => m.navLink)));
+      const data = await RoleService.getAllowedModules(role.roleId);
+      // Empty for a freshly created role that's never been configured - the checklist
+      // simply starts fully unchecked, per allToggleableModules always listing every module.
+      setVisibleModules(new Set(data.data ?? []));
     } catch (error) {
       console.error("Failed to fetch role permissions", error);
       toast.error("Failed to load current permissions");
-      setVisibleModules(new Set(toggleableModules.map((m) => m.navLink)));
+      setVisibleModules(new Set());
     } finally {
       setLoadingPermissions(false);
     }
@@ -205,10 +225,7 @@ export default function RoleManagementPage() {
     if (!permissionsRole) return;
     setSavingPermissions(true);
     try {
-      const hiddenModules = toggleableModules
-        .map((m) => m.navLink)
-        .filter((navLink) => !visibleModules.has(navLink));
-      const data = await RoleService.setHiddenModules(permissionsRole.roleId, hiddenModules);
+      const data = await RoleService.setAllowedModules(permissionsRole.roleId, [...visibleModules]);
       toast.success(data.message);
       handleClosePermissions();
     } catch (error) {
@@ -264,7 +281,8 @@ export default function RoleManagementPage() {
                   >
                     <div className="flex flex-col justify-between mb-1 w-full">
                       <div className="flex justify-between items-center gap-4 mb-4">
-                        <span className={`font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : ""}`}>
+                        <span className={`flex items-center gap-2 font-bold text-lg capitalize ${!role.isActive ? "text-gray-500/50" : ""}`}>
+                          <FontAwesomeIcon icon={getRoleIcon(role.iconKey)} size="lg" className="shrink-0 text-purple-600" />
                           {role.name}
                         </span>
 
@@ -346,6 +364,16 @@ export default function RoleManagementPage() {
               />
             </div>
 
+            <div>
+              <label className="text-sm font-bold text-gray-700">
+                Icon
+              </label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Shown on the admin sidebar&apos;s per-role tile.
+              </p>
+              <RoleIconPicker value={iconKey} onChange={setIconKey} />
+            </div>
+
             <div className="flex gap-3">
               {editingRole && (
                 <button
@@ -384,7 +412,8 @@ export default function RoleManagementPage() {
               </button>
             </div>
             <p className="text-sm text-muted-foreground mb-6">
-              Uncheck a module to hide it from this role. Settings is always available to every role.
+              Check a module to grant this role access to it. Every module starts unchecked
+              for a role until you configure it; Settings is always available to every role.
             </p>
 
             {loadingPermissions ? (
@@ -393,7 +422,7 @@ export default function RoleManagementPage() {
               </div>
             ) : (
               <div className="flex flex-col gap-1 max-h-[50dvh] overflow-y-auto pr-1">
-                {toggleableModules.map((item) => (
+                {allToggleableModules.map((item) => (
                   <label
                     key={item.navLink}
                     className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer"

@@ -88,10 +88,10 @@ function ForgotPasswordPageInner() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#f6f9fc] px-5 py-10 text-foreground">
+    <main className="min-h-screen w-full bg-background px-5 py-10 text-foreground">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-6xl items-center justify-center">
-        <div className="grid w-full overflow-hidden rounded-4xl border border-white bg-white shadow-[0_24px_80px_rgba(15,23,42,0.12)] lg:grid-cols-[0.9fr_1.1fr]">
-          <section className="hidden bg-[#0b5968] p-10 text-white lg:flex lg:flex-col lg:justify-between">
+        <div className="card grid w-full overflow-hidden rounded-4xl shadow-[0_24px_80px_rgba(15,23,42,0.12)] lg:grid-cols-[0.9fr_1.1fr]">
+          <section className="hidden bg-[color-mix(in_srgb,var(--primary)_85%,black)] p-10 text-white lg:flex lg:flex-col lg:justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-xl">
                 <Image
@@ -108,7 +108,7 @@ function ForgotPasswordPageInner() {
             </div>
 
             <div className="max-w-sm">
-              <p className="mb-4 text-sm font-semibold uppercase text-cyan-100">
+              <p className="mb-4 text-sm font-semibold uppercase text-white/90">
                 Secure reset
               </p>
               <h1 className="text-4xl font-bold leading-tight">
@@ -128,7 +128,7 @@ function ForgotPasswordPageInner() {
           <section className="flex items-center justify-center p-6 sm:p-10">
             <div className="w-full max-w-md">
               <div className="mb-9 flex items-center justify-center gap-3 lg:hidden">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-md">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card shadow-md">
                   <Image
                     src={logo}
                     alt="Yoton Health"
@@ -162,10 +162,10 @@ function ForgotPasswordPageInner() {
                   <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                     <MailCheck size={22} />
                   </div>
-                  <h1 className="text-3xl font-bold tracking-tight text-slate-950">
+                  <h1 className="text-3xl font-bold tracking-tight text-foreground">
                     Check your email
                   </h1>
-                  <p className="mt-3 text-sm leading-6 text-slate-500">
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
                     If <b>{email}</b> is registered with us, a password reset
                     link is on its way. It expires in 30 minutes.
                   </p>

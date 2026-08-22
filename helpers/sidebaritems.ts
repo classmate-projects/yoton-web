@@ -1,6 +1,6 @@
-import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, specializationIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
+import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, ClipboardList } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, CheckCircle2 } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -15,7 +15,6 @@ export interface SidebarMenuItem {
     id: number;
     name: string;
     navLink: string; // default/direct page - used when collapsed, and when the item has no subItems
-    roles: string[];
     icon: React.ComponentType; // Assuming icons are React components
     group: SidebarGroup;
     // Admin-only: when present, clicking this tile (while expanded) drills into these
@@ -23,7 +22,13 @@ export interface SidebarMenuItem {
     subItems?: SidebarSubItem[];
 }
 
-const allRoles = ["admin", "doctor", "nurse", "lab technician", "radiology technician", "pharmacist", "billing team", "reception"];
+// Which modules a role can reach is entirely dynamic now - a per-role allow-list managed in
+// Role Management and stored server-side (Cli_RoleModulePermissions), synced into
+// yoton_user_detail.allowedModules on login and kept live via useRolePermissionsSync. Every
+// item below is a candidate module any role (built-in or custom) can be granted, admin always
+// implicitly has all of them (see app/(pages)/layout.tsx and components/sidebar.tsx's isAdmin
+// checks), and "/settings" plus "/nursing/confidential-notes" are the two permanent exceptions
+// that never go through the allow-list at all - see their own entries below.
 
 // Rendered as two labeled sections in the sidebar (see components/sidebar.tsx) —
 // item order within each group is display order, so keep related items together.
@@ -33,7 +38,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 1,
         name: "Dashboard",
         navLink: "/",
-        roles: allRoles.filter((role) => !["reception", "nurse", "doctor"].includes(role)),
         icon: dashboardIcon,
         group: "Configuration"
     },
@@ -41,7 +45,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 5,
         name: "User Management",
         navLink: "/user-management",
-        roles: ["admin"],
         icon: multipleUsers,
         group: "Configuration"
     },
@@ -49,20 +52,21 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 6,
         name: "Departments & Staff",
         navLink: "/departments",
-        roles: ["admin"],
         icon: buildingIcon,
         group: "Configuration",
         subItems: [
             { id: 6, name: "Departments", navLink: "/departments", icon: buildingIcon },
-            { id: 7, name: "Specializations", navLink: "/specializations", icon: specializationIcon },
             { id: 8, name: "Assign Doctor", navLink: "/assign-doctor", icon: doctorIcon },
+            // Same page as the "Doctors Availability" User Modules tile - the query
+            // param is what tells the page to render editable for admin here specifically
+            // (see doctor-availability/page.tsx's canEdit check).
+            { id: 23, name: "Doctors Availability", navLink: "/doctor-availability?mode=edit", icon: availableDoctor },
         ]
     },
     {
         id: 20,
         name: "Configurable Lists",
         navLink: "/config-lists",
-        roles: ["admin"],
         icon: ListPlus,
         group: "Configuration"
     },
@@ -70,7 +74,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 21,
         name: "ICD Codes",
         navLink: "/icd-codes",
-        roles: ["admin"],
         icon: Hash,
         group: "Configuration"
     },
@@ -79,7 +82,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 2,
         name: "Appointments",
         navLink: "/appointments",
-        roles: ["reception", "admin"],
         icon: calendarIcon,
         group: "User Modules"
     },
@@ -87,7 +89,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 3,
         name: "Patient Entry",
         navLink: "/patient-entry",
-        roles: ["reception"],
         icon: registrationIcon,
         group: "User Modules"
     },
@@ -95,23 +96,13 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 4,
         name: "Patient Records",
         navLink: "/patient-records",
-        roles: ["reception"],
         icon: RecordsIcon,
-        group: "User Modules"
-    },
-    {
-        id: 9,
-        name: "Doctors Availability",
-        navLink: "/doctor-availability",
-        roles: ["reception", "admin"],
-        icon: availableDoctor,
         group: "User Modules"
     },
     {
         id: 11,
         name: "Doctor Workbench",
         navLink: "/doctor",
-        roles: ["doctor", "admin"],
         icon: doctorIcon,
         group: "User Modules"
     },
@@ -119,41 +110,17 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 12,
         name: "Nurse Workbench",
         navLink: "/nursing",
-        // Doctor included: read-only view of nursing charting for their patients (see
-        // NursingController — write endpoints there stay locked to admin/nurse, and
-        // nursing/page.tsx hides every write form/button when the viewer is a doctor).
-        // "Doctor Workbench" (declared above, id 11) still wins firstAllowedRoute() for a
-        // doctor's post-login landing page since array order is unchanged.
-        roles: ["nurse", "admin", "doctor"],
         icon: HeartPulse,
         group: "User Modules"
     },
-    // Order here no longer matters for access control — matchRoute() in
-    // app/(pages)/layout.tsx picks the most specific (longest navLink) match, not the
-    // first array match — but firstAllowedRoute() DOES still use array order to pick a
-    // nurse's post-login landing page, so Nurse Workbench (above) must stay first among
-    // nurse-accessible entries.
-    {
-        id: 17,
-        name: "Doctor Case Sheet",
-        navLink: "/nursing/case-sheet",
-        roles: ["nurse", "admin"],
-        icon: FileText,
-        group: "User Modules"
-    },
-    {
-        id: 18,
-        name: "Doctor Investigations",
-        navLink: "/nursing/investigations",
-        roles: ["nurse", "admin"],
-        icon: ClipboardList,
-        group: "User Modules"
-    },
+    // Nurse-only and excluded from the allow-list system entirely (see the two hardcoded
+    // exemptions in app/(pages)/layout.tsx and components/sidebar.tsx) - NursingController's
+    // confidential-note endpoints hard-filter to the creating nurse and refuse even admin, so
+    // this can never be a module an admin grants to another role.
     {
         id: 19,
         name: "Confidential Notes",
         navLink: "/nursing/confidential-notes",
-        roles: ["nurse"],
         icon: Lock,
         group: "User Modules"
     },
@@ -161,9 +128,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 13,
         name: "Laboratory",
         navLink: "/lab",
-        // Doctor included: LabController's class-level [Authorize] already permits
-        // "doctor" (read + order placement) — this just surfaces the existing access.
-        roles: ["admin", "lab technician", "doctor"],
         icon: FlaskConical,
         group: "User Modules"
     },
@@ -171,9 +135,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 14,
         name: "Radiology",
         navLink: "/radiology",
-        // Doctor included: RadiologyController's class-level [Authorize] already
-        // permits "doctor" (read + order placement) — this just surfaces the existing access.
-        roles: ["admin", "radiology technician", "doctor"],
         icon: ScanLine,
         group: "User Modules"
     },
@@ -181,7 +142,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 15,
         name: "Pharmacy",
         navLink: "/pharmacy",
-        roles: ["admin", "pharmacist"],
         icon: Pill,
         group: "User Modules"
     },
@@ -189,29 +149,53 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         id: 10,
         name: "Billing",
         navLink: "/billing",
-        roles: ["admin", "billing team"],
         icon: MdPayment,
+        group: "User Modules"
+    },
+    {
+        id: 9,
+        name: "Doctors Availability",
+        navLink: "/doctor-availability",
+        icon: availableDoctor,
+        group: "User Modules"
+    },
+    // Formerly "Doctor Case Sheet"; renamed since it's really a patient's full record, not
+    // one doctor's private notes.
+    {
+        id: 17,
+        name: "Electronic Medical Record",
+        navLink: "/nursing/case-sheet",
+        icon: FileText,
         group: "User Modules"
     },
     {
         id: 22,
         name: "Messages",
         navLink: "/messages",
-        // Every staff role - "web users chat with each other" has no role restriction.
-        roles: allRoles,
         icon: MessageCircle,
         group: "User Modules"
     },
 
-    // Deliberately declared last: firstAllowedRoute() (app/(pages)/layout.tsx)
-    // picks the first array match for the user's role, and every role can see
-    // Settings — placing it early would win that race and land every non-admin
-    // role on Settings after login instead of their actual work module.
+    // Daily attendance check-in/check-out (see AttendanceController) - a normal
+    // admin-grantable module like any other above, not a permanent exemption. Declared
+    // after every role-specific workbench for the same firstAllowedRoute() ordering reason
+    // as Doctors Availability/EMR/Messages: a role whose real home module is one of those
+    // should still land there after login, not here, if both happen to be granted.
+    {
+        id: 24,
+        name: "Check-in",
+        navLink: "/check-in",
+        icon: CheckCircle2,
+        group: "User Modules"
+    },
+
+    // Always reachable regardless of role or allow-list - see app/(pages)/layout.tsx and
+    // components/sidebar.tsx's matching hardcoded "/settings" exemptions, so no role can ever
+    // be left with zero reachable pages.
     {
         id: 16,
         name: "Settings",
         navLink: "/settings",
-        roles: allRoles,
         icon: Settings,
         group: "Configuration"
     },

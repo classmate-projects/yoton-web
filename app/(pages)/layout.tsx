@@ -8,31 +8,47 @@ import logo from "@/public/yoton_logo.png";
 import Sidebar from "@/components/sidebar";
 import AccessDenied from "@/components/AccessDenied";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
+import { useIdleLogout } from "@/hooks/useIdleLogout";
+import { onUserDetailChange } from "@/lib/userDetail";
 
 // Pages that are reachable by URL (e.g. from a button on an admin page) but
 // intentionally left out of the sidebar itself — still need the same
-// role gate as sidebar items, just not a nav entry of their own.
+// access gate as sidebar items, just not a nav entry of their own.
 interface ProtectedRoute {
   navLink: string;
-  roles: string[];
-  // Which sidebarMenuItems.navLink's hidden-modules state governs this route, for
-  // entries that aren't independently toggleable in their own right (undefined means
-  // "use this route's own navLink" — see isHidden below).
+  // Which sidebarMenuItems.navLink's allowed-modules entry governs this route, for
+  // entries that aren't independently grantable in their own right (undefined means
+  // "use this route's own navLink" — see isRouteAllowed below).
   moduleKey?: string;
+  // Set only for the handful of routes that sit outside the per-role allow-list system
+  // entirely (mirrors the backend's matching hardcoded [Authorize(Roles=...)] carve-outs):
+  // admin-only meta pages that control the permission system itself, and Confidential
+  // Notes' nurse-only rule, which excludes even admin.
+  hardcodedRoles?: string[];
 }
 
 const extraProtectedRoutes: ProtectedRoute[] = [
-  { navLink: "/role-management", roles: ["admin"] },
-  { navLink: "/user-registration", roles: ["admin"] },
-  // Only reachable via the merged "Departments & Staff" tile's subItems, so they share
-  // its permission rather than having their own.
-  { navLink: "/specializations", roles: ["admin"], moduleKey: "/departments" },
-  { navLink: "/assign-doctor", roles: ["admin"], moduleKey: "/departments" },
+  { navLink: "/role-management", hardcodedRoles: ["admin"] },
+  { navLink: "/user-registration", hardcodedRoles: ["admin"] },
+  // Only reachable via the merged "Departments & Staff" tile's subItems, so it shares
+  // its permission rather than having its own.
+  { navLink: "/assign-doctor", moduleKey: "/departments" },
 ];
 
+// Settings and Confidential Notes are never part of the allow-list (see
+// helpers/sidebaritems.ts's comments on each) - Settings is always reachable, and
+// Confidential Notes has its own hardcoded nurse-only rule instead. Check-in is a normal
+// admin-grantable module like any other (see Role Management).
 const protectedRoutes: ProtectedRoute[] = [
-  ...sidebarMenuItems.map((item) => ({ navLink: item.navLink, roles: item.roles })),
+  ...sidebarMenuItems
+    .filter((item) => item.navLink !== "/settings")
+    .map((item) =>
+      item.navLink === "/nursing/confidential-notes"
+        ? { navLink: item.navLink, hardcodedRoles: ["nurse"] }
+        : { navLink: item.navLink },
+    ),
   ...extraProtectedRoutes,
 ];
 
@@ -44,20 +60,26 @@ function matchRoute(pathname: string) {
 
   // Prefer the most specific (longest navLink) match, not array order — otherwise a
   // more restrictive sub-route (e.g. "/nursing/confidential-notes", nurse-only) could
-  // lose to a broader parent route (e.g. "/nursing", nurse+admin) declared earlier.
+  // lose to a broader parent route (e.g. "/nursing") declared earlier.
   return matches.reduce((best, item) => (item.navLink.length > best.navLink.length ? item : best));
 }
 
-// Settings is exempt from hiding entirely so no role can ever be left with zero
-// reachable pages — see components/sidebar.tsx's matching isVisible() exemption.
-function isHidden(route: ProtectedRoute, hiddenModules: string[]) {
-  return route.navLink !== "/settings" && hiddenModules.includes(route.moduleKey ?? route.navLink);
+function isRouteAllowed(route: ProtectedRoute, role: string, allowedModules: string[]) {
+  if (route.hardcodedRoles) return route.hardcodedRoles.includes(role);
+  // Admin always has every module - mirrors the backend's ModuleAccessChecker bypass,
+  // so admin can never be locked out by a missing/misconfigured allow-list row.
+  if (role === "admin") return true;
+  return allowedModules.includes(route.moduleKey ?? route.navLink);
 }
 
-function firstAllowedRoute(role: string, hiddenModules: string[]) {
+function firstAllowedRoute(role: string, allowedModules: string[]) {
   return (
-    sidebarMenuItems.find((item) => item.roles.includes(role) && !isHidden(item, hiddenModules)) ??
-    sidebarMenuItems.find((item) => item.navLink === "/settings")
+    sidebarMenuItems.find(
+      (item) =>
+        item.navLink !== "/settings" &&
+        item.navLink !== "/nursing/confidential-notes" &&
+        (role === "admin" || allowedModules.includes(item.navLink)),
+    ) ?? sidebarMenuItems.find((item) => item.navLink === "/settings")
   );
 }
 
@@ -68,6 +90,8 @@ export default function PageLayout({
 }>) {
   const pathname = usePathname();
   const router = useRouter();
+
+  const { warningSecondsLeft, stayLoggedIn } = useIdleLogout();
 
   // Mobile-only drawer state. On desktop the sidebar is always in flow (hover
   // rail), so this is inert there; on mobile the hamburger in the top bar opens
@@ -81,40 +105,50 @@ export default function PageLayout({
   );
 
   useEffect(() => {
-    setStatus("checking");
+    const checkAccess = () => {
+      setStatus("checking");
 
-    let role = "";
-    let hiddenModules: string[] = [];
-    try {
-      const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
-      role = detail.role || "";
-      hiddenModules = detail.hiddenModules || [];
-    } catch {
-      role = "";
-    }
+      let role = "";
+      let allowedModules: string[] = [];
+      try {
+        const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
+        role = detail.role || "";
+        allowedModules = detail.allowedModules || [];
+      } catch {
+        role = "";
+      }
 
-    const match = matchRoute(pathname);
+      const match = matchRoute(pathname);
 
-    // Unlisted routes (not in the sidebar or the extra list above) aren't
-    // role-gated — allow them through rather than guessing.
-    if (!match || (match.roles.includes(role) && !isHidden(match, hiddenModules))) {
-      setStatus("allowed");
-      return;
-    }
-
-    // No access to the home dashboard specifically: send the user straight
-    // to the first page their role actually has, instead of an Access
-    // Denied wall on the very first screen after login.
-    if (pathname === "/") {
-      const target = firstAllowedRoute(role, hiddenModules);
-      if (target) {
-        setStatus("redirecting");
-        router.replace(target.navLink);
+      // Unlisted routes (not in the sidebar or the extra list above) aren't
+      // gated — allow them through rather than guessing.
+      if (!match || isRouteAllowed(match, role, allowedModules)) {
+        setStatus("allowed");
         return;
       }
-    }
 
-    setStatus("denied");
+      // No access to the home dashboard specifically: send the user straight
+      // to the first page their role actually has, instead of an Access
+      // Denied wall on the very first screen after login.
+      if (pathname === "/") {
+        const target = firstAllowedRoute(role, allowedModules);
+        if (target) {
+          setStatus("redirecting");
+          router.replace(target.navLink);
+          return;
+        }
+      }
+
+      setStatus("denied");
+    };
+
+    checkAccess();
+
+    // Re-checks without needing a navigation when an admin live-changes this session's
+    // role permissions (see useRolePermissionsSync) - previously only the sidebar's own
+    // nav list reacted to this event, so the route guard could keep a page open a few
+    // seconds after its access had actually been revoked.
+    return onUserDetailChange(checkAccess);
   }, [pathname, router]);
 
   if (status === "checking" || status === "redirecting") {
@@ -147,6 +181,9 @@ export default function PageLayout({
           {status === "denied" ? <AccessDenied /> : children}
         </div>
       </div>
+      {warningSecondsLeft !== null && (
+        <SessionTimeoutModal secondsLeft={warningSecondsLeft} onStayLoggedIn={stayLoggedIn} />
+      )}
     </div>
   );
 }

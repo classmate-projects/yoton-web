@@ -3,17 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
-import { AppointmentRequestedEvent } from "@/hooks/useAppointmentRequestSignalR";
+import { AlertItem } from "@/hooks/useAlertCenter";
 
 interface NotificationBellProps {
-  notifications: AppointmentRequestedEvent[];
+  alerts: AlertItem[];
   unreadCount: number;
   isRinging: boolean;
   onOpen: () => void;
 }
 
 export default function NotificationBell({
-  notifications,
+  alerts,
   unreadCount,
   isRinging,
   onOpen,
@@ -39,9 +39,9 @@ export default function NotificationBell({
     if (next) onOpen();
   };
 
-  const goToAppointments = () => {
+  const goTo = (navLink: string) => {
     setIsOpen(false);
-    router.push("/appointments");
+    router.push(navLink);
   };
 
   return (
@@ -64,37 +64,26 @@ export default function NotificationBell({
       {isOpen && (
         <div className="absolute left-0 top-12 z-50 w-80 rounded-xl border border-border bg-card shadow-2xl">
           <div className="border-b border-border px-4 py-3">
-            <p className="text-sm font-semibold text-foreground">Appointment requests</p>
+            <p className="text-sm font-semibold text-foreground">Alerts</p>
           </div>
-          <div className="max-h-80 overflow-y-auto">
-            {notifications.length > 0 ? (
-              notifications.map((notification, index) => (
+          <div className="max-h-96 overflow-y-auto">
+            {alerts.length > 0 ? (
+              alerts.map((alert) => (
                 <button
-                  key={`${notification.appointmentId}-${index}`}
-                  onClick={goToAppointments}
+                  key={alert.id}
+                  onClick={() => goTo(alert.navLink)}
                   className="flex w-full flex-col items-start gap-0.5 border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-muted/40"
                 >
-                  <span className="text-sm font-semibold text-foreground">
-                    {notification.patientName ?? "A patient"}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    requested {notification.doctorName ?? "a doctor"} for{" "}
-                    {new Date(notification.appointmentDate).toLocaleString()}
-                  </span>
+                  <span className="text-sm font-semibold text-foreground">{alert.title}</span>
+                  <span className="text-xs text-muted-foreground">{alert.message}</span>
                 </button>
               ))
             ) : (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                No new requests
+                No new alerts
               </p>
             )}
           </div>
-          <button
-            onClick={goToAppointments}
-            className="block w-full rounded-b-xl border-t border-border px-4 py-2.5 text-center text-sm font-semibold text-primary hover:bg-primary/10"
-          >
-            View all appointments
-          </button>
         </div>
       )}
     </div>

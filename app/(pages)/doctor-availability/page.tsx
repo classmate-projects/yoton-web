@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -24,6 +25,7 @@ import {
   SpecializationAvailabilityType,
 } from "@/types/doctorAvailability.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { getUserDetail } from "@/lib/userDetail";
 
 const DAYS = [
   "Sunday",
@@ -145,7 +147,15 @@ const toEditable = (
     })),
   }));
 
-export default function DoctorAvailability() {
+function DoctorAvailabilityInner() {
+  const searchParams = useSearchParams();
+  const userRole = getUserDetail()?.role;
+  // Reception can always edit, matching its access from before this page was opened up
+  // to every role as a view. Admin only gets edit rights via the dedicated entry point
+  // under Configuration > Departments & Staff (?mode=edit) - the plain User Modules link
+  // (used by every other role too) is view-only, even for admin.
+  const canEdit = userRole === "reception" || (userRole === "admin" && searchParams.get("mode") === "edit");
+
   const [isLoading, setIsLoading] = useState(true);
   const [availability, setAvailability] = useState<EditableSpecialization[]>(
     []
@@ -161,7 +171,17 @@ export default function DoctorAvailability() {
     day: number;
   } | null>(null);
   const [savingDoctorId, setSavingDoctorId] = useState<string | null>(null);
-  const canCollapseAll = expandedSpecializations.size > 1;
+  // Single toggle, not two separate buttons: expanded (fully or partially) collapses
+  // everything on click; fully collapsed expands everything. The old "Collapse all" button
+  // stayed disabled unless more than one section was open, so opening just one and
+  // clicking it silently did nothing - that bug is gone now that there's one state to read.
+  const allSpecializationIds = availability.map((s) => s.specializationId);
+  const allExpanded =
+    allSpecializationIds.length > 0 &&
+    allSpecializationIds.every((id) => expandedSpecializations.has(id));
+  const toggleExpandCollapseAll = () => {
+    setExpandedSpecializations(allExpanded ? new Set() : new Set(allSpecializationIds));
+  };
 
   const [breakModal, setBreakModal] = useState<BreakModalState | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
@@ -495,15 +515,17 @@ export default function DoctorAvailability() {
             <CalendarDays className="text-primary" /> Doctor Availability
           </h1>
           <p className="text-sm text-muted-foreground">
-            Expand a specialization to view doctors, then expand a doctor to configure days, slots, and breaks.
+            {canEdit
+              ? "Expand a specialization to view doctors, then expand a doctor to configure days, slots, and breaks."
+              : "Expand a specialization to view doctors, then expand a doctor to see their days, slots, and breaks."}
           </p>
         </div>
         <button
-          onClick={() => setExpandedSpecializations(new Set())}
-          disabled={!canCollapseAll}
+          onClick={toggleExpandCollapseAll}
+          disabled={availability.length === 0}
           className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-foreground"
         >
-          Collapse all
+          {allExpanded ? "Collapse all" : "Expand all"}
         </button>
       </div>
 
@@ -660,45 +682,60 @@ export default function DoctorAvailability() {
                                               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                                 <div>
                                                   <p className="text-lg font-semibold text-foreground">
-                                                    {doctor.doctorName} configuration
+                                                    {doctor.doctorName} {canEdit ? "configuration" : "availability"}
                                                   </p>
                                                   <p className="text-sm text-muted-foreground">
-                                                    Tap a day to add it, tap an added day to remove it, then tune slot timing and breaks.
+                                                    {canEdit
+                                                      ? "Tap a day to add it, tap an added day to remove it, then tune slot timing and breaks."
+                                                      : "Working days, slot timing, and breaks for this doctor."}
                                                   </p>
                                                 </div>
-                                                <button
-                                                  onClick={() => saveDoctorSchedule(doctor)}
-                                                  disabled={isSaving}
-                                                  className="flex h-10 w-fit items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                                                >
-                                                  <Save size={15} />{" "}
-                                                  {isSaving ? "Saving..." : "Save"}
-                                                </button>
+                                                {canEdit && (
+                                                  <button
+                                                    onClick={() => saveDoctorSchedule(doctor)}
+                                                    disabled={isSaving}
+                                                    className="flex h-10 w-fit items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                                  >
+                                                    <Save size={15} />{" "}
+                                                    {isSaving ? "Saving..." : "Save"}
+                                                  </button>
+                                                )}
                                               </div>
                                               <div className="flex flex-wrap gap-2">
-                                                {DAYS.map((name, index) => {
-                                                  const isConfigured = usedDays.has(index);
-                                                  return (
-                                                    <button
-                                                      key={name}
-                                                      type="button"
-                                                      onClick={() =>
-                                                        handleDayPillClick(
-                                                          doctor.doctorId,
-                                                          index,
-                                                          isConfigured
-                                                        )
-                                                      }
-                                                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                                        isConfigured
-                                                          ? "border-primary bg-primary text-primary-foreground"
-                                                          : "border-border text-foreground hover:border-primary/40"
-                                                      }`}
-                                                    >
-                                                      {name}
-                                                    </button>
-                                                  );
-                                                })}
+                                                {canEdit
+                                                  ? DAYS.map((name, index) => {
+                                                      const isConfigured = usedDays.has(index);
+                                                      return (
+                                                        <button
+                                                          key={name}
+                                                          type="button"
+                                                          onClick={() =>
+                                                            handleDayPillClick(
+                                                              doctor.doctorId,
+                                                              index,
+                                                              isConfigured
+                                                            )
+                                                          }
+                                                          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                                            isConfigured
+                                                              ? "border-primary bg-primary text-primary-foreground"
+                                                              : "border-border text-foreground hover:border-primary/40"
+                                                          }`}
+                                                        >
+                                                          {name}
+                                                        </button>
+                                                      );
+                                                    })
+                                                  : DAYS.map((name, index) =>
+                                                      usedDays.has(index) ? (
+                                                        <span
+                                                          key={name}
+                                                          className="rounded-lg border border-primary bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+                                                        >
+                                                          {name}
+                                                        </span>
+                                                      ) : null
+                                                    )}
                                               </div>
                                             </div>
 
@@ -712,7 +749,7 @@ export default function DoctorAvailability() {
                                                     <th>Interval</th>
                                                     <th>Max/slot</th>
                                                     <th>Break Times</th>
-                                                    <th>Action</th>
+                                                    {canEdit && <th>Action</th>}
                                                   </tr>
                                                 </thead>
                                                 <tbody>
@@ -725,101 +762,121 @@ export default function DoctorAvailability() {
                                                           {DAYS[schedule.day]}
                                                         </td>
                                                         <td>
-                                                          <div className="relative min-w-32">
-                                                            <input
-                                                              type="time"
-                                                              value={schedule.startTime}
+                                                          {canEdit ? (
+                                                            <div className="relative min-w-32">
+                                                              <input
+                                                                type="time"
+                                                                value={schedule.startTime}
+                                                                onChange={(event) =>
+                                                                  updateSchedule(
+                                                                    doctor.doctorId,
+                                                                    schedule.day,
+                                                                    "startTime",
+                                                                    event.target.value
+                                                                  )
+                                                                }
+                                                                className="h-10 min-w-32 pr-9 text-sm"
+                                                              />
+                                                              <Clock
+                                                                size={15}
+                                                                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                                              />
+                                                            </div>
+                                                          ) : (
+                                                            <span className="text-sm text-foreground">{schedule.startTime}</span>
+                                                          )}
+                                                        </td>
+                                                        <td>
+                                                          {canEdit ? (
+                                                            <div className="relative min-w-32">
+                                                              <input
+                                                                type="time"
+                                                                value={schedule.endTime}
+                                                                onChange={(event) =>
+                                                                  updateSchedule(
+                                                                    doctor.doctorId,
+                                                                    schedule.day,
+                                                                    "endTime",
+                                                                    event.target.value
+                                                                  )
+                                                                }
+                                                                className="h-10 min-w-32 pr-9 text-sm"
+                                                              />
+                                                              <Clock
+                                                                size={15}
+                                                                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                                              />
+                                                            </div>
+                                                          ) : (
+                                                            <span className="text-sm text-foreground">{schedule.endTime}</span>
+                                                          )}
+                                                        </td>
+                                                        <td>
+                                                          {canEdit ? (
+                                                            <select
+                                                              value={schedule.slotDurationMinutes}
                                                               onChange={(event) =>
                                                                 updateSchedule(
                                                                   doctor.doctorId,
                                                                   schedule.day,
-                                                                  "startTime",
-                                                                  event.target.value
+                                                                  "slotDurationMinutes",
+                                                                  Number(event.target.value)
                                                                 )
                                                               }
-                                                              className="h-10 min-w-32 pr-9 text-sm"
-                                                            />
-                                                            <Clock
-                                                              size={15}
-                                                              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                                                            />
-                                                          </div>
-                                                        </td>
-                                                        <td>
-                                                          <div className="relative min-w-32">
-                                                            <input
-                                                              type="time"
-                                                              value={schedule.endTime}
-                                                              onChange={(event) =>
-                                                                updateSchedule(
-                                                                  doctor.doctorId,
-                                                                  schedule.day,
-                                                                  "endTime",
-                                                                  event.target.value
-                                                                )
-                                                              }
-                                                              className="h-10 min-w-32 pr-9 text-sm"
-                                                            />
-                                                            <Clock
-                                                              size={15}
-                                                              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                                                            />
-                                                          </div>
-                                                        </td>
-                                                        <td>
-                                                          <select
-                                                            value={schedule.slotDurationMinutes}
-                                                            onChange={(event) =>
-                                                              updateSchedule(
-                                                                doctor.doctorId,
-                                                                schedule.day,
-                                                                "slotDurationMinutes",
-                                                                Number(event.target.value)
-                                                              )
-                                                            }
-                                                            className="h-10 min-w-28 text-sm"
-                                                          >
-                                                            <option value={10}>10 min</option>
-                                                            <option value={15}>15 min</option>
-                                                            <option value={20}>20 min</option>
-                                                            <option value={30}>30 min</option>
-                                                            <option value={45}>45 min</option>
-                                                            <option value={60}>60 min</option>
-                                                          </select>
-                                                        </td>
-                                                        <td>
-                                                          <select
-                                                            value={schedule.maxConcurrentBookings}
-                                                            onChange={(event) =>
-                                                              updateSchedule(
-                                                                doctor.doctorId,
-                                                                schedule.day,
-                                                                "maxConcurrentBookings",
-                                                                Number(event.target.value)
-                                                              )
-                                                            }
-                                                            title="How many patients can be booked into the same slot"
-                                                            className="h-10 min-w-24 text-sm"
-                                                          >
-                                                            <option value={1}>1 patient</option>
-                                                            <option value={2}>2 patients</option>
-                                                            <option value={3}>3 patients</option>
-                                                          </select>
-                                                        </td>
-                                                        <td className="min-w-[300px]">
-                                                          <div className="flex flex-col gap-2">
-                                                            <button
-                                                              onClick={() =>
-                                                                openBreakModal(
-                                                                  doctor.doctorId,
-                                                                  schedule.day
-                                                                )
-                                                              }
-                                                              className="flex w-fit items-center gap-2 rounded-lg border border-primary/30 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+                                                              className="h-10 min-w-28 text-sm"
                                                             >
-                                                              <Coffee size={15} /> Add break
-                                                              time
-                                                            </button>
+                                                              <option value={10}>10 min</option>
+                                                              <option value={15}>15 min</option>
+                                                              <option value={20}>20 min</option>
+                                                              <option value={30}>30 min</option>
+                                                              <option value={45}>45 min</option>
+                                                              <option value={60}>60 min</option>
+                                                            </select>
+                                                          ) : (
+                                                            <span className="text-sm text-foreground">{schedule.slotDurationMinutes} min</span>
+                                                          )}
+                                                        </td>
+                                                        <td>
+                                                          {canEdit ? (
+                                                            <select
+                                                              value={schedule.maxConcurrentBookings}
+                                                              onChange={(event) =>
+                                                                updateSchedule(
+                                                                  doctor.doctorId,
+                                                                  schedule.day,
+                                                                  "maxConcurrentBookings",
+                                                                  Number(event.target.value)
+                                                                )
+                                                              }
+                                                              title="How many patients can be booked into the same slot"
+                                                              className="h-10 min-w-24 text-sm"
+                                                            >
+                                                              <option value={1}>1 patient</option>
+                                                              <option value={2}>2 patients</option>
+                                                              <option value={3}>3 patients</option>
+                                                            </select>
+                                                          ) : (
+                                                            <span className="text-sm text-foreground">
+                                                              {schedule.maxConcurrentBookings} patient{schedule.maxConcurrentBookings === 1 ? "" : "s"}
+                                                            </span>
+                                                          )}
+                                                        </td>
+                                                        <td className="min-w-[220px]">
+                                                          <div className="flex flex-col gap-2">
+                                                            {canEdit && (
+                                                              <button
+                                                                onClick={() =>
+                                                                  openBreakModal(
+                                                                    doctor.doctorId,
+                                                                    schedule.day
+                                                                  )
+                                                                }
+                                                                className="flex w-fit items-center gap-2 rounded-lg border border-primary/30 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+                                                              >
+                                                                <Coffee size={15} /> Add break
+                                                                time
+                                                              </button>
+                                                            )}
 
                                                             {schedule.breaks.length > 0 ? (
                                                               <div className="flex flex-col gap-1.5">
@@ -834,19 +891,21 @@ export default function DoctorAvailability() {
                                                                     <span className="truncate text-xs text-muted-foreground">
                                                                       {brk.reason}
                                                                     </span>
-                                                                    <button
-                                                                      onClick={() =>
-                                                                        removeBreak(
-                                                                          doctor.doctorId,
-                                                                          schedule.day,
-                                                                          brk.id
-                                                                        )
-                                                                      }
-                                                                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                                                                      aria-label="Remove break"
-                                                                    >
-                                                                      <Trash2 size={14} />
-                                                                    </button>
+                                                                    {canEdit && (
+                                                                      <button
+                                                                        onClick={() =>
+                                                                          removeBreak(
+                                                                            doctor.doctorId,
+                                                                            schedule.day,
+                                                                            brk.id
+                                                                          )
+                                                                        }
+                                                                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                                                                        aria-label="Remove break"
+                                                                      >
+                                                                        <Trash2 size={14} />
+                                                                      </button>
+                                                                    )}
                                                                   </div>
                                                                 ))}
                                                               </div>
@@ -857,25 +916,27 @@ export default function DoctorAvailability() {
                                                             )}
                                                           </div>
                                                         </td>
-                                                        <td>
-                                                          <button
-                                                            onClick={() =>
-                                                              removeScheduleDay(
-                                                                doctor.doctorId,
-                                                                schedule.day
-                                                              )
-                                                            }
-                                                            className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-red-300 hover:text-red-600"
-                                                          >
-                                                            Remove
-                                                          </button>
-                                                        </td>
+                                                        {canEdit && (
+                                                          <td>
+                                                            <button
+                                                              onClick={() =>
+                                                                removeScheduleDay(
+                                                                  doctor.doctorId,
+                                                                  schedule.day
+                                                                )
+                                                              }
+                                                              className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-red-300 hover:text-red-600"
+                                                            >
+                                                              Remove
+                                                            </button>
+                                                          </td>
+                                                        )}
                                                       </tr>
                                                     ))
                                                   ) : (
                                                     <tr>
                                                       <td
-                                                        colSpan={7}
+                                                        colSpan={canEdit ? 7 : 6}
                                                         className="text-center text-muted-foreground"
                                                       >
                                                         No days configured for this doctor.
@@ -1163,5 +1224,19 @@ export default function DoctorAvailability() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function DoctorAvailability() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-full">
+          <LoadingSpinner />
+        </div>
+      }
+    >
+      <DoctorAvailabilityInner />
+    </Suspense>
   );
 }

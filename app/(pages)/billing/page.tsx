@@ -11,6 +11,7 @@ import { ReceptionService } from "@/services/reception.service";
 import { BillingSummaryType, BillType, ChargeableItemType } from "@/types/billing.type";
 import { PatientListItemType } from "@/types/appointment.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { formatCurrency } from "@/lib/currency";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -18,7 +19,7 @@ const errorMessage = (error: unknown, fallback: string) =>
 const formatDateTime = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString() : "—";
 
-const currency = (value: number) => `$${value.toFixed(2)}`;
+const currency = (value: number) => formatCurrency(value);
 
 const statusBadgeClass = (status: string) => {
   switch (status) {
@@ -68,7 +69,8 @@ function BillingPageInner() {
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
     const currentRole = (detail.role || "").toLowerCase();
-    if (currentRole !== "billing team" && currentRole !== "admin") {
+    const allowedModules: string[] = detail.allowedModules || [];
+    if (currentRole !== "admin" && !allowedModules.includes("/billing")) {
       router.replace("/");
       return;
     }

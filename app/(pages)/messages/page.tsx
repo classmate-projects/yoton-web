@@ -8,6 +8,7 @@ import { ChatService } from "@/services/chat.service";
 import { getChatConnection } from "@/lib/chatSignalR";
 import { playMessageReceivedSound } from "@/lib/chatSound";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import { getAvatarColor } from "@/lib/avatarColor";
 import { getUserDetail } from "@/lib/userDetail";
 import { getInitials } from "@/lib/getInitials";
 import {
@@ -39,7 +40,7 @@ const IMAGE_EXTENSION_RE = /\.(jpe?g|png|gif|webp|bmp|svg|avif|heic|heif)$/i;
 const isImage = (a: { contentType: string | null; fileName: string }) =>
   (!!a.contentType && a.contentType.toLowerCase().startsWith("image/")) || IMAGE_EXTENSION_RE.test(a.fileName);
 
-function Avatar({ name, url, size = 40, online }: { name: string; url?: string | null; size?: number; online?: boolean }) {
+function Avatar({ id, name, url, size = 40, online }: { id?: string | null; name: string; url?: string | null; size?: number; online?: boolean }) {
   const resolved = backendAssetUrl(url);
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
@@ -48,8 +49,8 @@ function Avatar({ name, url, size = 40, online }: { name: string; url?: string |
         <img src={resolved} alt={name} className="rounded-full object-cover w-full h-full" />
       ) : (
         <div
-          className="flex items-center justify-center rounded-full bg-primary/15 font-semibold text-primary w-full h-full"
-          style={{ fontSize: size * 0.38 }}
+          className="flex items-center justify-center rounded-full font-semibold text-white w-full h-full"
+          style={{ fontSize: size * 0.38, backgroundColor: getAvatarColor(id || name) }}
         >
           {getInitials(name)}
         </div>
@@ -113,9 +114,21 @@ export default function MessagesPage() {
 
   // Presence only applies to real staff accounts ("User") - a Patient or the virtual
   // Reception inbox has no single online/offline state worth showing.
-  useEffect(() => {
+  //
+  // Keyed on the sorted id *set* (a string), not tabConversations itself: that array is a
+  // new reference on every incoming message anywhere (see handleMessage's setConversations
+  // below), which would otherwise re-fire this REST call once per message across the whole
+  // inbox even though the actual set of people to track rarely changes. Ongoing online/
+  // offline changes come from the "presenceChanged" SignalR event instead - this effect only
+  // needs to (re)seed presence when the set of contacts itself changes.
+  const presenceUserIdsKey = useMemo(() => {
     const ids = tabConversations.filter((c) => c.otherType === "User").map((c) => c.otherId);
-    if (ids.length === 0) return;
+    return Array.from(new Set(ids)).sort().join(",");
+  }, [tabConversations]);
+
+  useEffect(() => {
+    if (!presenceUserIdsKey) return;
+    const ids = presenceUserIdsKey.split(",");
     ChatService.getPresence(ids)
       .then((res) => {
         const map: Record<string, boolean> = {};
@@ -123,7 +136,7 @@ export default function MessagesPage() {
         setPresence((prev) => ({ ...prev, ...map }));
       })
       .catch(() => {});
-  }, [tabConversations]);
+  }, [presenceUserIdsKey]);
 
   useEffect(() => {
     setShowContactPicker(false);
@@ -408,7 +421,7 @@ export default function MessagesPage() {
                         onClick={() => startConversation(c)}
                         className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-muted/60"
                       >
-                        <Avatar name={c.name} url={c.avatarUrl} size={28} online={presence[c.id]} />
+                        <Avatar id={c.id} name={c.name} url={c.avatarUrl} size={28} online={presence[c.id]} />
                         <span className="text-sm font-medium text-foreground truncate">{c.name}</span>
                       </button>
                     ))
@@ -436,7 +449,7 @@ export default function MessagesPage() {
                     activeConversation?.chatConversationId === c.chatConversationId ? "bg-primary/10" : "hover:bg-muted/50"
                   }`}
                 >
-                  <Avatar name={c.otherName} url={c.otherAvatarUrl} online={presence[c.otherId]} />
+                  <Avatar id={c.otherId} name={c.otherName} url={c.otherAvatarUrl} online={presence[c.otherId]} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-semibold text-foreground truncate">{c.otherName}</span>
@@ -467,6 +480,7 @@ export default function MessagesPage() {
             <>
               <div className="flex items-center gap-3 border-b border-border p-4 shrink-0">
                 <Avatar
+                  id={activeConversation.otherId}
                   name={activeConversation.otherName}
                   url={activeConversation.otherAvatarUrl}
                   size={36}

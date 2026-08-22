@@ -35,10 +35,10 @@ export default function SetPasswordPage({
                 <p className="text-sm font-semibold uppercase text-primary">
                     Create new password
                 </p>
-                <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
+                <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground">
                     Update Password
                 </h1>
-                <p className="mt-3 text-sm leading-6 text-slate-500">
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
                     Choose a new password for your Yoton account. Use something
                     memorable and hard to guess.
                 </p>
@@ -48,12 +48,12 @@ export default function SetPasswordPage({
                 <div className="space-y-2">
                     <label
                         htmlFor="password"
-                        className="required text-sm font-semibold text-slate-700"
+                        className="required text-sm font-semibold text-foreground/90"
                     >
                         Password
                     </label>
                     <div className="relative">
-                        <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                        <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                             <LockKeyhole size={18} />
                         </span>
                         <input
@@ -63,7 +63,7 @@ export default function SetPasswordPage({
                             required
                             value={password}
                             onChange={e => setPassword(e.target.value)}
-                            className="h-12 rounded-2xl border-slate-200! bg-slate-50! pl-12! pr-4 text-base! text-slate-950! placeholder:text-slate-400! focus-visible:bg-white!  focus-visible:ring-transparent!"
+                            className="h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-4 text-base! text-foreground! placeholder:text-muted-foreground! focus-visible:bg-card!  focus-visible:ring-transparent!"
                             autoComplete="new-password"
                         />
                     </div>
@@ -72,12 +72,12 @@ export default function SetPasswordPage({
                 <div className="space-y-2">
                     <label
                         htmlFor="confirm_password"
-                        className="required text-sm font-semibold text-slate-700"
+                        className="required text-sm font-semibold text-foreground/90"
                     >
                         Confirm Password
                     </label>
                     <div className="relative">
-                        <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-slate-400">
+                        <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-foreground">
                             <CheckCircle2 size={18} />
                         </span>
                         <input
@@ -87,7 +87,7 @@ export default function SetPasswordPage({
                             required
                             value={confirmPassword}
                             onChange={e => setConfirmPassword(e.target.value)}
-                            className="h-12 rounded-2xl border-slate-200! bg-slate-50! pl-12! pr-4 text-base! text-slate-950! placeholder:text-slate-400! focus-visible:bg-white!  focus-visible:ring-transparent!"
+                            className="h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-4 text-base! text-foreground! placeholder:text-muted-foreground! focus-visible:bg-card!  focus-visible:ring-transparent!"
                             autoComplete="new-password"
                         />
                     </div>
@@ -102,7 +102,7 @@ export default function SetPasswordPage({
                         type="button"
                         onClick={() => setshowAskEmail(true)}
                         disabled={isSaving}
-                        className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+                        className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 text-sm font-semibold text-muted-foreground transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
                     >
                         <ArrowLeft size={16} />
                         Back
@@ -110,7 +110,7 @@ export default function SetPasswordPage({
                     <button
                         type="submit"
                         disabled={isSaving || !password || !confirmPassword || Boolean(error)}
-                        className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg shadow-blue-500/20 transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
+                        className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
                     >
                         {isSaving ? (
                             <>

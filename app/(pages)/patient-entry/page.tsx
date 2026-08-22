@@ -866,23 +866,6 @@ export default function PatientEntryPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  id="referralStatus"
-                  name="referralStatus"
-                  checked={formData.referralStatus}
-                  onChange={handleInputChange}
-                  className="cursor-pointer bg-transparent"
-                />
-                <label
-                  htmlFor="referralStatus"
-                  className="font-semibold text-foreground/90 cursor-pointer"
-                >
-                  Referral Status
-                </label>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
                   id="chronicStatus"
                   name="chronicStatus"
                   checked={formData.chronicStatus}

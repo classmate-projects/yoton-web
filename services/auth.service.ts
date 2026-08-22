@@ -14,4 +14,8 @@ export const AuthService = {
         })
         return data;
     },
+    deleteAvatar: async () => {
+        const { data } = await api.delete(ENDPOINTS.AUTH.DELETE_AVATAR);
+        return data;
+    },
 }
