@@ -13,7 +13,15 @@ export async function getSignalRConnection() {
       .withAutomaticReconnect()
       .build();
 
-    await connection.start();
+    try {
+      await connection.start();
+    } catch (error) {
+      // Otherwise a failed first attempt (e.g. the API not up yet) caches this rejected
+      // promise forever - every later call returns the same failure instead of retrying.
+      connection = null;
+      connectionPromise = null;
+      throw error;
+    }
 
     console.log("SignalR Connected.");
 

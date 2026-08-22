@@ -36,6 +36,7 @@ import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
 import ReviewOfSystemsPanel, { ReviewOfSystemsValue } from "@/components/doctor/ReviewOfSystemsPanel";
 import PrescriptionPrintout from "@/components/prescription/PrescriptionPrintout";
 import FloatingSaveRevertBar from "@/components/FloatingSaveRevertBar";
+import ToggleButton from "@/components/ToggleButton";
 import { getUserDetail } from "@/lib/userDetail";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
@@ -1573,22 +1574,20 @@ function DoctorWorkbenchInner() {
                       />
                     </div>
                     <div className="flex gap-4">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
+                      <div className="flex items-center gap-2 text-sm">
+                        <ToggleButton
                           checked={treatmentForm.isPackage}
-                          onChange={(e) => setTreatmentForm((p) => ({ ...p, isPackage: e.target.checked }))}
+                          onChange={(checked) => setTreatmentForm((p) => ({ ...p, isPackage: checked }))}
                         />
-                        Package
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
+                        <span>Package</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <ToggleButton
                           checked={treatmentForm.isBillingPending}
-                          onChange={(e) => setTreatmentForm((p) => ({ ...p, isBillingPending: e.target.checked }))}
+                          onChange={(checked) => setTreatmentForm((p) => ({ ...p, isBillingPending: checked }))}
                         />
-                        Pending (don&apos;t bill now — carry to next visit)
-                      </label>
+                        <span>Pending (don&apos;t bill now — carry to next visit)</span>
+                      </div>
                     </div>
                     <button
                       onClick={addTreatment}
