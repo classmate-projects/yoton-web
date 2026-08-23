@@ -51,6 +51,8 @@ export interface CreateAppointmentPayload {
   appointmentDate: string;
   notes?: string;
   userId?: string;
+  isFollowUp?: boolean;
+  urgencyLevel?: string; // Routine, Urgent
 }
 
 export interface PatientListItemType {
@@ -60,6 +62,8 @@ export interface PatientListItemType {
   phone: string;
   address: string;
   dateOfBirth: string | null;
+  nationalID?: string | null;
+  passportNumber?: string | null;
 }
 
 export interface AppointmentRequestType {

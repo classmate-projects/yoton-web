@@ -73,7 +73,9 @@ export const ENDPOINTS = {
         DELETE: (id: string) => `/api/user/delete/${id}`,
         GET_ASSIGNED_DOCTORS: `/api/user/assigned-doctors`,
         CREATE_ASSIGN_DOCTOR: `/api/user/assign-doctor`,
-        GET_SCHEDULED_DOCTOR: (doctorId: string) => `/api/user/${doctorId}/schedule`
+        GET_SCHEDULED_DOCTOR: (doctorId: string) => `/api/user/${doctorId}/schedule`,
+        TERMINATE: (id: string) => `/api/user/${id}/terminate`,
+        GET_EMPLOYMENT_HISTORY: (id: string) => `/api/user/${id}/employment-history`,
     },
     EMR: {
         GET_PATIENTS: (doctorId?: string) => `/api/emr/patients${doctorId ? `?doctorId=${doctorId}` : ""}`,
@@ -89,6 +91,8 @@ export const ENDPOINTS = {
         ADD_MEDICATION: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/medication${doctorId ? `?doctorId=${doctorId}` : ""}`,
         DISCONTINUE_MEDICATION: (medicationId: string, doctorId?: string) => `/api/emr/medication/${medicationId}/discontinue${doctorId ? `?doctorId=${doctorId}` : ""}`,
         ADD_REFERRAL: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/referral${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        SET_REFERRAL_OUTCOME: (referralId: string, doctorId?: string) => `/api/emr/referral/${referralId}/outcome${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        SAVE_DENTAL_EXTRAS: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/dental-extras${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_QUICK_NOTES: (doctorId?: string, patientId?: string) => {
             const params = new URLSearchParams();
             if (doctorId) params.set("doctorId", doctorId);
@@ -112,6 +116,35 @@ export const ENDPOINTS = {
         GET_MY_PENDING_CORRECTIONS: () => `/api/emr/my-pending-corrections`,
         ACKNOWLEDGE_CORRECTION: (correctionId: string) => `/api/emr/encounter/correction/${correctionId}/acknowledge`,
         REJECT_CORRECTION: (correctionId: string) => `/api/emr/encounter/correction/${correctionId}/reject`,
+    },
+    CLINICAL_INCIDENT: {
+        GET_ALL: (category?: string, status?: string) => {
+            const params = new URLSearchParams();
+            if (category) params.set("category", category);
+            if (status) params.set("status", status);
+            const query = params.toString();
+            return `/api/clinical-incidents${query ? `?${query}` : ""}`;
+        },
+        CREATE: () => `/api/clinical-incidents`,
+        UPDATE: (id: string) => `/api/clinical-incidents/${id}`,
+    },
+    STAFF_EXPOSURE: {
+        GET_ALL: (status?: string) => `/api/staff-exposure${status ? `?status=${status}` : ""}`,
+        CREATE: () => `/api/staff-exposure`,
+        UPDATE: (id: string) => `/api/staff-exposure/${id}`,
+    },
+    HAND_HYGIENE: {
+        GET_SESSIONS: () => `/api/hand-hygiene/sessions`,
+        CREATE_SESSION: () => `/api/hand-hygiene/sessions`,
+    },
+    PATIENT_SATISFACTION: {
+        GET_ALL: () => `/api/patient-satisfaction`,
+        CREATE: () => `/api/patient-satisfaction`,
+    },
+    KPI_REPORT: {
+        GET_CATALOG: () => `/api/reports/kpi`,
+        DOWNLOAD: (reportKey: string, start: string, end: string) =>
+            `/api/reports/kpi/${encodeURIComponent(reportKey)}/download?start=${start}&end=${end}`,
     },
     CONFIG_LIST: {
         GET: (listType: string, search?: string, page?: number, pageSize?: number) => {

@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, CheckCircle2 } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -186,6 +186,51 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Check-in",
         navLink: "/check-in",
         icon: CheckCircle2,
+        group: "User Modules"
+    },
+
+    // HSPA-2 compliance KPI reports (see Services/Reports/ on the API side) - a normal
+    // admin-grantable module, not a permanent exemption.
+    {
+        id: 25,
+        name: "Reports",
+        navLink: "/reports/kpi",
+        icon: FileSpreadsheet,
+        group: "Configuration"
+    },
+
+    // Sentinel Events / Medication Errors / Dental Errors reporting - a normal
+    // admin-grantable module, feeds the PL4.3/PL4.4/PL4.7 KPI reports.
+    {
+        id: 26,
+        name: "Clinical Incidents",
+        navLink: "/incident-reports/clinical",
+        icon: AlertTriangle,
+        group: "User Modules"
+    },
+    // Fully separate from Clinical Incidents (staff, not a patient, is the subject) - feeds
+    // the PL4.2 KPI report.
+    {
+        id: 27,
+        name: "Staff Exposure",
+        navLink: "/incident-reports/staff-exposure",
+        icon: ShieldAlert,
+        group: "User Modules"
+    },
+    // Feeds the PL4.1 KPI report.
+    {
+        id: 28,
+        name: "Hand Hygiene Audit",
+        navLink: "/hand-hygiene",
+        icon: Droplets,
+        group: "User Modules"
+    },
+    // Feeds the PL5.1 KPI report.
+    {
+        id: 29,
+        name: "Patient Satisfaction",
+        navLink: "/patient-satisfaction",
+        icon: Smile,
         group: "User Modules"
     },
 

@@ -4,8 +4,10 @@ import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
 import { SpecializationService } from "@/services/specialization.service";
 import { UserService } from "@/services/user.service";
+import { DepartmentSerivce } from "@/services/department.service";
 import { Specialization } from "@/types/Specializations.type";
 import { UserAssignedDoctorCreateType } from "@/types/user.type";
+import { DepartmentTypes } from "@/types/department.type";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { toast } from "sonner";
@@ -19,6 +21,11 @@ function UserRegistrationForm() {
   const [phone, setPhone] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [gender, setGender] = useState("");
+  const [nationality, setNationality] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [hireDate, setHireDate] = useState("");
+  const [departments, setDepartments] = useState<DepartmentTypes[]>([]);
 
 
   const [showAssignDoctor, setShowAssignDoctor] = useState(false)
@@ -48,6 +55,7 @@ function UserRegistrationForm() {
 
   useEffect(() => {
     fetchAllSpecializations()
+    DepartmentSerivce.getAll().then((data) => setDepartments(data || [])).catch(() => {});
   }, [])
 
 
@@ -69,6 +77,9 @@ function UserRegistrationForm() {
           setRole(user.role || "");
           setPhone(user.phone || "");
           setIsActive(user.isActive !== undefined ? user.isActive : true);
+          setGender(user.gender || "");
+          setNationality(user.nationality || "");
+          setDepartmentId(user.departmentId || "");
         }
       } catch (error) {
         console.error("Error loading user edit data from sessionStorage:", error);
@@ -120,6 +131,10 @@ function UserRegistrationForm() {
         password,
         role,
         phone,
+        gender: gender || undefined,
+        nationality: nationality || undefined,
+        departmentId: departmentId || undefined,
+        hireDate: hireDate || undefined,
       }
 
       const data = await UserService.create(payload)
@@ -153,6 +168,9 @@ function UserRegistrationForm() {
         role,
         phone,
         isActive,
+        gender: gender || undefined,
+        nationality: nationality || undefined,
+        departmentId: departmentId || undefined,
       }
 
       if (!userId) return;
@@ -278,6 +296,44 @@ function UserRegistrationForm() {
                   />
                 </div>
               </div>
+
+              {/* Row 4: Gender, Nationality, Department (HR fields) */}
+              <div className="flex items-center gap-4">
+                <div className="w-full flex flex-col gap-2">
+                  <label htmlFor="gender" className="font-bold text-sm">Gender</label>
+                  <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)}>
+                    <option value="">Unspecified</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="w-full">
+                  <label htmlFor="nationality" className="font-bold text-sm">Nationality</label>
+                  <input
+                    type="text"
+                    id="nationality"
+                    value={nationality}
+                    onChange={(e) => setNationality(e.target.value)}
+                    placeholder="e.g. Qatari"
+                    className="outline-0 p-4 rounded-xl w-full mt-2"
+                    style={{
+                      backgroundColor: "var(--color-highlight)",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text)",
+                    }}
+                  />
+                </div>
+                <div className="w-full flex flex-col gap-2">
+                  <label htmlFor="department" className="font-bold text-sm">Department</label>
+                  <select id="department" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+                    <option value="">Unspecified</option>
+                    {departments.map((d) => (
+                      <option key={d.departmentId} value={d.departmentId}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </>
           ) : (
             <>
@@ -394,6 +450,61 @@ function UserRegistrationForm() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter temporary password"
                     autoComplete="new-password"
+                    className="outline-0 p-4 rounded-xl w-full mt-2"
+                    style={{
+                      backgroundColor: "var(--color-highlight)",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text)",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: Gender, Nationality, Department, Hire date (HR fields) */}
+              <div className="flex items-center gap-4">
+                <div className="w-full flex flex-col gap-2">
+                  <label htmlFor="gender" className="font-bold text-sm">Gender</label>
+                  <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)}>
+                    <option value="">Unspecified</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="w-full">
+                  <label htmlFor="nationality" className="font-bold text-sm">Nationality</label>
+                  <input
+                    type="text"
+                    id="nationality"
+                    value={nationality}
+                    onChange={(e) => setNationality(e.target.value)}
+                    placeholder="e.g. Qatari"
+                    className="outline-0 p-4 rounded-xl w-full mt-2"
+                    style={{
+                      backgroundColor: "var(--color-highlight)",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text)",
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="w-full flex flex-col gap-2">
+                  <label htmlFor="department" className="font-bold text-sm">Department</label>
+                  <select id="department" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+                    <option value="">Unspecified</option>
+                    {departments.map((d) => (
+                      <option key={d.departmentId} value={d.departmentId}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="w-full">
+                  <label htmlFor="hireDate" className="font-bold text-sm">Hire Date</label>
+                  <input
+                    type="date"
+                    id="hireDate"
+                    value={hireDate}
+                    onChange={(e) => setHireDate(e.target.value)}
                     className="outline-0 p-4 rounded-xl w-full mt-2"
                     style={{
                       backgroundColor: "var(--color-highlight)",

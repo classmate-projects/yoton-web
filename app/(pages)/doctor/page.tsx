@@ -489,7 +489,17 @@ function DoctorWorkbenchInner() {
   };
 
   // ---------------- CHRONIC CONDITIONS ----------------
-  const [conditionForm, setConditionForm] = useState({ name: "", diagnosedYear: "", status: "Managed" });
+  const [conditionForm, setConditionForm] = useState({
+    name: "",
+    diagnosedYear: "",
+    status: "Managed",
+    diabetesType: "",
+    diagnosisDate: "",
+    hasPcos: false,
+    hasEsrd: false,
+  });
+  const isDiabetesCondition = conditionForm.name.toLowerCase().includes("diabet");
+  const isHypertensionCondition = conditionForm.name.toLowerCase().includes("hypertension");
 
   const addCondition = async () => {
     if (!selectedPatientId || !conditionForm.name.trim()) {
@@ -504,11 +514,23 @@ function DoctorWorkbenchInner() {
           name: conditionForm.name.trim(),
           diagnosedYear: conditionForm.diagnosedYear ? Number(conditionForm.diagnosedYear) : undefined,
           status: conditionForm.status,
+          diabetesType: isDiabetesCondition && conditionForm.diabetesType ? conditionForm.diabetesType : undefined,
+          diagnosisDate: conditionForm.diagnosisDate || undefined,
+          hasPcos: isDiabetesCondition ? conditionForm.hasPcos : undefined,
+          hasEsrd: isHypertensionCondition ? conditionForm.hasEsrd : undefined,
         },
         doctorIdParam
       );
       toast.success("Chronic condition added");
-      setConditionForm({ name: "", diagnosedYear: "", status: "Managed" });
+      setConditionForm({
+        name: "",
+        diagnosedYear: "",
+        status: "Managed",
+        diabetesType: "",
+        diagnosisDate: "",
+        hasPcos: false,
+        hasEsrd: false,
+      });
       await fetchSummary(selectedPatientId);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to add condition"));
@@ -799,7 +821,16 @@ function DoctorWorkbenchInner() {
   };
 
   // ---------------- REFERRAL ----------------
-  const [referralForm, setReferralForm] = useState({ targetSpecializationId: "", priority: "Routine", notes: "" });
+  const [referralForm, setReferralForm] = useState({
+    targetSpecializationId: "",
+    priority: "Routine",
+    notes: "",
+    cancerSiteListItemId: "",
+    cancerSiteName: "",
+    externalFacility: "",
+  });
+  const [referralOutcomeDates, setReferralOutcomeDates] = useState<Record<string, string>>({});
+  const [savingOutcomeId, setSavingOutcomeId] = useState<string | null>(null);
 
   const addReferral = async () => {
     if (!selectedPatientId || !referralForm.targetSpecializationId) {
@@ -815,14 +846,89 @@ function DoctorWorkbenchInner() {
           targetSpecializationId: referralForm.targetSpecializationId,
           priority: referralForm.priority,
           notes: referralForm.notes.trim() || undefined,
+          cancerSiteListItemId: referralForm.cancerSiteListItemId || undefined,
+          externalFacility: referralForm.externalFacility.trim() || undefined,
         },
         doctorIdParam
       );
       toast.success("Referral created");
-      setReferralForm({ targetSpecializationId: "", priority: "Routine", notes: "" });
+      setReferralForm({
+        targetSpecializationId: "",
+        priority: "Routine",
+        notes: "",
+        cancerSiteListItemId: "",
+        cancerSiteName: "",
+        externalFacility: "",
+      });
       await fetchSummary(selectedPatientId);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to create referral"));
+    }
+  };
+
+  const saveReferralOutcome = async (referralId: string) => {
+    const dateSeenBySpecialist = referralOutcomeDates[referralId];
+    if (!dateSeenBySpecialist) {
+      toast.error("Pick the date the patient was seen");
+      return;
+    }
+    if (!requireDoctorSelected()) return;
+    try {
+      setSavingOutcomeId(referralId);
+      await EmrService.setReferralOutcome(referralId, { dateSeenBySpecialist }, doctorIdParam);
+      toast.success("Referral outcome recorded");
+      if (selectedPatientId) await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to record referral outcome"));
+    } finally {
+      setSavingOutcomeId(null);
+    }
+  };
+
+  // ---------------- DENTAL VISIT EXTRAS ----------------
+  const [dentalForm, setDentalForm] = useState({
+    fissureSealantApplied: false,
+    fluorideApplied: false,
+    sdfApplied: false,
+    oralHygieneEducationGiven: false,
+    lifestyleEducationGiven: false,
+    smokingCessationEducationGiven: false,
+    comprehensiveDentalPlanProvided: false,
+  });
+  const [isSavingDentalExtras, setIsSavingDentalExtras] = useState(false);
+
+  useEffect(() => {
+    const latest = summary?.dentalVisitExtras?.[0];
+    if (latest) {
+      setDentalForm({
+        fissureSealantApplied: latest.fissureSealantApplied,
+        fluorideApplied: latest.fluorideApplied,
+        sdfApplied: latest.sdfApplied,
+        oralHygieneEducationGiven: latest.oralHygieneEducationGiven,
+        lifestyleEducationGiven: latest.lifestyleEducationGiven,
+        smokingCessationEducationGiven: latest.smokingCessationEducationGiven,
+        comprehensiveDentalPlanProvided: latest.comprehensiveDentalPlanProvided,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPatientId]);
+
+  const saveDentalExtras = async () => {
+    if (!selectedPatientId) return;
+    if (!requireDoctorSelected()) return;
+    try {
+      setIsSavingDentalExtras(true);
+      await EmrService.saveDentalExtras(
+        selectedPatientId,
+        { encounterId: summary?.latestEncounter?.encounterId, ...dentalForm },
+        doctorIdParam
+      );
+      toast.success("Dental checklist saved");
+      await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save dental checklist"));
+    } finally {
+      setIsSavingDentalExtras(false);
     }
   };
 
@@ -1356,6 +1462,54 @@ function DoctorWorkbenchInner() {
                     </button>
                   </div>
 
+                  {(isDiabetesCondition || isHypertensionCondition) && (
+                    <div className="flex flex-wrap items-end gap-3 -mt-2 rounded-lg bg-muted/30 p-3">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs text-muted-foreground">Exact diagnosis date</label>
+                        <input
+                          type="date"
+                          value={conditionForm.diagnosisDate}
+                          onChange={(e) => setConditionForm((p) => ({ ...p, diagnosisDate: e.target.value }))}
+                          className="h-9 text-sm"
+                        />
+                      </div>
+                      {isDiabetesCondition && (
+                        <>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs text-muted-foreground">Diabetes type</label>
+                            <select
+                              value={conditionForm.diabetesType}
+                              onChange={(e) => setConditionForm((p) => ({ ...p, diabetesType: e.target.value }))}
+                              className="h-9 text-sm"
+                            >
+                              <option value="">Unspecified</option>
+                              <option value="Type1">Type 1</option>
+                              <option value="Type2">Type 2</option>
+                              <option value="Gestational">Gestational</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+                          <label className="flex items-center gap-2 text-sm">
+                            <ToggleButton
+                              checked={conditionForm.hasPcos}
+                              onChange={(checked) => setConditionForm((p) => ({ ...p, hasPcos: checked }))}
+                            />
+                            Polycystic ovaries
+                          </label>
+                        </>
+                      )}
+                      {isHypertensionCondition && (
+                        <label className="flex items-center gap-2 text-sm">
+                          <ToggleButton
+                            checked={conditionForm.hasEsrd}
+                            onChange={(checked) => setConditionForm((p) => ({ ...p, hasEsrd: checked }))}
+                          />
+                          End-stage renal disease
+                        </label>
+                      )}
+                    </div>
+                  )}
+
                   <div className="border-t border-border pt-4 flex flex-col gap-2">
                     <p className="text-sm font-semibold text-foreground/90">Allergies / Reactions</p>
                     <div className="flex flex-wrap gap-2">
@@ -1823,6 +1977,46 @@ function DoctorWorkbenchInner() {
                       Urgent
                     </label>
                   </div>
+                  {referralForm.priority === "Urgent" && (
+                    <div className="flex flex-col gap-2 rounded-lg bg-muted/30 p-3">
+                      <p className="text-xs font-semibold text-foreground/80">
+                        Urgent suspected cancer referral details
+                      </p>
+                      {referralForm.cancerSiteName ? (
+                        <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-1.5 text-sm">
+                          <span>{referralForm.cancerSiteName}</span>
+                          <button
+                            onClick={() => setReferralForm((p) => ({ ...p, cancerSiteListItemId: "", cancerSiteName: "" }))}
+                            className="text-xs text-muted-foreground hover:underline"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      ) : (
+                        <CatalogSearchInput
+                          placeholder="Search suspected cancer site..."
+                          fetchOptions={async (search) => {
+                            const res = await ConfigListService.get("CancerSite", search);
+                            return (res.data || []).map((i: { listItemId: string; name: string; code: string | null }) => ({
+                              id: i.listItemId,
+                              name: i.name,
+                              code: i.code,
+                            }));
+                          }}
+                          onSelect={(opt) =>
+                            setReferralForm((p) => ({ ...p, cancerSiteListItemId: opt.id, cancerSiteName: opt.name }))
+                          }
+                        />
+                      )}
+                      <input
+                        type="text"
+                        placeholder="External facility referred to, if any (e.g. HMC, SIDRA)"
+                        value={referralForm.externalFacility}
+                        onChange={(e) => setReferralForm((p) => ({ ...p, externalFacility: e.target.value }))}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                  )}
                   <textarea
                     placeholder="Notes for the specialist..."
                     value={referralForm.notes}
@@ -1840,21 +2034,88 @@ function DoctorWorkbenchInner() {
                       {summary.referrals.map((r) => (
                         <div
                           key={r.referralId}
-                          className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
+                          className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
                         >
-                          <span className="font-medium">{r.targetSpecializationName}</span>
-                          <span
-                            className={`text-xs font-semibold ${
-                              r.priority === "Urgent" ? "text-red-600" : "text-muted-foreground"
-                            }`}
-                          >
-                            {r.priority}
-                          </span>
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">
+                              {r.targetSpecializationName}
+                              {r.cancerSiteName && (
+                                <span className="ml-2 text-xs text-muted-foreground">({r.cancerSiteName})</span>
+                              )}
+                            </span>
+                            <span
+                              className={`text-xs font-semibold ${
+                                r.priority === "Urgent" ? "text-red-600" : "text-muted-foreground"
+                              }`}
+                            >
+                              {r.priority}
+                            </span>
+                          </div>
+                          {r.dateSeenBySpecialist ? (
+                            <span className="text-xs text-emerald-600">
+                              Seen by specialist on {new Date(r.dateSeenBySpecialist).toLocaleDateString()}
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="date"
+                                value={referralOutcomeDates[r.referralId] || ""}
+                                onChange={(e) =>
+                                  setReferralOutcomeDates((p) => ({ ...p, [r.referralId]: e.target.value }))
+                                }
+                                className="h-8 text-xs flex-1"
+                              />
+                              <button
+                                onClick={() => saveReferralOutcome(r.referralId)}
+                                disabled={savingOutcomeId === r.referralId}
+                                className="text-xs font-semibold text-primary hover:underline disabled:opacity-50"
+                              >
+                                Record seen date
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
+
+                {/* Dental checklist — only shown for a doctor whose specialization is
+                    flagged dental (see Specialization.IsDentalSpecialty), feeds the PL4.6,
+                    PL4.11, and PL5.2 KPI reports. */}
+                {dashboard?.isDentalSpecialty && (
+                  <div className="card p-6 flex flex-col gap-3">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <Stethoscope size={18} className="text-primary" /> Dental Checklist
+                    </h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {([
+                        ["fissureSealantApplied", "Fissure sealant applied"],
+                        ["fluorideApplied", "Fluoride varnish applied"],
+                        ["sdfApplied", "Silver diamine fluoride applied"],
+                        ["oralHygieneEducationGiven", "Oral hygiene education given"],
+                        ["lifestyleEducationGiven", "Lifestyle factors education given"],
+                        ["smokingCessationEducationGiven", "Smoking cessation education given"],
+                        ["comprehensiveDentalPlanProvided", "Comprehensive dental plan provided"],
+                      ] as const).map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 text-sm">
+                          <ToggleButton
+                            checked={dentalForm[key]}
+                            onChange={(checked) => setDentalForm((p) => ({ ...p, [key]: checked }))}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                    <button
+                      onClick={saveDentalExtras}
+                      disabled={isSavingDentalExtras}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      Save Dental Checklist
+                    </button>
+                  </div>
+                )}
 
                 {/* Follow-up — an optional booking, not a confirmed appointment; front
                     office calls the patient to arrange the actual visit. */}

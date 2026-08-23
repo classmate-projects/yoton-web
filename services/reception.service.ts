@@ -74,6 +74,8 @@ export const ReceptionService = {
             AppointmentDate: payload.appointmentDate,
             Notes: payload.notes,
             UserId: payload.userId,
+            IsFollowUp: payload.isFollowUp,
+            UrgencyLevel: payload.urgencyLevel,
         })
         return data;
     },

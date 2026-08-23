@@ -296,6 +296,7 @@ function NurseWorkbenchInner() {
     weightKg: "",
     consciousnessLevel: "Alert",
     supplementalOxygen: false,
+    bmiExclusionReason: "",
     notes: "",
   });
   const [savingVitals, setSavingVitals] = useState(false);
@@ -309,13 +310,48 @@ function NurseWorkbenchInner() {
     return (weight / Math.pow(height / 100, 2)).toFixed(1);
   })();
 
-  const saveVitals = async () => {
-    if (!encounterId) return;
+  // ---------------- ENCOUNTER LOCK (password re-auth after nurse closes the encounter) ----------------
+  // Once EndEncounter has run, the 5 clinical-task write endpoints below (vitals, injection,
+  // dressing, blood sugar, IV fluids) respond 423 instead of saving - this catches that,
+  // parks the retry, and lets the password-prompt modal replay the exact same save once
+  // confirmed, instead of duplicating this handling in every save function.
+  const [encounterLock, setEncounterLock] = useState<{ retry: (password: string) => Promise<boolean> } | null>(null);
+  const [encounterLockPassword, setEncounterLockPassword] = useState("");
+  const [submittingEncounterLock, setSubmittingEncounterLock] = useState(false);
+
+  const handleEncounterLockError = (error: unknown, retry: (password: string) => Promise<boolean>): boolean => {
+    if (axios.isAxiosError(error) && error.response?.status === 423) {
+      setEncounterLock({ retry });
+      return true;
+    }
+    return false;
+  };
+
+  // Only closes the modal once the retried save actually succeeds - a wrong password on
+  // retry shows its own toast (from the save function's own catch block) and leaves the
+  // modal open so the user can just try again, instead of forcing them to re-trigger the
+  // whole save from scratch.
+  const confirmEncounterLockPassword = async () => {
+    if (!encounterLock || !encounterLockPassword.trim()) return;
+    setSubmittingEncounterLock(true);
+    try {
+      const succeeded = await encounterLock.retry(encounterLockPassword);
+      if (succeeded) {
+        setEncounterLock(null);
+        setEncounterLockPassword("");
+      }
+    } finally {
+      setSubmittingEncounterLock(false);
+    }
+  };
+
+  const saveVitals = async (passwordOverride?: string): Promise<boolean> => {
+    if (!encounterId) return false;
     if (!vitalsForm.systolic || !vitalsForm.diastolic || !vitalsForm.heartRate) {
       toast.error("Blood pressure and heart rate are required");
-      return;
+      return false;
     }
-    if (!requireNurseSelected()) return;
+    if (!requireNurseSelected()) return false;
     try {
       setSavingVitals(true);
       await NursingService.saveVitals({
@@ -330,14 +366,19 @@ function NurseWorkbenchInner() {
         weightKg: Number(vitalsForm.weightKg || 0),
         consciousnessLevel: vitalsForm.consciousnessLevel,
         supplementalOxygen: vitalsForm.supplementalOxygen,
+        bmiExclusionReason: vitalsForm.bmiExclusionReason || undefined,
         notes: vitalsForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
+        password: passwordOverride,
       });
       toast.success("Vitals recorded");
-      setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, notes: "" });
+      setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, bmiExclusionReason: "", notes: "" });
       await refreshChart();
+      return true;
     } catch (error) {
+      if (handleEncounterLockError(error, (pw) => saveVitals(pw))) return false;
       toast.error(errorMessage(error, "Failed to save vitals"));
+      return false;
     } finally {
       setSavingVitals(false);
     }
@@ -347,13 +388,13 @@ function NurseWorkbenchInner() {
   const [injectionForm, setInjectionForm] = useState({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
   const [savingInjection, setSavingInjection] = useState(false);
 
-  const saveInjection = async () => {
-    if (!encounterId) return;
+  const saveInjection = async (passwordOverride?: string): Promise<boolean> => {
+    if (!encounterId) return false;
     if (!injectionForm.medicineName.trim() || !injectionForm.dose.trim()) {
       toast.error("Medicine name and dose are required");
-      return;
+      return false;
     }
-    if (!requireNurseSelected()) return;
+    if (!requireNurseSelected()) return false;
     try {
       setSavingInjection(true);
       await NursingService.saveInjection({
@@ -363,12 +404,16 @@ function NurseWorkbenchInner() {
         route: injectionForm.route,
         notes: injectionForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
+        password: passwordOverride,
       });
       toast.success("Medication administration recorded");
       setInjectionForm({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
       await refreshChart();
+      return true;
     } catch (error) {
+      if (handleEncounterLockError(error, (pw) => saveInjection(pw))) return false;
       toast.error(errorMessage(error, "Failed to save medication entry"));
+      return false;
     } finally {
       setSavingInjection(false);
     }
@@ -383,13 +428,13 @@ function NurseWorkbenchInner() {
   });
   const [savingDressing, setSavingDressing] = useState(false);
 
-  const saveDressing = async () => {
-    if (!encounterId) return;
+  const saveDressing = async (passwordOverride?: string): Promise<boolean> => {
+    if (!encounterId) return false;
     if (!dressingForm.woundType || !dressingForm.dressingMaterial) {
       toast.error("Wound type and dressing material are required");
-      return;
+      return false;
     }
-    if (!requireNurseSelected()) return;
+    if (!requireNurseSelected()) return false;
     try {
       setSavingDressing(true);
       await NursingService.saveDressing({
@@ -399,12 +444,16 @@ function NurseWorkbenchInner() {
         infectionSigns: dressingForm.infectionSigns,
         notes: dressingForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
+        password: passwordOverride,
       });
       toast.success("Wound care entry recorded");
       setDressingForm({ woundType: "", dressingMaterial: "", infectionSigns: false, notes: "" });
       await refreshChart();
+      return true;
     } catch (error) {
+      if (handleEncounterLockError(error, (pw) => saveDressing(pw))) return false;
       toast.error(errorMessage(error, "Failed to save wound care entry"));
+      return false;
     } finally {
       setSavingDressing(false);
     }
@@ -414,13 +463,13 @@ function NurseWorkbenchInner() {
   const [sugarForm, setSugarForm] = useState({ sugarLevel: "", type: "Random", notes: "" });
   const [savingSugar, setSavingSugar] = useState(false);
 
-  const saveBloodSugar = async () => {
-    if (!encounterId) return;
+  const saveBloodSugar = async (passwordOverride?: string): Promise<boolean> => {
+    if (!encounterId) return false;
     if (!sugarForm.sugarLevel) {
       toast.error("Sugar level is required");
-      return;
+      return false;
     }
-    if (!requireNurseSelected()) return;
+    if (!requireNurseSelected()) return false;
     try {
       setSavingSugar(true);
       await NursingService.saveBloodSugar({
@@ -429,12 +478,16 @@ function NurseWorkbenchInner() {
         type: sugarForm.type,
         notes: sugarForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
+        password: passwordOverride,
       });
       toast.success("Blood sugar reading recorded");
       setSugarForm({ sugarLevel: "", type: "Random", notes: "" });
       await refreshChart();
+      return true;
     } catch (error) {
+      if (handleEncounterLockError(error, (pw) => saveBloodSugar(pw))) return false;
       toast.error(errorMessage(error, "Failed to save blood sugar reading"));
+      return false;
     } finally {
       setSavingSugar(false);
     }
@@ -444,13 +497,13 @@ function NurseWorkbenchInner() {
   const [ivForm, setIvForm] = useState({ fluidType: "", volume: "", rate: "", notes: "" });
   const [savingIv, setSavingIv] = useState(false);
 
-  const saveIVFluids = async () => {
-    if (!encounterId) return;
+  const saveIVFluids = async (passwordOverride?: string): Promise<boolean> => {
+    if (!encounterId) return false;
     if (!ivForm.fluidType.trim() || !ivForm.volume || !ivForm.rate) {
       toast.error("Fluid type, volume, and rate are required");
-      return;
+      return false;
     }
-    if (!requireNurseSelected()) return;
+    if (!requireNurseSelected()) return false;
     try {
       setSavingIv(true);
       await NursingService.saveIVFluids({
@@ -460,12 +513,16 @@ function NurseWorkbenchInner() {
         rate: Number(ivForm.rate),
         notes: ivForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
+        password: passwordOverride,
       });
       toast.success("IV fluids entry recorded");
       setIvForm({ fluidType: "", volume: "", rate: "", notes: "" });
       await refreshChart();
+      return true;
     } catch (error) {
+      if (handleEncounterLockError(error, (pw) => saveIVFluids(pw))) return false;
       toast.error(errorMessage(error, "Failed to save IV fluids entry"));
+      return false;
     } finally {
       setSavingIv(false);
     }
@@ -862,8 +919,21 @@ function NurseWorkbenchInner() {
                         <span className="text-xs text-muted-foreground shrink-0">kg/m²</span>
                       </div>
                     </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground">BMI screening exclusion (if any)</label>
+                      <select
+                        value={vitalsForm.bmiExclusionReason}
+                        onChange={(e) => setVitalsForm((p) => ({ ...p, bmiExclusionReason: e.target.value }))}
+                        className="h-10 text-sm"
+                      >
+                        <option value="">None</option>
+                        <option value="Pregnant">Pregnant</option>
+                        <option value="PalliativeCare">Receiving palliative care</option>
+                        <option value="MedicalReason">Documented medical reason (urgent/emergent)</option>
+                      </select>
+                    </div>
                     <textarea placeholder="Notes..." value={vitalsForm.notes} onChange={(e) => setVitalsForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveVitals} disabled={savingVitals} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    <button onClick={() => saveVitals()} disabled={savingVitals} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                       <Save size={15} /> Save Vitals
                     </button>
                   </>
@@ -968,7 +1038,7 @@ function NurseWorkbenchInner() {
                       </select>
                     </div>
                     <textarea placeholder="Notes..." value={injectionForm.notes} onChange={(e) => setInjectionForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveInjection} disabled={savingInjection} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    <button onClick={() => saveInjection()} disabled={savingInjection} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                       <Save size={15} /> Save Entry
                     </button>
                   </>
@@ -1017,7 +1087,7 @@ function NurseWorkbenchInner() {
                       <span className="text-sm">Signs of infection observed (redness, swelling, warmth, or discharge)</span>
                     </div>
                     <textarea placeholder="Notes..." value={dressingForm.notes} onChange={(e) => setDressingForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveDressing} disabled={savingDressing} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    <button onClick={() => saveDressing()} disabled={savingDressing} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                       <Save size={15} /> Save Entry
                     </button>
                   </>
@@ -1055,7 +1125,7 @@ function NurseWorkbenchInner() {
                       </select>
                     </div>
                     <textarea placeholder="Notes..." value={sugarForm.notes} onChange={(e) => setSugarForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveBloodSugar} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    <button onClick={() => saveBloodSugar()} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                       <Save size={15} /> Save Entry
                     </button>
                   </>
@@ -1086,7 +1156,7 @@ function NurseWorkbenchInner() {
                       <input type="number" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value }))} className="h-10 text-sm" />
                     </div>
                     <textarea placeholder="Notes..." value={ivForm.notes} onChange={(e) => setIvForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveIVFluids} disabled={savingIv} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    <button onClick={() => saveIVFluids()} disabled={savingIv} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                       <Save size={15} /> Save Entry
                     </button>
                   </>
@@ -1311,6 +1381,46 @@ function NurseWorkbenchInner() {
                 ) : (
                   <p className="text-sm text-muted-foreground">No active prescriptions.</p>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {encounterLock && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+            <div className="card w-full max-w-sm rounded-xl border border-border p-6 shadow-2xl mx-4">
+              <h2 className="text-lg font-semibold text-foreground">Encounter Closed</h2>
+              <p className="text-sm text-muted-foreground mt-1 mb-4">
+                This encounter has already been sent to the doctor. Enter your password to continue editing it.
+              </p>
+              <input
+                type="password"
+                autoFocus
+                value={encounterLockPassword}
+                onChange={(e) => setEncounterLockPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && confirmEncounterLockPassword()}
+                placeholder="Your password"
+                className="h-10 text-sm w-full"
+              />
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEncounterLock(null);
+                    setEncounterLockPassword("");
+                  }}
+                  className="w-1/3 border border-border text-muted-foreground font-semibold py-2.5 rounded-lg hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmEncounterLockPassword}
+                  disabled={submittingEncounterLock || !encounterLockPassword.trim()}
+                  className="w-full bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-semibold py-2.5 rounded-lg transition-colors"
+                >
+                  {submittingEncounterLock ? "Verifying..." : "Confirm & Save"}
+                </button>
               </div>
             </div>
           </div>

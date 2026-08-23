@@ -78,6 +78,8 @@ export default function Appointments() {
   const [selectedPatient, setSelectedPatient] =
     useState<PatientListItemType | null>(null);
   const [notes, setNotes] = useState("");
+  const [isFollowUp, setIsFollowUp] = useState(false);
+  const [urgencyLevel, setUrgencyLevel] = useState("Routine");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [visitQueue, setVisitQueue] = useState<VisitType[]>([]);
@@ -328,6 +330,8 @@ export default function Appointments() {
       setPatientSearch("");
       setSelectedPatient(null);
       setNotes("");
+      setIsFollowUp(false);
+      setUrgencyLevel("Routine");
     } else {
       setCancelSlot(slot);
     }
@@ -338,7 +342,9 @@ export default function Appointments() {
         (p) =>
           p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
           p.phone?.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.opId?.toLowerCase().includes(patientSearch.toLowerCase())
+          p.opId?.toLowerCase().includes(patientSearch.toLowerCase()) ||
+          p.nationalID?.toLowerCase().includes(patientSearch.toLowerCase()) ||
+          p.passportNumber?.toLowerCase().includes(patientSearch.toLowerCase())
       )
     : [];
 
@@ -360,6 +366,8 @@ export default function Appointments() {
         appointmentDate: bookingSlot.start,
         notes,
         userId,
+        isFollowUp,
+        urgencyLevel,
       });
 
       if (data.status === false) {
@@ -1026,7 +1034,7 @@ export default function Appointments() {
                     setPatientSearch(event.target.value);
                     setSelectedPatient(null);
                   }}
-                  placeholder="Search by name, phone or OP ID..."
+                  placeholder="Search by name, phone, OP ID, national ID, or passport..."
                   className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
                 />
                 {!selectedPatient && filteredPatients.length > 0 && (
@@ -1073,6 +1081,42 @@ export default function Appointments() {
                   placeholder="Reason for visit"
                   className="w-full min-h-20 px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
                 />
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-sm font-semibold text-foreground/90">
+                  Follow-up visit
+                </label>
+                <input
+                  type="checkbox"
+                  checked={isFollowUp}
+                  onChange={(event) => setIsFollowUp(event.target.checked)}
+                  className="h-5 w-5"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">
+                  Urgency
+                </label>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      checked={urgencyLevel === "Routine"}
+                      onChange={() => setUrgencyLevel("Routine")}
+                    />
+                    Routine
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      checked={urgencyLevel === "Urgent"}
+                      onChange={() => setUrgencyLevel("Urgent")}
+                    />
+                    Urgent
+                  </label>
+                </div>
               </div>
             </div>
 

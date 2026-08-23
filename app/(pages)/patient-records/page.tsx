@@ -246,7 +246,9 @@ export default function PatientRecordsPage() {
     (p) =>
       p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.phone?.includes(searchTerm)
+      p.phone?.includes(searchTerm) ||
+      p.nationalID?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.passportNumber?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -274,7 +276,7 @@ export default function PatientRecordsPage() {
             </span>
             <input
               type="text"
-              placeholder="Search patients..."
+              placeholder="Search by name, email, phone, national ID, or passport..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"

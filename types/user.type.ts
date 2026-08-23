@@ -42,6 +42,10 @@ export interface UserCreateType {
     password: string;
     role: string
     phone: string
+    gender?: string;
+    nationality?: string;
+    departmentId?: string;
+    hireDate?: string;
 }
 
 
@@ -51,6 +55,25 @@ export interface UserUpdateType {
     role: string;
     phone: string
     isActive: boolean
+    gender?: string;
+    nationality?: string;
+    departmentId?: string;
+}
+
+export interface TerminateUserPayload {
+    terminationDate: string;
+    terminationReason: string;
+    terminationReasonOtherText?: string;
+}
+
+export interface StaffEmploymentEventType {
+    staffEmploymentEventId: string;
+    departmentId: string | null;
+    departmentName: string | null;
+    hireDate: string;
+    terminationDate: string | null;
+    terminationReason: string | null;
+    terminationReasonOtherText: string | null;
 }
 
 export interface UserAssignedDoctorCreateType {

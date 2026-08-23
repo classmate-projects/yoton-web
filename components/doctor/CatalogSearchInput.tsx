@@ -25,6 +25,7 @@ export default function CatalogSearchInput({ placeholder, fetchOptions, onSelect
   const [options, setOptions] = useState<CatalogOption[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,9 +42,16 @@ export default function CatalogSearchInput({ placeholder, fetchOptions, onSelect
     if (!isOpen) return;
     const timer = setTimeout(async () => {
       setIsLoading(true);
+      setHasError(false);
       try {
         const results = await fetchOptions(query);
         setOptions(results);
+      } catch {
+        // A 403 (missing module grant) or network failure otherwise left this looking
+        // identical to "no matches found" with no way to tell the difference — see the
+        // dropdown's own hasError branch below for the distinct message.
+        setOptions([]);
+        setHasError(true);
       } finally {
         setIsLoading(false);
       }
@@ -72,6 +80,8 @@ export default function CatalogSearchInput({ placeholder, fetchOptions, onSelect
         <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
           {isLoading ? (
             <p className="px-3 py-2 text-sm text-muted-foreground">Searching...</p>
+          ) : hasError ? (
+            <p className="px-3 py-2 text-sm text-red-600">Search failed. Please try again.</p>
           ) : options.length > 0 ? (
             options.map((opt) => (
               <button

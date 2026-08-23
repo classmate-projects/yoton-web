@@ -27,7 +27,19 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import { UserService } from "@/services/user.service";
 import { NursingService } from "@/services/nursing.service";
 import { NurseShiftInput } from "@/types/nursing.type";
+import { StaffEmploymentEventType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+
+const TERMINATION_REASONS = [
+  { value: "Retired60Plus", label: "Retired (60+ years)" },
+  { value: "EarlyRetirement", label: "Early retirement (<60 years)" },
+  { value: "VoluntaryResignation", label: "Left willingly (resignation)" },
+  { value: "ForcedTermination", label: "Forced to leave" },
+  { value: "Death", label: "Deceased" },
+  { value: "TempContractEnded", label: "Temporary/locum contract ended" },
+  { value: "TransferredDepartment", label: "Transferred to another department" },
+  { value: "Other", label: "Other" },
+];
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -53,6 +65,16 @@ export default function UserManagement() {
   const [shiftsWeek, setShiftsWeek] = useState<DayShiftRow[]>(emptyWeek());
   const [loadingShifts, setLoadingShifts] = useState(false);
   const [savingShifts, setSavingShifts] = useState(false);
+
+  const [historyTarget, setHistoryTarget] = useState<getAllResponse | null>(null);
+  const [employmentHistory, setEmploymentHistory] = useState<StaffEmploymentEventType[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const [terminateTarget, setTerminateTarget] = useState<getAllResponse | null>(null);
+  const [terminationDate, setTerminationDate] = useState("");
+  const [terminationReason, setTerminationReason] = useState("");
+  const [terminationReasonOtherText, setTerminationReasonOtherText] = useState("");
+  const [isTerminating, setIsTerminating] = useState(false);
 
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -188,6 +210,60 @@ export default function UserManagement() {
       toast.error("Failed to update shifts");
     } finally {
       setSavingShifts(false);
+    }
+  };
+
+  // ---------------- EMPLOYMENT HISTORY ----------------
+  const openHistory = async (user: getAllResponse) => {
+    setHistoryTarget(user);
+    setLoadingHistory(true);
+    try {
+      const res = await UserService.getEmploymentHistory(user.id);
+      setEmploymentHistory(res.data ?? []);
+    } catch {
+      toast.error("Failed to load employment history");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const closeHistory = () => {
+    setHistoryTarget(null);
+    setEmploymentHistory([]);
+  };
+
+  // ---------------- TERMINATE EMPLOYMENT ----------------
+  const openTerminate = (user: getAllResponse) => {
+    setTerminateTarget(user);
+    setTerminationDate("");
+    setTerminationReason("");
+    setTerminationReasonOtherText("");
+  };
+
+  const closeTerminate = () => {
+    setTerminateTarget(null);
+  };
+
+  const submitTerminate = async () => {
+    if (!terminateTarget) return;
+    if (!terminationDate || !terminationReason) {
+      toast.error("Termination date and reason are required");
+      return;
+    }
+    setIsTerminating(true);
+    try {
+      await UserService.terminate(terminateTarget.id, {
+        terminationDate,
+        terminationReason,
+        terminationReasonOtherText: terminationReasonOtherText || undefined,
+      });
+      toast.success("Employment terminated");
+      closeTerminate();
+      fetchAllUsers();
+    } catch {
+      toast.error("Failed to terminate employment");
+    } finally {
+      setIsTerminating(false);
     }
   };
 
@@ -347,6 +423,24 @@ export default function UserManagement() {
                         )}
 
                         <button
+                          onClick={() => openHistory(user)}
+                          title="Employment History"
+                          className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer text-xs font-semibold text-blue-600"
+                        >
+                          History
+                        </button>
+
+                        {user.isActive && (
+                          <button
+                            onClick={() => openTerminate(user)}
+                            title="Terminate Employment"
+                            className="hover:bg-orange-100 p-2 rounded-full transition-colors cursor-pointer text-xs font-semibold text-orange-600"
+                          >
+                            Terminate
+                          </button>
+                        )}
+
+                        <button
                           onClick={() => handleDelete(user.id, user.name)}
                           title="Delete User"
                           className="hover:bg-red-100 p-2 rounded-full transition-colors cursor-pointer"
@@ -445,6 +539,119 @@ export default function UserManagement() {
                 className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer"
               >
                 {savingShifts ? "Saving..." : "Save Shifts"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {historyTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="bg-card w-full max-w-lg rounded-xl border border-border p-6 shadow-2xl mx-4">
+            <h2 className="text-xl font-semibold text-foreground">Employment History for {historyTarget.name}</h2>
+            <p className="text-sm text-muted-foreground mt-1 mb-4">
+              Each stint is one hire-to-termination period — a rehire opens a new stint rather than overwriting the old one.
+            </p>
+
+            {loadingHistory ? (
+              <div className="py-8 flex justify-center">
+                <LoadingSpinner />
+              </div>
+            ) : employmentHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">No employment history recorded.</p>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-96 overflow-y-auto">
+                {employmentHistory.map((e) => (
+                  <div key={e.staffEmploymentEventId} className="rounded-lg border border-border px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-foreground">
+                        {new Date(e.hireDate).toLocaleDateString()} —{" "}
+                        {e.terminationDate ? new Date(e.terminationDate).toLocaleDateString() : "Present"}
+                      </span>
+                      {e.departmentName && <span className="text-xs text-muted-foreground">{e.departmentName}</span>}
+                    </div>
+                    {e.terminationReason && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Reason: {TERMINATION_REASONS.find((r) => r.value === e.terminationReason)?.label ?? e.terminationReason}
+                        {e.terminationReasonOtherText ? ` — ${e.terminationReasonOtherText}` : ""}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={closeHistory}
+                className="w-full border border-neutral-400 text-gray-700 font-semibold py-3 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {terminateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
+            <h2 className="text-xl font-semibold text-foreground">Terminate Employment</h2>
+            <p className="text-sm text-muted-foreground mt-1 mb-4">
+              Closes {terminateTarget.name}&apos;s current employment stint and deactivates the account. Distinct from the
+              status toggle above (temporary suspension) — a rehire later opens a new stint.
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-sm font-semibold text-foreground/90">Last working date</label>
+                <input
+                  type="date"
+                  value={terminationDate}
+                  onChange={(e) => setTerminationDate(e.target.value)}
+                  className="h-10 text-sm w-full mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-foreground/90">Reason</label>
+                <select
+                  value={terminationReason}
+                  onChange={(e) => setTerminationReason(e.target.value)}
+                  className="h-10 text-sm w-full mt-1"
+                >
+                  <option value="">Select a reason</option>
+                  {TERMINATION_REASONS.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+              {terminationReason === "Other" && (
+                <input
+                  type="text"
+                  placeholder="Specify reason"
+                  value={terminationReasonOtherText}
+                  onChange={(e) => setTerminationReasonOtherText(e.target.value)}
+                  className="h-10 text-sm w-full"
+                />
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={closeTerminate}
+                className="w-1/3 border border-neutral-400 text-gray-700 font-semibold py-3 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitTerminate}
+                disabled={isTerminating}
+                className="w-full bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer"
+              >
+                {isTerminating ? "Terminating..." : "Confirm Termination"}
               </button>
             </div>
           </div>

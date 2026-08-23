@@ -54,7 +54,10 @@ export default function ElectronicMedicalRecordPage() {
     (p) =>
       p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.opId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase())
+      p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.nationalID?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.passportNumber?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (selectedPatientId) {
@@ -211,7 +214,7 @@ export default function ElectronicMedicalRecordPage() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search by name, MRN, or doctor..."
+              placeholder="Search by name, phone, MRN, doctor, national ID, or passport..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full h-10 pl-9 text-sm"

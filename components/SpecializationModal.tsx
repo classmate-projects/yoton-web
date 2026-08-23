@@ -7,6 +7,7 @@ import { DepartmentSerivce } from "@/services/department.service";
 import { SpecializationTypes } from "@/types/specialization.type";
 import { DepartmentTypes } from "@/types/department.type";
 import axios from "axios";
+import ToggleButton from "@/components/ToggleButton";
 
 
 interface SpecializationModalProps {
@@ -27,6 +28,7 @@ export default function SpecializationModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [isDentalSpecialty, setIsDentalSpecialty] = useState(false);
   const [allDepartments, setAllDepartments] = useState<DepartmentTypes[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -48,10 +50,12 @@ export default function SpecializationModal({
         setName(editingSpecialization.name);
         setDescription(editingSpecialization.description);
         setSelectedDepartment(String(editingSpecialization.departmentId));
+        setIsDentalSpecialty(editingSpecialization.isDentalSpecialty);
       } else {
         setName("");
         setDescription("");
         setSelectedDepartment(initialDepartmentId || "");
+        setIsDentalSpecialty(false);
       }
       fetchDepartments();
     }
@@ -65,6 +69,7 @@ export default function SpecializationModal({
         name,
         description,
         departmentId: selectedDepartment,
+        isDentalSpecialty,
       };
       const data = await SpecializationService.create(payload)
       toast.success(data.message)
@@ -91,7 +96,8 @@ export default function SpecializationModal({
         name,
         description,
         departmentId: selectedDepartment,
-        isActive: editingSpecialization?.isActive
+        isActive: editingSpecialization?.isActive,
+        isDentalSpecialty
       };
       const data = await SpecializationService.update(editingSpecialization.specializationId, payload)
       toast.success(data.message)
@@ -168,6 +174,16 @@ export default function SpecializationModal({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold text-foreground/90">Dental specialty</p>
+              <p className="text-xs text-muted-foreground">
+                Enables the dental checklist panel and dental KPI reports for this specialty&apos;s doctors.
+              </p>
+            </div>
+            <ToggleButton checked={isDentalSpecialty} onChange={setIsDentalSpecialty} />
           </div>
 
           <div className="flex items-center justify-end gap-3 mt-2 w-full">

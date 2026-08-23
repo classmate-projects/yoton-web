@@ -6,6 +6,8 @@ import {
   AllergyPayload,
   MedicationPayload,
   ReferralPayload,
+  ReferralOutcomePayload,
+  DentalVisitExtraPayload,
   TreatmentPayload,
   DoctorConfidentialNotePayload,
   AddDiagnosisPayload,
@@ -84,6 +86,14 @@ export const EmrService = {
   },
   addReferral: async (patientId: string, payload: ReferralPayload, doctorId?: string) => {
     const { data } = await api.post(ENDPOINTS.EMR.ADD_REFERRAL(patientId, doctorId), payload);
+    return data;
+  },
+  setReferralOutcome: async (referralId: string, payload: ReferralOutcomePayload, doctorId?: string) => {
+    const { data } = await api.put(ENDPOINTS.EMR.SET_REFERRAL_OUTCOME(referralId, doctorId), payload);
+    return data;
+  },
+  saveDentalExtras: async (patientId: string, payload: DentalVisitExtraPayload, doctorId?: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.SAVE_DENTAL_EXTRAS(patientId, doctorId), payload);
     return data;
   },
   addTreatment: async (patientId: string, payload: TreatmentPayload, doctorId?: string) => {

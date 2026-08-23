@@ -37,6 +37,7 @@ export interface VitalsType {
   bmi: number;
   consciousnessLevel: string | null; // Alert, Voice, Pain, Unresponsive
   supplementalOxygen: boolean;
+  bmiExclusionReason: string | null; // Pregnant, PalliativeCare, MedicalReason
   ewsScore: number;
   ewsBand: "Low" | "Medium" | "High";
   notes: string | null;
@@ -182,8 +183,12 @@ export interface VitalsPayload {
   weightKg: number;
   consciousnessLevel?: string;
   supplementalOxygen?: boolean;
+  bmiExclusionReason?: string;
   notes?: string;
   nurseId?: string;
+  // Required only if the encounter has already been closed (sent to the doctor) - the API
+  // returns 423 with requiresPassword:true when this is missing, so the caller can prompt.
+  password?: string;
 }
 
 export interface NurseNotePayload {
@@ -218,6 +223,7 @@ export interface InjectionPayload {
   route: string;
   notes?: string;
   nurseId?: string;
+  password?: string;
 }
 
 export interface DressingPayload {
@@ -227,6 +233,7 @@ export interface DressingPayload {
   infectionSigns: boolean;
   notes?: string;
   nurseId?: string;
+  password?: string;
 }
 
 export interface BloodSugarPayload {
@@ -235,6 +242,7 @@ export interface BloodSugarPayload {
   type: string;
   notes?: string;
   nurseId?: string;
+  password?: string;
 }
 
 export interface IVFluidsPayload {
@@ -244,6 +252,7 @@ export interface IVFluidsPayload {
   rate: number;
   notes?: string;
   nurseId?: string;
+  password?: string;
 }
 
 export interface WorkQueueItemType {

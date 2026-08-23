@@ -65,5 +65,7 @@ export interface PatientGetAllType {
     email: string;
     phone: string;
     address: string;
+    nationalID?: string | null;
+    passportNumber?: string | null;
 }
 

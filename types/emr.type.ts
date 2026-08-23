@@ -8,6 +8,9 @@ export interface EmrPatientListItem {
   lastAppointmentDate: string | null;
   lastAppointmentStatus: string | null;
   assignedDoctorName: string | null;
+  phone: string | null;
+  nationalID: string | null;
+  passportNumber: string | null;
 }
 
 export interface ChronicConditionType {
@@ -15,6 +18,10 @@ export interface ChronicConditionType {
   name: string;
   diagnosedYear: number | null;
   status: string;
+  diabetesType: string | null; // Type1, Type2, Gestational, Other
+  diagnosisDate: string | null;
+  hasPcos: boolean;
+  hasEsrd: boolean;
   createdAt: string;
 }
 
@@ -142,6 +149,22 @@ export interface ReferralType {
   targetSpecializationName: string | null;
   priority: string;
   notes: string | null;
+  cancerSiteListItemId: string | null;
+  cancerSiteName: string | null;
+  externalFacility: string | null;
+  dateSeenBySpecialist: string | null;
+  createdAt: string;
+}
+
+export interface DentalVisitExtraType {
+  dentalVisitExtraId: string;
+  fissureSealantApplied: boolean;
+  fluorideApplied: boolean;
+  sdfApplied: boolean;
+  oralHygieneEducationGiven: boolean;
+  lifestyleEducationGiven: boolean;
+  smokingCessationEducationGiven: boolean;
+  comprehensiveDentalPlanProvided: boolean;
   createdAt: string;
 }
 
@@ -167,6 +190,7 @@ export interface PatientSummaryType {
   followUps: FollowUpType[];
   documents: PatientDocumentType[];
   unviewedDocumentCount: number;
+  dentalVisitExtras: DentalVisitExtraType[];
 }
 
 export interface DoctorDashboardSummaryType {
@@ -175,6 +199,7 @@ export interface DoctorDashboardSummaryType {
   todaysAppointments: number;
   pendingReports: number;
   urgentItems: number;
+  isDentalSpecialty: boolean;
 }
 
 export interface TodayScheduleItemType {
@@ -283,6 +308,10 @@ export interface ChronicConditionPayload {
   name: string;
   diagnosedYear?: number;
   status?: string;
+  diabetesType?: string; // Type1, Type2, Gestational, Other
+  diagnosisDate?: string;
+  hasPcos?: boolean;
+  hasEsrd?: boolean;
 }
 
 export interface AllergyPayload {
@@ -346,6 +375,23 @@ export interface ReferralPayload {
   targetSpecializationId: string;
   priority?: string;
   notes?: string;
+  cancerSiteListItemId?: string;
+  externalFacility?: string;
+}
+
+export interface ReferralOutcomePayload {
+  dateSeenBySpecialist: string;
+}
+
+export interface DentalVisitExtraPayload {
+  encounterId?: string;
+  fissureSealantApplied?: boolean;
+  fluorideApplied?: boolean;
+  sdfApplied?: boolean;
+  oralHygieneEducationGiven?: boolean;
+  lifestyleEducationGiven?: boolean;
+  smokingCessationEducationGiven?: boolean;
+  comprehensiveDentalPlanProvided?: boolean;
 }
 
 export interface TreatmentPayload {
