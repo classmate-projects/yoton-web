@@ -21,7 +21,17 @@ export async function getChatConnection() {
       .withAutomaticReconnect()
       .build();
 
-    await connection.start();
+    try {
+      await connection.start();
+    } catch (error) {
+      // A failed first connection (e.g. a stale/expired token) would otherwise leave
+      // connectionPromise permanently set to this rejected promise - every future call
+      // returns the same rejection forever, even after a fresh login gets a valid token.
+      // Clearing it here lets the next call actually retry instead of failing silently.
+      connection = null;
+      connectionPromise = null;
+      throw error;
+    }
 
     return connection;
   })();

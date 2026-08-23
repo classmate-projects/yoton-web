@@ -31,6 +31,7 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import RichTextEditor from "@/components/RichTextEditor";
 import TrendChart from "@/components/TrendChart";
+import ToggleButton from "@/components/ToggleButton";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
 import { UserService } from "@/services/user.service";
@@ -300,35 +301,12 @@ function NurseWorkbenchInner() {
   const [savingVitals, setSavingVitals] = useState(false);
   const [vitalsView, setVitalsView] = useState<"table" | "trend">("table");
   const [trendMetric, setTrendMetric] = useState<"heartRate" | "temperature" | "oxygenSaturation" | "respiratoryRate" | "systolic" | "ewsScore">("ewsScore");
-  const [painView, setPainView] = useState<"table" | "trend">("table");
 
   const liveBmi = (() => {
     const height = Number(vitalsForm.heightCm);
     const weight = Number(vitalsForm.weightKg);
     if (!height || !weight) return null;
     return (weight / Math.pow(height / 100, 2)).toFixed(1);
-  })();
-
-  // Preview only — the server's own calculation (NursingController.CalculateEws) is what's
-  // persisted, same rule as BMI. Mirrors the backend's NEWS2 point table exactly.
-  const liveEws = (() => {
-    const rr = Number(vitalsForm.respiratoryRate);
-    const spo2 = Number(vitalsForm.oxygenSaturation);
-    const temp = Number(vitalsForm.temperature);
-    const sbp = Number(vitalsForm.systolic);
-    const hr = Number(vitalsForm.heartRate);
-    if (!rr || !spo2 || !temp || !sbp || !hr) return null;
-
-    const score = (v: number, bands: [number, number][]) => bands.find(([max]) => v <= max)?.[1] ?? bands[bands.length - 1][1];
-    const rrScore = score(rr, [[8, 3], [11, 1], [20, 0], [24, 2], [Infinity, 3]]);
-    const spo2Score = score(spo2, [[91, 3], [93, 2], [95, 1], [Infinity, 0]]);
-    const o2Score = vitalsForm.supplementalOxygen ? 2 : 0;
-    const tempScore = score(temp, [[35.0, 3], [36.0, 1], [38.0, 0], [39.0, 1], [Infinity, 2]]);
-    const sbpScore = score(sbp, [[90, 3], [100, 2], [110, 1], [219, 0], [Infinity, 3]]);
-    const hrScore = score(hr, [[40, 3], [50, 1], [90, 0], [110, 1], [130, 2], [Infinity, 3]]);
-    const locScore = vitalsForm.consciousnessLevel === "Alert" ? 0 : 3;
-
-    return rrScore + spo2Score + o2Score + tempScore + sbpScore + hrScore + locScore;
   })();
 
   const saveVitals = async () => {
@@ -587,38 +565,6 @@ function NurseWorkbenchInner() {
       toast.error(errorMessage(error, "Failed to save note"));
     } finally {
       setSavingNurseNote(false);
-    }
-  };
-
-  // ---------------- EXAMINATION NOTES FORM ----------------
-  const [examForm, setExamForm] = useState({
-    generalAppearance: "",
-    painLevel: "0",
-    mobility: "",
-    clinicalChecks: "",
-  });
-  const [savingExam, setSavingExam] = useState(false);
-
-  const saveExaminationNote = async () => {
-    if (!selectedPatientId) return;
-    if (!requireNurseSelected()) return;
-    try {
-      setSavingExam(true);
-      await NursingService.addExaminationNote(selectedPatientId, {
-        encounterId: encounterId || undefined,
-        generalAppearance: examForm.generalAppearance.trim() || undefined,
-        painLevel: Number(examForm.painLevel || 0),
-        mobility: examForm.mobility.trim() || undefined,
-        clinicalChecks: examForm.clinicalChecks.trim() || undefined,
-        nurseId: isAdmin ? selectedNurseId : undefined,
-      });
-      toast.success("Examination note recorded");
-      setExamForm({ generalAppearance: "", painLevel: "0", mobility: "", clinicalChecks: "" });
-      await refreshChart();
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to save examination note"));
-    } finally {
-      setSavingExam(false);
     }
   };
 
@@ -915,29 +861,6 @@ function NurseWorkbenchInner() {
                         <input type="text" readOnly disabled placeholder="BMI" value={liveBmi ?? ""} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">kg/m²</span>
                       </div>
-                      <select
-                        value={vitalsForm.consciousnessLevel}
-                        onChange={(e) => setVitalsForm((p) => ({ ...p, consciousnessLevel: e.target.value }))}
-                        className="h-10 text-sm w-full"
-                        title="Consciousness (AVPU)"
-                      >
-                        <option value="Alert">Alert</option>
-                        <option value="Voice">Voice</option>
-                        <option value="Pain">Pain</option>
-                        <option value="Unresponsive">Unresponsive</option>
-                      </select>
-                      <label className="flex items-center gap-2 h-10 text-sm px-2 rounded-lg border border-border">
-                        <input
-                          type="checkbox"
-                          checked={vitalsForm.supplementalOxygen}
-                          onChange={(e) => setVitalsForm((p) => ({ ...p, supplementalOxygen: e.target.checked }))}
-                        />
-                        On oxygen
-                      </label>
-                      <div className="flex items-center gap-1.5">
-                        <input type="text" readOnly disabled placeholder="EWS" value={liveEws ?? ""} className="h-10 text-sm w-full font-semibold" />
-                        <span className="text-xs text-muted-foreground shrink-0">EWS</span>
-                      </div>
                     </div>
                     <textarea placeholder="Notes..." value={vitalsForm.notes} onChange={(e) => setVitalsForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
                     <button onClick={saveVitals} disabled={savingVitals} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
@@ -1086,10 +1009,13 @@ function NurseWorkbenchInner() {
                       <option>Foam Dressing</option>
                       <option>Transparent Film</option>
                     </select>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={dressingForm.infectionSigns} onChange={(e) => setDressingForm((p) => ({ ...p, infectionSigns: e.target.checked }))} />
-                      Signs of infection observed (redness, swelling, warmth, or discharge)
-                    </label>
+                    <div className="flex items-center gap-3">
+                      <ToggleButton
+                        checked={dressingForm.infectionSigns}
+                        onChange={(checked) => setDressingForm((p) => ({ ...p, infectionSigns: checked }))}
+                      />
+                      <span className="text-sm">Signs of infection observed (redness, swelling, warmth, or discharge)</span>
+                    </div>
                     <textarea placeholder="Notes..." value={dressingForm.notes} onChange={(e) => setDressingForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
                     <button onClick={saveDressing} disabled={savingDressing} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                       <Save size={15} /> Save Entry
@@ -1215,99 +1141,34 @@ function NurseWorkbenchInner() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Nurse Notes */}
-              <div className="card p-6 flex flex-col gap-4">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <FileText size={18} className="text-primary" /> Nurse Notes
-                </h2>
-                {canEdit && (
-                  <>
-                    <RichTextEditor value={nurseNoteHtml} onChange={setNurseNoteHtml} placeholder="Structured note with formatting..." />
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={nurseNoteConfidential} onChange={(e) => setNurseNoteConfidential(e.target.checked)} />
-                      <Lock size={13} className="text-muted-foreground" /> Mark as confidential (visible only to me)
-                    </label>
-                    <button onClick={saveNurseNote} disabled={savingNurseNote} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> {nurseNoteConfidential ? "Save Confidentially" : "Save Note"}
-                    </button>
-                  </>
-                )}
+            {/* Nurse Notes */}
+            <div className="card p-6 flex flex-col gap-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <FileText size={18} className="text-primary" /> Nurse Notes
+              </h2>
+              {canEdit && (
+                <>
+                  <RichTextEditor value={nurseNoteHtml} onChange={setNurseNoteHtml} placeholder="Structured note with formatting..." />
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={nurseNoteConfidential} onChange={(e) => setNurseNoteConfidential(e.target.checked)} />
+                    <Lock size={13} className="text-muted-foreground" /> Mark as confidential (visible only to me)
+                  </label>
+                  <button onClick={saveNurseNote} disabled={savingNurseNote} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                    <Save size={15} /> {nurseNoteConfidential ? "Save Confidentially" : "Save Note"}
+                  </button>
+                </>
+              )}
 
-                {chart && chart.nurseNotes.length > 0 && (
-                  <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
-                    {chart.nurseNotes.slice(0, 5).map((n) => (
-                      <div key={n.nurseNoteId} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
-                        <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: n.contentHtml }} />
-                        <span className="text-xs text-muted-foreground">{n.nurseName || "Nurse"} · {formatDateTime(n.createdAt)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Examination Notes */}
-              <div className="card p-6 flex flex-col gap-4">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Stethoscope size={18} className="text-primary" /> Examination Notes
-                </h2>
-                {canEdit && (
-                  <>
-                    <input type="text" placeholder="General appearance" value={examForm.generalAppearance} onChange={(e) => setExamForm((p) => ({ ...p, generalAppearance: e.target.value }))} className="h-10 text-sm" />
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="flex items-center gap-1.5">
-                        <input type="number" min={0} max={10} placeholder="Pain level" value={examForm.painLevel} onChange={(e) => setExamForm((p) => ({ ...p, painLevel: e.target.value }))} className="h-10 text-sm w-full" />
-                        <span className="text-xs text-muted-foreground shrink-0">/10</span>
-                      </div>
-                      <input type="text" placeholder="Mobility" value={examForm.mobility} onChange={(e) => setExamForm((p) => ({ ...p, mobility: e.target.value }))} className="h-10 text-sm" />
+              {chart && chart.nurseNotes.length > 0 && (
+                <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
+                  {chart.nurseNotes.slice(0, 5).map((n) => (
+                    <div key={n.nurseNoteId} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: n.contentHtml }} />
+                      <span className="text-xs text-muted-foreground">{n.nurseName || "Nurse"} · {formatDateTime(n.createdAt)}</span>
                     </div>
-                    <textarea placeholder="Other clinical checks..." value={examForm.clinicalChecks} onChange={(e) => setExamForm((p) => ({ ...p, clinicalChecks: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveExaminationNote} disabled={savingExam} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Examination
-                    </button>
-                  </>
-                )}
-
-                {chart && chart.examinationNotes.length > 0 && (
-                  <div className="border-t border-border pt-3 flex flex-col gap-3">
-                    <div className="flex rounded-lg border border-border overflow-hidden text-xs w-fit">
-                      <button
-                        onClick={() => setPainView("table")}
-                        className={`px-3 py-1.5 font-semibold ${painView === "table" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted"}`}
-                      >
-                        Table
-                      </button>
-                      <button
-                        onClick={() => setPainView("trend")}
-                        className={`px-3 py-1.5 font-semibold ${painView === "trend" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground hover:bg-muted"}`}
-                      >
-                        Trend
-                      </button>
-                    </div>
-
-                    {painView === "table" ? (
-                      <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto">
-                        {chart.examinationNotes.slice(0, 5).map((e) => (
-                          <div key={e.examinationNoteId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
-                            <span className="font-medium">{e.generalAppearance || "—"} · Pain {e.painLevel}/10</span>
-                            <span className="text-xs text-muted-foreground">{formatDateTime(e.createdAt)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <TrendChart
-                        color="#dc2626"
-                        formatValue={(v) => `${v}/10`}
-                        data={[...chart.examinationNotes].reverse().map((e) => ({
-                          label: new Date(e.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-                          fullLabel: formatDateTime(e.createdAt),
-                          value: e.painLevel,
-                        }))}
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
