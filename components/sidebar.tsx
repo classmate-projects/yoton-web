@@ -17,6 +17,7 @@ import { useAlertCenter } from "@/hooks/useAlertCenter";
 import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
 import { useRolePermissionsSync } from "@/hooks/useRolePermissionsSync";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
+import { getSignalRConnection } from "@/lib/signalR";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { getAvatarColor } from "@/lib/avatarColor";
@@ -81,7 +82,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   // positioned in viewport coordinates instead of being laid out as a DOM child of the tile.
   const expandedTriggerRef = useRef<HTMLDivElement | null>(null);
   const flyoutRef = useRef<HTMLDivElement | null>(null);
-  const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null);
+  const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const expandedItem = sidebarMenuItems.find((item) => item.id === expandedItemId) ?? null;
 
   // Admin-only: the "User Modules" group shows one tile per staff role instead of the
@@ -95,8 +96,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const [roleAllowedModulesCache, setRoleAllowedModulesCache] = useState<Record<string, string[]>>({});
   const roleTriggerRef = useRef<HTMLDivElement | null>(null);
   const roleFlyoutRef = useRef<HTMLDivElement | null>(null);
-  const [roleFlyoutPos, setRoleFlyoutPos] = useState<{ top: number; left: number } | null>(null);
+  const [roleFlyoutPos, setRoleFlyoutPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const expandedRole = roles.find((r) => r.roleId === expandedRoleId) ?? null;
+
+  // Bottom breathing room a portaled flyout keeps clear of the viewport edge - both flyouts
+  // below clamp their own height to this so a long module list scrolls internally instead of
+  // running off the bottom of the screen with no way to reach/select the items past the fold.
+  const FLYOUT_BOTTOM_MARGIN = 16;
 
   useEffect(() => {
     if (expandedRoleId === null) {
@@ -104,7 +110,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       return;
     }
     const rect = roleTriggerRef.current?.getBoundingClientRect();
-    if (rect) setRoleFlyoutPos({ top: rect.top, left: rect.right + 8 });
+    if (rect) {
+      setRoleFlyoutPos({
+        top: rect.top,
+        left: rect.right + 8,
+        maxHeight: window.innerHeight - rect.top - FLYOUT_BOTTOM_MARGIN,
+      });
+    }
   }, [expandedRoleId]);
 
   useEffect(() => {
@@ -144,7 +156,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       return;
     }
     const rect = expandedTriggerRef.current?.getBoundingClientRect();
-    if (rect) setFlyoutPos({ top: rect.top, left: rect.right + 8 });
+    if (rect) {
+      setFlyoutPos({
+        top: rect.top,
+        left: rect.right + 8,
+        maxHeight: window.innerHeight - rect.top - FLYOUT_BOTTOM_MARGIN,
+      });
+    }
   }, [expandedItemId]);
 
   // Closes the flyout on an outside click (matches NotificationBell's pattern) or on a
@@ -251,6 +269,45 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   // up in this admin's role tiles immediately instead of needing a refresh.
   useRoleSignalR(setRoles);
 
+  // A role's allowed-modules list edited elsewhere (Role Management's "Manage modules"
+  // dialog) should update this admin's already-open role-preview flyout immediately too -
+  // without this, roleAllowedModulesCache only ever populates once per roleId (see
+  // toggleRoleFlyout below) and would otherwise stay stale until a full page reload.
+  // useRolePermissionsSync above handles the matching case for a signed-in end user's own
+  // sidebar; this is the admin-side equivalent, keyed by roleId in the local cache instead
+  // of the current user's own allowedModules.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let isMounted = true;
+
+    const handleUpdated = (payload: { roleName: string; allowedModules: string[] }) => {
+      setRoles((prevRoles) => {
+        const role = prevRoles.find((r) => r.name === payload.roleName);
+        if (role) {
+          setRoleAllowedModulesCache((prev) => ({ ...prev, [role.roleId]: payload.allowedModules }));
+        }
+        return prevRoles;
+      });
+    };
+
+    const connect = async () => {
+      const connection = await getSignalRConnection();
+      if (!isMounted) return;
+
+      connection.off("rolePermissionsUpdated", handleUpdated);
+      connection.on("rolePermissionsUpdated", handleUpdated);
+    };
+
+    connect();
+
+    return () => {
+      isMounted = false;
+      getSignalRConnection().then((connection) => {
+        connection.off("rolePermissionsUpdated", handleUpdated);
+      });
+    };
+  }, [isAdmin]);
+
   const toggleRoleFlyout = (roleId: string) => {
     setExpandedRoleId((prev) => (prev === roleId ? null : roleId));
     if (!(roleId in roleAllowedModulesCache)) {
@@ -304,7 +361,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   // can't be interpolated by the browser at all — it snaps the instant the row
   // has room for another tile — so the reflow has to happen while invisible.
   const tileClass = (active: boolean) =>
-    `relative flex h-[60px] w-[60px] items-center justify-center rounded-xl transition-all duration-300 ease-in-out group ${active
+    `relative flex h-[60px] w-[60px] cursor-pointer items-center justify-center rounded-xl transition-all duration-300 ease-in-out group ${active
       ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
     }`;
@@ -314,6 +371,22 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
 
   const tileIconClass = (active: boolean) =>
     `shrink-0 transition-transform duration-200 text-xl ${active ? "scale-110" : "group-hover:scale-110"}`;
+
+  // Admin-only: grouped sections (User Modules, Configuration) render as a vertical
+  // list of full-width rows - icon + capitalized name - instead of the icon-only
+  // tile grid above. Other roles keep the flat tile grid untouched.
+  const listContainerClass = "flex flex-col gap-1";
+
+  const rowClass = (active: boolean) =>
+    `flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors duration-200 ${active
+      ? "bg-primary text-primary-foreground font-semibold shadow-lg shadow-primary/20"
+      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+    }`;
+
+  // Native title-attribute tooltips aren't styled by CSS (the "capitalize" class on the
+  // visible row text has no effect on them), so role names - stored lowercase - need this
+  // applied to the actual string for the hover tooltip to read capitalized too.
+  const toTitleCase = (value: string) => value.replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <>
@@ -484,9 +557,9 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                       />
                     </div>
                   )}
-                  <div className={tileContainerClass}>
+                  <div className={listContainerClass}>
                     {group === "User Modules"
-                      ? // Admin sees one tile per staff role instead of the flat module
+                      ? // Admin sees one row per staff role instead of the flat module
                         // list - a preview into what each role's own sidebar looks like,
                         // not admin's own module shortcuts (admin already has every
                         // module reachable via the roles this drills into).
@@ -503,17 +576,18 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                                 <button
                                   type="button"
                                   onClick={() => toggleRoleFlyout(role.roleId)}
-                                  title={role.name}
-                                  aria-label={role.name}
+                                  title={toTitleCase(role.name)}
+                                  aria-label={toTitleCase(role.name)}
                                   aria-expanded={isRoleExpanded}
-                                  className={`${tileClass(false)} ${isRoleExpanded ? "ring-2 ring-primary/50 text-primary" : ""} capitalize`}
+                                  className={`${rowClass(false)} ${isRoleExpanded ? "ring-2 ring-inset ring-primary/50 text-primary" : ""}`}
                                 >
-                                  <span className={tileIconClass(isRoleExpanded)}>
+                                  <span className="shrink-0 text-lg">
                                     <FontAwesomeIcon icon={getRoleIcon(role.iconKey)} size="lg" />
                                   </span>
+                                  <span className="truncate capitalize">{role.name}</span>
                                   <ChevronRight
-                                    size={11}
-                                    className={`absolute top-1 right-1 transition-transform duration-200 ${isRoleExpanded ? "rotate-90" : ""} ${isRoleExpanded ? "opacity-70" : "opacity-40"
+                                    size={14}
+                                    className={`ml-auto shrink-0 transition-transform duration-200 ${isRoleExpanded ? "rotate-90 opacity-70" : "opacity-40"
                                       }`}
                                   />
                                 </button>
@@ -545,14 +619,15 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                               // Blue fill means "you're on this page right now" (isActive) - an
                               // open-but-not-active flyout gets a lighter ring instead, so the
                               // two states never look like the same thing selected twice.
-                              className={`${tileClass(isActive)} ${!isActive && isItemExpanded ? "ring-2 ring-primary/50 text-primary" : ""}`}
+                              className={`${rowClass(isActive)} ${!isActive && isItemExpanded ? "ring-2 ring-inset ring-primary/50 text-primary" : ""}`}
                             >
-                              <span className={tileIconClass(isActive || isItemExpanded)}>
+                              <span className="shrink-0 text-lg">
                                 <item.icon />
                               </span>
+                              <span className="truncate capitalize">{item.name}</span>
                               <ChevronRight
-                                size={11}
-                                className={`absolute top-1 right-1 transition-transform duration-200 ${isItemExpanded ? "rotate-90" : ""} ${isActive || isItemExpanded ? "opacity-70" : "opacity-40"
+                                size={14}
+                                className={`ml-auto shrink-0 transition-transform duration-200 ${isItemExpanded ? "rotate-90" : ""} ${isActive || isItemExpanded ? "opacity-70" : "opacity-40"
                                   }`}
                               />
                             </button>
@@ -567,13 +642,14 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                           title={item.name}
                           aria-label={item.name}
                           onClick={() => item.navLink === "/messages" && clearUnreadChat()}
-                          className={tileClass(isActive)}
+                          className={rowClass(isActive)}
                         >
-                          <span className={tileIconClass(isActive)}>
+                          <span className="shrink-0 text-lg">
                             <item.icon />
                           </span>
+                          <span className="truncate capitalize">{item.name}</span>
                           {item.navLink === "/messages" && unreadChatCount > 0 && (
-                            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white ring-2 ring-card">
+                            <span className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white">
                               {unreadChatCount > 9 ? "9+" : unreadChatCount}
                             </span>
                           )}
@@ -622,8 +698,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           createPortal(
             <div
               ref={flyoutRef}
-              style={{ position: "fixed", top: flyoutPos.top, left: flyoutPos.left }}
-              className="z-[100] w-56 rounded-xl border border-border bg-card p-1.5 shadow-lg shadow-black/10"
+              style={{ position: "fixed", top: flyoutPos.top, left: flyoutPos.left, maxHeight: flyoutPos.maxHeight }}
+              className="z-[100] w-56 overflow-y-auto rounded-xl border border-border bg-card p-1.5 shadow-lg shadow-black/10"
             >
               {expandedItem.subItems?.map((sub) => {
                 const subActive = pathname === sub.navLink;
@@ -656,8 +732,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           createPortal(
             <div
               ref={roleFlyoutRef}
-              style={{ position: "fixed", top: roleFlyoutPos.top, left: roleFlyoutPos.left }}
-              className="z-[100] w-56 rounded-xl border border-border bg-card p-1.5 shadow-lg shadow-black/10"
+              style={{ position: "fixed", top: roleFlyoutPos.top, left: roleFlyoutPos.left, maxHeight: roleFlyoutPos.maxHeight }}
+              className="z-[100] w-56 overflow-y-auto rounded-xl border border-border bg-card p-1.5 shadow-lg shadow-black/10"
             >
               <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 capitalize">
                 {expandedRole.name}

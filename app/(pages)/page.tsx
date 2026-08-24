@@ -194,7 +194,7 @@ export default function Home() {
             colorClass="bg-amber-500 text-amber-500" 
           />
           <StatCard 
-            title="Lab & Imaging" 
+            title="Lab & Radiology" 
             value={(totalCounts?.totalLabRequests || 0) + (totalCounts?.totalRadiologyRequests || 0)} 
             subtext={`${(totalCounts?.pendingLabRequests || 0) + (totalCounts?.pendingRadiologyRequests || 0)} awaiting results`}
             icon={FlaskConical} 

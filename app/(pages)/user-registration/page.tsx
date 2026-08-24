@@ -2,6 +2,7 @@
 
 import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
+import DatePicker from "@/components/DatePicker";
 import { SpecializationService } from "@/services/specialization.service";
 import { UserService } from "@/services/user.service";
 import { DepartmentSerivce } from "@/services/department.service";
@@ -500,18 +501,9 @@ function UserRegistrationForm() {
                 </div>
                 <div className="w-full">
                   <label htmlFor="hireDate" className="font-bold text-sm">Hire Date</label>
-                  <input
-                    type="date"
-                    id="hireDate"
-                    value={hireDate}
-                    onChange={(e) => setHireDate(e.target.value)}
-                    className="outline-0 p-4 rounded-xl w-full mt-2"
-                    style={{
-                      backgroundColor: "var(--color-highlight)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  />
+                  <div className="mt-2">
+                    <DatePicker id="hireDate" value={hireDate} onChange={setHireDate} placeholder="Select hire date" />
+                  </div>
                 </div>
               </div>
 

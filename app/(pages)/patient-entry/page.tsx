@@ -6,7 +6,6 @@ import {
   MdOutlineLocalPhone,
   MdOutlineFilePresent,
   MdOutlinePayment,
-  MdExpandMore,
   MdClose,
 } from "react-icons/md";
 import { format } from "date-fns";
@@ -24,6 +23,8 @@ import {
 } from "@/types/appointment.type";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
+import CountryCodeSelect from "@/components/CountryCodeSelect";
+import ToggleButton from "@/components/ToggleButton";
 import { toDateInputValue } from "@/lib/date";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
@@ -84,6 +85,7 @@ export default function PatientEntryPage() {
     chronicStatus: false,
     emergencyContact: "",
     emergencyContactPhone: "",
+    emergencyContactPhoneCode: "+971",
     paymentType: "Cash",
     eligibilityMode: "",
     eligibilityCheckedDate: "",
@@ -116,11 +118,37 @@ export default function PatientEntryPage() {
   // whichever nationality is picked for this particular patient - a UAE clinic always
   // expects Emirates ID, regardless of the patient's own nationality.
   const nationalIdFormat = getNationalIdFormat(companyCountry);
+  // National significant number length for whichever dialing code is currently selected -
+  // caps how many digits the phone field accepts. Falls back to 15 (E.164's global max
+  // significant-digit count) if the code somehow isn't in the list.
+  const selectedPhoneLength =
+    countryDetails.find((c) => c.phoneCode === formData.phoneCode)?.phoneLength ?? 15;
+  const selectedEmergencyPhoneLength =
+    countryDetails.find((c) => c.phoneCode === formData.emergencyContactPhoneCode)?.phoneLength ?? 15;
 
   useEffect(() => {
     const stored = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
     setCompanyCountry(stored.country);
   }, []);
+
+  // Re-clamps an already-typed phone number if switching to a dialing code with a shorter
+  // national number length leaves it over the new limit (e.g. 10 digits typed for +234
+  // Nigeria, then the code is changed to +974 Qatar's 8-digit numbers).
+  useEffect(() => {
+    setFormData((prev) =>
+      prev.phone.length > selectedPhoneLength
+        ? { ...prev, phone: prev.phone.slice(0, selectedPhoneLength) }
+        : prev,
+    );
+  }, [selectedPhoneLength]);
+
+  useEffect(() => {
+    setFormData((prev) =>
+      prev.emergencyContactPhone.length > selectedEmergencyPhoneLength
+        ? { ...prev, emergencyContactPhone: prev.emergencyContactPhone.slice(0, selectedEmergencyPhoneLength) }
+        : prev,
+    );
+  }, [selectedEmergencyPhoneLength]);
 
   const updateCoverage = (
     category: string,
@@ -311,6 +339,23 @@ export default function PatientEntryPage() {
     setError("");
   };
 
+  // Strips anything that isn't a digit and caps the result to `maxDigits`, so pasted or typed
+  // text can never leave letters/symbols behind or overrun the selected country's phone length.
+  const digitsOnly = (raw: string, maxDigits: number) => raw.replace(/\D/g, "").slice(0, maxDigits);
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, phone: digitsOnly(e.target.value, selectedPhoneLength) }));
+    setError("");
+  };
+
+  const handleEmergencyContactPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({
+      ...prev,
+      emergencyContactPhone: digitsOnly(e.target.value, selectedEmergencyPhoneLength),
+    }));
+    setError("");
+  };
+
   // Form submission handler
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -367,6 +412,10 @@ export default function PatientEntryPage() {
     const payload: ReceptionCreatePatientType = {
       ...formData,
       registeredBy,
+      // The API has no separate dialing-code field for the emergency contact (unlike the
+      // patient's own phone/phoneCode pair), so the selected code is folded into the one
+      // string field it does expect.
+      emergencyContactPhone: formData.emergencyContactPhoneCode + formData.emergencyContactPhone,
       eligibilityCheckedDate: toDateOrUndefined(formData.eligibilityCheckedDate),
       insuranceEffectiveFrom: toDateOrUndefined(formData.insuranceEffectiveFrom),
       insuranceExpiryDate: toDateOrUndefined(formData.insuranceExpiryDate),
@@ -431,6 +480,7 @@ export default function PatientEntryPage() {
       chronicStatus: false,
       emergencyContact: "",
       emergencyContactPhone: "",
+      emergencyContactPhoneCode: "+971",
       paymentType: "Cash",
       eligibilityMode: "",
       eligibilityCheckedDate: "",
@@ -534,6 +584,8 @@ export default function PatientEntryPage() {
                 }
                 max={toDateInputValue(new Date())}
                 required
+                dateFormat="dd-MM-yyyy"
+                placeholder="DD-MM-YYYY"
                 className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </div>
@@ -665,44 +717,26 @@ export default function PatientEntryPage() {
                 Phone Number <span className="text-red-500">*</span>
               </label>
               <div className="flex border border-border rounded-lg focus-within:ring-2 focus-within:ring-primary focus-within:border-transparent overflow-hidden">
-                {/* Phone Code Display and Dropdown */}
-                <div className="relative w-20 shrink-0">
-                  <div className="absolute left-4 top-2.5 text-foreground font-medium pointer-events-none z-10">
-                    {formData.phoneCode}
-                  </div>
-                  <div className="absolute right-1 top-2.5 pointer-events-none z-10 text-muted-foreground">
-                    <MdExpandMore size={20} />
-                  </div>
-                  <select
-                    id="phoneCode"
-                    name="phoneCode"
-                    value={formData.phoneCode}
-                    onChange={handleInputChange}
-                    required
-                    className="px-4 py-2.5 border-r border-border ring-transparent! focus:outline-none! rounded-none! text-foreground bg-card w-full shrink-0 appearance-none cursor-pointer"
-                    style={{ color: "transparent" }}
-                  >
-                    {countryDetails.map((country, index) => (
-                      <option
-                        key={index}
-                        value={country.phoneCode}
-                        className="text-foreground bg-card"
-                      >
-                        {country.phoneCode} - {country.country}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <CountryCodeSelect
+                  id="phoneCode"
+                  name="phoneCode"
+                  value={formData.phoneCode}
+                  onChange={(code) => setFormData((prev) => ({ ...prev, phoneCode: code }))}
+                  required
+                  className="flex h-11 shrink-0 items-center gap-1 border-r border-border px-3 text-foreground transition-colors hover:bg-muted"
+                />
 
                 {/* Phone Input */}
                 <input
                   type="tel"
                   id="phone"
                   name="phone"
+                  inputMode="numeric"
                   value={formData.phone}
-                  onChange={handleInputChange}
+                  onChange={handlePhoneChange}
                   required
-                  placeholder="0501234567"
+                  maxLength={selectedPhoneLength}
+                  placeholder={"5".padEnd(selectedPhoneLength, "0")}
                   className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent rounded-none!"
                 />
               </div>
@@ -769,16 +803,30 @@ export default function PatientEntryPage() {
               >
                 Emergency Contact Phone <span className="text-red-500">*</span>
               </label>
-              <input
-                type="tel"
-                id="emergencyContactPhone"
-                name="emergencyContactPhone"
-                value={formData.emergencyContactPhone}
-                onChange={handleInputChange}
-                required
-                placeholder="0509876543"
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
-              />
+              <div className="flex border border-border rounded-lg focus-within:ring-2 focus-within:ring-primary focus-within:border-transparent overflow-hidden">
+                <CountryCodeSelect
+                  id="emergencyContactPhoneCode"
+                  name="emergencyContactPhoneCode"
+                  value={formData.emergencyContactPhoneCode}
+                  onChange={(code) =>
+                    setFormData((prev) => ({ ...prev, emergencyContactPhoneCode: code }))
+                  }
+                  required
+                  className="flex h-11 shrink-0 items-center gap-1 border-r border-border px-3 text-foreground transition-colors hover:bg-muted"
+                />
+                <input
+                  type="tel"
+                  id="emergencyContactPhone"
+                  name="emergencyContactPhone"
+                  inputMode="numeric"
+                  value={formData.emergencyContactPhone}
+                  onChange={handleEmergencyContactPhoneChange}
+                  required
+                  maxLength={selectedEmergencyPhoneLength}
+                  placeholder={"5".padEnd(selectedEmergencyPhoneLength, "0")}
+                  className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent rounded-none!"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -891,20 +939,19 @@ export default function PatientEntryPage() {
             {/* Checkboxes */}
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="chronicStatus"
-                  name="chronicStatus"
-                  checked={formData.chronicStatus}
-                  onChange={handleInputChange}
-                  className="cursor-pointer bg-transparent"
-                />
                 <label
                   htmlFor="chronicStatus"
                   className="font-semibold text-foreground/90 cursor-pointer"
                 >
                   Chronic Status
                 </label>
+                <ToggleButton
+                  id="chronicStatus"
+                  checked={formData.chronicStatus}
+                  onChange={(checked) =>
+                    setFormData((prev) => ({ ...prev, chronicStatus: checked }))
+                  }
+                />
               </div>
             </div>
           </div>
@@ -967,6 +1014,8 @@ export default function PatientEntryPage() {
                     value={formData.eligibilityCheckedDate}
                     onChange={(v) => setFormData((prev) => ({ ...prev, eligibilityCheckedDate: v }))}
                     max={toDateInputValue(new Date())}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
                     className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   />
                 </div>
@@ -1083,6 +1132,8 @@ export default function PatientEntryPage() {
                   <DatePicker
                     value={formData.insuranceEffectiveFrom}
                     onChange={(v) => setFormData((prev) => ({ ...prev, insuranceEffectiveFrom: v }))}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
                     className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   />
                 </div>
@@ -1096,6 +1147,8 @@ export default function PatientEntryPage() {
                     value={formData.insuranceExpiryDate}
                     onChange={(v) => setFormData((prev) => ({ ...prev, insuranceExpiryDate: v }))}
                     required
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
                     className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   />
                 </div>
@@ -1471,6 +1524,8 @@ export default function PatientEntryPage() {
                         setSelectedSlot(null);
                       }}
                       min={toDateInputValue(new Date())}
+                      dateFormat="dd-MM-yyyy"
+                      placeholder="DD-MM-YYYY"
                       className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     />
                   </div>

@@ -221,6 +221,17 @@ export default function RoleManagementPage() {
     });
   };
 
+  const allModulesSelected =
+    allToggleableModules.length > 0 &&
+    allToggleableModules.every((item) => visibleModules.has(item.navLink));
+  const someModulesSelected = allToggleableModules.some((item) => visibleModules.has(item.navLink));
+
+  const handleToggleAllModules = () => {
+    setVisibleModules(
+      allModulesSelected ? new Set() : new Set(allToggleableModules.map((item) => item.navLink)),
+    );
+  };
+
   const handleSavePermissions = async () => {
     if (!permissionsRole) return;
     setSavingPermissions(true);
@@ -421,7 +432,20 @@ export default function RoleManagementPage() {
                 <LoadingSpinner />
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 max-h-[50dvh] overflow-y-auto pr-1">
+              <>
+                <label className="flex items-center gap-2 p-2.5 mb-2 w-fit rounded-lg border border-border hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allModulesSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someModulesSelected && !allModulesSelected;
+                    }}
+                    onChange={handleToggleAllModules}
+                    className="h-4 w-4 shrink-0 accent-purple-600 cursor-pointer"
+                  />
+                  <span className="text-sm font-semibold">Select All</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 max-h-[50dvh] overflow-y-auto pr-1">
                 {allToggleableModules.map((item) => (
                   <label
                     key={item.navLink}
@@ -437,7 +461,8 @@ export default function RoleManagementPage() {
                     <span className="text-sm font-medium whitespace-nowrap">{item.name}</span>
                   </label>
                 ))}
-              </div>
+                </div>
+              </>
             )}
 
             <div className="flex gap-3 mt-6">
