@@ -11,6 +11,7 @@ import {
 } from "react-icons/md";
 import { format } from "date-fns";
 import { countryDetails } from "@/helpers/countyDetails";
+import { getNationalIdFormat, passportNumberRegex } from "@/helpers/nationalIdFormats";
 import { ReceptionService } from "@/services/reception.service";
 import { ConfigListService } from "@/services/configList.service";
 import { toast } from "sonner";
@@ -109,7 +110,17 @@ export default function PatientEntryPage() {
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [companyCountry, setCompanyCountry] = useState<string | undefined>(undefined);
   const isInsuranceOrCorporate = formData.paymentType !== "Cash";
+  // National ID format follows the clinic's own admin-configured Country (Settings), not
+  // whichever nationality is picked for this particular patient - a UAE clinic always
+  // expects Emirates ID, regardless of the patient's own nationality.
+  const nationalIdFormat = getNationalIdFormat(companyCountry);
+
+  useEffect(() => {
+    const stored = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
+    setCompanyCountry(stored.country);
+  }, []);
 
   const updateCoverage = (
     category: string,
@@ -309,6 +320,22 @@ export default function PatientEntryPage() {
     // Validate that at least one of National ID or Passport Number is filled
     if (!formData.nationalID && !formData.passportNumber) {
       setError("Please provide either National ID or Passport Number");
+      setLoading(false);
+      return;
+    }
+
+    // Format is nationality-specific for National ID (Emirates ID for UAE, Aadhaar for
+    // India, ...) and one standard pattern for Passport Number regardless of nationality.
+    if (formData.nationalID && nationalIdFormat.regex && !nationalIdFormat.regex.test(formData.nationalID)) {
+      setError(
+        `${nationalIdFormat.label} format looks incorrect. Expected format: ${nationalIdFormat.placeholder}`
+      );
+      setLoading(false);
+      return;
+    }
+
+    if (formData.passportNumber && !passportNumberRegex.test(formData.passportNumber)) {
+      setError("Passport Number format looks incorrect. Expected 6-9 letters/digits.");
       setLoading(false);
       return;
     }
@@ -764,8 +791,8 @@ export default function PatientEntryPage() {
           </div>
           <hr className="mb-6 border-border" />
           <p className="mb-6 text-sm text-foreground/80">
-            <span className="text-red-500">*</span> Please provide either
-            National ID or Passport Number
+            <span className="text-red-500">*</span> Please provide either{" "}
+            {nationalIdFormat.label} or Passport Number
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -775,7 +802,7 @@ export default function PatientEntryPage() {
                 htmlFor="nationalID"
                 className="font-semibold text-foreground/90"
               >
-                National ID
+                {nationalIdFormat.label}
               </label>
               <input
                 type="text"
@@ -783,7 +810,7 @@ export default function PatientEntryPage() {
                 name="nationalID"
                 value={formData.nationalID}
                 onChange={handleInputChange}
-                placeholder="784-1234-5678901-2"
+                placeholder={nationalIdFormat.placeholder ?? "National ID"}
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>

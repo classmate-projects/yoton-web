@@ -24,6 +24,7 @@ import AddUserIcon from "@/public/icons/AddUserIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { CalendarClock, History as HistoryIcon, UserX } from "lucide-react";
 import { UserService } from "@/services/user.service";
 import { NursingService } from "@/services/nursing.service";
 import { NurseShiftInput } from "@/types/nursing.type";
@@ -416,27 +417,27 @@ export default function UserManagement() {
                           <button
                             onClick={() => openShiftsManager(user)}
                             title="Manage Shifts"
-                            className="hover:bg-purple-100 p-2 rounded-full transition-colors cursor-pointer text-xs font-semibold text-purple-600"
+                            className="hover:bg-purple-100 p-2 rounded-full transition-colors cursor-pointer text-purple-600"
                           >
-                            Shifts
+                            <CalendarClock size={18} />
                           </button>
                         )}
 
                         <button
                           onClick={() => openHistory(user)}
                           title="Employment History"
-                          className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer text-xs font-semibold text-blue-600"
+                          className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer text-blue-600"
                         >
-                          History
+                          <HistoryIcon size={18} />
                         </button>
 
                         {user.isActive && (
                           <button
                             onClick={() => openTerminate(user)}
                             title="Terminate Employment"
-                            className="hover:bg-orange-100 p-2 rounded-full transition-colors cursor-pointer text-xs font-semibold text-orange-600"
+                            className="hover:bg-orange-100 p-2 rounded-full transition-colors cursor-pointer text-orange-600"
                           >
-                            Terminate
+                            <UserX size={18} />
                           </button>
                         )}
 
@@ -490,16 +491,15 @@ export default function UserManagement() {
               <div className="flex flex-col gap-2">
                 {DAY_NAMES.map((dayName, day) => (
                   <div key={day} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
-                    <label className="flex items-center gap-2 w-28 shrink-0 text-sm font-medium">
-                      <input
-                        type="checkbox"
+                    <div className="flex items-center gap-2 w-28 shrink-0 text-sm font-medium">
+                      <ToggleButton
                         checked={shiftsWeek[day].active}
-                        onChange={(e) =>
-                          setShiftsWeek((prev) => prev.map((r, i) => (i === day ? { ...r, active: e.target.checked } : r)))
+                        onChange={(checked) =>
+                          setShiftsWeek((prev) => prev.map((r, i) => (i === day ? { ...r, active: checked } : r)))
                         }
                       />
                       {dayName}
-                    </label>
+                    </div>
                     <input
                       type="time"
                       disabled={!shiftsWeek[day].active}

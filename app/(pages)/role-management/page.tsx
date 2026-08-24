@@ -397,7 +397,7 @@ export default function RoleManagementPage() {
 
       {permissionsRole && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
-          <div className="bg-card w-full max-w-lg rounded-xl border border-border p-6 shadow-2xl mx-4">
+          <div className="bg-card w-full max-w-6xl rounded-xl border border-border p-6 shadow-2xl mx-4">
             <div className="flex items-start justify-between mb-1">
               <h2 className="text-2xl font-semibold text-foreground flex items-center gap-2">
                 <MdChecklist className="text-purple-600" />
@@ -421,20 +421,20 @@ export default function RoleManagementPage() {
                 <LoadingSpinner />
               </div>
             ) : (
-              <div className="flex flex-col gap-1 max-h-[50dvh] overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 max-h-[50dvh] overflow-y-auto pr-1">
                 {allToggleableModules.map((item) => (
                   <label
                     key={item.navLink}
-                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer"
+                    className="flex items-center gap-2 p-2.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer"
                   >
                     <input
                       type="checkbox"
                       checked={visibleModules.has(item.navLink)}
                       onChange={() => handleToggleModule(item.navLink)}
-                      className="h-4 w-4 accent-purple-600 cursor-pointer"
+                      className="h-4 w-4 shrink-0 accent-purple-600 cursor-pointer"
                     />
                     <item.icon />
-                    <span className="text-sm font-medium">{item.name}</span>
+                    <span className="text-sm font-medium whitespace-nowrap">{item.name}</span>
                   </label>
                 ))}
               </div>
