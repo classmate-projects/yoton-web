@@ -32,9 +32,6 @@ interface ProtectedRoute {
 const extraProtectedRoutes: ProtectedRoute[] = [
   { navLink: "/role-management", hardcodedRoles: ["admin"] },
   { navLink: "/user-registration", hardcodedRoles: ["admin"] },
-  // Only reachable via the merged "Departments & Staff" tile's subItems, so it shares
-  // its permission rather than having its own.
-  { navLink: "/assign-doctor", moduleKey: "/departments" },
 ];
 
 // Settings and Confidential Notes are never part of the allow-list (see

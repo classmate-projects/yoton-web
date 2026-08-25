@@ -405,20 +405,18 @@ export default function DepartmentsPage() {
                   return (
                     <React.Fragment key={department.departmentId}>
                       <tr
-                        className={`${!department.isActive ? "bg-destructive/5 opacity-80" : ""} hover:bg-muted/30 transition-colors`}
+                        onClick={() => deptSpecs.length > 0 && toggleExpand(department.departmentId)}
+                        className={`${!department.isActive ? "bg-destructive/5 opacity-80" : ""} ${deptSpecs.length > 0 ? "cursor-pointer" : ""} hover:bg-muted/30 transition-colors`}
                       >
                         <td className="pl-4">
                           {deptSpecs.length > 0 && (
-                            <button
-                              onClick={() => toggleExpand(department.departmentId)}
-                              className="p-1 hover:bg-muted rounded transition-colors cursor-pointer"
-                            >
+                            <div className="p-1 rounded transition-colors">
                               {isExpanded ? (
                                 <MdExpandLess size={24} className="text-muted-foreground" />
                               ) : (
                                 <MdExpandMore size={24} className="text-muted-foreground" />
                               )}
-                            </button>
+                            </div>
                           )}
                         </td>
                         <td className="font-semibold capitalize text-foreground">
@@ -427,7 +425,7 @@ export default function DepartmentsPage() {
                         <td className="text-foreground/80">
                           {department.description || "No description provided."}
                         </td>
-                        <td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-center items-center gap-2">
                             <button
                               onClick={() => openSpecModal(department.departmentId)}

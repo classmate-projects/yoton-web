@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
+import SearchableSelect from "@/components/SearchableSelect";
 import { ReceptionService } from "@/services/reception.service";
 import { PatientGetAllType } from "@/types/reception.type";
 import {
@@ -39,6 +40,8 @@ export default function PatientRecordsPage() {
   const [walkInPatient, setWalkInPatient] = useState<PatientGetAllType | null>(null);
   const [specializations, setSpecializations] = useState<SpecializationDoctorsType[]>([]);
   const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
+  const [walkInDepartmentId, setWalkInDepartmentId] = useState("");
+  const [walkInSpecializationId, setWalkInSpecializationId] = useState("");
   const [doctorSearch, setDoctorSearch] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorGridType | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -77,6 +80,8 @@ export default function PatientRecordsPage() {
 
   const openWalkInModal = async (patient: PatientGetAllType) => {
     setWalkInPatient(patient);
+    setWalkInDepartmentId("");
+    setWalkInSpecializationId("");
     setDoctorSearch("");
     setSelectedDoctor(null);
     setSelectedDate(new Date());
@@ -130,19 +135,46 @@ export default function PatientRecordsPage() {
     if (selectedDoctor && walkInPatient) fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
   });
 
+  // Deduped from `specializations` itself rather than a separate department fetch - every
+  // specialization here already carries its own department, and this modal only ever needs
+  // departments that actually have an active, doctor-staffed specialization under them.
+  const walkInDepartments = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of specializations) {
+      if (s.departmentId && !seen.has(s.departmentId)) seen.set(s.departmentId, s.departmentName ?? s.departmentId);
+    }
+    return Array.from(seen, ([value, label]) => ({ value, label }));
+  }, [specializations]);
+
+  const walkInSpecializations = useMemo(
+    () => specializations.filter((s) => !walkInDepartmentId || s.departmentId === walkInDepartmentId),
+    [specializations, walkInDepartmentId]
+  );
+
+  // A previously-picked specialization may no longer be valid once the department changes.
+  useEffect(() => {
+    if (walkInSpecializationId && !walkInSpecializations.some((s) => s.specializationId === walkInSpecializationId)) {
+      setWalkInSpecializationId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walkInDepartmentId, specializations]);
+
   const flattenedDoctors = useMemo(() => {
     const term = doctorSearch.trim().toLowerCase();
-    return specializations.flatMap((s) =>
-      s.doctors
-        .filter(
-          (d) =>
-            term.length === 0 ||
-            d.name.toLowerCase().includes(term) ||
-            s.specializationName.toLowerCase().includes(term)
-        )
-        .map((d) => ({ ...d, specializationName: s.specializationName }))
-    );
-  }, [specializations, doctorSearch]);
+    return specializations
+      .filter((s) => !walkInDepartmentId || s.departmentId === walkInDepartmentId)
+      .filter((s) => !walkInSpecializationId || s.specializationId === walkInSpecializationId)
+      .flatMap((s) =>
+        s.doctors
+          .filter(
+            (d) =>
+              term.length === 0 ||
+              d.name.toLowerCase().includes(term) ||
+              s.specializationName.toLowerCase().includes(term)
+          )
+          .map((d) => ({ ...d, specializationName: s.specializationName }))
+      );
+  }, [specializations, doctorSearch, walkInDepartmentId, walkInSpecializationId]);
 
   const handleConfirmWalkIn = async () => {
     if (!walkInPatient || !selectedDoctor || !selectedSlot) {
@@ -382,6 +414,41 @@ export default function PatientRecordsPage() {
             </div>
 
             <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-foreground/90 mb-2">
+                    Department
+                  </label>
+                  <SearchableSelect
+                    value={walkInDepartmentId}
+                    onChange={(value) => {
+                      setWalkInDepartmentId(value);
+                      setSelectedDoctor(null);
+                      setDaySlots(null);
+                    }}
+                    options={walkInDepartments}
+                    placeholder="All departments"
+                    className="flex h-10 w-full items-center justify-between gap-1 rounded-lg border border-border bg-muted px-4 text-left text-foreground hover:bg-muted/80 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-foreground/90 mb-2">
+                    Specialisation
+                  </label>
+                  <SearchableSelect
+                    value={walkInSpecializationId}
+                    onChange={(value) => {
+                      setWalkInSpecializationId(value);
+                      setSelectedDoctor(null);
+                      setDaySlots(null);
+                    }}
+                    options={walkInSpecializations.map((s) => ({ value: s.specializationId, label: s.specializationName }))}
+                    placeholder="All specialisations"
+                    className="flex h-10 w-full items-center justify-between gap-1 rounded-lg border border-border bg-muted px-4 text-left text-foreground hover:bg-muted/80 transition-colors"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-foreground/90 mb-2">
                   Doctor

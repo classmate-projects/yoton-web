@@ -70,7 +70,7 @@ export default function HandHygienePage() {
 
   useEffect(() => {
     fetchSessions();
-    DepartmentSerivce.getAll().then((data) => setDepartments(data || [])).catch(() => {});
+    DepartmentSerivce.getAll().then((data) => setDepartments((data || []).filter((d: DepartmentTypes) => d.isActive))).catch(() => {});
   }, []);
 
   const updateObservation = (index: number, field: keyof HandHygieneObservationInput, value: string) => {

@@ -217,7 +217,7 @@ export default function ClinicalIncidentsPage() {
 
   useEffect(() => {
     ReceptionService.getAllPatients().then((data) => setPatients(data.patients ?? [])).catch(() => {});
-    DepartmentSerivce.getAll().then((data) => setDepartments(data || [])).catch(() => {});
+    DepartmentSerivce.getAll().then((data) => setDepartments((data || []).filter((d: DepartmentTypes) => d.isActive))).catch(() => {});
   }, []);
 
   const filteredPatients = useMemo(() => {

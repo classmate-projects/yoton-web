@@ -277,7 +277,7 @@ export default function RoleManagementPage() {
               <p className="text-gray-500">No roles configured.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3 h-[60dvh] overflow-y-scroll">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 content-start h-[60dvh] overflow-y-scroll">
               {roles
                 .slice()
                 .sort(

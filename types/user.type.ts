@@ -55,6 +55,7 @@ export interface UserCreateType {
 
 export interface UserUpdateType {
     name: string;
+    username?: string;
     email: string;
     role: string;
     phone: string
@@ -62,6 +63,9 @@ export interface UserUpdateType {
     gender?: string;
     nationality?: string;
     departmentId?: string;
+    hireDate?: string;
+    // Only rehashed/applied server-side when non-empty - leave unset to keep the current password.
+    password?: string;
 }
 
 export interface TerminateUserPayload {

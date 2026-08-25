@@ -10,6 +10,8 @@ export interface DoctorGridType {
 export interface SpecializationDoctorsType {
   specializationId: string;
   specializationName: string;
+  departmentId: string | null;
+  departmentName: string | null;
   doctors: DoctorGridType[];
 }
 

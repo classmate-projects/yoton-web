@@ -13,6 +13,15 @@ let connectionPromise: Promise<HubConnection> | null = null;
 export async function getChatConnection() {
   if (connectionPromise) return connectionPromise;
 
+  // accessTokenFactory below reads the token lazily on every negotiate/reconnect
+  // attempt, which is normally fine - but if logout() has already cleared it (see
+  // lib/auth.ts) while a connect was in flight, letting this proceed sends an empty
+  // token to the server and comes back as a real, noisy 401 instead of the quiet
+  // "there's nothing to connect with" case this actually is.
+  if (!localStorage.getItem("yoton_token")) {
+    throw new Error("No auth token available - not starting chat connection");
+  }
+
   connectionPromise = (async () => {
     connection = new HubConnectionBuilder()
       .withUrl(`${baseUrl}/chat-hub`, {

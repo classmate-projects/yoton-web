@@ -26,6 +26,7 @@ import DatePicker from "@/components/DatePicker";
 import CountryCodeSelect from "@/components/CountryCodeSelect";
 import ToggleButton from "@/components/ToggleButton";
 import { toDateInputValue } from "@/lib/date";
+import { isValidEmail } from "@/lib/validation";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 // Cash needs nothing further; Insurance and Corporate share the exact same
@@ -114,6 +115,9 @@ export default function PatientEntryPage() {
   const [loading, setLoading] = useState(false);
   const [companyCountry, setCompanyCountry] = useState<string | undefined>(undefined);
   const isInsuranceOrCorporate = formData.paymentType !== "Cash";
+  // Only flagged once something's actually been typed - an empty required field is caught
+  // by the browser's own `required` validation on submit, not this live format check.
+  const emailInvalid = formData.email.length > 0 && !isValidEmail(formData.email);
   // National ID format follows the clinic's own admin-configured Country (Settings), not
   // whichever nationality is picked for this particular patient - a UAE clinic always
   // expects Emirates ID, regardless of the patient's own nationality.
@@ -328,7 +332,7 @@ export default function PatientEntryPage() {
   };
 
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => {
     const { name, value, type } = e.target;
     const inputElement = e.target as HTMLInputElement;
@@ -361,6 +365,12 @@ export default function PatientEntryPage() {
     e.preventDefault();
 
     setLoading(true);
+
+    if (!isValidEmail(formData.email)) {
+      setError("Enter a valid email address (e.g. john@example.com).");
+      setLoading(false);
+      return;
+    }
 
     // Validate that at least one of National ID or Passport Number is filled
     if (!formData.nationalID && !formData.passportNumber) {
@@ -755,8 +765,16 @@ export default function PatientEntryPage() {
                 onChange={handleInputChange}
                 required
                 placeholder="john@example.com"
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                aria-invalid={emailInvalid}
+                className={`px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent text-foreground bg-transparent ${
+                  emailInvalid
+                    ? "border-red-500 focus:ring-red-500"
+                    : "border-border focus:ring-primary"
+                }`}
               />
+              {emailInvalid && (
+                <p className="text-red-500 text-xs">Enter a valid email address (e.g. john@example.com).</p>
+              )}
             </div>
 
             {/* Address */}
@@ -764,14 +782,14 @@ export default function PatientEntryPage() {
               <label htmlFor="Address" className="font-semibold text-foreground/90">
                 Address
               </label>
-              <input
-                type="text"
+              <textarea
                 id="address"
                 name="address"
                 value={formData.address}
                 onChange={handleInputChange}
                 placeholder="Abu Dhabi"
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                rows={2}
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent resize-y min-h-11"
               />
             </div>
 

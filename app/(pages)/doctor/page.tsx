@@ -191,7 +191,7 @@ function DoctorWorkbenchInner() {
   useEffect(() => {
     if (!checkedAuth) return;
     SpecializationService.getAll()
-      .then((data) => setSpecializations(Array.isArray(data) ? data : []))
+      .then((data) => setSpecializations(Array.isArray(data) ? data.filter((s: SpecializationTypes) => s.isActive) : []))
       .catch(() => toast.error("Failed to load specialties"));
   }, [checkedAuth]);
 

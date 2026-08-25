@@ -56,7 +56,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         group: "Configuration",
         subItems: [
             { id: 6, name: "Departments", navLink: "/departments", icon: buildingIcon },
-            { id: 8, name: "Assign Doctor", navLink: "/assign-doctor", icon: doctorIcon },
             // Same page as the "Doctors Availability" User Modules tile - the query
             // param is what tells the page to render editable for admin here specifically
             // (see doctor-availability/page.tsx's canEdit check).

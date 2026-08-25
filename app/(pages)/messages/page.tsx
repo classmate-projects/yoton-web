@@ -270,16 +270,20 @@ export default function MessagesPage() {
       connection.on("typing", handleTyping);
       connection.on("presenceChanged", handlePresenceChanged);
     };
-    connect();
+    // No token (e.g. mid-logout) or a genuine connection failure both just mean "no live
+    // updates this mount" - nothing else here depends on the connection existing.
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
-      getChatConnection().then((connection) => {
-        connection.off("messageReceived", handleMessage);
-        connection.off("messageUpdated", handleMessageUpdated);
-        connection.off("typing", handleTyping);
-        connection.off("presenceChanged", handlePresenceChanged);
-      });
+      getChatConnection()
+        .then((connection) => {
+          connection.off("messageReceived", handleMessage);
+          connection.off("messageUpdated", handleMessageUpdated);
+          connection.off("typing", handleTyping);
+          connection.off("presenceChanged", handlePresenceChanged);
+        })
+        .catch(() => {});
     };
   }, []);
 
@@ -291,9 +295,11 @@ export default function MessagesPage() {
     const now = Date.now();
     if (now - lastTypingSentRef.current < 2000) return;
     lastTypingSentRef.current = now;
-    getChatConnection().then((connection) =>
-      connection.invoke("Typing", activeConversation.chatConversationId, activeConversation.otherId).catch(() => {})
-    );
+    getChatConnection()
+      .then((connection) =>
+        connection.invoke("Typing", activeConversation.chatConversationId, activeConversation.otherId).catch(() => {})
+      )
+      .catch(() => {});
   };
 
   const handleFilesPicked = (files: FileList | null) => {

@@ -111,7 +111,7 @@ export default function StaffExposurePage() {
       const users = res.data ?? [];
       setStaff(users.map((u: { id: string; name: string }) => ({ id: u.id, name: u.name })));
     }).catch(() => {});
-    DepartmentSerivce.getAll().then((data) => setDepartments(data || [])).catch(() => {});
+    DepartmentSerivce.getAll().then((data) => setDepartments((data || []).filter((d: DepartmentTypes) => d.isActive))).catch(() => {});
   }, []);
 
   const exposureType = form.exposureTypeCode;

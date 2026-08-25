@@ -44,7 +44,8 @@ interface NavigableEntry {
   icon: React.ComponentType;
   // Which allowedModules entry governs this entry - undefined means "use navLink itself".
   // Sub-items share their parent's module key since SidebarSubItem doesn't carry its own
-  // (matches app/(pages)/layout.tsx's extraProtectedRoutes.moduleKey for /assign-doctor).
+  // (matches app/(pages)/layout.tsx's extraProtectedRoutes.moduleKey usage, e.g. the
+  // "Doctors Availability" subItem under "Departments & Staff").
   moduleKey?: string;
 }
 
