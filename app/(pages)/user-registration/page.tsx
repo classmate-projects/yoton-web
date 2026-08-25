@@ -3,6 +3,7 @@
 import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
+import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
 import { toDateInputValue } from "@/lib/date";
 import CountryCodeSelect from "@/components/CountryCodeSelect";
 import CountrySearchSelect from "@/components/CountrySearchSelect";
@@ -18,6 +19,7 @@ import { DepartmentTypes } from "@/types/department.type";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useEffect, Suspense } from "react";
 import { toast } from "sonner";
+import axios from "axios";
 
 function UserRegistrationForm() {
   const [name, setName] = useState("");
@@ -35,6 +37,14 @@ function UserRegistrationForm() {
   const [hireDate, setHireDate] = useState("");
   const [departments, setDepartments] = useState<DepartmentTypes[]>([]);
 
+
+  // Set when Create comes back 409 "a deleted user already owns this identity" - offers
+  // RestoreUserPrompt instead of just failing (see handleUserReg's catch below).
+  const [deletedUserConflict, setDeletedUserConflict] = useState<{
+    userId: string;
+    name: string;
+    field: string;
+  } | null>(null);
 
   const [showAssignDoctor, setShowAssignDoctor] = useState(false)
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
@@ -244,10 +254,36 @@ function UserRegistrationForm() {
 
       router.push("/user-management");
     } catch (error) {
-      console.log(error);
+      if (axios.isAxiosError(error)) {
+        const body = error.response?.data;
+        if (error.response?.status === 409 && body?.code === "DELETED_USER_EXISTS") {
+          setDeletedUserConflict({
+            userId: body.data.userId,
+            name: body.data.name,
+            field: body.data.conflictingField,
+          });
+        } else {
+          toast.error(body?.message || "Failed to create user");
+        }
+      } else {
+        toast.error("Something went wrong");
+      }
     } finally {
       setLoading(false)
     }
+  };
+
+  // Confirmed from the RestoreUserPrompt shown after handleUserReg's 409 - brings the
+  // original (soft-deleted) account back instead of creating a new one. Left throwing on
+  // failure so the prompt itself can show "incorrect password" and let the admin retry.
+  const handleRestoreConfirm = async (adminPassword: string) => {
+    if (!deletedUserConflict) return;
+    const data = await UserService.restore(deletedUserConflict.userId, adminPassword);
+    toast.success(data.message);
+    setDeletedUserConflict(null);
+    resetdata();
+    sessionStorage.removeItem("editUser");
+    router.push("/user-management");
   };
 
   const handleUserUpdate = async () => {
@@ -289,7 +325,7 @@ function UserRegistrationForm() {
   };
 
   return (
-    <div className=" h-dvh flex flex-col py-6 px-4 sm:py-8 sm:px-10 gap-4">
+    <div className="h-dvh overflow-y-auto flex flex-col py-6 px-4 sm:py-8 sm:px-10 gap-4">
       <div>
         <h1 className="text-4xl font-semibold">
           {editMode ? "Edit Staff Details" : "Staff Registration"}
@@ -773,6 +809,23 @@ function UserRegistrationForm() {
           </div>
         </form>
       </div>
+
+      {deletedUserConflict && (
+        <AdminPasswordConfirm
+          title="Restore deleted user?"
+          description={
+            <>
+              A previously deleted user, <b className="text-foreground">{deletedUserConflict.name}</b>,
+              already has this {deletedUserConflict.field}. Enter your admin password to restore
+              their account instead of creating a new one.
+            </>
+          }
+          confirmLabel="Restore user"
+          confirmingLabel="Restoring..."
+          onCancel={() => setDeletedUserConflict(null)}
+          onConfirm={handleRestoreConfirm}
+        />
+      )}
     </div>
   );
 }

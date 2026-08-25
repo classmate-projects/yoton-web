@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MdExpandMore } from "react-icons/md";
 
@@ -59,14 +59,25 @@ export default function SearchableSelect({
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const popupWidth = Math.max(rect.width, 220);
-    const estimatedPopupHeight = 280;
+    // Before the popup has ever rendered there's nothing to measure, so fall back to a
+    // rough estimate for that one frame - the layout effect below immediately re-measures
+    // against the popup's real (usually much shorter) height and corrects this before
+    // paint. Without that correction, a short list flipped "above" by the full estimate
+    // instead of its actual height, landing the popup nowhere near its own trigger.
+    const popupHeight = popupRef.current?.getBoundingClientRect().height || 280;
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const spaceAbove = rect.top - 8;
+
     let left = rect.left;
     if (left + popupWidth > window.innerWidth - 8) {
       left = Math.max(8, rect.right - popupWidth);
     }
-    let top = rect.bottom + 6;
-    if (top + estimatedPopupHeight > window.innerHeight - 8 && rect.top - estimatedPopupHeight - 6 > 0) {
-      top = rect.top - estimatedPopupHeight - 6;
+
+    let top: number;
+    if (popupHeight <= spaceBelow || spaceBelow >= spaceAbove) {
+      top = rect.bottom + 6;
+    } else {
+      top = Math.max(8, rect.top - popupHeight - 6);
     }
     setCoords({ top, left, width: popupWidth });
   };
@@ -95,6 +106,28 @@ export default function SearchableSelect({
       window.removeEventListener("resize", updateCoords);
     };
   }, [open]);
+
+  // The popup is only in the DOM once `coords` holds a non-null value, so the very first
+  // updateCoords() call above (still in the "open" effect) necessarily runs before it
+  // exists and falls back to the 280px estimate. This ref callback fires the instant the
+  // portal's div actually mounts, letting updateCoords() immediately re-measure against
+  // its real (often much shorter) height and correct the estimate - before paint, since
+  // ref callbacks run in the same commit-time window as layout effects. Must be memoized:
+  // an inline ref function gets a new identity every render, which would re-fire (and
+  // re-setCoords, and re-render, and re-fire...) on every keystroke instead of just once
+  // per mount.
+  const setPopupRef = useCallback((node: HTMLDivElement | null) => {
+    popupRef.current = node;
+    if (node) updateCoords();
+  }, []);
+
+  // Separately, re-measure whenever the mounted popup's own content height changes (e.g.
+  // typing narrows the filtered list) - the callback ref above only fires on mount/unmount,
+  // not on this kind of in-place resize.
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateCoords();
+  }, [open, filtered.length]);
 
   useEffect(() => {
     setHighlighted(0);
@@ -127,12 +160,10 @@ export default function SearchableSelect({
         onClick={() => (open ? setOpen(false) : openPicker())}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={
+        className={`${
           className ||
-          `flex h-11 w-full items-center justify-between gap-1 px-3 text-left capitalize text-foreground transition-colors ${
-            disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-muted"
-          }`
-        }
+          "flex h-11 w-full items-center justify-between gap-1 px-3 text-left capitalize text-foreground transition-colors hover:bg-muted"
+        } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
       >
         <span className={`truncate ${selected ? "" : "text-muted-foreground"}`}>
           {selected?.label || placeholder}
@@ -144,7 +175,7 @@ export default function SearchableSelect({
 
       {open && coords && createPortal(
         <div
-          ref={popupRef}
+          ref={setPopupRef}
           role="listbox"
           style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}
           className="z-50 flex max-h-72 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-150"
@@ -187,7 +218,7 @@ export default function SearchableSelect({
                 onMouseEnter={() => setHighlighted(index)}
                 onClick={() => pick(o.value)}
                 className={[
-                  "flex w-full items-center px-3 py-2 text-left text-sm capitalize transition-colors",
+                  "flex w-full cursor-pointer items-center px-3 py-2 text-left text-sm capitalize transition-colors",
                   index === highlighted ? "bg-muted" : "",
                   o.value === value ? "font-semibold text-primary" : "text-foreground",
                 ].join(" ")}

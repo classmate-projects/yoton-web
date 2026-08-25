@@ -10,12 +10,17 @@ interface getAllResponse {
   isActive: boolean;
   createdAt: string;
   lastLogin: string;
+  // True when inactive because Terminate closed the current employment stint - distinct
+  // from a plain manual deactivate. Drives both the row styling and whether reactivating
+  // goes through the plain toggle or the password-gated Rehire flow below.
+  isTerminated: boolean;
 }
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import axios from "axios";
 import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
 import DeleteIcon from "@/public/icons/deleteIcon";
@@ -30,6 +35,7 @@ import { NursingService } from "@/services/nursing.service";
 import { NurseShiftInput } from "@/types/nursing.type";
 import { StaffEmploymentEventType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
 
 const TERMINATION_REASONS = [
   { value: "Retired60Plus", label: "Retired (60+ years)" },
@@ -76,6 +82,11 @@ export default function UserManagement() {
   const [terminationReason, setTerminationReason] = useState("");
   const [terminationReasonOtherText, setTerminationReasonOtherText] = useState("");
   const [isTerminating, setIsTerminating] = useState(false);
+
+  // Set when the status toggle is clicked for a terminated user - routes reactivation
+  // through Rehire's password-gated confirm instead of the plain toggle (see
+  // handleToggleUser below).
+  const [rehireTarget, setRehireTarget] = useState<getAllResponse | null>(null);
 
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -261,15 +272,24 @@ export default function UserManagement() {
       toast.success("Employment terminated");
       closeTerminate();
       fetchAllUsers();
-    } catch {
-      toast.error("Failed to terminate employment");
+    } catch (error) {
+      toast.error(
+        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to terminate employment" : "Failed to terminate employment"
+      );
     } finally {
       setIsTerminating(false);
     }
   };
 
-  // toggle user
+  // toggle user - a terminated employee can't be reactivated by this plain flip (the
+  // backend refuses it): they go through the Rehire confirm below instead, so
+  // reactivating always opens a fresh employment stint rather than just flipping the flag.
   const handleToggleUser = async (user: getAllResponse) => {
+    if (!user.isActive && user.isTerminated) {
+      setRehireTarget(user);
+      return;
+    }
+
     const payload = {
       ...user,
       isActive: !user.isActive,
@@ -286,9 +306,22 @@ export default function UserManagement() {
             : u
         )
       );
-    } catch {
-      console.log("Error: error with toggling user");
+    } catch (error) {
+      toast.error(
+        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update status" : "Failed to update status"
+      );
     }
+  };
+
+  // Confirmed from the Rehire prompt below - reactivates the account and opens a new
+  // employment stint (backend). Left throwing on failure so the prompt itself can show
+  // "incorrect password" and let the admin retry.
+  const handleRehireConfirm = async (adminPassword: string) => {
+    if (!rehireTarget) return;
+    await UserService.rehire(rehireTarget.id, adminPassword);
+    toast.success(`${rehireTarget.name} has been rehired`);
+    setRehireTarget(null);
+    fetchAllUsers();
   };
 
   return (
@@ -301,23 +334,23 @@ export default function UserManagement() {
             permissions.
           </p>
         </div>
-        <div className="flex items-center gap-3 rounded-full border border-border bg-card px-3 py-2 shadow-sm">
+        <div className="flex items-center gap-3">
           <Link
             href={"/role-management"}
-            title="Manage Roles"
-            aria-label="Manage Roles"
-            className="grid h-11 w-11 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition-all duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label="Manage roles and their module permissions"
+            className="flex h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            <SettingsIcon size={20} />
+            <SettingsIcon size={18} />
+            Manage Roles
           </Link>
           <Link
             href={"/user-registration"}
             onClick={() => sessionStorage.removeItem("editUser")}
-            title="User Registration"
-            aria-label="User Registration"
-            className="grid h-11 w-11 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary shadow-sm transition-all duration-200 hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 "
+            aria-label="Register a new staff member"
+            className="flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            <AddUserIcon size={20} />
+            <AddUserIcon size={18} />
+            Add Staff
           </Link>
         </div>
       </div>
@@ -397,8 +430,26 @@ export default function UserManagement() {
               filteredUsers
                 .slice()
                 .map((user) => (
-                  <tr key={user.id} className={!user.isActive ? "bg-red-50/50 opacity-80" : ""}>
-                    <td className="font-semibold">{user.name}</td>
+                  <tr
+                    key={user.id}
+                    className={
+                      user.isTerminated
+                        ? "bg-red-100/80 dark:bg-red-950/30 text-muted-foreground line-through decoration-red-400"
+                        : !user.isActive
+                        ? "bg-red-50/50 opacity-80"
+                        : ""
+                    }
+                  >
+                    <td className="font-semibold">
+                      <span className="inline-flex items-center gap-2">
+                        {user.name}
+                        {user.isTerminated && (
+                          <span className="no-underline rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                            Terminated
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td>{user.username}</td>
                     <td>{user.email}</td>
                     <td className="capitalize">{user.role}</td>
@@ -412,16 +463,6 @@ export default function UserManagement() {
                           checked={user.isActive}
                           onChange={() => handleToggleUser(user)}
                         />
-
-                        {user.role.toLowerCase() === "nurse" && (
-                          <button
-                            onClick={() => openShiftsManager(user)}
-                            title="Manage Shifts"
-                            className="hover:bg-purple-100 p-2 rounded-full transition-colors cursor-pointer text-purple-600"
-                          >
-                            <CalendarClock size={18} />
-                          </button>
-                        )}
 
                         <button
                           onClick={() => openHistory(user)}
@@ -449,16 +490,28 @@ export default function UserManagement() {
                           <DeleteIcon color="red" />
                         </button>
 
-                        <button
-                          onClick={() => {
-                            sessionStorage.setItem("editUser", JSON.stringify(user));
-                            router.push("/user-registration?edit=true");
-                          }}
-                          title="Edit User"
-                          className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer"
-                        >
-                          <EditIcon color="blue" />
-                        </button>
+                        {!user.isTerminated && (
+                          <button
+                            onClick={() => {
+                              sessionStorage.setItem("editUser", JSON.stringify(user));
+                              router.push("/user-registration?edit=true");
+                            }}
+                            title="Edit User"
+                            className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer"
+                          >
+                            <EditIcon color="blue" />
+                          </button>
+                        )}
+
+                        {user.role.toLowerCase() === "nurse" && (
+                          <button
+                            onClick={() => openShiftsManager(user)}
+                            title="Manage Shifts"
+                            className="hover:bg-purple-100 p-2 rounded-full transition-colors cursor-pointer text-purple-600"
+                          >
+                            <CalendarClock size={18} />
+                          </button>
+                        )}
 
                       </div>
                     </td>
@@ -656,6 +709,22 @@ export default function UserManagement() {
             </div>
           </div>
         </div>
+      )}
+
+      {rehireTarget && (
+        <AdminPasswordConfirm
+          title="Rehire this employee?"
+          description={
+            <>
+              <b className="text-foreground">{rehireTarget.name}</b> was terminated. Enter your
+              admin password to reactivate their account and open a new employment stint.
+            </>
+          }
+          confirmLabel="Rehire"
+          confirmingLabel="Rehiring..."
+          onCancel={() => setRehireTarget(null)}
+          onConfirm={handleRehireConfirm}
+        />
       )}
     </div>
   );

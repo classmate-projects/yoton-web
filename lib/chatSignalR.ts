@@ -1,5 +1,6 @@
 import { HubConnection, HubConnectionBuilder } from "@microsoft/signalr";
 import { baseUrl } from "./constants";
+import { signalRLogger } from "./signalRLogger";
 
 let connection: HubConnection | null = null;
 let connectionPromise: Promise<HubConnection> | null = null;
@@ -28,7 +29,19 @@ export async function getChatConnection() {
         accessTokenFactory: () => localStorage.getItem("yoton_token") || "",
       })
       .withAutomaticReconnect()
+      .configureLogging(signalRLogger)
+      // See lib/signalR.ts - a throttled background tab can miss the server's keep-alive
+      // ping past the default 30s timeout even on a perfectly healthy socket.
+      .withServerTimeout(60_000)
       .build();
+
+    connection.onreconnecting(() => console.warn("[SignalR] Reconnecting to /chat-hub..."));
+    connection.onreconnected(() => console.info("[SignalR] Reconnected to /chat-hub."));
+    connection.onclose((error) => {
+      if (error) console.error("[SignalR] /chat-hub connection closed and gave up reconnecting:", error);
+      connection = null;
+      connectionPromise = null;
+    });
 
     try {
       await connection.start();
