@@ -255,10 +255,15 @@ export default function DatePicker({
 
   // Whichever day/month/year fields are fully typed so far, independent of whether the whole
   // date is valid yet - drives the calendar navigation and the in-progress day highlight below
-  // while the rest of the date is still being typed.
+  // while the rest of the date is still being typed. Only meaningful for a numeric-masked
+  // format (e.g. "dd-MM-yyyy") - tokenizeDateFormat treats every d/M/y run as a fixed-width
+  // digit slot, which is wrong for a word-month format like the default "MMM d, yyyy" (its
+  // "MMM" isn't 3 digits). Left ungated, opening the picker on an already-filled "Aug 30,
+  // 2026" field stripped it to digits "302026" and sliced the first 3 as a "month" of 302,
+  // which the navigation effect below then rolled over into February 2051.
   const typedParts = useMemo(
-    () => (open ? parsePartialDigits(text, dateFormat) : { day: null, month: null, year: null }),
-    [open, text, dateFormat],
+    () => (open && maskEnabled ? parsePartialDigits(text, dateFormat) : { day: null, month: null, year: null }),
+    [open, maskEnabled, text, dateFormat],
   );
 
   // What's currently typed, resolved live to a Date once it forms a complete valid date -

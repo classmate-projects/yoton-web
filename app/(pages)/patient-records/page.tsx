@@ -13,7 +13,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
 import { ReceptionService } from "@/services/reception.service";
-import { PatientGetAllType } from "@/types/reception.type";
+import { PatientGetAllType, VisitListItemType } from "@/types/reception.type";
 import {
   AppointmentSlotType,
   DoctorDaySlotsType,
@@ -25,11 +25,38 @@ import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
 
+type PatientListMode = "register" | "visit";
+const PATIENTS_PAGE_SIZE = 50;
+
+// Shared by both list modes - VisitListItemType extends PatientGetAllType, so this one
+// predicate covers both without needing a second copy. "Mobile Number" = phone; "MRN" =
+// opNumber (opId itself stays internal - never shown to or searched by a user, see the app-
+// wide MRN convention this mirrors).
+const matchesPatientSearch = (p: PatientGetAllType, term: string) => {
+  const q = term.trim().toLowerCase();
+  if (!q) return true;
+  return !!(
+    p.name?.toLowerCase().includes(q) ||
+    p.opNumber?.toLowerCase().includes(q) ||
+    p.phone?.toLowerCase().includes(q) ||
+    p.nationalID?.toLowerCase().includes(q)
+  );
+};
+
 export default function PatientRecordsPage() {
   const [patients, setPatients] = useState<PatientGetAllType[]>([]);
   const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // ---------------- Register List / Visit List toggle ----------------
+  const [listMode, setListMode] = useState<PatientListMode>("register");
+  const [visits, setVisits] = useState<VisitListItemType[]>([]);
+  const [isLoadingVisits, setIsLoadingVisits] = useState(false);
+  const todayValue = toDateInputValue(new Date());
+  const [fromDate, setFromDate] = useState(todayValue);
+  const [toDate, setToDate] = useState(todayValue);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [uploadTarget, setUploadTarget] = useState<PatientGetAllType | null>(null);
   const [documentType, setDocumentType] = useState(DOCUMENT_TYPES[0]);
@@ -62,11 +89,42 @@ export default function PatientRecordsPage() {
     }
   };
 
+  const fetchVisits = async (from: string, to: string) => {
+    try {
+      setIsLoadingVisits(true);
+      const data = await ReceptionService.getVisitList(from, to);
+      setVisits(data.visits || []);
+    } catch (error) {
+      console.error("Failed to fetch visit list", error);
+      toast.error("Failed to load visit list");
+    } finally {
+      setIsLoadingVisits(false);
+    }
+  };
+
+  // Register List is fetched eagerly (it's the default view, and other pages' patient-search
+  // widgets share the underlying data too via the same signalR-driven refresh below) - Visit
+  // List is fetched lazily, only once the toggle actually switches to it, and again whenever
+  // From/To changes while it's active. Both together satisfy "switching toggles/date filters
+  // immediately refreshes the displayed data."
   useEffect(() => {
     fetchPatients();
   }, []);
 
+  useEffect(() => {
+    if (listMode === "visit") fetchVisits(fromDate, toDate);
+  }, [listMode, fromDate, toDate]);
+
+  // Search/date/mode changes all invalidate whatever page the user was on - e.g. a filter
+  // that now only matches 10 records shouldn't leave them stranded on page 3.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listMode, searchTerm, fromDate, toDate]);
+
   useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
+  useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], () => {
+    if (listMode === "visit") fetchVisits(fromDate, toDate);
+  });
 
   const handleDelete = async (id: string) => {
     try {
@@ -274,13 +332,71 @@ export default function PatientRecordsPage() {
     )
   }
 
-  const filteredPatients = patients.filter(
-    (p) =>
-      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.phone?.includes(searchTerm) ||
-      p.nationalID?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.passportNumber?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredPatients = useMemo(
+    () => patients.filter((p) => matchesPatientSearch(p, searchTerm)),
+    [patients, searchTerm]
+  );
+  const filteredVisits = useMemo(
+    () => visits.filter((v) => matchesPatientSearch(v, searchTerm)),
+    [visits, searchTerm]
+  );
+
+  const activeFilteredCount = listMode === "register" ? filteredPatients.length : filteredVisits.length;
+  const totalPages = Math.max(1, Math.ceil(activeFilteredCount / PATIENTS_PAGE_SIZE));
+  // Clamped fallback for the one case the reset-to-1 effect above doesn't cover: the result
+  // set shrinking (e.g. a patient deleted, or a signalR-driven visit refetch) while the user
+  // sits on a page number that's no longer valid, with nothing else changing to re-trigger
+  // that effect.
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * PATIENTS_PAGE_SIZE;
+  const pagedPatients = useMemo(
+    () => filteredPatients.slice(pageStart, pageStart + PATIENTS_PAGE_SIZE),
+    [filteredPatients, pageStart]
+  );
+  const pagedVisits = useMemo(
+    () => filteredVisits.slice(pageStart, pageStart + PATIENTS_PAGE_SIZE),
+    [filteredVisits, pageStart]
+  );
+
+  // Shared by both list modes' rows - a VisitListItemType is structurally a
+  // PatientGetAllType (plus its own visit fields), so a Visit List row's patient identity
+  // works here unchanged; these actions operate on the patient, not the visit.
+  const renderActions = (patient: PatientGetAllType) => (
+    <div className="flex items-center justify-center gap-1">
+      <button
+        onClick={() => openWalkInModal(patient)}
+        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
+        title="Register Walk-in Visit"
+      >
+        <MdOutlinePersonAddAlt1 className="text-blue-600" size={18} />
+      </button>
+      <button
+        onClick={() => setUploadTarget(patient)}
+        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
+        title="Upload External Document"
+      >
+        <MdOutlineUploadFile className="text-blue-600" size={18} />
+      </button>
+      <button
+        onClick={() => handleResendWelcomeEmail(patient.opId, patient.name)}
+        disabled={resendingEmailId === patient.opId}
+        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        title="Resend App Login Email"
+      >
+        {resendingEmailId === patient.opId ? (
+          <Loader2 className="text-blue-600 animate-spin" size={18} />
+        ) : (
+          <MdOutlineMailOutline className="text-blue-600" size={18} />
+        )}
+      </button>
+      <button
+        onClick={() => confirmDelete(patient.opId, patient.name)}
+        className="hover:bg-red-50 p-2 rounded transition-colors cursor-pointer"
+        title="Delete Patient"
+      >
+        <DeleteIcon color="red" />
+      </button>
+    </div>
   );
 
   return (
@@ -299,22 +415,81 @@ export default function PatientRecordsPage() {
       </div>
 
       <div className="card p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-semibold">Patient Directory</h2>
-          <div className="relative w-64">
-            {/* <MdSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} /> */}
-            <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
-              <SearchIcon color="#555" />
-            </span>
-            <input
-              type="text"
-              placeholder="Search by name, email, phone, national ID, or passport..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
-            />
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          {/* Toggle - switching modes immediately swaps the data below (Visit List also
+              triggers its own fetch, see the effect keyed on listMode/fromDate/toDate). */}
+          <div role="tablist" aria-label="Patient list view" className="inline-flex rounded-lg border border-border bg-muted p-1">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={listMode === "register"}
+              onClick={() => setListMode("register")}
+              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors cursor-pointer ${
+                listMode === "register" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Patient Register List
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={listMode === "visit"}
+              onClick={() => setListMode("visit")}
+              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors cursor-pointer ${
+                listMode === "visit" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Patient Visit List
+            </button>
+          </div>
+
+          {/* From/To sit immediately left of the search bar (both pushed to the row's right
+              side by the justify-between above), not next to the toggle. */}
+          <div className="flex flex-wrap items-center gap-4">
+            {listMode === "visit" && (
+              <>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-foreground/80">From</label>
+                  {/* Typeable + calendar, same as Date of Birth on Patient Entry. */}
+                  <DatePicker
+                    value={fromDate}
+                    onChange={(v) => v && setFromDate(v)}
+                    max={toDate}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
+                    className="flex h-10 w-36 items-center justify-between gap-2 rounded-lg border border-border bg-(--color-highlight) px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-foreground/80">To</label>
+                  <DatePicker
+                    value={toDate}
+                    onChange={(v) => v && setToDate(v)}
+                    min={fromDate}
+                    max={todayValue}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
+                    className="flex h-10 w-36 items-center justify-between gap-2 rounded-lg border border-border bg-(--color-highlight) px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="relative w-72">
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                <SearchIcon color="#555" />
+              </span>
+              <input
+                type="text"
+                placeholder="Search by name, MRN, mobile number, or national ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
+              />
+            </div>
           </div>
         </div>
+
         <hr className="text-neutral-400/50 mb-4" />
 
         <div className="overflow-x-auto">
@@ -322,75 +497,99 @@ export default function PatientRecordsPage() {
             <thead>
               <tr>
                 <th>Full Name</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Address</th>
+                <th>MRN</th>
+                {listMode === "register" ? (
+                  <>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Address</th>
+                  </>
+                ) : (
+                  <>
+                    <th>Phone</th>
+                    <th>Visit Date</th>
+                    <th>Visit Type</th>
+                  </>
+                )}
                 <th className="text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {isLoading ? (
+              {(listMode === "register" ? isLoading : isLoadingVisits) ? (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center">
+                  <td colSpan={6} className="py-16 text-center">
                     <LoadingSpinner />
                   </td>
                 </tr>
-              ) : filteredPatients.length > 0 ? (
-                filteredPatients.map((patient) => (
-                  <tr key={patient.opId}>
-                    <td className="font-semibold">{patient.name}</td>
-                    <td>{patient.email}</td>
-                    <td>{patient.phone}</td>
-                    <td className="truncate max-w-xs">{patient.address || "N/A"}</td>
-                    <td className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => openWalkInModal(patient)}
-                          className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer"
-                          title="Register Walk-in Visit"
-                        >
-                          <MdOutlinePersonAddAlt1 className="text-blue-600" size={18} />
-                        </button>
-                        <button
-                          onClick={() => setUploadTarget(patient)}
-                          className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer"
-                          title="Upload External Document"
-                        >
-                          <MdOutlineUploadFile className="text-blue-600" size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleResendWelcomeEmail(patient.opId, patient.name)}
-                          disabled={resendingEmailId === patient.opId}
-                          className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Resend App Login Email"
-                        >
-                          {resendingEmailId === patient.opId ? (
-                            <Loader2 className="text-blue-600 animate-spin" size={18} />
-                          ) : (
-                            <MdOutlineMailOutline className="text-blue-600" size={18} />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => confirmDelete(patient.opId, patient.name)}
-                          className="hover:bg-red-50 p-2 rounded transition-colors cursor-pointer"
-                          title="Delete Patient"
-                        >
-                          <DeleteIcon color="red" />
-                        </button>
-                      </div>
+              ) : listMode === "register" ? (
+                pagedPatients.length > 0 ? (
+                  pagedPatients.map((patient) => (
+                    <tr key={patient.opId}>
+                      <td className="font-semibold">{patient.name}</td>
+                      <td className="font-mono text-xs">{patient.opNumber || patient.opId}</td>
+                      <td>{patient.email}</td>
+                      <td>{patient.phone}</td>
+                      <td className="truncate max-w-xs">{patient.address || "N/A"}</td>
+                      <td className="text-center">{renderActions(patient)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="py-16 text-center text-gray-500">
+                      No patients found.
                     </td>
+                  </tr>
+                )
+              ) : pagedVisits.length > 0 ? (
+                pagedVisits.map((visit) => (
+                  <tr key={visit.visitId}>
+                    <td className="font-semibold">{visit.name}</td>
+                    <td className="font-mono text-xs">{visit.opNumber || visit.opId}</td>
+                    <td>{visit.phone}</td>
+                    <td>{format(new Date(visit.checkedInAt), "dd MMM yyyy")}</td>
+                    <td>{visit.visitType === "WalkIn" ? "Walk-in" : "Appointment"}</td>
+                    <td className="text-center">{renderActions(visit)}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-gray-500">
-                    No patients found.
+                  <td colSpan={6} className="py-16 text-center text-gray-500">
+                    No visits found for the selected date range.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {activeFilteredCount > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-border">
+            <p className="text-xs text-muted-foreground">
+              Showing {pageStart + 1}-{Math.min(pageStart + PATIENTS_PAGE_SIZE, activeFilteredCount)} of {activeFilteredCount}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={safePage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg border border-border text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors cursor-pointer"
+              >
+                Previous
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Page {safePage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={safePage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="px-3 py-1.5 rounded-lg border border-border text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors cursor-pointer"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {walkInPatient && (
@@ -470,7 +669,7 @@ export default function PatientRecordsPage() {
                     <LoadingSpinner />
                   </div>
                 ) : selectedDoctor ? (
-                  <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-900">
                     <div>
                       <p className="text-sm font-semibold text-foreground">
                         {selectedDoctor.name}
@@ -484,7 +683,7 @@ export default function PatientRecordsPage() {
                         setSelectedDoctor(null);
                         setDaySlots(null);
                       }}
-                      className="text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+                      className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                     >
                       Change
                     </button>
@@ -496,9 +695,9 @@ export default function PatientRecordsPage() {
                         <button
                           key={doctor.doctorId}
                           onClick={() => setSelectedDoctor(doctor)}
-                          className="w-full text-left px-4 py-2 hover:bg-blue-50 transition-colors cursor-pointer flex items-center gap-2"
+                          className="w-full text-left px-4 py-2 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer flex items-center gap-2"
                         >
-                          <Stethoscope size={14} className="text-blue-600 shrink-0" />
+                          <Stethoscope size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
                           <span>
                             <span className="font-medium text-foreground">{doctor.name}</span>
                             <span className="text-xs text-muted-foreground ml-2">
@@ -530,6 +729,8 @@ export default function PatientRecordsPage() {
                           setSelectedDate(new Date(`${v}T00:00:00`));
                         }
                       }}
+                      dateFormat="dd-MM-yyyy"
+                      placeholder="DD-MM-YYYY"
                       className="flex h-9 w-40 items-center justify-between gap-2 rounded-lg border border-border bg-muted px-2 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>

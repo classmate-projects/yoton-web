@@ -10,6 +10,10 @@ export const ReceptionService = {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_ALL_PATIENTS)
         return data;
     },
+    getVisitList: async (from?: string, to?: string) => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT_LIST(from, to))
+        return data;
+    },
     createPatinet: async (payload: ReceptionCreatePatientType) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CREATE_PATIENT, payload)
         return data;

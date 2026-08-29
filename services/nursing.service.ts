@@ -11,6 +11,7 @@ import {
   ExaminationNotePayload,
   AdministerMedicationPayload,
   NurseShiftInput,
+  TriagePayload,
 } from "@/types/nursing.type";
 import { SpecialRemarkPayload } from "@/types/emr.type";
 
@@ -93,6 +94,14 @@ export const NursingService = {
   },
   getWorkQueue: async () => {
     const { data } = await api.get(ENDPOINTS.NURSING.GET_WORK_QUEUE);
+    return data;
+  },
+  getUntouchedPatients: async () => {
+    const { data } = await api.get(ENDPOINTS.NURSING.GET_UNTOUCHED_PATIENTS);
+    return data;
+  },
+  saveTriage: async (patientId: string, payload: TriagePayload) => {
+    const { data } = await api.post(ENDPOINTS.NURSING.SAVE_TRIAGE(patientId), payload);
     return data;
   },
   getNurseShifts: async (nurseId: string) => {

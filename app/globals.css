@@ -73,6 +73,21 @@
     transition-timing-function: ease;
     transition-duration: 300ms;
   }
+  /* Unlike <a>, a plain <button> has no built-in pointer cursor in any browser's UA
+     stylesheet (it defaults to the plain arrow) - every clickable button across the app was
+     silently relying on that default instead of actually looking clickable. One rule here
+     fixes all of them at once, instead of hand-adding cursor-pointer to each one individually
+     (the onClick <div>s elsewhere already opt into it per-element, since a div is never
+     implicitly clickable-looking regardless). Disabled buttons get the "blocked" cursor
+     instead, so a disabled Save button doesn't look clickable either. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+
   html {
     @apply h-full antialiased;
   }
@@ -196,17 +211,33 @@ input[type="password"]::-ms-reveal {
 
 /* Chrome/Edge paint autofilled fields with their own forced background (a pale yellow)
    via an inset box-shadow directly on the <input>, ignoring the page's own bg-* classes.
-   Fields like Date of Birth get flagged for autofill by their label text even with
-   autocomplete="off", and since a plain <input> here has no border-radius of its own
-   (only its rounded wrapper does), that shadow paints with square corners and peeks out
-   past the wrapper's rounded corners - looking like a second box behind the field. This
-   repaints the autofill background to match the theme instead, corners included. */
+   Fields like Date of Birth (and, elsewhere, Father Name/Mother Name) get flagged for
+   autofill by their label text even with autocomplete="off", and since a plain <input>
+   here has no border-radius of its own (only its rounded wrapper does), that shadow paints
+   with square corners and peeks out past the wrapper's rounded corners - looking like a
+   second box behind the field. This repaints the autofill background to match the theme
+   instead, corners included. */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
-input:-webkit-autofill:focus,
 input:-webkit-autofill:active {
   -webkit-box-shadow: 0 0 0 1000px var(--card) inset;
   box-shadow: 0 0 0 1000px var(--card) inset;
+  -webkit-text-fill-color: var(--foreground);
+  caret-color: var(--foreground);
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Focused + autofilled needs its own rule rather than folding into the group above: every
+   text input across the app pairs focus:border-transparent with focus:ring-2
+   focus:ring-primary, so the ring is what actually reads as the field's border once
+   focused - the border itself goes transparent by design. The autofill background repaint
+   above sets box-shadow directly, which would otherwise silently replace that ring's own
+   box-shadow the instant an autofilled field (e.g. Father Name/Mother Name in Patient
+   Entry) is focused, leaving it with no visible boundary at all. Layering both shadows
+   here keeps the background repaint and restores the ring. */
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--card) inset, 0 0 0 2px var(--primary);
+  box-shadow: 0 0 0 1000px var(--card) inset, 0 0 0 2px var(--primary);
   -webkit-text-fill-color: var(--foreground);
   caret-color: var(--foreground);
   transition: background-color 9999s ease-in-out 0s;

@@ -258,7 +258,7 @@ export default function PharmacyPage() {
   const openPrintForGroup = (group: { patientName: string; doctorName: string; items: PharmacyMedicationType[] }) => {
     setPrintGroup({
       patientName: group.patientName,
-      patientNumber: group.items[0]?.patientId ?? "",
+      patientNumber: group.items[0]?.patientOPNumber || group.items[0]?.patientId || "",
       doctorName: group.doctorName,
       items: group.items,
     });
@@ -320,6 +320,7 @@ export default function PharmacyPage() {
       (p) =>
         p.name?.toLowerCase().includes(q) ||
         p.phone?.toLowerCase().includes(q) ||
+        p.opNumber?.toLowerCase().includes(q) ||
         p.opId?.toLowerCase().includes(q)
     );
   }, [patientSearch, patients]);
@@ -940,7 +941,7 @@ export default function PharmacyPage() {
                     setPatientSearch(e.target.value);
                     setSelectedPatient(null);
                   }}
-                  placeholder="Search by name, phone or OP ID..."
+                  placeholder="Search by name, phone or MRN..."
                   className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                 />
                 {!selectedPatient && filteredPatients.length > 0 && (
@@ -957,7 +958,7 @@ export default function PharmacyPage() {
                       >
                         <div className="font-medium text-foreground">{p.name}</div>
                         <div className="text-sm text-muted-foreground">
-                          {p.opId} • {p.phone}
+                          {p.opNumber || p.opId} • {p.phone}
                         </div>
                       </button>
                     ))}

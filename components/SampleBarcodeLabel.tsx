@@ -53,7 +53,7 @@ export default function SampleBarcodeLabel({ label, onPrint, printCount, lastPri
         <p className="w-full truncate text-center text-[6px] font-semibold leading-tight">{label.testName}</p>
         <svg ref={barcodeRef} className="w-full" />
         <p className="w-full truncate text-center text-[5.5px] leading-tight">
-          MRN #{label.mrn} · {label.doctorName}
+          MRN {label.mrn} · {label.doctorName}
         </p>
         <p className="w-full truncate text-center text-[5.5px] leading-tight">
           {label.date} · By {label.collectedByName}

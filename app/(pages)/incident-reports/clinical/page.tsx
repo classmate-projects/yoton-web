@@ -227,6 +227,7 @@ export default function ClinicalIncidentsPage() {
       .filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
+          p.opNumber?.toLowerCase().includes(q) ||
           p.opId?.toLowerCase().includes(q) ||
           p.phone?.toLowerCase().includes(q) ||
           p.nationalID?.toLowerCase().includes(q) ||
@@ -373,7 +374,7 @@ export default function ClinicalIncidentsPage() {
               <label className="text-xs font-semibold text-muted-foreground">Patient (optional)</label>
               {selectedPatient ? (
                 <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-                  <span>{selectedPatient.name} ({selectedPatient.opId})</span>
+                  <span>{selectedPatient.name} ({selectedPatient.opNumber || selectedPatient.opId})</span>
                   <button
                     onClick={() => setForm((p) => ({ ...p, patientId: "" }))}
                     className="text-xs text-muted-foreground hover:underline"
@@ -385,7 +386,7 @@ export default function ClinicalIncidentsPage() {
                 <>
                   <input
                     type="text"
-                    placeholder="Search by name, phone, OP ID, national ID, or passport..."
+                    placeholder="Search by name, phone, MRN, national ID, or passport..."
                     value={patientSearch}
                     onChange={(e) => setPatientSearch(e.target.value)}
                     className="h-10 text-sm"
@@ -402,7 +403,7 @@ export default function ClinicalIncidentsPage() {
                           className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-muted/60"
                         >
                           <span>{p.name}</span>
-                          <span className="text-xs text-muted-foreground">{p.opId}</span>
+                          <span className="text-xs text-muted-foreground">{p.opNumber || p.opId}</span>
                         </button>
                       ))}
                     </div>

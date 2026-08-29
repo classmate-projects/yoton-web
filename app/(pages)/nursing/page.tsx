@@ -8,10 +8,12 @@ import {
   ArrowLeft,
   Activity,
   AlertTriangle,
+  Ban,
   Bandage,
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
+  Clock,
   Droplets,
   FileText,
   Flag,
@@ -32,6 +34,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import RichTextEditor from "@/components/RichTextEditor";
 import TrendChart from "@/components/TrendChart";
 import ToggleButton from "@/components/ToggleButton";
+import DatePicker from "@/components/DatePicker";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
 import { UserService } from "@/services/user.service";
@@ -44,6 +47,9 @@ import {
   NursingChartType,
   WorkQueueItemType,
   NurseOnDutyType,
+  UntouchedPatientType,
+  TriageVitalField,
+  TriagePayload,
 } from "@/types/nursing.type";
 
 const REMARK_TYPES = ["Refusal", "ClinicalConcern", "Other"];
@@ -72,6 +78,161 @@ const formatDate = (value: string | null | undefined) =>
 const formatDateTime = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString() : "—";
 
+const isSameLocalDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+// "Last Visit" reads better as Today/Yesterday than a repeated date the nurse already knows
+// they're looking at "today" for - anything older just falls back to the plain date.
+const formatVisitDate = (value: string | null | undefined) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  const today = new Date();
+  if (isSameLocalDay(date, today)) return "Today";
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (isSameLocalDay(date, yesterday)) return "Yesterday";
+  return date.toLocaleDateString();
+};
+
+// How long a patient has been waiting untouched, for the grid cards below.
+const formatWaitingSince = (checkedInAt: string) => {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(checkedInAt).getTime()) / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+};
+
+// <input type="datetime-local"> needs "YYYY-MM-DDTHH:mm" in local time, not an ISO string.
+const toDateTimeLocalValue = (value: string | null | undefined) => {
+  const date = value ? new Date(value) : new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+type TriageFieldType = "number" | "date";
+
+interface TriageFieldConfig {
+  key: TriageVitalField;
+  label: string;
+  unit?: string;
+  type: TriageFieldType;
+  step?: string;
+}
+
+// Rendered generically (see renderTriageVitalRow below) rather than one hand-written JSX
+// block per field - keeps the ~15 fields from Triage/SaveTriageRequest and this form in sync
+// by construction instead of by careful copy-pasting.
+const TRIAGE_VITAL_FIELDS: TriageFieldConfig[] = [
+  { key: "Height", label: "Height", unit: "cm", type: "number" },
+  { key: "Weight", label: "Weight", unit: "kg", type: "number" },
+  { key: "Temperature", label: "Temperature", unit: "deg C", type: "number", step: "0.1" },
+  { key: "HeartRate", label: "Heart rate", unit: "BPM", type: "number" },
+  { key: "BPSystolic", label: "B.P (Systolic)", unit: "mmHg", type: "number" },
+  { key: "BPDiastolic", label: "B.P (Diastolic)", unit: "mmHg", type: "number" },
+  { key: "BPMean", label: "B.P (M)", unit: "mmHg", type: "number" },
+  { key: "Chest", label: "Chest", unit: "cm", type: "number" },
+  { key: "Waist", label: "Waist", unit: "cm", type: "number" },
+  { key: "Respiratory", label: "Respiratory", unit: "bpm", type: "number" },
+  { key: "OxygenSaturation", label: "O2 Saturation", unit: "%", type: "number" },
+  { key: "BloodSugar", label: "Blood Sugar", unit: "mmol/L", type: "number", step: "0.1" },
+  { key: "Hip", label: "Hip", unit: "cm", type: "number" },
+];
+
+const TRIAGE_OBSTETRIC_FIELDS: TriageFieldConfig[] = [
+  { key: "Edd", label: "EDD", type: "date" },
+  { key: "Para", label: "Para", type: "number" },
+  { key: "Gravida", label: "Gravida", type: "number" },
+  { key: "Lmp", label: "LMP", type: "date" },
+];
+
+// Idle state uses the app's usual light-tint-badge idiom (bg-X-50 dark:bg-X-950/30 + matching
+// border/text) rather than a full-saturation fill - the saturated color is reserved for
+// whichever level is actually selected, so the row reads as "one clear choice" instead of a
+// wall of five equally loud colors.
+const TRIAGE_PRIORITY_LEVELS = [
+  {
+    level: 1, label: "Level I", name: "Resuscitation", eta: "Immediate",
+    idle: "border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400",
+    active: "border-red-600 bg-red-600 text-white shadow-md shadow-red-600/30",
+  },
+  {
+    level: 2, label: "Level II", name: "UCC", eta: "15 min",
+    idle: "border-orange-200 dark:border-orange-900 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400",
+    active: "border-orange-500 bg-orange-500 text-white shadow-md shadow-orange-500/30",
+  },
+  {
+    level: 3, label: "Level III", name: "Urgent", eta: "30 min",
+    idle: "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400",
+    active: "border-amber-500 bg-amber-500 text-white shadow-md shadow-amber-500/30",
+  },
+  {
+    level: 4, label: "Level IV", name: "Less Urgent", eta: "60 min",
+    idle: "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400",
+    active: "border-emerald-600 bg-emerald-600 text-white shadow-md shadow-emerald-600/30",
+  },
+  {
+    level: 5, label: "Level V", name: "Non Urgent", eta: "120 min",
+    idle: "border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400",
+    active: "border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-600/30",
+  },
+] as const;
+
+const TRIAGE_SYMPTOM_ROWS = [
+  { key: "burnOrTrauma", label: "Does the patient present Burn or Trauma symptoms?" },
+  { key: "cardiacRespiratoryDigestive", label: "Is the patient experiencing Cardiac Respiratory & Digestive symptoms?" },
+  { key: "otherEmergencySymptoms", label: "Any Other emergency symptoms?" },
+] as const;
+
+interface TriageFormState {
+  chiefComplaint: string;
+  priorityLevel: number | null;
+  burnOrTrauma: string;
+  burnOrTraumaDetail: string;
+  cardiacRespiratoryDigestive: string;
+  cardiacRespiratoryDigestiveDetail: string;
+  otherEmergencySymptoms: string;
+  otherEmergencySymptomsDetail: string;
+  tempSite: string;
+  patientRefused: boolean;
+  actionDateTime: string;
+  values: Record<TriageVitalField, string>;
+}
+
+const emptyTriageValues = (): Record<TriageVitalField, string> => ({
+  Height: "",
+  Weight: "",
+  Temperature: "",
+  HeartRate: "",
+  BPSystolic: "",
+  BPDiastolic: "",
+  BPMean: "",
+  Chest: "",
+  Waist: "",
+  Respiratory: "",
+  OxygenSaturation: "",
+  BloodSugar: "",
+  Hip: "",
+  Edd: "",
+  Para: "",
+  Gravida: "",
+  Lmp: "",
+});
+
+const emptyTriageForm = (): TriageFormState => ({
+  chiefComplaint: "",
+  priorityLevel: null,
+  burnOrTrauma: "",
+  burnOrTraumaDetail: "",
+  cardiacRespiratoryDigestive: "",
+  cardiacRespiratoryDigestiveDetail: "",
+  otherEmergencySymptoms: "",
+  otherEmergencySymptomsDetail: "",
+  tempSite: "",
+  patientRefused: false,
+  actionDateTime: toDateTimeLocalValue(null),
+  values: emptyTriageValues(),
+});
+
 function NurseWorkbenchInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -94,7 +255,15 @@ function NurseWorkbenchInner() {
   const [workQueue, setWorkQueue] = useState<WorkQueueItemType[]>([]);
   const [onDutyNurses, setOnDutyNurses] = useState<NurseOnDutyType[]>([]);
   const [patients, setPatients] = useState<EmrPatientListItem[]>([]);
+  // Checked-in visits no nurse has opened yet (Visit.Status still "CheckedIn") - see
+  // NursingController.GetUntouchedPatients. Fetched in the same fetchWorkbench bundle below
+  // so it rides that same SignalR-triggered live refresh for free.
+  const [untouchedPatients, setUntouchedPatients] = useState<UntouchedPatientType[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  // Filters Patient Monitoring to patients whose last visit falls on this exact date -
+  // "YYYY-MM-DD" from a plain <input type="date">, so the nurse can jump to a specific past
+  // or future day instead of only ever seeing everyone's most recent visit.
+  const [dateFilter, setDateFilter] = useState("");
   const [isLoadingWorkbench, setIsLoadingWorkbench] = useState(true);
 
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
@@ -103,6 +272,13 @@ function NurseWorkbenchInner() {
   const [encounterId, setEncounterId] = useState<string | null>(null);
   const [isLoadingChart, setIsLoadingChart] = useState(false);
   const [isEndingEncounter, setIsEndingEncounter] = useState(false);
+
+  // ---------------- TRIAGE FORM ----------------
+  const [triageForm, setTriageForm] = useState<TriageFormState>(emptyTriageForm());
+  // Which vitals are toggled "patient refused" - key present (even with an empty-string
+  // reason, before the nurse fills it in) means refused; absence means recorded normally.
+  const [triageRefusals, setTriageRefusals] = useState<Partial<Record<TriageVitalField, string>>>({});
+  const [savingTriage, setSavingTriage] = useState(false);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -161,16 +337,18 @@ function NurseWorkbenchInner() {
   const fetchWorkbench = async () => {
     try {
       setIsLoadingWorkbench(true);
-      const [dashboardRes, workQueueRes, onDutyRes, patientsRes] = await Promise.all([
+      const [dashboardRes, workQueueRes, onDutyRes, patientsRes, untouchedRes] = await Promise.all([
         NursingService.getDashboardSummary(),
         NursingService.getWorkQueue(),
         NursingService.getOnDutyNow(),
         EmrService.getPatients(),
+        NursingService.getUntouchedPatients(),
       ]);
       setDashboard(dashboardRes.data || null);
       setWorkQueue(workQueueRes.data || []);
       setOnDutyNurses(onDutyRes.data || []);
       setPatients(patientsRes.data || []);
+      setUntouchedPatients(untouchedRes.data || []);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load workbench data"));
     } finally {
@@ -212,8 +390,17 @@ function NurseWorkbenchInner() {
   };
 
   // ---------------- PATIENT CHART ----------------
-  const openPatient = async (patientId: string) => {
+  const [currentVisitId, setCurrentVisitId] = useState<string | null>(null);
+
+  // visitId is normally implied by the page's own URL (?visitId=, arriving from Reception's
+  // visit queue) - but a click from the Untouched Patients grid below knows its own visit
+  // directly, so it needs to be able to pass it through explicitly instead. That's what
+  // actually advances Visit.Status CheckedIn -> WithNurse (see EnsureActiveEncounter), which
+  // is what makes that patient drop off the grid.
+  const openPatient = async (patientId: string, visitId?: string) => {
+    const resolvedVisitId = visitId ?? visitIdParam;
     setSelectedPatientId(patientId);
+    setCurrentVisitId(resolvedVisitId ?? null);
     setIsLoadingChart(true);
     try {
       // Reading the chart works fine for admin either way, but starting/resuming an
@@ -225,7 +412,7 @@ function NurseWorkbenchInner() {
         NursingService.getPatientChart(patientId),
         canStartEncounter
           ? NursingService.ensureActiveEncounter(patientId, {
-              visitId: visitIdParam,
+              visitId: resolvedVisitId,
               nurseId: isAdmin ? selectedNurseId : undefined,
             })
           : Promise.resolve({ data: null }),
@@ -281,7 +468,209 @@ function NurseWorkbenchInner() {
     setSummary(null);
     setChart(null);
     setEncounterId(null);
+    setCurrentVisitId(null);
     fetchWorkbench();
+  };
+
+  // Prefills from the active encounter's saved triage (if any) whenever a different patient/
+  // encounter is opened - keyed on encounterId rather than chart.triage itself so an
+  // unrelated refreshChart() elsewhere (after saving vitals, a note, etc.) can't clobber
+  // whatever the nurse is still mid-typing into this form.
+  useEffect(() => {
+    if (!encounterId) {
+      setTriageForm(emptyTriageForm());
+      setTriageRefusals({});
+      return;
+    }
+    const t = chart?.triage;
+    if (!t) {
+      setTriageForm(emptyTriageForm());
+      setTriageRefusals({});
+      return;
+    }
+    setTriageForm({
+      chiefComplaint: t.chiefComplaint ?? "",
+      priorityLevel: t.priorityLevel,
+      burnOrTrauma: t.burnOrTrauma ?? "",
+      burnOrTraumaDetail: t.burnOrTraumaDetail ?? "",
+      cardiacRespiratoryDigestive: t.cardiacRespiratoryDigestive ?? "",
+      cardiacRespiratoryDigestiveDetail: t.cardiacRespiratoryDigestiveDetail ?? "",
+      otherEmergencySymptoms: t.otherEmergencySymptoms ?? "",
+      otherEmergencySymptomsDetail: t.otherEmergencySymptomsDetail ?? "",
+      tempSite: t.tempSite ?? "",
+      patientRefused: t.patientRefused,
+      actionDateTime: toDateTimeLocalValue(t.actionDateTime),
+      values: {
+        Height: t.heightCm?.toString() ?? "",
+        Weight: t.weightKg?.toString() ?? "",
+        Temperature: t.temperature?.toString() ?? "",
+        HeartRate: t.heartRate?.toString() ?? "",
+        BPSystolic: t.bpSystolic?.toString() ?? "",
+        BPDiastolic: t.bpDiastolic?.toString() ?? "",
+        BPMean: t.bpMean?.toString() ?? "",
+        Chest: t.chest?.toString() ?? "",
+        Waist: t.waist?.toString() ?? "",
+        Respiratory: t.respiratory?.toString() ?? "",
+        OxygenSaturation: t.oxygenSaturation?.toString() ?? "",
+        BloodSugar: t.bloodSugar?.toString() ?? "",
+        Hip: t.hip?.toString() ?? "",
+        Edd: t.edd ?? "",
+        Para: t.para?.toString() ?? "",
+        Gravida: t.gravida?.toString() ?? "",
+        Lmp: t.lmp ?? "",
+      },
+    });
+    setTriageRefusals(Object.fromEntries(t.refusals.map((r) => [r.vitalField, r.reason])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encounterId]);
+
+  const toggleTriageVitalRefusal = (field: TriageVitalField) => {
+    setTriageRefusals((prev) => {
+      if (field in prev) {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      }
+      return { ...prev, [field]: "" };
+    });
+  };
+
+  const handleSaveTriage = async () => {
+    if (!encounterId) return;
+    if (!requireNurseSelected()) return;
+
+    const missingReason = Object.entries(triageRefusals).find(([, reason]) => !reason?.trim());
+    if (missingReason) {
+      toast.error("Enter a reason for every refused vital before saving.");
+      return;
+    }
+
+    const numberOrUndefined = (field: TriageVitalField) => {
+      if (field in triageRefusals) return undefined;
+      const raw = triageForm.values[field];
+      if (!raw || raw.trim() === "") return undefined;
+      const n = Number(raw);
+      return Number.isNaN(n) ? undefined : n;
+    };
+    const dateOrUndefined = (field: TriageVitalField) => {
+      if (field in triageRefusals) return undefined;
+      const raw = triageForm.values[field];
+      return raw ? raw : undefined;
+    };
+
+    const payload: TriagePayload = {
+      encounterId,
+      visitId: currentVisitId ?? undefined,
+      chiefComplaint: triageForm.chiefComplaint || undefined,
+      priorityLevel: triageForm.priorityLevel ?? undefined,
+      burnOrTrauma: triageForm.burnOrTrauma || undefined,
+      burnOrTraumaDetail: triageForm.burnOrTraumaDetail || undefined,
+      cardiacRespiratoryDigestive: triageForm.cardiacRespiratoryDigestive || undefined,
+      cardiacRespiratoryDigestiveDetail: triageForm.cardiacRespiratoryDigestiveDetail || undefined,
+      otherEmergencySymptoms: triageForm.otherEmergencySymptoms || undefined,
+      otherEmergencySymptomsDetail: triageForm.otherEmergencySymptomsDetail || undefined,
+      heightCm: numberOrUndefined("Height"),
+      weightKg: numberOrUndefined("Weight"),
+      temperature: numberOrUndefined("Temperature"),
+      tempSite: triageForm.tempSite || undefined,
+      heartRate: numberOrUndefined("HeartRate"),
+      bpSystolic: numberOrUndefined("BPSystolic"),
+      bpDiastolic: numberOrUndefined("BPDiastolic"),
+      bpMean: numberOrUndefined("BPMean"),
+      chest: numberOrUndefined("Chest"),
+      waist: numberOrUndefined("Waist"),
+      respiratory: numberOrUndefined("Respiratory"),
+      oxygenSaturation: numberOrUndefined("OxygenSaturation"),
+      bloodSugar: numberOrUndefined("BloodSugar"),
+      hip: numberOrUndefined("Hip"),
+      edd: dateOrUndefined("Edd"),
+      para: numberOrUndefined("Para"),
+      gravida: numberOrUndefined("Gravida"),
+      lmp: dateOrUndefined("Lmp"),
+      patientRefused: triageForm.patientRefused,
+      actionDateTime: triageForm.actionDateTime ? new Date(triageForm.actionDateTime).toISOString() : undefined,
+      refusals: Object.entries(triageRefusals).map(([vitalField, reason]) => ({
+        vitalField: vitalField as TriageVitalField,
+        reason: reason ?? "",
+      })),
+      nurseId: isAdmin ? selectedNurseId : undefined,
+    };
+
+    try {
+      setSavingTriage(true);
+      await NursingService.saveTriage(selectedPatientId!, payload);
+      toast.success("Triage saved");
+      await refreshChart();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save triage"));
+    } finally {
+      setSavingTriage(false);
+    }
+  };
+
+  const triageBmi = (() => {
+    const h = parseFloat(triageForm.values.Height);
+    const w = parseFloat(triageForm.values.Weight);
+    if (!h || !w) return null;
+    return Math.round((w / Math.pow(h / 100, 2)) * 10) / 10;
+  })();
+
+  // One row per "Vital Signs in Triage" field - shared by the vitals and obstetric groups
+  // below, since both are the same {label, input, refuse-toggle} shape (see
+  // TRIAGE_VITAL_FIELDS/TRIAGE_OBSTETRIC_FIELDS).
+  const renderTriageVitalRow = (field: TriageFieldConfig) => {
+    const isRefused = field.key in triageRefusals;
+    return (
+      <div key={field.key} className="flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-xs font-medium text-muted-foreground">
+            {field.label}
+            {field.unit ? ` (${field.unit})` : ""}
+          </label>
+          <button
+            type="button"
+            onClick={() => toggleTriageVitalRefusal(field.key)}
+            title={isRefused ? "Patient refused this vital — click to undo" : "Mark patient refused"}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${isRefused ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}
+          >
+            <Ban size={16} />
+          </button>
+        </div>
+        <input
+          type={field.type}
+          step={field.step}
+          disabled={isRefused}
+          value={triageForm.values[field.key]}
+          onChange={(e) =>
+            setTriageForm((prev) => ({ ...prev, values: { ...prev.values, [field.key]: e.target.value } }))
+          }
+          className="text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        />
+        {field.key === "Temperature" && !isRefused && (
+          <select
+            value={triageForm.tempSite}
+            onChange={(e) => setTriageForm((prev) => ({ ...prev, tempSite: e.target.value }))}
+            className="text-xs mt-0.5"
+          >
+            <option value="">Site…</option>
+            <option value="Oral">Oral</option>
+            <option value="Axillary">Axillary</option>
+            <option value="Tympanic">Tympanic</option>
+            <option value="Rectal">Rectal</option>
+          </select>
+        )}
+        {isRefused && (
+          <input
+            type="text"
+            required
+            placeholder="Refusal reason (required)"
+            value={triageRefusals[field.key] ?? ""}
+            onChange={(e) => setTriageRefusals((prev) => ({ ...prev, [field.key]: e.target.value }))}
+            className="text-xs border-red-300 focus:border-red-400"
+          />
+        )}
+      </div>
+    );
   };
 
   // ---------------- VITALS FORM ----------------
@@ -680,12 +1069,19 @@ function NurseWorkbenchInner() {
     }
   };
 
-  const filteredPatients = patients.filter(
-    (p) =>
+  const filteredPatients = patients.filter((p) => {
+    const matchesSearch =
       p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.opNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.opId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+      p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase());
+    // dateFilter is a plain "YYYY-MM-DD" from <input type="date"> - parsed as local midnight,
+    // matching how lastAppointmentDate (which can be a future scheduled visit, not just a
+    // past one - see EmrController.GetPatients) is compared below by calendar day.
+    const matchesDate =
+      !dateFilter || (!!p.lastAppointmentDate && isSameLocalDay(new Date(p.lastAppointmentDate), new Date(`${dateFilter}T00:00:00`)));
+    return matchesSearch && matchesDate;
+  });
 
   if (!checkedAuth) {
     return (
@@ -759,7 +1155,7 @@ function NurseWorkbenchInner() {
                     <HeartPulse className="text-primary" /> {summary.name}
                   </h1>
                   <p className="text-sm text-muted-foreground mt-1">
-                    MRN #{summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
+                    MRN {summary.opNumber || summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {summary.phone || "No phone"} · {summary.email || "No email"}
@@ -801,6 +1197,186 @@ function NurseWorkbenchInner() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Triage - the nurse's initial assessment for this encounter, at the top since
+                it's normally the first thing recorded for a newly arrived patient. Upserted
+                per encounter (see NursingController.SaveTriage) - reopening a patient with an
+                existing triage on this encounter shows it prefilled for editing rather than a
+                second copy. */}
+            <div className="card p-6 flex flex-col gap-5">
+              <div className="flex items-center justify-between gap-4">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <ClipboardCheck size={18} className="text-primary" /> Triage
+                </h2>
+                {chart?.triage && (
+                  <span className="text-xs text-muted-foreground">
+                    Last saved by {chart.triage.nurseName || "—"} · {formatDateTime(chart.triage.createdAt)}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm rounded-lg border border-border bg-muted/20 p-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">IP Number</p>
+                  <p className="font-semibold text-foreground">{summary.opNumber || summary.opId}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Marital Status</p>
+                  <p className="font-semibold text-foreground">{summary.maritalStatus || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Gender / Age / DOB</p>
+                  <p className="font-semibold text-foreground">{summary.sex || "—"} · {formatDate(summary.dateOfBirth)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Nationality</p>
+                  <p className="font-semibold text-foreground">{summary.nationality || "—"}</p>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
+                  <FileText size={13} /> Chief Complaint
+                </h3>
+                <textarea
+                  value={triageForm.chiefComplaint}
+                  onChange={(e) => setTriageForm((prev) => ({ ...prev, chiefComplaint: e.target.value }))}
+                  disabled={!canEdit}
+                  placeholder="What brought the patient in today…"
+                  rows={2}
+                  className="w-full text-sm"
+                />
+              </div>
+
+              <div className="border-t border-border pt-5">
+                <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                  <Flag size={13} /> Triage Priority
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                  {TRIAGE_PRIORITY_LEVELS.map((lvl) => {
+                    const selected = triageForm.priorityLevel === lvl.level;
+                    return (
+                      <label
+                        key={lvl.level}
+                        className={`relative flex flex-col gap-1 rounded-xl border p-3 transition-all ${
+                          canEdit ? "cursor-pointer" : "cursor-default"
+                        } ${selected ? lvl.active : `${lvl.idle} ${canEdit ? "hover:opacity-80" : ""}`}`}
+                      >
+                        <input
+                          type="radio"
+                          className="sr-only"
+                          disabled={!canEdit}
+                          checked={selected}
+                          onChange={() => setTriageForm((prev) => ({ ...prev, priorityLevel: lvl.level }))}
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-bold uppercase tracking-wide">{lvl.label}</span>
+                          {selected && <CheckCircle2 size={14} className="shrink-0" />}
+                        </div>
+                        <p className="text-sm font-bold leading-tight">{lvl.name}</p>
+                        <p className={`text-xs ${selected ? "text-white/80" : "opacity-70"}`}>{lvl.eta}</p>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="border-t border-border pt-5 flex flex-col gap-3">
+                <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  <Stethoscope size={13} /> Symptoms
+                </h3>
+                {TRIAGE_SYMPTOM_ROWS.map((row) => {
+                  const detailKey = `${row.key}Detail` as const;
+                  return (
+                    <div key={row.key} className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 rounded-lg border border-border bg-muted/20 p-3">
+                      <p className="text-sm text-foreground flex-1 sm:pt-2">{row.label}</p>
+                      <div className="inline-flex rounded-lg border border-border bg-muted p-0.5 shrink-0">
+                        {(["Yes", "No", "Unknown"] as const).map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() => setTriageForm((prev) => ({ ...prev, [row.key]: opt }))}
+                            className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                              triageForm[row.key] === opt
+                                ? "bg-card text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            } ${canEdit ? "cursor-pointer" : "cursor-default"}`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        placeholder="Details"
+                        disabled={!canEdit}
+                        value={triageForm[detailKey]}
+                        onChange={(e) => setTriageForm((prev) => ({ ...prev, [detailKey]: e.target.value }))}
+                        rows={1}
+                        className="text-sm sm:flex-1 sm:min-w-64 resize-y"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <fieldset disabled={!canEdit} className="contents">
+                <div className="border-t border-border pt-5">
+                  <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                    <Activity size={13} /> Vital Signs in Triage
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {TRIAGE_VITAL_FIELDS.map(renderTriageVitalRow)}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-muted-foreground">BMI (kg/m2)</label>
+                      <input type="text" disabled value={triageBmi != null ? String(triageBmi) : ""} className="text-sm opacity-70" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-border pt-5">
+                  <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                    <HeartPulse size={13} /> Obstetric
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {TRIAGE_OBSTETRIC_FIELDS.map(renderTriageVitalRow)}
+                  </div>
+                </div>
+              </fieldset>
+
+              <div className="border-t border-border pt-5 flex flex-wrap items-end justify-between gap-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <ToggleButton
+                      disabled={!canEdit}
+                      checked={triageForm.patientRefused}
+                      onChange={(checked) => setTriageForm((prev) => ({ ...prev, patientRefused: checked }))}
+                    />
+                    <span className="text-sm font-semibold text-foreground">Patient Refused (entire assessment)</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground block mb-1">Action Date Time</label>
+                    <input
+                      type="datetime-local"
+                      disabled={!canEdit}
+                      value={triageForm.actionDateTime}
+                      onChange={(e) => setTriageForm((prev) => ({ ...prev, actionDateTime: e.target.value }))}
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+
+                {canEdit && (
+                  <button
+                    onClick={handleSaveTriage}
+                    disabled={savingTriage || !encounterId}
+                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Save size={15} /> Save Triage
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1219,10 +1795,12 @@ function NurseWorkbenchInner() {
               {canEdit && (
                 <>
                   <RichTextEditor value={nurseNoteHtml} onChange={setNurseNoteHtml} placeholder="Structured note with formatting..." />
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={nurseNoteConfidential} onChange={(e) => setNurseNoteConfidential(e.target.checked)} />
-                    <Lock size={13} className="text-muted-foreground" /> Mark as confidential (visible only to me)
-                  </label>
+                  <div className="flex items-center gap-3">
+                    <ToggleButton checked={nurseNoteConfidential} onChange={setNurseNoteConfidential} />
+                    <span className="flex items-center gap-1.5 text-sm">
+                      <Lock size={13} className="text-muted-foreground" /> Mark as confidential (visible only to me)
+                    </span>
+                  </div>
                   <button onClick={saveNurseNote} disabled={savingNurseNote} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                     <Save size={15} /> {nurseNoteConfidential ? "Save Confidentially" : "Save Note"}
                   </button>
@@ -1473,6 +2051,48 @@ function NurseWorkbenchInner() {
         <LoadingSpinner />
       ) : (
         <div className="flex flex-col gap-6">
+          {/* Untouched Patients - every checked-in visit no nurse has opened yet (see
+              NursingController.GetUntouchedPatients). Opening one here (or from anywhere
+              else - Patient Monitoring, Work Queue) advances it past "CheckedIn" and it
+              drops off this grid live, no separate "start" step. Hidden entirely once empty
+              so a quiet day doesn't leave a permanent empty box at the top of the page. */}
+          {untouchedPatients.length > 0 && (
+            <div className="card p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <AlertTriangle size={18} className="text-amber-600" /> Untouched Patients
+                </h2>
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {untouchedPatients.length} waiting
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {untouchedPatients.map((p) => (
+                  <div
+                    key={p.visitId}
+                    onClick={() => p.patientId && openPatient(p.patientId, p.visitId)}
+                    className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 cursor-pointer hover:bg-muted/50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-sm text-foreground truncate">{p.patientName || "Unknown patient"}</p>
+                      <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 font-semibold shrink-0">
+                        {p.visitType === "WalkIn" ? "Walk-in" : "Appointment"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <p className="text-xs text-muted-foreground">
+                        {p.age != null ? `${p.age}y` : "—"} {p.sex ? `· ${p.sex}` : ""}
+                      </p>
+                      <p className="flex items-center gap-1 text-xs text-amber-700 font-semibold shrink-0">
+                        <Clock size={12} /> {formatWaitingSince(p.checkedInAt)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard icon={<Users size={18} />} label="Patients Under Care" value={dashboard?.patientsUnderCare ?? 0} />
@@ -1483,19 +2103,43 @@ function NurseWorkbenchInner() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 card p-6">
-              <div className="flex items-center justify-between mb-4 gap-4">
+              <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Users size={18} className="text-primary" /> Patient Monitoring
                 </h2>
-                <div className="relative w-64">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Search by name, MRN, or doctor..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full h-10 pl-9 text-sm"
+                <div className="flex items-center gap-2">
+                  <div className="relative w-56 sm:w-64">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search by name, MRN, or doctor..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full h-10 pl-9 text-sm"
+                    />
+                  </div>
+                  {/* Filters by lastAppointmentDate (which can be a future scheduled visit,
+                      not only a past one) - lets a nurse jump straight to a specific day
+                      instead of only ever seeing everyone's single most recent visit. Shared
+                      DatePicker (typeable + calendar), same dd-MM-yyyy convention as Date of
+                      Birth on Patient Entry - not the native browser date input. */}
+                  <DatePicker
+                    value={dateFilter}
+                    onChange={(v) => setDateFilter(v)}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
+                    className="flex h-10 w-36 items-center justify-between gap-2 rounded-lg border border-border bg-(--color-highlight) px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
+                  {dateFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setDateFilter("")}
+                      title="Clear date filter"
+                      className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -1513,10 +2157,10 @@ function NurseWorkbenchInner() {
                     {filteredPatients.length > 0 ? (
                       filteredPatients.map((p) => (
                         <tr key={p.opId}>
-                          <td className="font-mono text-xs">#{p.opId}</td>
+                          <td className="font-mono text-xs">{p.opNumber || p.opId}</td>
                           <td className="font-semibold">{p.name}</td>
                           <td>{p.assignedDoctorName || "—"}</td>
-                          <td>{formatDate(p.lastAppointmentDate)}</td>
+                          <td>{formatVisitDate(p.lastAppointmentDate)}</td>
                           <td>
                             <button
                               onClick={() => openPatient(p.opId)}

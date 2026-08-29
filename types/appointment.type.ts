@@ -59,6 +59,11 @@ export interface CreateAppointmentPayload {
 
 export interface PatientListItemType {
   opId: string;
+  // Hospital-assigned outpatient number - what the UI shows as "MRN". opId itself stays
+  // internal (routing, FK payloads, React keys) and is never shown to a user; opNumber is
+  // the human-facing reference number. Falls back to opId when a patient predates having one
+  // assigned, so the UI never shows a blank identifier.
+  opNumber?: string | null;
   name: string;
   email: string;
   phone: string;

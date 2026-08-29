@@ -162,6 +162,7 @@ export default function LaboratoryPage() {
       (p) =>
         p.name?.toLowerCase().includes(q) ||
         p.phone?.toLowerCase().includes(q) ||
+        p.opNumber?.toLowerCase().includes(q) ||
         p.opId?.toLowerCase().includes(q)
     );
   }, [patientSearch, patients]);
@@ -443,7 +444,7 @@ export default function LaboratoryPage() {
                     setPatientSearch(e.target.value);
                     setSelectedPatient(null);
                   }}
-                  placeholder="Search by name, phone or OP ID..."
+                  placeholder="Search by name, phone or MRN..."
                   className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                 />
                 {!selectedPatient && filteredPatients.length > 0 && (
@@ -460,7 +461,7 @@ export default function LaboratoryPage() {
                       >
                         <div className="font-medium text-foreground">{p.name}</div>
                         <div className="text-sm text-muted-foreground">
-                          {p.opId} • {p.phone}
+                          {p.opNumber || p.opId} • {p.phone}
                         </div>
                       </button>
                     ))}
@@ -577,7 +578,7 @@ export default function LaboratoryPage() {
               testName: barcodeLab.testType || "Lab Test",
               doctorName: barcodeLab.doctorName || "Unassigned",
               date: formatDate(barcodeLab.sampleCollectedAt || barcodeLab.requestedDate),
-              mrn: barcodeLab.patientId || "—",
+              mrn: barcodeLab.patientOPNumber || barcodeLab.patientId || "—",
               collectedByName: barcodeLab.sampleCollectedByName || "—",
               visitId: barcodeLab.visitId,
             }}

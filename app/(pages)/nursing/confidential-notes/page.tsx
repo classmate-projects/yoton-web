@@ -105,7 +105,7 @@ export default function ConfidentialNotesPage() {
           <select value={selectedPatientId} onChange={(e) => setSelectedPatientId(e.target.value)} className="h-10 text-sm">
             <option value="">Select patient...</option>
             {patients.map((p) => (
-              <option key={p.opId} value={p.opId}>{p.name} (#{p.opId})</option>
+              <option key={p.opId} value={p.opId}>{p.name} ({p.opNumber || p.opId})</option>
             ))}
           </select>
           <RichTextEditor value={contentHtml} onChange={setContentHtml} placeholder="Confidential note..." />

@@ -60,6 +60,14 @@ export default function RoleManagementPage() {
   // before force-assigning it - see handleForceAssignConfirm.
   const [forceAssignTarget, setForceAssignTarget] = useState<{ navLink: string; name: string } | null>(null);
 
+  // Admin-only tiles fire their revoke/force-assign call immediately on click (see
+  // handleAdminOnlyModuleClick) rather than staging into visibleModules for the batched Save
+  // button - so unlike the plain checkboxes, a tile needs its own busy guard: without one, a
+  // fast double-click fires two revoke-module requests for the same row before the first
+  // response updates visibleModules, and the second one 500s (DbUpdateConcurrencyException,
+  // since the row the second request expects to delete is already gone).
+  const [pendingAdminOnlyModules, setPendingAdminOnlyModules] = useState<Set<string>>(new Set());
+
 
   // reset values
   const resetValues = () => {
@@ -243,6 +251,7 @@ export default function RoleManagementPage() {
   // RevokeModule's own comments on why granting and revoking these have different levels
   // of friction).
   const handleAdminOnlyModuleClick = (item: { navLink: string; name: string }) => {
+    if (pendingAdminOnlyModules.has(item.navLink)) return;
     if (visibleModules.has(item.navLink)) {
       void handleRevokeForcedModule(item.navLink);
     } else {
@@ -261,9 +270,11 @@ export default function RoleManagementPage() {
     setForceAssignTarget(null);
   };
 
-  // No password needed - revoking is always the safe direction.
+  // No password needed - revoking is always the safe direction. Guarded by
+  // pendingAdminOnlyModules (see its own comment) against double-click races.
   const handleRevokeForcedModule = async (navLink: string) => {
     if (!permissionsRole) return;
+    setPendingAdminOnlyModules((prev) => new Set(prev).add(navLink));
     try {
       await RoleService.revokeModule(permissionsRole.roleId, navLink);
       setVisibleModules((prev) => {
@@ -275,6 +286,12 @@ export default function RoleManagementPage() {
     } catch (error) {
       console.error("Failed to revoke module", error);
       toast.error("Failed to revoke module");
+    } finally {
+      setPendingAdminOnlyModules((prev) => {
+        const next = new Set(prev);
+        next.delete(navLink);
+        return next;
+      });
     }
   };
 
@@ -512,6 +529,7 @@ export default function RoleManagementPage() {
                   const isForceGranted = isAdminOnly && visibleModules.has(item.navLink);
 
                   if (isAdminOnly) {
+                    const isPending = pendingAdminOnlyModules.has(item.navLink);
                     return (
                       <label
                         key={item.navLink}
@@ -521,7 +539,8 @@ export default function RoleManagementPage() {
                             : "Admin only - click to force-assign (requires your password)"
                         }
                         onClick={() => handleAdminOnlyModuleClick(item)}
-                        className={`flex items-center gap-2 p-2.5 rounded-lg cursor-pointer ${
+                        aria-disabled={isPending}
+                        className={`flex items-center gap-2 p-2.5 rounded-lg ${isPending ? "cursor-wait opacity-50" : "cursor-pointer"} ${
                           isForceGranted
                             ? "bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
                             : "opacity-50 hover:opacity-75"

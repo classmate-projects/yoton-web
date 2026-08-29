@@ -32,6 +32,13 @@ export const ENDPOINTS = {
     },
     RECEPTION: {
         GET_ALL_PATIENTS: `/api/reception/get-all/patient`,
+        GET_VISIT_LIST: (from?: string, to?: string) => {
+            const params = new URLSearchParams();
+            if (from) params.set("from", from);
+            if (to) params.set("to", to);
+            const qs = params.toString();
+            return `/api/reception/visits/list${qs ? `?${qs}` : ""}`;
+        },
         CREATE_PATIENT: `/api/reception/create-patient`,
         UPDATE_SCEDULE: `/api/reception/update-schedule`,
         GET_DOCTOR_AVAILABILITY: `/api/reception/doctor-availability`,
@@ -244,6 +251,8 @@ export const ENDPOINTS = {
         MARK_TREATMENT_DONE: (treatmentId: string) => `/api/nursing/treatment/${treatmentId}/mark-done`,
         ADMINISTER_MEDICATION: (medicationId: string) => `/api/nursing/medication/${medicationId}/administer`,
         GET_WORK_QUEUE: `/api/nursing/work-queue`,
+        GET_UNTOUCHED_PATIENTS: `/api/nursing/untouched-patients`,
+        SAVE_TRIAGE: (patientId: string) => `/api/nursing/patient/${patientId}/triage`,
         GET_NURSE_SHIFTS: (nurseId: string) => `/api/nursing/nurse/${nurseId}/shifts`,
         SET_NURSE_SHIFTS: (nurseId: string) => `/api/nursing/nurse/${nurseId}/shifts`,
         GET_ON_DUTY_NOW: `/api/nursing/on-duty-now`,

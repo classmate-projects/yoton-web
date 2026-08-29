@@ -10,7 +10,7 @@ import pkg from "@/package.json";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "next-themes";
-import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight, Search } from "lucide-react";
+import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight, Search, MessageCircle } from "lucide-react";
 import { CurrentUserDetail } from "@/types/user.type";
 import { getInitials } from "@/lib/getInitials";
 import { useAlertCenter } from "@/hooks/useAlertCenter";
@@ -420,6 +420,15 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           <ChevronRight size={14} className={`transition-transform duration-300 ${isExpanded ? "rotate-180" : ""}`} />
         </button>
 
+        {/* Everything that can legitimately grow past one screen (logo header, the
+            collapsed-only Recent rail, the module nav) lives in this one scrollable
+            region, so on a short viewport it scrolls internally instead of pushing the
+            shell taller than lg:h-screen (which has no overflow-hidden of its own and
+            would otherwise leak into the page - see the nav div's own comment below).
+            The footer (theme/version/logout) deliberately sits outside it as its own
+            shrink-0 sibling so it's always reachable without scrolling, regardless of
+            how much is above it. */}
+        <div data-sidebar-scroll className="flex min-h-0 flex-1 flex-col overflow-y-auto no-scrollbar scroll-smooth">
         <div className={`flex items-center transition-all duration-300 ease-in-out ${isExpanded ? "mb-8 px-2" : "mb-4 flex-col gap-2 justify-center"}`}>
           <div className="relative h-10 w-10 shrink-0">
             {/* Collapsed: company logo (falls back to the bundled Yoton logo).
@@ -526,16 +535,43 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             visibly jumping; fading out on leave has no delay, so it's already
             transparent before the rail starts narrowing back down. `inert` keeps
             it out of the tab order and unclickable while hidden, matching what's
-            visually true. */}
+            visually true. No scroll/flex sizing of its own - it's plain in-flow
+            content of the scrollable region opened above, which is what actually
+            grows/scrolls now. */}
         <div
           inert={!isExpanded}
-          data-sidebar-scroll
-          className={`flex-1 overflow-y-auto no-scrollbar scroll-smooth transition-opacity ${isExpanded ? "duration-200 delay-150 opacity-100" : "duration-100 opacity-0"
+          className={`transition-opacity ${isExpanded ? "duration-200 delay-150 opacity-100" : "duration-100 opacity-0"
             }`}
         >
           <nav className="flex flex-col gap-4">
             {isAdmin ? (
-              visibleGroups.map(({ group, items }) => (
+              <>
+                {/* Admin-only Chat shortcut, shown above the "User Modules" section below.
+                    Admin implicitly passes isModuleAllowed for every navLink (including
+                    "/messages"), but "User Modules" below is repurposed for admin into
+                    per-role preview tiles rather than admin's own module links (see that
+                    section's own comment) - so without this, admin has no sidebar entry
+                    point into chat at all despite always having access to it. */}
+                <div className={listContainerClass}>
+                  <Link
+                    href="/messages"
+                    title="Chat"
+                    aria-label="Chat"
+                    onClick={clearUnreadChat}
+                    className={rowClass(pathname === "/messages")}
+                  >
+                    <span className="shrink-0 text-lg">
+                      <MessageCircle />
+                    </span>
+                    <span className="truncate">Chat</span>
+                    {unreadChatCount > 0 && (
+                      <span className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white">
+                        {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                      </span>
+                    )}
+                  </Link>
+                </div>
+                {visibleGroups.map(({ group, items }) => (
                 <div key={group}>
                   <span
                     className={`sidebar-label block overflow-hidden whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 transition-all duration-300 ease-in-out ${isExpanded ? "max-h-4 mb-1.5 opacity-100" : "max-h-0 mb-0 opacity-0"
@@ -659,7 +695,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                     })}
                   </div>
                 </div>
-              ))
+                ))}
+              </>
             ) : (
               // End users (doctor, nurse, radiologist, etc.): direct modules +
               // Settings only, no grouping, no hierarchy.
@@ -690,11 +727,12 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             )}
           </nav>
         </div>
+        </div>
 
         {/* Portaled flyout: rendered once at document.body in viewport ("fixed")
             coordinates, positioned from expandedTriggerRef in the effect above -
-            keeps it out of the nav's overflow-y-auto scroll container, which
-            would otherwise clip it. */}
+            keeps it out of the scrollable region opened above (data-sidebar-scroll),
+            which would otherwise clip it. */}
         {mounted && expandedItem && flyoutPos &&
           createPortal(
             <div
@@ -760,7 +798,9 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             document.body
           )}
 
-        <div className="mt-auto pt-4 flex flex-col gap-4 border-t border-border">
+        {/* Outside the scrollable region above on purpose - theme switcher, version
+            and logout stay reachable without scrolling no matter how much is above. */}
+        <div className="shrink-0 pt-4 flex flex-col gap-4 border-t border-border">
           <div className={`flex items-center gap-1 bg-muted p-1 rounded-lg ${!isExpanded && "flex-col"}`}>
             {themes.map((t) => (
               <button

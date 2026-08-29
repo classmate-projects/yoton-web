@@ -11,6 +11,7 @@ export interface LabRequestType {
   labRequestId: string;
   patientId: string | null;
   patientName: string;
+  patientOPNumber: string | null;
   doctorId: string | null;
   doctorName: string | null;
   visitId: string | null;

@@ -950,6 +950,7 @@ function DoctorWorkbenchInner() {
   const filteredPatients = patients.filter(
     (p) =>
       p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.opNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.opId?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -983,7 +984,7 @@ function DoctorWorkbenchInner() {
                     <Stethoscope className="text-primary" /> {summary.name}
                   </h1>
                   <p className="text-sm text-muted-foreground mt-1">
-                    MRN #{summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
+                    MRN {summary.opNumber || summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {summary.phone || "No phone"} · {summary.email || "No email"}
@@ -2385,7 +2386,7 @@ function DoctorWorkbenchInner() {
                   {filteredPatients.length > 0 ? (
                     filteredPatients.map((p) => (
                       <tr key={p.opId}>
-                        <td className="font-mono text-xs">#{p.opId}</td>
+                        <td className="font-mono text-xs">{p.opNumber || p.opId}</td>
                         <td className="font-semibold">{p.name}</td>
                         <td>{p.age ?? "—"}</td>
                         <td>{p.sex || "—"}</td>

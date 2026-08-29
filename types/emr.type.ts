@@ -2,6 +2,9 @@ import { MedicationAdministrationType, NurseNoteType, TreatmentType } from "./nu
 
 export interface EmrPatientListItem {
   opId: string;
+  // Hospital-assigned outpatient number - what the UI shows as "MRN". opId itself stays
+  // internal (routing, FK payloads, React keys) and is never shown to a user.
+  opNumber: string | null;
   name: string;
   age: number | null;
   sex: string | null;
@@ -177,6 +180,8 @@ export interface PatientSummaryType {
   phone: string | null;
   email: string | null;
   address: string | null;
+  maritalStatus: string | null;
+  nationality: string | null;
   chronicConditions: ChronicConditionType[];
   allergies: AllergyType[];
   currentMedications: MedicationType[];

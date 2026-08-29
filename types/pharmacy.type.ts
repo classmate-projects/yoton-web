@@ -76,6 +76,7 @@ export interface PharmacyMedicationType {
   medicationId: string;
   patientId: string;
   patientName: string;
+  patientOPNumber: string | null;
   doctorId: string | null;
   doctorName: string;
 

@@ -61,11 +61,24 @@ export interface ReceptionCreatePatientType {
 
 export interface PatientGetAllType {
     opId: string;
+    // Hospital-assigned outpatient number - what the UI shows as "MRN". opId itself stays
+    // internal (routing, FK payloads, React keys) and is never shown to a user.
+    opNumber?: string | null;
     name: string;
     email: string;
     phone: string;
     address: string;
     nationalID?: string | null;
     passportNumber?: string | null;
+}
+
+// One row per Visit within a date range (Patient Records' "Patient Visit List" toggle) - see
+// ReceptionController.GetVisitList. Shares PatientGetAllType's patient-identity fields plus
+// the visit's own.
+export interface VisitListItemType extends PatientGetAllType {
+    visitId: string;
+    visitType: string; // Appointment, WalkIn
+    status: string; // CheckedIn -> WithNurse -> ... -> Completed
+    checkedInAt: string;
 }
 

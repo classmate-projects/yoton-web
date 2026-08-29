@@ -426,7 +426,7 @@ export default function SettingsPage() {
 
       {/* COMPANY PROFILE - admin only */}
       {activeSection === "company" && isAdmin && (
-        <div className="grid max-w-4xl grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="grid max-w-6xl grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
           {/* Branding */}
           <div className="bg-card border border-border rounded-xl p-6">
             <h2 className="text-xl font-semibold text-foreground mb-1">Company branding</h2>

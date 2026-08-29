@@ -342,6 +342,7 @@ export default function Appointments() {
         (p) =>
           p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
           p.phone?.toLowerCase().includes(patientSearch.toLowerCase()) ||
+          p.opNumber?.toLowerCase().includes(patientSearch.toLowerCase()) ||
           p.opId?.toLowerCase().includes(patientSearch.toLowerCase()) ||
           p.nationalID?.toLowerCase().includes(patientSearch.toLowerCase()) ||
           p.passportNumber?.toLowerCase().includes(patientSearch.toLowerCase())
@@ -1034,7 +1035,7 @@ export default function Appointments() {
                     setPatientSearch(event.target.value);
                     setSelectedPatient(null);
                   }}
-                  placeholder="Search by name, phone, OP ID, national ID, or passport..."
+                  placeholder="Search by name, phone, MRN, national ID, or passport..."
                   className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
                 />
                 {!selectedPatient && filteredPatients.length > 0 && (
@@ -1052,7 +1053,7 @@ export default function Appointments() {
                           {patient.name}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {patient.opId} • {patient.phone}
+                          {patient.opNumber || patient.opId} • {patient.phone}
                         </div>
                       </button>
                     ))}
@@ -1065,7 +1066,7 @@ export default function Appointments() {
                       {selectedPatient.name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {selectedPatient.opId} • {selectedPatient.phone}
+                      {selectedPatient.opNumber || selectedPatient.opId} • {selectedPatient.phone}
                     </p>
                   </div>
                 )}

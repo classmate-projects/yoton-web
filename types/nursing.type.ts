@@ -138,9 +138,139 @@ export interface IVFluidsType {
   createdAt: string;
 }
 
+export interface VitalRefusalType {
+  triageVitalRefusalId: string;
+  vitalField: string;
+  reason: string;
+  refusedAt: string;
+  nurseName: string | null;
+}
+
+// One field key per refusable "Vital Signs in Triage" input - shared between the form's
+// per-row refusal toggle and TriagePayload.refusals[].vitalField / TriageType's own fields.
+export type TriageVitalField =
+  | "Height"
+  | "Weight"
+  | "Temperature"
+  | "HeartRate"
+  | "BPSystolic"
+  | "BPDiastolic"
+  | "BPMean"
+  | "Chest"
+  | "Waist"
+  | "Respiratory"
+  | "OxygenSaturation"
+  | "BloodSugar"
+  | "Hip"
+  | "Edd"
+  | "Para"
+  | "Gravida"
+  | "Lmp";
+
+export interface TriageType {
+  triageId: string;
+  patientId: string | null;
+  visitId: string | null;
+  encounterId: string | null;
+  nurseId: string | null;
+  nurseName: string | null;
+
+  chiefComplaint: string | null;
+  priorityLevel: number | null; // 1 (Resuscitation) .. 5 (Non Urgent)
+
+  burnOrTrauma: string | null; // Yes, No, Unknown
+  burnOrTraumaDetail: string | null;
+  cardiacRespiratoryDigestive: string | null;
+  cardiacRespiratoryDigestiveDetail: string | null;
+  otherEmergencySymptoms: string | null;
+  otherEmergencySymptomsDetail: string | null;
+
+  heightCm: number | null;
+  weightKg: number | null;
+  bmi: number | null;
+  temperature: number | null;
+  tempSite: string | null;
+  heartRate: number | null;
+  bpSystolic: number | null;
+  bpDiastolic: number | null;
+  bpMean: number | null;
+  chest: number | null;
+  waist: number | null;
+  respiratory: number | null;
+  oxygenSaturation: number | null;
+  bloodSugar: number | null;
+  hip: number | null;
+
+  edd: string | null;
+  para: number | null;
+  gravida: number | null;
+  lmp: string | null;
+
+  patientRefused: boolean;
+  actionDateTime: string;
+  createdAt: string;
+
+  refusals: VitalRefusalType[];
+}
+
+export interface TriagePayload {
+  encounterId: string;
+  visitId?: string;
+  chiefComplaint?: string;
+  priorityLevel?: number;
+
+  burnOrTrauma?: string;
+  burnOrTraumaDetail?: string;
+  cardiacRespiratoryDigestive?: string;
+  cardiacRespiratoryDigestiveDetail?: string;
+  otherEmergencySymptoms?: string;
+  otherEmergencySymptomsDetail?: string;
+
+  heightCm?: number;
+  weightKg?: number;
+  temperature?: number;
+  tempSite?: string;
+  heartRate?: number;
+  bpSystolic?: number;
+  bpDiastolic?: number;
+  bpMean?: number;
+  chest?: number;
+  waist?: number;
+  respiratory?: number;
+  oxygenSaturation?: number;
+  bloodSugar?: number;
+  hip?: number;
+
+  edd?: string;
+  para?: number;
+  gravida?: number;
+  lmp?: string;
+
+  patientRefused: boolean;
+  actionDateTime?: string;
+
+  // One entry per vital toggled "refused" - every entry must carry a non-empty reason
+  // (enforced both client-side and by NursingController.SaveTriage).
+  refusals: { vitalField: TriageVitalField; reason: string }[];
+
+  nurseId?: string;
+  password?: string;
+}
+
+export interface UntouchedPatientType {
+  visitId: string;
+  patientId: string | null;
+  patientName: string | null;
+  age: number | null;
+  sex: string | null;
+  visitType: string;
+  checkedInAt: string;
+}
+
 export interface NursingChartType {
   patientId: string | null;
   activeEncounterId: string | null;
+  triage: TriageType | null;
   vitals: VitalsType[];
   injections: InjectionType[];
   dressings: DressingType[];
