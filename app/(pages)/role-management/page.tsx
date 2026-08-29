@@ -6,7 +6,7 @@ import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { RoleService } from "@/services/role.service";
 import { FormEvent, useEffect, useState } from "react";
-import { MdAdminPanelSettings, MdAdd, MdEdit, MdChecklist, MdClose } from "react-icons/md";
+import { MdAdminPanelSettings, MdAdd, MdEdit, MdChecklist, MdClose, MdLock } from "react-icons/md";
 import { toast } from "sonner";
 import axios from "axios";
 import { FetchedRoles } from "@/types/role.type";
@@ -20,13 +20,21 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 // and excludes even admin (NursingController's confidential-note endpoints refuse admin
 // outright) - neither is ever offered as a toggle here. See components/sidebar.tsx and
 // app/(pages)/layout.tsx's matching hardcoded exemptions.
-// Every module is offered to every role, built-in or brand new - access is now a per-role
-// allow-list (Cli_RoleModulePermissions) rather than a hardcoded roles[] array that a
-// hidden-modules table could only narrow, so there's no "eligibility" left to filter by.
-// A role with no configuration yet (a freshly created one) simply starts fully unchecked.
+// Every other module is offered to every role, built-in or brand new - access is now a
+// per-role allow-list (Cli_RoleModulePermissions) rather than a hardcoded roles[] array
+// that a hidden-modules table could only narrow, so there's no "eligibility" left to
+// filter by. A role with no configuration yet (a freshly created one) simply starts fully
+// unchecked.
 const allToggleableModules = sidebarMenuItems.filter(
   (item) => item.navLink !== "/settings" && item.navLink !== "/nursing/confidential-notes",
 );
+
+// User Management is the one exception: it lets whoever holds it fully manage every
+// account (create/edit/delete/terminate, including other roles), so it isn't delegable at
+// all - shown below disabled/locked (rather than removed) so it's obvious *why* it can't
+// be granted instead of just silently missing. The backend rejects it outright even if
+// this were bypassed (see ModuleKeys.UserManagement's comment).
+const ADMIN_ONLY_MODULES = new Set(["/user-management"]);
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<FetchedRoles[]>([]);
@@ -213,6 +221,10 @@ export default function RoleManagementPage() {
   };
 
   const handleToggleModule = (navLink: string) => {
+    if (ADMIN_ONLY_MODULES.has(navLink)) {
+      toast.error("This module is only available to admin users and cannot be assigned to other roles.");
+      return;
+    }
     setVisibleModules((prev) => {
       const next = new Set(prev);
       if (next.has(navLink)) next.delete(navLink);
@@ -221,14 +233,15 @@ export default function RoleManagementPage() {
     });
   };
 
+  const grantableModules = allToggleableModules.filter((item) => !ADMIN_ONLY_MODULES.has(item.navLink));
   const allModulesSelected =
-    allToggleableModules.length > 0 &&
-    allToggleableModules.every((item) => visibleModules.has(item.navLink));
-  const someModulesSelected = allToggleableModules.some((item) => visibleModules.has(item.navLink));
+    grantableModules.length > 0 &&
+    grantableModules.every((item) => visibleModules.has(item.navLink));
+  const someModulesSelected = grantableModules.some((item) => visibleModules.has(item.navLink));
 
   const handleToggleAllModules = () => {
     setVisibleModules(
-      allModulesSelected ? new Set() : new Set(allToggleableModules.map((item) => item.navLink)),
+      allModulesSelected ? new Set() : new Set(grantableModules.map((item) => item.navLink)),
     );
   };
 
@@ -425,6 +438,7 @@ export default function RoleManagementPage() {
             <p className="text-sm text-muted-foreground mb-6">
               Check a module to grant this role access to it. Every module starts unchecked
               for a role until you configure it; Settings is always available to every role.
+              User Management is admin-only and can&apos;t be assigned to any other role.
             </p>
 
             {loadingPermissions ? (
@@ -446,21 +460,32 @@ export default function RoleManagementPage() {
                   <span className="text-sm font-semibold">Select All</span>
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 max-h-[50dvh] overflow-y-auto pr-1">
-                {allToggleableModules.map((item) => (
-                  <label
-                    key={item.navLink}
-                    className="flex items-center gap-2 p-2.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={visibleModules.has(item.navLink)}
-                      onChange={() => handleToggleModule(item.navLink)}
-                      className="h-4 w-4 shrink-0 accent-purple-600 cursor-pointer"
-                    />
-                    <item.icon />
-                    <span className="text-sm font-medium whitespace-nowrap">{item.name}</span>
-                  </label>
-                ))}
+                {allToggleableModules.map((item) => {
+                  const isAdminOnly = ADMIN_ONLY_MODULES.has(item.navLink);
+                  return (
+                    <label
+                      key={item.navLink}
+                      title={isAdminOnly ? "Admin only - cannot be assigned to other roles" : undefined}
+                      onClick={isAdminOnly ? () => handleToggleModule(item.navLink) : undefined}
+                      className={`flex items-center gap-2 p-2.5 rounded-lg ${
+                        isAdminOnly
+                          ? "opacity-50 cursor-not-allowed"
+                          : "hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!isAdminOnly && visibleModules.has(item.navLink)}
+                        disabled={isAdminOnly}
+                        onChange={() => handleToggleModule(item.navLink)}
+                        className="h-4 w-4 shrink-0 accent-purple-600 cursor-pointer disabled:cursor-not-allowed"
+                      />
+                      <item.icon />
+                      <span className="text-sm font-medium whitespace-nowrap">{item.name}</span>
+                      {isAdminOnly && <MdLock className="text-muted-foreground shrink-0" size={14} />}
+                    </label>
+                  );
+                })}
                 </div>
               </>
             )}

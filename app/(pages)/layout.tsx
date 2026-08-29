@@ -41,11 +41,16 @@ const extraProtectedRoutes: ProtectedRoute[] = [
 const protectedRoutes: ProtectedRoute[] = [
   ...sidebarMenuItems
     .filter((item) => item.navLink !== "/settings")
-    .map((item) =>
-      item.navLink === "/nursing/confidential-notes"
-        ? { navLink: item.navLink, hardcodedRoles: ["nurse"] }
-        : { navLink: item.navLink },
-    ),
+    .map((item) => {
+      if (item.navLink === "/nursing/confidential-notes") return { navLink: item.navLink, hardcodedRoles: ["nurse"] };
+      // User Management lets whoever holds it fully manage every account (create/edit/
+      // delete/terminate, including other roles) - it used to be a normal delegable
+      // module until a non-admin role was found live-granted it, so it's now locked
+      // down like /role-management and /user-registration below instead. See
+      // ModuleKeys.UserManagement's comment on the backend for the full story.
+      if (item.navLink === "/user-management") return { navLink: item.navLink, hardcodedRoles: ["admin"] };
+      return { navLink: item.navLink };
+    }),
   ...extraProtectedRoutes,
 ];
 
