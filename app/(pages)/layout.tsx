@@ -37,20 +37,22 @@ const extraProtectedRoutes: ProtectedRoute[] = [
 // Settings and Confidential Notes are never part of the allow-list (see
 // helpers/sidebaritems.ts's comments on each) - Settings is always reachable, and
 // Confidential Notes has its own hardcoded nurse-only rule instead. Check-in is a normal
-// admin-grantable module like any other (see Role Management).
+// admin-grantable module like any other (see Role Management). User Management, Departments
+// & Staff, Configurable Lists, ICD Codes and Reports are admin-only *by default* (backend's
+// ModuleKeys.AdminOnly - excluded from the Role Management checklist, see its comment) but
+// deliberately NOT hardcoded here the way /role-management and /user-registration above
+// are: RoleController.ForceModule can still grant one of them to a specific non-admin role,
+// and that role's allowedModules (checked below, same as any other module) is what actually
+// reflects a force-grant like that - a hardcoded rule here would keep blocking the page even
+// after the backend legitimately allows it.
 const protectedRoutes: ProtectedRoute[] = [
   ...sidebarMenuItems
     .filter((item) => item.navLink !== "/settings")
-    .map((item) => {
-      if (item.navLink === "/nursing/confidential-notes") return { navLink: item.navLink, hardcodedRoles: ["nurse"] };
-      // User Management lets whoever holds it fully manage every account (create/edit/
-      // delete/terminate, including other roles) - it used to be a normal delegable
-      // module until a non-admin role was found live-granted it, so it's now locked
-      // down like /role-management and /user-registration below instead. See
-      // ModuleKeys.UserManagement's comment on the backend for the full story.
-      if (item.navLink === "/user-management") return { navLink: item.navLink, hardcodedRoles: ["admin"] };
-      return { navLink: item.navLink };
-    }),
+    .map((item) =>
+      item.navLink === "/nursing/confidential-notes"
+        ? { navLink: item.navLink, hardcodedRoles: ["nurse"] }
+        : { navLink: item.navLink },
+    ),
   ...extraProtectedRoutes,
 ];
 

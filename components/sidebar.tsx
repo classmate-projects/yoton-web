@@ -338,9 +338,6 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const isModuleAllowed = (navLink: string) => {
     if (navLink === "/settings") return true;
     if (navLink === "/nursing/confidential-notes") return userRole === "nurse";
-    // Admin-only regardless of any role's allow-list - see app/(pages)/layout.tsx's
-    // matching hardcoded rule and ModuleKeys.UserManagement's comment on the backend.
-    if (navLink === "/user-management") return isAdmin;
     return isAdmin || allowedModules.includes(navLink);
   };
   const isVisible = (item: SidebarMenuItem) => isModuleAllowed(item.navLink);

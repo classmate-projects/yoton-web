@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* Tailwind v4 default: dark: tracks the OS's prefers-color-scheme, not a class. This app's
+   theme toggle (next-themes, attribute="class") sets .dark on <html> instead - without this
+   line every dark: utility silently followed the OS setting rather than the in-app toggle,
+   e.g. showing a light-mode hover background (hover:bg-neutral-100) with dark-mode
+   (near-white) text on top of it whenever the OS was in light mode but the app was switched
+   to dark, making hovered items in things like Role Management's permissions grid go
+   effectively blank. The CSS custom properties below (.dark { --background: ... }) were
+   never affected by this, since they're plain CSS selectors, not a Tailwind dark: utility -
+   only raw dark: classes across the app were silently inert. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
