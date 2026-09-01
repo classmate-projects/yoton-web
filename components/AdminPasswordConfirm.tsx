@@ -11,15 +11,20 @@ interface AdminPasswordConfirmProps {
   confirmingLabel: string;
   onCancel: () => void;
   // Throws on failure (e.g. wrong password) so this component can show the error inline
-  // and let the admin retry, instead of the caller having to manage that state itself.
-  onConfirm: (adminPassword: string) => Promise<void>;
+  // and let the caller retry, instead of the caller having to manage that state itself.
+  onConfirm: (password: string) => Promise<void>;
+  // Defaults to the original admin-specific copy - callers confirming a non-admin user's
+  // own password (e.g. check-out, see app/(pages)/check-in/page.tsx) should override this,
+  // since "admin password" would be actively wrong for a reception/nurse/doctor account.
+  passwordPlaceholder?: string;
 }
 
-// Generic step-up re-auth prompt for admin actions that shouldn't happen from an
-// unattended, already-open session - restoring a soft-deleted user (see
-// app/(pages)/user-registration/page.tsx) and rehiring a terminated one (see
-// app/(pages)/user-management/page.tsx) both bring back a whole account/employment
-// history, not just flip a flag, so both require the caller's own password to confirm.
+// Generic step-up re-auth prompt for actions that shouldn't happen from an unattended,
+// already-open session - originally built for admin-only actions (restoring a soft-deleted
+// user, see app/(pages)/user-registration/page.tsx; rehiring a terminated one, see
+// app/(pages)/user-management/page.tsx - both bring back a whole account/employment history,
+// not just flip a flag), since generalized to any "confirm your own current password"
+// prompt regardless of role (e.g. attendance check-out).
 export default function AdminPasswordConfirm({
   title,
   description,
@@ -27,6 +32,7 @@ export default function AdminPasswordConfirm({
   confirmingLabel,
   onCancel,
   onConfirm,
+  passwordPlaceholder = "Your admin password",
 }: AdminPasswordConfirmProps) {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -66,7 +72,7 @@ export default function AdminPasswordConfirm({
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Your admin password"
+            placeholder={passwordPlaceholder}
             className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
           />
           {error && <p className="text-sm text-destructive">{error}</p>}

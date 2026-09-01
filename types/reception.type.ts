@@ -59,6 +59,14 @@ export interface ReceptionCreatePatientType {
     registeredBy: string;
 }
 
+// GET /api/reception/patient/{id} - full decrypted field set for prefilling the edit form.
+// Mirrors ReceptionCreatePatientType minus password/registeredBy (never editable here), plus
+// the two identity fields only a fetched-back patient has.
+export interface PatientFullDetailsType extends Omit<ReceptionCreatePatientType, "password" | "registeredBy"> {
+    opId: string;
+    opNumber: string;
+}
+
 export interface PatientGetAllType {
     opId: string;
     // Hospital-assigned outpatient number - what the UI shows as "MRN". opId itself stays

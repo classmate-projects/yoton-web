@@ -415,7 +415,18 @@ export default function DatePicker({
             e.target.select();
             openPicker();
           }}
-          onBlur={commitTypedValue}
+          onBlur={(e) => {
+            commitTypedValue();
+            // Closing only on an outside *click* (see the mousedown listener above) misses
+            // Tab/Shift+Tab, which moves focus without ever firing a click - the popup was
+            // then left open indefinitely until the user happened to click elsewhere.
+            // relatedTarget is the element about to receive focus; skip closing when it's a
+            // button inside the popup itself (day/month/year/Today/Clear) so a mouse click
+            // there isn't cut off mid-click - that button's own onClick already closes it.
+            if (!popupRef.current?.contains(e.relatedTarget as Node | null)) {
+              setOpen(false);
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();

@@ -17,6 +17,7 @@ import {
   FileText,
   FlaskConical,
   HeartPulse,
+  History,
   Lock,
   NotebookPen,
   Pill,
@@ -37,6 +38,7 @@ import ReviewOfSystemsPanel, { ReviewOfSystemsValue } from "@/components/doctor/
 import PrescriptionPrintout from "@/components/prescription/PrescriptionPrintout";
 import FloatingSaveRevertBar from "@/components/FloatingSaveRevertBar";
 import ToggleButton from "@/components/ToggleButton";
+import VitalsHistoryModal from "@/components/VitalsHistoryModal";
 import { getUserDetail } from "@/lib/userDetail";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
@@ -58,7 +60,7 @@ import {
   SpecialRemarkType,
   TodayScheduleItemType,
 } from "@/types/emr.type";
-import { VitalsType, NurseNoteType, ExaminationNoteType } from "@/types/nursing.type";
+import { VitalsHistoryEntryType, NurseNoteType, ExaminationNoteType } from "@/types/nursing.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { SpecializationTypes } from "@/types/specialization.type";
 import { UserType } from "@/types/user.type";
@@ -104,7 +106,11 @@ function DoctorWorkbenchInner() {
   const [specializations, setSpecializations] = useState<SpecializationTypes[]>([]);
   const [quickNotes, setQuickNotes] = useState<QuickNoteType[]>([]);
   const [confidentialNotes, setConfidentialNotes] = useState<DoctorConfidentialNoteType[]>([]);
-  const [latestVitals, setLatestVitals] = useState<VitalsType | null>(null);
+  // Merged Triage + VitalsRecord timeline (see NursingController.GetVitalsHistory's own
+  // comment on why the two needed combining) - newest first, so [0] is "latest vitals".
+  const [vitalsHistory, setVitalsHistory] = useState<VitalsHistoryEntryType[]>([]);
+  const [showVitalsHistory, setShowVitalsHistory] = useState(false);
+  const latestVitals = vitalsHistory[0] ?? null;
   // Nurse-entered data for the open patient - surfaced here instead of doctor needing a
   // separate "Nurse Workbench" module (removed from their sidebar; see helpers/sidebaritems.ts).
   const [nurseSpecialRemarks, setNurseSpecialRemarks] = useState<SpecialRemarkType[]>([]);
@@ -240,20 +246,22 @@ function DoctorWorkbenchInner() {
   // endpoint (NursingController class-level [Authorize]) — reused here rather than
   // duplicating capture on the doctor side. Pulls the full nursing chart, not just vitals,
   // so nurse notes/special remarks/examination notes for this patient are visible inline
-  // in the doctor's own patient panel instead of requiring a separate module.
+  // in the doctor's own patient panel instead of requiring a separate module. Vitals
+  // themselves come from the separate merged history endpoint instead of this chart's own
+  // (VitalsRecord-only) list, so a nurse's Triage-recorded intake vitals count as "latest"
+  // too when they're more recent than any VitalsRecord entry.
   const fetchLatestVitals = async (patientId: string) => {
     try {
-      const res = await NursingService.getPatientChart(patientId);
-      const vitals: VitalsType[] = res.data?.vitals || [];
-      const latest = [...vitals].sort(
-        (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
-      )[0];
-      setLatestVitals(latest || null);
-      setNurseSpecialRemarks(res.data?.specialRemarks || []);
-      setNurseNotes(res.data?.nurseNotes || []);
-      setNurseExaminationNotes(res.data?.examinationNotes || []);
+      const [chartRes, vitalsHistoryRes] = await Promise.all([
+        NursingService.getPatientChart(patientId),
+        NursingService.getVitalsHistory(patientId),
+      ]);
+      setVitalsHistory(vitalsHistoryRes.data || []);
+      setNurseSpecialRemarks(chartRes.data?.specialRemarks || []);
+      setNurseNotes(chartRes.data?.nurseNotes || []);
+      setNurseExaminationNotes(chartRes.data?.examinationNotes || []);
     } catch {
-      setLatestVitals(null);
+      setVitalsHistory([]);
       setNurseSpecialRemarks([]);
       setNurseNotes([]);
       setNurseExaminationNotes([]);
@@ -283,7 +291,7 @@ function DoctorWorkbenchInner() {
     setSummary(null);
     setQuickNotes([]);
     setConfidentialNotes([]);
-    setLatestVitals(null);
+    setVitalsHistory([]);
     setNurseSpecialRemarks([]);
     setNurseNotes([]);
     setNurseExaminationNotes([]);
@@ -1036,18 +1044,16 @@ function DoctorWorkbenchInner() {
               )}
             </div>
 
-            {/* Latest Vitals — nurse-recorded, read-only here so the doctor has it in view
-                while prescribing/ordering without leaving the workbench. */}
+            {/* Latest Vitals — merged from Triage (nurse's intake reading) and VitalsRecord
+                (nurse's ongoing readings), read-only here so the doctor has it in view while
+                prescribing/ordering without leaving the workbench. History icon opens the
+                full timeline + trend graph (see the modal below). */}
             {latestVitals && (
-              <div
-                className={`card px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm ${
-                  latestVitals.isCritical ? "border-l-4 border-l-red-500" : ""
-                }`}
-              >
+              <div className="card px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                 <span className="flex items-center gap-1.5 font-semibold text-foreground/90">
                   <HeartPulse size={16} className="text-primary" /> Latest Vitals
                   <span className="font-normal text-xs text-muted-foreground">
-                    ({formatDateTime(latestVitals.recordedAt)})
+                    ({latestVitals.source === "Triage" ? "Triage" : "Nursing"} · {formatDateTime(latestVitals.recordedAt)})
                   </span>
                 </span>
                 {[
@@ -1068,8 +1074,9 @@ function DoctorWorkbenchInner() {
                       ? `${Math.round(latestVitals.diastolic + (latestVitals.systolic - latestVitals.diastolic) / 3)} mmHg`
                       : null,
                   ],
-                  ["Respiratory", latestVitals.respiratoryRate ? `${latestVitals.respiratoryRate} bpm` : null],
+                  ["Respiratory", latestVitals.respiratory ? `${latestVitals.respiratory} bpm` : null],
                   ["O2 Sat", latestVitals.oxygenSaturation ? `${latestVitals.oxygenSaturation}%` : null],
+                  ["Blood sugar", latestVitals.bloodSugar ? `${latestVitals.bloodSugar} mmol/L` : null],
                 ]
                   .filter(([, value]) => value)
                   .map(([label, value]) => (
@@ -1077,6 +1084,14 @@ function DoctorWorkbenchInner() {
                       {label}: <span className="font-semibold text-foreground">{value}</span>
                     </span>
                   ))}
+                <button
+                  type="button"
+                  onClick={() => setShowVitalsHistory(true)}
+                  title="View vitals history"
+                  className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline cursor-pointer"
+                >
+                  <History size={14} /> History
+                </button>
               </div>
             )}
 
@@ -2438,6 +2453,10 @@ function DoctorWorkbenchInner() {
           showPricing={false}
           onClose={() => setShowPrescriptionPrint(false)}
         />
+      )}
+
+      {showVitalsHistory && (
+        <VitalsHistoryModal entries={vitalsHistory} onClose={() => setShowVitalsHistory(false)} />
       )}
     </div>
   );

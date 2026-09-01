@@ -5,7 +5,7 @@ import SearchIcon from "@/public/icons/SearchIcon";
 import Link from "next/link";
 import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
-import { MdContacts, MdOutlinePersonAddAlt1, MdOutlineUploadFile, MdOutlineMailOutline } from "react-icons/md";
+import { MdContacts, MdOutlinePersonAddAlt1, MdOutlineUploadFile, MdOutlineMailOutline, MdOutlineEdit } from "react-icons/md";
 import { CalendarDays, Clock, Loader2, Stethoscope, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -64,7 +64,13 @@ export default function PatientRecordsPage() {
   const [isUploading, setIsUploading] = useState(false);
 
   // ---------------- Walk-in visit modal state ----------------
+  // Also reused for "Edit Visit" (see openEditVisitModal) - both are the exact same
+  // department -> specialty -> doctor -> slot picker, just walkInPatient starts a brand new
+  // visit while editingVisit reassigns an existing one's doctor via ReassignVisit instead of
+  // WalkIn. Only one of the two is ever set at a time; modalPatient/modalTitle below read
+  // whichever it is without the rest of the modal needing to care which.
   const [walkInPatient, setWalkInPatient] = useState<PatientGetAllType | null>(null);
+  const [editingVisit, setEditingVisit] = useState<VisitListItemType | null>(null);
   const [specializations, setSpecializations] = useState<SpecializationDoctorsType[]>([]);
   const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
   const [walkInDepartmentId, setWalkInDepartmentId] = useState("");
@@ -75,7 +81,10 @@ export default function PatientRecordsPage() {
   const [daySlots, setDaySlots] = useState<DoctorDaySlotsType | null>(null);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<AppointmentSlotType | null>(null);
+  const [visitNotes, setVisitNotes] = useState("");
   const [isBookingWalkIn, setIsBookingWalkIn] = useState(false);
+
+  const modalPatient = walkInPatient ?? editingVisit;
 
   const fetchPatients = async () => {
     try {
@@ -136,8 +145,10 @@ export default function PatientRecordsPage() {
     }
   };
 
-  const openWalkInModal = async (patient: PatientGetAllType) => {
-    setWalkInPatient(patient);
+  // Shared setup for both openWalkInModal and openEditVisitModal - clears whichever picker
+  // state a previous open left behind and lazily loads the department/specialty/doctor
+  // catalog once, same as before.
+  const resetVisitModalPickers = async () => {
     setWalkInDepartmentId("");
     setWalkInSpecializationId("");
     setDoctorSearch("");
@@ -145,6 +156,7 @@ export default function PatientRecordsPage() {
     setSelectedDate(new Date());
     setDaySlots(null);
     setSelectedSlot(null);
+    setVisitNotes("");
 
     if (specializations.length === 0) {
       try {
@@ -160,8 +172,22 @@ export default function PatientRecordsPage() {
     }
   };
 
+  const openWalkInModal = async (patient: PatientGetAllType) => {
+    setWalkInPatient(patient);
+    await resetVisitModalPickers();
+  };
+
+  // Reassigning a visit always starts the doctor/slot picker from scratch (see
+  // ReceptionController.ReassignVisit's own comment) - the point is picking a *different*
+  // doctor, so there's no need to look up and prefill whoever it's currently assigned to.
+  const openEditVisitModal = async (visit: VisitListItemType) => {
+    setEditingVisit(visit);
+    await resetVisitModalPickers();
+  };
+
   const closeWalkInModal = () => {
     setWalkInPatient(null);
+    setEditingVisit(null);
     setSelectedDoctor(null);
     setDaySlots(null);
     setSelectedSlot(null);
@@ -183,14 +209,14 @@ export default function PatientRecordsPage() {
   };
 
   useEffect(() => {
-    if (selectedDoctor && walkInPatient) {
+    if (selectedDoctor && modalPatient) {
       fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoctor, selectedDate]);
 
   useSignalRRefetch(["appointmentCreated", "appointmentCancelled"], () => {
-    if (selectedDoctor && walkInPatient) fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
+    if (selectedDoctor && modalPatient) fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
   });
 
   // Deduped from `specializations` itself rather than a separate department fetch - every
@@ -235,31 +261,40 @@ export default function PatientRecordsPage() {
   }, [specializations, doctorSearch, walkInDepartmentId, walkInSpecializationId]);
 
   const handleConfirmWalkIn = async () => {
-    if (!walkInPatient || !selectedDoctor || !selectedSlot) {
+    if (!modalPatient || !selectedDoctor || !selectedSlot) {
       toast.warning("Please select a doctor and an available time slot");
       return;
     }
 
     try {
       setIsBookingWalkIn(true);
-      const data = await ReceptionService.walkIn({
-        patientId: walkInPatient.opId,
-        doctorId: selectedDoctor.doctorId,
-        appointmentDate: selectedSlot.start,
-      });
+      const data = editingVisit
+        ? await ReceptionService.reassignVisit(editingVisit.visitId, {
+            doctorId: selectedDoctor.doctorId,
+            appointmentDate: selectedSlot.start,
+            notes: visitNotes || undefined,
+          })
+        : await ReceptionService.walkIn({
+            patientId: modalPatient.opId,
+            doctorId: selectedDoctor.doctorId,
+            appointmentDate: selectedSlot.start,
+            notes: visitNotes || undefined,
+          });
 
       if (data.status === false) {
         toast.error(data.message || "This slot has just been booked. Please choose another slot.");
         fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
       } else {
-        toast.success(data.message || "Walk-in visit registered");
+        toast.success(data.message || (editingVisit ? "Visit updated" : "Walk-in visit registered"));
         closeWalkInModal();
+        if (editingVisit) fetchVisits(fromDate, toDate);
       }
     } catch (error) {
+      const fallback = `Failed to ${editingVisit ? "update visit" : "register walk-in visit"}`;
       if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || "Failed to register walk-in visit");
+        toast.error(error.response?.data?.message || fallback);
       } else {
-        toast.error("Failed to register walk-in visit");
+        toast.error(fallback);
       }
     } finally {
       setIsBookingWalkIn(false);
@@ -360,9 +395,30 @@ export default function PatientRecordsPage() {
 
   // Shared by both list modes' rows - a VisitListItemType is structurally a
   // PatientGetAllType (plus its own visit fields), so a Visit List row's patient identity
-  // works here unchanged; these actions operate on the patient, not the visit.
-  const renderActions = (patient: PatientGetAllType) => (
+  // works here unchanged for the actions that operate on the patient rather than the visit.
+  // Edit is the one exception: Register List edits the patient (Patient Entry's own form,
+  // reused in edit mode - see that page), Visit List edits *this* visit (department/
+  // specialty/doctor reassignment, see openEditVisitModal) - "visitId" in the row is what
+  // tells the two apart, since a plain PatientGetAllType never has one.
+  const renderActions = (patient: PatientGetAllType | VisitListItemType) => (
     <div className="flex items-center justify-center gap-1">
+      {"visitId" in patient ? (
+        <button
+          onClick={() => openEditVisitModal(patient)}
+          className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
+          title="Edit Visit"
+        >
+          <MdOutlineEdit className="text-blue-600" size={18} />
+        </button>
+      ) : (
+        <Link
+          href={`/patient-entry?edit=${patient.opId}`}
+          className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer inline-flex"
+          title="Edit Patient"
+        >
+          <MdOutlineEdit className="text-blue-600" size={18} />
+        </Link>
+      )}
       <button
         onClick={() => openWalkInModal(patient)}
         className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
@@ -592,16 +648,16 @@ export default function PatientRecordsPage() {
         )}
       </div>
 
-      {walkInPatient && (
+      {modalPatient && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto border border-border">
             <div className="flex items-start justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-semibold text-foreground">
-                  Walk-in visit
+                  {editingVisit ? "Edit visit" : "Walk-in visit"}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {walkInPatient.name}
+                  {modalPatient.name}
                 </p>
               </div>
               <button
@@ -775,6 +831,19 @@ export default function PatientRecordsPage() {
                   )}
                 </div>
               )}
+
+              <div>
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">
+                  Notes
+                </label>
+                <textarea
+                  value={visitNotes}
+                  onChange={(e) => setVisitNotes(e.target.value)}
+                  placeholder={editingVisit ? "Reason for switching doctors..." : "Reason for visit..."}
+                  rows={2}
+                  className="w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
             </div>
 
             <div className="flex gap-3 mt-8">
@@ -789,7 +858,9 @@ export default function PatientRecordsPage() {
                 disabled={isBookingWalkIn || !selectedDoctor || !selectedSlot}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors cursor-pointer"
               >
-                {isBookingWalkIn ? "Registering..." : "Register walk-in visit"}
+                {isBookingWalkIn
+                  ? editingVisit ? "Saving..." : "Registering..."
+                  : editingVisit ? "Save changes" : "Register walk-in visit"}
               </button>
             </div>
           </div>

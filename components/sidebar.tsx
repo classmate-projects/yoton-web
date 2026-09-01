@@ -427,8 +427,14 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             would otherwise leak into the page - see the nav div's own comment below).
             The footer (theme/version/logout) deliberately sits outside it as its own
             shrink-0 sibling so it's always reachable without scrolling, regardless of
-            how much is above it. */}
-        <div data-sidebar-scroll className="flex min-h-0 flex-1 flex-col overflow-y-auto no-scrollbar scroll-smooth">
+            how much is above it.
+            overflow-y-auto only applies once expanded - collapsed, the nav div below is
+            still fully mounted at its *expanded* height (just opacity-0 + inert, see its
+            own comment on why), which easily exceeds the collapsed rail's real content
+            (logo + a handful of Recent icons) and made this wheel-scrollable with nothing
+            visible to justify it. overflow-hidden while collapsed just clips that invisible
+            overflow instead of exposing it as real scroll. */}
+        <div data-sidebar-scroll className={`flex min-h-0 flex-1 flex-col no-scrollbar scroll-smooth ${isExpanded ? "overflow-y-auto" : "overflow-hidden"}`}>
         <div className={`flex items-center transition-all duration-300 ease-in-out ${isExpanded ? "mb-8 px-2" : "mb-4 flex-col gap-2 justify-center"}`}>
           <div className="relative h-10 w-10 shrink-0">
             {/* Collapsed: company logo (falls back to the bundled Yoton logo).

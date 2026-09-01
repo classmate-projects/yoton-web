@@ -11,6 +11,8 @@ export interface EmrPatientListItem {
   lastAppointmentDate: string | null;
   lastAppointmentStatus: string | null;
   assignedDoctorName: string | null;
+  assignedSpecialtyName: string | null;
+  chiefComplaint: string | null;
   phone: string | null;
   nationalID: string | null;
   passportNumber: string | null;

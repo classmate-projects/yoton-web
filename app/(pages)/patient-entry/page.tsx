@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import {
   MdOutlinePersonOutline,
@@ -14,7 +15,7 @@ import { getNationalIdFormat, passportNumberRegex } from "@/helpers/nationalIdFo
 import { ReceptionService } from "@/services/reception.service";
 import { ConfigListService } from "@/services/configList.service";
 import { toast } from "sonner";
-import { ReceptionCreatePatientType, InsuranceCoverageRow } from "@/types/reception.type";
+import { ReceptionCreatePatientType, InsuranceCoverageRow, PatientFullDetailsType } from "@/types/reception.type";
 import { ListItemType } from "@/types/configList.type";
 import {
   AppointmentSlotType,
@@ -65,6 +66,14 @@ const emptyCoverages = (): Record<string, CoverageFormRow> =>
   );
 
 export default function PatientEntryPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // Present only when reached via Patient Records' "Edit" action (see that page's
+  // renderActions) - reuses this same registration form instead of a second one, matching
+  // how Staff Registration already handles create+edit with one form.
+  const editId = searchParams.get("edit");
+  const isEditMode = !!editId;
+  const [isLoadingPatient, setIsLoadingPatient] = useState(isEditMode);
   const [formData, setFormData] = useState({
     name: "",
     sex: "",
@@ -135,6 +144,97 @@ export default function PatientEntryPage() {
     setCompanyCountry(stored.country);
   }, []);
 
+  // Prefills the whole form from the existing patient's saved details when reached in edit
+  // mode - the API has no separate dialing-code field for the emergency contact (see
+  // handleSubmit's own comment), so its stored value ("+97112345678") is split back into
+  // code + number here by matching the longest known dialing code prefix, the inverse of
+  // how it was joined on save.
+  useEffect(() => {
+    if (!editId) return;
+    (async () => {
+      try {
+        setIsLoadingPatient(true);
+        const res = await ReceptionService.getPatientById(editId);
+        const p: PatientFullDetailsType = res.data;
+
+        const emergencyCode = [...countryDetails]
+          .sort((a, b) => b.phoneCode.length - a.phoneCode.length)
+          .find((c) => p.emergencyContactPhone?.startsWith(c.phoneCode));
+        const emergencyContactPhoneCode = emergencyCode?.phoneCode ?? "+971";
+        const emergencyContactPhone = emergencyCode
+          ? p.emergencyContactPhone.slice(emergencyCode.phoneCode.length)
+          : p.emergencyContactPhone ?? "";
+
+        setFormData({
+          name: p.name ?? "",
+          sex: p.sex ?? "",
+          dateOfBirth: p.dateOfBirth ?? "",
+          phone: p.phone ?? "",
+          phoneCode: p.phoneCode || "+971",
+          email: p.email ?? "",
+          address: p.address ?? "",
+          nationality: p.nationality ?? "",
+          passportNumber: p.passportNumber ?? "",
+          nationalID: p.nationalID ?? "",
+          fatherName: p.fatherName ?? "",
+          motherName: p.motherName ?? "",
+          patientType: p.patientType || "Normal",
+          visaType: p.visaType ?? "",
+          maritalStatus: p.maritalStatus ?? "",
+          designation: p.designation ?? "",
+          referralStatus: p.referralStatus ?? false,
+          chronicStatus: p.chronicStatus ?? false,
+          emergencyContact: p.emergencyContact ?? "",
+          emergencyContactPhone,
+          emergencyContactPhoneCode,
+          paymentType: p.paymentType || "Cash",
+          eligibilityMode: p.eligibilityMode ?? "",
+          eligibilityCheckedDate: p.eligibilityCheckedDate ?? "",
+          eligibilityID: p.eligibilityID ?? "",
+          eligibilityVisitID: p.eligibilityVisitID ?? "",
+          insuranceProvider: p.insuranceProvider ?? "",
+          subInsurance: p.subInsurance ?? "",
+          networkType: p.networkType ?? "",
+          insuranceCardNo: p.insuranceCardNo ?? "",
+          extraCardNo: p.extraCardNo ?? "",
+          insuranceEffectiveFrom: p.insuranceEffectiveFrom ?? "",
+          insuranceExpiryDate: p.insuranceExpiryDate ?? "",
+          certificateNo: p.certificateNo ?? "",
+          dependentsNo: p.dependentsNo ?? "",
+          insuranceClaimNo: p.insuranceClaimNo ?? "",
+          maxInsuranceLiability: p.maxInsuranceLiability?.toString() ?? "",
+          insuranceApprovalLimit: p.insuranceApprovalLimit?.toString() ?? "",
+          maxInsuranceCopay: p.maxInsuranceCopay?.toString() ?? "",
+          coPayPatientPercent: p.coPayPatientPercent?.toString() ?? "",
+          password: "",
+        });
+
+        if (p.insuranceCoverages && p.insuranceCoverages.length > 0) {
+          setCoverages((prev) => {
+            const next = { ...prev };
+            for (const row of p.insuranceCoverages!) {
+              if (!(row.serviceCategory in next)) continue;
+              next[row.serviceCategory] = {
+                deductible: row.deductible?.toString() ?? "",
+                deductibleAppliesTo: row.deductibleAppliesTo ?? "",
+                coPayPercent: row.coPayPercent?.toString() ?? "",
+                coPayMin: row.coPayMin?.toString() ?? "",
+                coPayMax: row.coPayMax?.toString() ?? "",
+                coPayAppliesTo: row.coPayAppliesTo ?? "",
+              };
+            }
+            return next;
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load patient for editing:", err);
+        toast.error("Failed to load patient details");
+      } finally {
+        setIsLoadingPatient(false);
+      }
+    })();
+  }, [editId]);
+
   // Re-clamps an already-typed phone number if switching to a dialing code with a shorter
   // national number length leaves it over the new limit (e.g. 10 digits typed for +234
   // Nigeria, then the code is changed to +974 Qatar's 8-digit numbers).
@@ -198,6 +298,7 @@ export default function PatientEntryPage() {
   >([]);
   const [isLoadingSpecializations, setIsLoadingSpecializations] =
     useState(false);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
   const [selectedSpecializationId, setSelectedSpecializationId] = useState("");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [consultDate, setConsultDate] = useState(() =>
@@ -210,6 +311,31 @@ export default function PatientEntryPage() {
   );
   const [consultNotes, setConsultNotes] = useState("");
   const [isBookingConsult, setIsBookingConsult] = useState(false);
+
+  // Deduped from `specializations` itself rather than a separate department fetch - every
+  // specialization here already carries its own department, and this modal only ever needs
+  // departments that actually have an active, doctor-staffed specialization under them.
+  // Mirrors patient-records/page.tsx's Walk-in modal (walkInDepartments) exactly.
+  const consultDepartments = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of specializations) {
+      if (s.departmentId && !seen.has(s.departmentId)) seen.set(s.departmentId, s.departmentName ?? s.departmentId);
+    }
+    return Array.from(seen, ([value, label]) => ({ value, label }));
+  }, [specializations]);
+
+  const consultSpecializations = useMemo(
+    () => specializations.filter((s) => !selectedDepartmentId || s.departmentId === selectedDepartmentId),
+    [specializations, selectedDepartmentId]
+  );
+
+  // A previously-picked specialization may no longer be valid once the department changes.
+  useEffect(() => {
+    if (selectedSpecializationId && !consultSpecializations.some((s) => s.specializationId === selectedSpecializationId)) {
+      setSelectedSpecializationId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDepartmentId, specializations]);
 
   const doctorsForSpecialization =
     specializations.find((s) => s.specializationId === selectedSpecializationId)
@@ -246,6 +372,7 @@ export default function PatientEntryPage() {
   const closeConsultFlow = () => {
     setRegisteredPatient(null);
     setShowConsultForm(false);
+    setSelectedDepartmentId("");
     setSelectedSpecializationId("");
     setSelectedDoctorId("");
     setDaySlots(null);
@@ -451,6 +578,14 @@ export default function PatientEntryPage() {
     const wasManualEligibility = formData.eligibilityMode === "Manual";
 
     try {
+      if (isEditMode) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, ...updatePayload } = payload;
+        const data = await ReceptionService.updatePatient(editId!, updatePayload);
+        toast.success(data.message || "Patient updated successfully");
+        router.push("/patient-records");
+        return;
+      }
       const data = await ReceptionService.createPatinet(payload)
       toast.success(data.message)
       resetForm();
@@ -458,9 +593,9 @@ export default function PatientEntryPage() {
       setNeedsEligibilityDoc(wasManualEligibility);
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || "Failed to register patient");
+        toast.error(error.response?.data?.message || `Failed to ${isEditMode ? "update" : "register"} patient`);
       } else {
-        toast.error("Failed to register patient");
+        toast.error(`Failed to ${isEditMode ? "update" : "register"} patient`);
       }
     } finally {
       setLoading(false)
@@ -515,17 +650,26 @@ export default function PatientEntryPage() {
     setCoverages(emptyCoverages());
   };
 
+  if (isLoadingPatient) {
+    return (
+      <div className="mainPage flex h-full items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
   return (
     <>
       <form onSubmit={handleSubmit} className="mainPage flex flex-col gap-6">
         {/* Header */}
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl font-bold text-foreground">
-            New Patient Entry
+            {isEditMode ? "Edit Patient" : "New Patient Entry"}
           </h1>
           <p className="text-base text-foreground/80">
-            Complete patient registration form. All fields marked with * are
-            required.
+            {isEditMode
+              ? "Update this patient's registration details. All fields marked with * are required."
+              : "Complete patient registration form. All fields marked with * are required."}
           </p>
         </div>
 
@@ -1375,14 +1519,16 @@ export default function PatientEntryPage() {
             type="submit"
             className="flex-1 bg-primary hover:opacity-90 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md cursor-pointer"
           >
-            {loading ? "Registering..." : "Register Patient"}
+            {isEditMode
+              ? loading ? "Saving..." : "Save Changes"
+              : loading ? "Registering..." : "Register Patient"}
           </button>
           <button
             type="button"
-            onClick={resetForm}
+            onClick={isEditMode ? () => router.push("/patient-records") : resetForm}
             className="flex-1 bg-muted hover:bg-muted/80 text-foreground font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md"
           >
-            Clear Form
+            {isEditMode ? "Cancel" : "Clear Form"}
           </button>
         </div>
       </form>
@@ -1477,10 +1623,37 @@ export default function PatientEntryPage() {
                 </div>
 
                 <div className="flex flex-col gap-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="flex flex-col gap-2">
                       <label className="font-semibold text-foreground/90 text-sm">
                         Department
+                      </label>
+                      <select
+                        value={selectedDepartmentId}
+                        onChange={(e) => {
+                          setSelectedDepartmentId(e.target.value);
+                          setSelectedDoctorId("");
+                          setDaySlots(null);
+                          setSelectedSlot(null);
+                        }}
+                        className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
+                      >
+                        <option value="">
+                          {isLoadingSpecializations
+                            ? "Loading..."
+                            : "Select department"}
+                        </option>
+                        {consultDepartments.map((d) => (
+                          <option key={d.value} value={d.value}>
+                            {d.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label className="font-semibold text-foreground/90 text-sm">
+                        Specialty
                       </label>
                       <select
                         value={selectedSpecializationId}
@@ -1495,9 +1668,9 @@ export default function PatientEntryPage() {
                         <option value="">
                           {isLoadingSpecializations
                             ? "Loading..."
-                            : "Select department"}
+                            : "Select specialty"}
                         </option>
-                        {specializations.map((s) => (
+                        {consultSpecializations.map((s) => (
                           <option
                             key={s.specializationId}
                             value={s.specializationId}

@@ -3,7 +3,7 @@ import { ENDPOINTS } from "@/lib/endpoints"
 import { ReceptionCreatePatientType } from "@/types/reception.type";
 import { CreateAppointmentPayload } from "@/types/appointment.type";
 import { UpdateDoctorSchedulePayload } from "@/types/doctorAvailability.type";
-import { CheckInPayload, WalkInPayload, UploadPatientDocumentPayload } from "@/types/visit.type";
+import { CheckInPayload, WalkInPayload, ReassignVisitPayload, UploadPatientDocumentPayload } from "@/types/visit.type";
 
 export const ReceptionService = {
     getAllPatients: async () => {
@@ -17,7 +17,15 @@ export const ReceptionService = {
     createPatinet: async (payload: ReceptionCreatePatientType) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CREATE_PATIENT, payload)
         return data;
-    }, 
+    },
+    getPatientById: async (id: string) => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_PATIENT_BY_ID(id))
+        return data;
+    },
+    updatePatient: async (id: string, payload: Omit<ReceptionCreatePatientType, "password">) => {
+        const { data } = await api.put(ENDPOINTS.RECEPTION.UPDATE_PATIENT(id), payload)
+        return data;
+    },
     softDelete: async (id: string) => {
         const { data } = await api.delete(ENDPOINTS.RECEPTION.SOFT_DELETE(id))
         return data;
@@ -108,6 +116,10 @@ export const ReceptionService = {
     },
     getVisit: async (id: string) => {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT(id))
+        return data;
+    },
+    reassignVisit: async (id: string, payload: ReassignVisitPayload) => {
+        const { data } = await api.put(ENDPOINTS.RECEPTION.REASSIGN_VISIT(id), payload)
         return data;
     },
     getVisitQueue: async (status?: string) => {

@@ -22,6 +22,14 @@ export interface WalkInPayload {
   notes?: string;
 }
 
+// PUT /api/reception/visit/{id} - doctorId/appointmentDate together move the visit to a
+// new doctor+slot (both omitted leaves the current doctor untouched, a notes-only edit).
+export interface ReassignVisitPayload {
+  doctorId?: string;
+  appointmentDate?: string;
+  notes?: string;
+}
+
 export interface UploadPatientDocumentPayload {
   documentType: string; // ExternalLabReport, ExternalRadiologyReport, Other
   visitId?: string;

@@ -184,7 +184,6 @@ const TRIAGE_SYMPTOM_ROWS = [
 ] as const;
 
 interface TriageFormState {
-  chiefComplaint: string;
   priorityLevel: number | null;
   burnOrTrauma: string;
   burnOrTraumaDetail: string;
@@ -219,7 +218,6 @@ const emptyTriageValues = (): Record<TriageVitalField, string> => ({
 });
 
 const emptyTriageForm = (): TriageFormState => ({
-  chiefComplaint: "",
   priorityLevel: null,
   burnOrTrauma: "",
   burnOrTraumaDetail: "",
@@ -489,7 +487,6 @@ function NurseWorkbenchInner() {
       return;
     }
     setTriageForm({
-      chiefComplaint: t.chiefComplaint ?? "",
       priorityLevel: t.priorityLevel,
       burnOrTrauma: t.burnOrTrauma ?? "",
       burnOrTraumaDetail: t.burnOrTraumaDetail ?? "",
@@ -561,7 +558,6 @@ function NurseWorkbenchInner() {
     const payload: TriagePayload = {
       encounterId,
       visitId: currentVisitId ?? undefined,
-      chiefComplaint: triageForm.chiefComplaint || undefined,
       priorityLevel: triageForm.priorityLevel ?? undefined,
       burnOrTrauma: triageForm.burnOrTrauma || undefined,
       burnOrTraumaDetail: triageForm.burnOrTraumaDetail || undefined,
@@ -631,21 +627,37 @@ function NurseWorkbenchInner() {
             type="button"
             onClick={() => toggleTriageVitalRefusal(field.key)}
             title={isRefused ? "Patient refused this vital — click to undo" : "Mark patient refused"}
+            // Out of the tab order on purpose - it sits right before each field's own input
+            // in DOM order, so left tabbable it stole focus on the way to every next field
+            // instead of just the fields themselves. Still fully clickable with the mouse.
+            tabIndex={-1}
             className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${isRefused ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}
           >
             <Ban size={16} />
           </button>
         </div>
-        <input
-          type={field.type}
-          step={field.step}
-          disabled={isRefused}
-          value={triageForm.values[field.key]}
-          onChange={(e) =>
-            setTriageForm((prev) => ({ ...prev, values: { ...prev.values, [field.key]: e.target.value } }))
-          }
-          className="text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-        />
+        {field.type === "date" ? (
+          <DatePicker
+            value={triageForm.values[field.key]}
+            onChange={(v) =>
+              setTriageForm((prev) => ({ ...prev, values: { ...prev.values, [field.key]: v } }))
+            }
+            disabled={isRefused}
+            dateFormat="dd-MM-yyyy"
+            placeholder="DD-MM-YYYY"
+          />
+        ) : (
+          <input
+            type={field.type}
+            step={field.step}
+            disabled={isRefused}
+            value={triageForm.values[field.key]}
+            onChange={(e) =>
+              setTriageForm((prev) => ({ ...prev, values: { ...prev.values, [field.key]: e.target.value } }))
+            }
+            className="text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+        )}
         {field.key === "Temperature" && !isRefused && (
           <select
             value={triageForm.tempSite}
@@ -1239,14 +1251,22 @@ function NurseWorkbenchInner() {
                 <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
                   <FileText size={13} /> Chief Complaint
                 </h3>
-                <textarea
-                  value={triageForm.chiefComplaint}
-                  onChange={(e) => setTriageForm((prev) => ({ ...prev, chiefComplaint: e.target.value }))}
-                  disabled={!canEdit}
-                  placeholder="What brought the patient in today…"
-                  rows={2}
-                  className="w-full text-sm"
-                />
+                {/* Doctor-only now - a nurse can see it here once the doctor has documented
+                    it (encounter.ChiefComplaint), but never enter or edit it from Triage.
+                    The backend already refuses to persist a nurse-supplied value even if this
+                    were bypassed - see NursingController.SaveTriage's own comment - and once
+                    the encounter is Completed, EmrController.UpsertEncounter locks the whole
+                    row (chief complaint included) against every role, doctor and admin alike,
+                    same as the rest of the encounter. */}
+                {summary.latestEncounter?.chiefComplaint ? (
+                  <p className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
+                    {summary.latestEncounter.chiefComplaint}
+                  </p>
+                ) : (
+                  <p className="w-full rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+                    Not yet documented by the doctor.
+                  </p>
+                )}
               </div>
 
               <div className="border-t border-border pt-5">
@@ -2160,7 +2180,20 @@ function NurseWorkbenchInner() {
                           <td className="font-mono text-xs">{p.opNumber || p.opId}</td>
                           <td className="font-semibold">{p.name}</td>
                           <td>{p.assignedDoctorName || "—"}</td>
-                          <td>{formatVisitDate(p.lastAppointmentDate)}</td>
+                          <td
+                            className={p.lastAppointmentDate ? "cursor-help underline decoration-dotted decoration-muted-foreground/50 underline-offset-4" : undefined}
+                            title={
+                              p.lastAppointmentDate
+                                ? [
+                                    `Doctor: ${p.assignedDoctorName || "—"}`,
+                                    `Specialty: ${p.assignedSpecialtyName || "—"}`,
+                                    `Chief complaint: ${p.chiefComplaint || "—"}`,
+                                  ].join("\n")
+                                : undefined
+                            }
+                          >
+                            {formatVisitDate(p.lastAppointmentDate)}
+                          </td>
                           <td>
                             <button
                               onClick={() => openPatient(p.opId)}

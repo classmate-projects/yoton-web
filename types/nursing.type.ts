@@ -45,6 +45,25 @@ export interface VitalsType {
   isCritical: boolean;
 }
 
+// One normalized reading from GET .../vitals-history - merges VitalsRecord's own
+// accumulating history with Triage's single per-encounter reading (see that endpoint's own
+// comment on NursingController for why the two needed combining).
+export interface VitalsHistoryEntryType {
+  source: "Triage" | "Nursing";
+  recordedAt: string;
+  recordedByName: string | null;
+  heightCm: number | null;
+  weightKg: number | null;
+  bmi: number | null;
+  temperature: number | null;
+  heartRate: number | null;
+  systolic: number | null;
+  diastolic: number | null;
+  respiratory: number | null;
+  oxygenSaturation: number | null;
+  bloodSugar: number | null;
+}
+
 export interface NurseNoteType {
   nurseNoteId: string;
   nurseId: string | null;

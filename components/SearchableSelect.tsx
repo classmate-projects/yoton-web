@@ -46,6 +46,11 @@ export default function SearchableSelect({
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
+  // Set right before programmatically refocusing the trigger (closeAndRefocus below) so that
+  // refocus's own onFocus doesn't immediately reopen what was just closed - the trigger's
+  // onFocus otherwise can't tell "a real Tab into this button" (should open) apart from "we
+  // just returned focus here ourselves" (shouldn't).
+  const skipNextFocusOpen = useRef(false);
 
   const selected = options.find((o) => o.value === value);
 
@@ -82,6 +87,16 @@ export default function SearchableSelect({
     setCoords({ top, left, width: popupWidth });
   };
 
+  // Closes the popup and returns focus to the trigger button - without this, closing via
+  // Enter/Escape leaves focus stranded on whatever popup element (search box, option) is
+  // about to unmount, so the very next Tab press jumps somewhere unrelated instead of
+  // continuing on to the form's next field, the way a native <select> would.
+  const closeAndRefocus = () => {
+    setOpen(false);
+    skipNextFocusOpen.current = true;
+    triggerRef.current?.focus();
+  };
+
   useEffect(() => {
     if (!open) return;
     updateCoords();
@@ -93,7 +108,7 @@ export default function SearchableSelect({
       if (!insideWrapper && !insidePopup) setOpen(false);
     };
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") closeAndRefocus();
     };
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
@@ -147,7 +162,7 @@ export default function SearchableSelect({
 
   const pick = (optionValue: string) => {
     onChange(optionValue);
-    setOpen(false);
+    closeAndRefocus();
   };
 
   return (
@@ -158,6 +173,17 @@ export default function SearchableSelect({
         id={id}
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : openPicker())}
+        onFocus={() => {
+          // A real Tab into this button should open the list, same as clicking it -
+          // otherwise keyboard-only users just see the button's focus ring with no way to
+          // tell a list exists at all. Suppressed once right after closeAndRefocus
+          // programmatically returns focus here, so that doesn't immediately reopen it.
+          if (skipNextFocusOpen.current) {
+            skipNextFocusOpen.current = false;
+            return;
+          }
+          openPicker();
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
         className={`${
@@ -197,7 +223,7 @@ export default function SearchableSelect({
                   e.preventDefault();
                   if (filtered[highlighted]) pick(filtered[highlighted].value);
                 } else if (e.key === "Escape") {
-                  setOpen(false);
+                  closeAndRefocus();
                 }
               }}
               placeholder="Search..."

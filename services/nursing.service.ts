@@ -32,6 +32,10 @@ export const NursingService = {
     const { data } = await api.get(ENDPOINTS.NURSING.GET_PATIENT_CHART(patientId));
     return data;
   },
+  getVitalsHistory: async (patientId: string) => {
+    const { data } = await api.get(ENDPOINTS.NURSING.GET_VITALS_HISTORY(patientId));
+    return data;
+  },
   ensureActiveEncounter: async (patientId: string, payload?: EnsureEncounterPayload) => {
     const { data } = await api.post(ENDPOINTS.NURSING.ENSURE_ENCOUNTER(patientId), payload ?? {});
     return data;
