@@ -36,6 +36,7 @@ export interface PrescriptionType {
   dispensedAt: string | null;
   createdAt: string;
   items: PrescriptionItemType[];
+  correctedFromId: string | null;
 }
 
 export interface PharmacySummaryType {

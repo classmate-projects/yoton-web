@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
-import { Pill } from "lucide-react";
+import { Pencil, Pill, Trash2 } from "lucide-react";
 import { MdAdd, MdWarning } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { PharmacyService } from "@/services/pharmacy.service";
 import { ReceptionService } from "@/services/reception.service";
 import { UserService } from "@/services/user.service";
@@ -95,6 +96,9 @@ export default function PharmacyPage() {
   const [items, setItems] = useState<{ medicineId: string; quantity: number; priority: string }[]>([
     { medicineId: "", quantity: 1, priority: "Routine" },
   ]);
+  // Set while correcting an existing Pending prescription - reuses the same modal/form as
+  // creating a new one, matching every other add-form-doubles-as-edit-form in this feature.
+  const [editingPrescriptionId, setEditingPrescriptionId] = useState<string | null>(null);
 
   // New medicine form
   const [isMedModalOpen, setIsMedModalOpen] = useState(false);
@@ -108,6 +112,7 @@ export default function PharmacyPage() {
   const [medPrice, setMedPrice] = useState<number>(0);
   const [medExpiry, setMedExpiry] = useState("");
   const [medIsHighRisk, setMedIsHighRisk] = useState(false);
+  const [editingMedicineId, setEditingMedicineId] = useState<string | null>(null);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -336,11 +341,31 @@ export default function PharmacyPage() {
 
   const openRxModal = () => {
     resetRxForm();
+    setEditingPrescriptionId(null);
+    setIsRxModalOpen(true);
+  };
+
+  const openEditRxModal = (prescription: PrescriptionType) => {
+    resetRxForm();
+    setEditingPrescriptionId(prescription.prescriptionId);
+    const matchedPatient = patients.find((p) => p.opId === prescription.patientId);
+    if (matchedPatient) {
+      setSelectedPatient(matchedPatient);
+      setPatientSearch(matchedPatient.name);
+    }
+    setSelectedDoctorId(prescription.doctorId || "");
+    setNotes(prescription.notes || "");
+    setItems(
+      prescription.items.length > 0
+        ? prescription.items.map((i) => ({ medicineId: i.medicineId || "", quantity: i.quantity, priority: i.priority }))
+        : [{ medicineId: "", quantity: 1, priority: "Routine" }]
+    );
     setIsRxModalOpen(true);
   };
 
   const closeRxModal = () => {
     setIsRxModalOpen(false);
+    setEditingPrescriptionId(null);
     resetRxForm();
   };
 
@@ -366,20 +391,38 @@ export default function PharmacyPage() {
 
     try {
       setIsSubmittingRx(true);
-      const data = await PharmacyService.createPrescription({
+      const payload = {
         patientId: selectedPatient.opId,
         doctorId: selectedDoctorId || undefined,
         notes: notes || undefined,
         items: validItems,
-      });
-      toast.success(data.message || "Prescription created");
+      };
+      const data = editingPrescriptionId
+        ? await PharmacyService.updatePrescription(editingPrescriptionId, payload)
+        : await PharmacyService.createPrescription(payload);
+      toast.success(data.message || (editingPrescriptionId ? "Prescription corrected" : "Prescription created"));
       closeRxModal();
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to create prescription"));
+      toast.error(errorMessage(error, editingPrescriptionId ? "Failed to correct prescription" : "Failed to create prescription"));
     } finally {
       setIsSubmittingRx(false);
     }
+  };
+
+  const removePrescriptionEntry = (prescription: PrescriptionType) => {
+    confirmDeleteToast(
+      <span>Delete this prescription for <b className="text-red-500 ml-1">{prescription.patientName}</b>?</span>,
+      async () => {
+        try {
+          await PharmacyService.removePrescription(prescription.prescriptionId);
+          toast.success("Prescription removed");
+          fetchAll();
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove prescription"));
+        }
+      }
+    );
   };
 
   const openDispenseModal = (prescription: PrescriptionType) => {
@@ -429,6 +472,26 @@ export default function PharmacyPage() {
     setMedIsHighRisk(false);
   };
 
+  const openEditMedModal = (medicine: MedicineType) => {
+    setEditingMedicineId(medicine.medicineId);
+    setMedName(medicine.name);
+    setMedGenericName(medicine.genericName || "");
+    setMedIngredient(medicine.ingredient || "");
+    setMedDosageForm(medicine.dosageForm || "");
+    setMedCategory(medicine.category || "");
+    setMedStock(medicine.stock);
+    setMedPrice(medicine.price);
+    setMedExpiry(medicine.expiryDate ? medicine.expiryDate.slice(0, 10) : "");
+    setMedIsHighRisk(medicine.isHighRisk);
+    setIsMedModalOpen(true);
+  };
+
+  const closeMedModal = () => {
+    setIsMedModalOpen(false);
+    setEditingMedicineId(null);
+    resetMedForm();
+  };
+
   const handleAddMedicine = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!medName.trim() || !medExpiry) {
@@ -438,7 +501,7 @@ export default function PharmacyPage() {
 
     try {
       setIsSubmittingMed(true);
-      const data = await PharmacyService.addMedicine({
+      const payload = {
         name: medName,
         genericName: medGenericName || undefined,
         ingredient: medIngredient || undefined,
@@ -448,16 +511,33 @@ export default function PharmacyPage() {
         price: medPrice,
         expiryDate: medExpiry,
         isHighRisk: medIsHighRisk,
-      });
-      toast.success(data.message || "Medicine added");
-      setIsMedModalOpen(false);
-      resetMedForm();
+      };
+      const data = editingMedicineId
+        ? await PharmacyService.updateMedicine(editingMedicineId, payload)
+        : await PharmacyService.addMedicine(payload);
+      toast.success(data.message || (editingMedicineId ? "Medicine updated" : "Medicine added"));
+      closeMedModal();
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add medicine"));
+      toast.error(errorMessage(error, editingMedicineId ? "Failed to update medicine" : "Failed to add medicine"));
     } finally {
       setIsSubmittingMed(false);
     }
+  };
+
+  const removeMedicineEntry = (medicine: MedicineType) => {
+    confirmDeleteToast(
+      <span>Delete medicine <b className="text-red-500 ml-1">{medicine.name}</b>?</span>,
+      async () => {
+        try {
+          await PharmacyService.removeMedicine(medicine.medicineId);
+          toast.success("Medicine removed");
+          fetchAll();
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove medicine"));
+        }
+      }
+    );
   };
 
   const adjustStock = async (medicine: MedicineType, delta: number) => {
@@ -503,7 +583,7 @@ export default function PharmacyPage() {
         {(tab === "inventory" || (tab === "prescriptions" && prescriptionView === "walkIn")) && (
           <button
             type="button"
-            onClick={tab === "prescriptions" ? openRxModal : () => setIsMedModalOpen(true)}
+            onClick={tab === "prescriptions" ? openRxModal : () => { setEditingMedicineId(null); resetMedForm(); setIsMedModalOpen(true); }}
             className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150 shrink-0"
           >
             <MdAdd size={22} />
@@ -775,15 +855,31 @@ export default function PharmacyPage() {
                             )}
                           </td>
                           <td>
-                            <div className="flex justify-center">
+                            <div className="flex justify-center items-center gap-1">
                               {rx.status === "Pending" ? (
-                                <button
-                                  onClick={() => openDispenseModal(rx)}
-                                  disabled={issuingId === rx.prescriptionId}
-                                  className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
-                                >
-                                  {issuingId === rx.prescriptionId ? "Dispensing..." : "Dispense"}
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => openDispenseModal(rx)}
+                                    disabled={issuingId === rx.prescriptionId}
+                                    className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
+                                  >
+                                    {issuingId === rx.prescriptionId ? "Dispensing..." : "Dispense"}
+                                  </button>
+                                  <button
+                                    onClick={() => openEditRxModal(rx)}
+                                    title="Correct prescription"
+                                    className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer"
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => removePrescriptionEntry(rx)}
+                                    title="Delete prescription"
+                                    className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </>
                               ) : (
                                 <span className="text-xs text-muted-foreground">—</span>
                               )}
@@ -881,6 +977,20 @@ export default function PharmacyPage() {
                             >
                               {med.isHighRisk ? "Unflag" : "High-risk"}
                             </button>
+                            <button
+                              onClick={() => openEditMedModal(med)}
+                              title="Edit medicine"
+                              className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => removeMedicineEntry(med)}
+                              title="Delete medicine"
+                              className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -925,9 +1035,9 @@ export default function PharmacyPage() {
       {isRxModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
           <div className="bg-card w-full max-w-lg rounded-xl border border-border p-6 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-semibold mb-1 text-foreground">New Prescription</h2>
+            <h2 className="text-2xl font-semibold mb-1 text-foreground">{editingPrescriptionId ? "Correct Prescription" : "New Prescription"}</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              Log a new prescription to be dispensed for a patient.
+              {editingPrescriptionId ? "Correcting a pending prescription before it's dispensed." : "Log a new prescription to be dispensed for a patient."}
             </p>
 
             <form onSubmit={handleCreatePrescription} className="flex flex-col gap-4">
@@ -1059,7 +1169,7 @@ export default function PharmacyPage() {
                   disabled={isSubmittingRx}
                   className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full disabled:opacity-60"
                 >
-                  {isSubmittingRx ? "Saving..." : "Create Prescription"}
+                  {isSubmittingRx ? "Saving..." : editingPrescriptionId ? "Save Correction" : "Create Prescription"}
                 </button>
               </div>
             </form>
@@ -1070,8 +1180,8 @@ export default function PharmacyPage() {
       {isMedModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
           <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
-            <h2 className="text-2xl font-semibold mb-1 text-foreground">Add Medicine</h2>
-            <p className="text-sm text-muted-foreground mb-6">Add a new medicine to the inventory.</p>
+            <h2 className="text-2xl font-semibold mb-1 text-foreground">{editingMedicineId ? "Edit Medicine" : "Add Medicine"}</h2>
+            <p className="text-sm text-muted-foreground mb-6">{editingMedicineId ? "Correct this medicine's catalog details." : "Add a new medicine to the inventory."}</p>
 
             <form onSubmit={handleAddMedicine} className="flex flex-col gap-4">
               <div>
@@ -1167,10 +1277,7 @@ export default function PharmacyPage() {
               <div className="flex items-center justify-end gap-3 mt-2 w-full">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsMedModalOpen(false);
-                    resetMedForm();
-                  }}
+                  onClick={closeMedModal}
                   className="px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground w-full"
                 >
                   Cancel
@@ -1180,7 +1287,7 @@ export default function PharmacyPage() {
                   disabled={isSubmittingMed}
                   className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full disabled:opacity-60"
                 >
-                  {isSubmittingMed ? "Saving..." : "Save Medicine"}
+                  {isSubmittingMed ? "Saving..." : editingMedicineId ? "Save Changes" : "Save Medicine"}
                 </button>
               </div>
             </form>

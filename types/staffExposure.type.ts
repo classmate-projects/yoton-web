@@ -64,7 +64,10 @@ export interface StaffExposureCreatePayload {
   notes?: string;
 }
 
-export interface StaffExposureUpdatePayload {
+// Same shape as create so the create form can double as the edit form - only accepted while
+// Status is not Closed. eventDateTime is optional here (unlike create) so a plain status-only
+// update - e.g. the list's inline status dropdown - doesn't need to resend the rest of the report.
+export interface StaffExposureUpdatePayload extends Omit<StaffExposureCreatePayload, "eventDateTime"> {
+  eventDateTime?: string;
   status?: string;
-  notes?: string;
 }

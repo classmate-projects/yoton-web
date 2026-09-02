@@ -127,6 +127,7 @@ export interface InjectionType {
   route: string;
   notes: string | null;
   givenAt: string;
+  correctedFromId: string | null;
 }
 
 export interface DressingType {

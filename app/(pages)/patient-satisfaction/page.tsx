@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Smile, Plus, X } from "lucide-react";
+import { Pencil, Plus, Smile, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { PatientSatisfactionService } from "@/services/patientSatisfaction.service";
 import { ReceptionService } from "@/services/reception.service";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { PatientSatisfactionCreatePayload, PatientSatisfactionType } from "@/types/patientSatisfaction.type";
 import { PatientListItemType } from "@/types/appointment.type";
 
@@ -55,6 +56,9 @@ export default function PatientSatisfactionPage() {
   const [form, setForm] = useState(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
   const [patients, setPatients] = useState<PatientListItemType[]>([]);
+  // Set while correcting an existing response - reuses the same form as logging a new one,
+  // matching every other add-form-doubles-as-edit-form in this feature.
+  const [editingResponseId, setEditingResponseId] = useState<string | null>(null);
 
   const fetchResponses = async () => {
     setLoading(true);
@@ -72,6 +76,52 @@ export default function PatientSatisfactionPage() {
     fetchResponses();
     ReceptionService.getAllPatients().then((data) => setPatients(data.patients ?? [])).catch(() => {});
   }, []);
+
+  const resetForm = () => {
+    setForm(emptyForm);
+    setEditingResponseId(null);
+  };
+
+  const startEditResponse = (r: PatientSatisfactionType) => {
+    setForm({
+      patientId: r.patientId || "",
+      specialty: r.specialty || "",
+      collectedDate: r.collectedDate ? r.collectedDate.slice(0, 10) : "",
+      genderCode: r.genderCode || "",
+      ageBandCode: r.ageBandCode || "",
+      nationalityCode: r.nationalityCode || "",
+      whatWorkedWell: r.whatWorkedWell || "",
+      whatNeededImprovement: r.whatNeededImprovement || "",
+      q1Score: r.q1Score != null ? String(r.q1Score) : "",
+      q2Score: r.q2Score != null ? String(r.q2Score) : "",
+      q3Score: r.q3Score != null ? String(r.q3Score) : "",
+      q4Score: r.q4Score != null ? String(r.q4Score) : "",
+      q5Score: r.q5Score != null ? String(r.q5Score) : "",
+      q6Score: r.q6Score != null ? String(r.q6Score) : "",
+      q7Score: r.q7Score != null ? String(r.q7Score) : "",
+      q8Score: r.q8Score != null ? String(r.q8Score) : "",
+      q9Score: r.q9Score != null ? String(r.q9Score) : "",
+      q10Score: r.q10Score != null ? String(r.q10Score) : "",
+      q11Score: r.q11Score != null ? String(r.q11Score) : "",
+    });
+    setEditingResponseId(r.patientSatisfactionResponseId);
+    setShowForm(true);
+  };
+
+  const removeResponse = (r: PatientSatisfactionType) => {
+    confirmDeleteToast(
+      <span>Delete this response from <b className="text-red-500 ml-1">{r.patientName || "Anonymous"}</b>?</span>,
+      async () => {
+        try {
+          await PatientSatisfactionService.remove(r.patientSatisfactionResponseId);
+          toast.success("Response removed");
+          await fetchResponses();
+        } catch {
+          toast.error("Failed to remove response");
+        }
+      }
+    );
+  };
 
   const submitResponse = async () => {
     if (!form.collectedDate) {
@@ -97,13 +147,18 @@ export default function PatientSatisfactionPage() {
 
     try {
       setIsSaving(true);
-      await PatientSatisfactionService.create(payload);
-      toast.success("Response recorded");
-      setForm(emptyForm);
+      if (editingResponseId) {
+        await PatientSatisfactionService.update(editingResponseId, payload);
+        toast.success("Response updated");
+      } else {
+        await PatientSatisfactionService.create(payload);
+        toast.success("Response recorded");
+      }
+      resetForm();
       setShowForm(false);
       await fetchResponses();
     } catch {
-      toast.error("Failed to record response");
+      toast.error(editingResponseId ? "Failed to update response" : "Failed to record response");
     } finally {
       setIsSaving(false);
     }
@@ -121,7 +176,10 @@ export default function PatientSatisfactionPage() {
           </p>
         </div>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => {
+            if (showForm) resetForm();
+            setShowForm((v) => !v);
+          }}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
         >
           {showForm ? <X size={16} /> : <Plus size={16} />}
@@ -225,7 +283,7 @@ export default function PatientSatisfactionPage() {
             disabled={isSaving}
             className="self-start flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
-            Save Response
+            {editingResponseId ? "Save Changes" : "Save Response"}
           </button>
         </div>
       )}
@@ -240,7 +298,15 @@ export default function PatientSatisfactionPage() {
             <div key={r.patientSatisfactionResponseId} className="card p-4 flex flex-col gap-1">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-foreground">{r.patientName || "Anonymous"}</span>
-                <span className="text-xs text-muted-foreground">{new Date(r.collectedDate).toLocaleDateString()}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{new Date(r.collectedDate).toLocaleDateString()}</span>
+                  <button onClick={() => startEditResponse(r)} title="Edit" className="p-1.5 hover:bg-primary/10 rounded-full text-primary">
+                    <Pencil size={13} />
+                  </button>
+                  <button onClick={() => removeResponse(r)} title="Delete" className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               </div>
               {r.specialty && <p className="text-xs text-muted-foreground">{r.specialty}</p>}
             </div>

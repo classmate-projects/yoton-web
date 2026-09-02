@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Plus, X } from "lucide-react";
+import { AlertTriangle, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { ClinicalIncidentService } from "@/services/clinicalIncident.service";
 import { ReceptionService } from "@/services/reception.service";
 import { DepartmentSerivce } from "@/services/department.service";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { ClinicalIncidentCategory, ClinicalIncidentCreatePayload, ClinicalIncidentType } from "@/types/clinicalIncident.type";
 import { PatientListItemType } from "@/types/appointment.type";
 import { DepartmentTypes } from "@/types/department.type";
@@ -198,6 +199,9 @@ export default function ClinicalIncidentsPage() {
   const [patients, setPatients] = useState<PatientListItemType[]>([]);
   const [patientSearch, setPatientSearch] = useState("");
   const [departments, setDepartments] = useState<DepartmentTypes[]>([]);
+  // Set while correcting an existing not-Closed report - reuses the same form as filing a
+  // new one, matching every other add-form-doubles-as-edit-form in this feature.
+  const [editingReportId, setEditingReportId] = useState<string | null>(null);
 
   const fetchReports = async (category?: string) => {
     setLoading(true);
@@ -241,6 +245,63 @@ export default function ClinicalIncidentsPage() {
   const resetForm = () => {
     setForm(emptyForm);
     setPatientSearch("");
+    setEditingReportId(null);
+  };
+
+  const startEditReport = (r: ClinicalIncidentType) => {
+    setForm({
+      category: r.category,
+      patientId: r.patientId || "",
+      departmentId: r.departmentId || "",
+      eventDateTime: r.eventDateTime ? r.eventDateTime.slice(0, 16) : "",
+      description: r.description || "",
+      rootCauseAnalysis: r.rootCauseAnalysis || "",
+      correctiveActions: r.correctiveActions || "",
+      proximateFactors: r.proximateFactors || "",
+      systemsAndProcesses: r.systemsAndProcesses || "",
+      locationText: r.locationText || "",
+      drugName: r.drugName || "",
+      staffCategoryCode: r.staffCategoryCode || "",
+      staffCategoryOtherText: r.staffCategoryOtherText || "",
+      errorStageCode: r.errorStageCode || "",
+      errorTypeCode: r.errorTypeCode || "",
+      errorTypeOtherText: r.errorTypeOtherText || "",
+      levelOfHarmCode: r.levelOfHarmCode || "",
+      contributingFactorCode: r.contributingFactorCode || "",
+      contributingFactorOtherText: r.contributingFactorOtherText || "",
+      errorProneAbbreviationCode: r.errorProneAbbreviationCode || "",
+      stageCode: r.stageCode || "",
+      stageOtherText: r.stageOtherText || "",
+      errorTypeText: r.errorTypeText || "",
+    });
+    setPatientSearch(r.patientName || "");
+    setEditingReportId(r.clinicalIncidentReportId);
+    setShowForm(true);
+  };
+
+  const removeReport = (r: ClinicalIncidentType) => {
+    confirmDeleteToast(
+      <span>Delete this {CATEGORIES.find((c) => c.value === r.category)?.label ?? r.category} report?</span>,
+      async () => {
+        try {
+          await ClinicalIncidentService.remove(r.clinicalIncidentReportId);
+          toast.success("Incident report removed");
+          await fetchReports(filterCategory || undefined);
+        } catch {
+          toast.error("Failed to remove incident report");
+        }
+      }
+    );
+  };
+
+  const reopenReport = async (r: ClinicalIncidentType) => {
+    try {
+      await ClinicalIncidentService.reopen(r.clinicalIncidentReportId);
+      toast.success("Report reopened");
+      await fetchReports(filterCategory || undefined);
+    } catch {
+      toast.error("Failed to reopen report");
+    }
   };
 
   const submitReport = async () => {
@@ -285,13 +346,18 @@ export default function ClinicalIncidentsPage() {
 
     try {
       setIsSaving(true);
-      await ClinicalIncidentService.create(payload);
-      toast.success("Incident report filed");
+      if (editingReportId) {
+        await ClinicalIncidentService.update(editingReportId, payload);
+        toast.success("Incident report updated");
+      } else {
+        await ClinicalIncidentService.create(payload);
+        toast.success("Incident report filed");
+      }
       resetForm();
       setShowForm(false);
       await fetchReports(filterCategory || undefined);
     } catch {
-      toast.error("Failed to file incident report");
+      toast.error(editingReportId ? "Failed to update incident report" : "Failed to file incident report");
     } finally {
       setIsSaving(false);
     }
@@ -319,7 +385,10 @@ export default function ClinicalIncidentsPage() {
           </p>
         </div>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => {
+            if (showForm) resetForm();
+            setShowForm((v) => !v);
+          }}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
         >
           {showForm ? <X size={16} /> : <Plus size={16} />}
@@ -630,7 +699,7 @@ export default function ClinicalIncidentsPage() {
             disabled={isSaving}
             className="self-start flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
-            File Report
+            {editingReportId ? "Save Changes" : "File Report"}
           </button>
         </div>
       )}
@@ -675,15 +744,37 @@ export default function ClinicalIncidentsPage() {
                   </span>
                   {r.departmentName && <span className="text-xs text-muted-foreground">· {r.departmentName}</span>}
                 </div>
-                <select
-                  value={r.status}
-                  onChange={(e) => updateStatus(r.clinicalIncidentReportId, e.target.value)}
-                  className="h-8 text-xs"
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-1.5">
+                  {r.status === "Closed" ? (
+                    <button
+                      onClick={() => reopenReport(r)}
+                      title="Reopen"
+                      className="flex items-center gap-1 h-8 px-2 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10"
+                    >
+                      <RotateCcw size={12} /> Reopen
+                    </button>
+                  ) : (
+                    <select
+                      value={r.status}
+                      onChange={(e) => updateStatus(r.clinicalIncidentReportId, e.target.value)}
+                      className="h-8 text-xs"
+                    >
+                      {STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  )}
+                  {r.status !== "Closed" && (
+                    <>
+                      <button onClick={() => startEditReport(r)} title="Edit" className="p-1.5 hover:bg-primary/10 rounded-full text-primary">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => removeReport(r)} title="Delete" className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive">
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
                 Event: {new Date(r.eventDateTime).toLocaleString()} · Reported: {new Date(r.reportedAt).toLocaleString()}

@@ -44,7 +44,7 @@ import { NursingService } from "@/services/nursing.service";
 import { UserService } from "@/services/user.service";
 import { UserType } from "@/types/user.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
-import { EmrPatientListItem, PatientSummaryType } from "@/types/emr.type";
+import { AllergyType, EmrPatientListItem, PatientSummaryType, SpecialRemarkType } from "@/types/emr.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import {
   CartesianGrid,
@@ -65,6 +65,11 @@ import {
   TriageVitalField,
   TriagePayload,
   VitalsType,
+  InjectionType,
+  DressingType,
+  BloodSugarType,
+  IVFluidsType,
+  NurseNoteType,
 } from "@/types/nursing.type";
 
 const REMARK_TYPES = ["Refusal", "ClinicalConcern", "Other"];
@@ -870,6 +875,7 @@ function NurseWorkbenchInner() {
   // ---------------- MEDICATION ADMINISTRATION FORM ----------------
   const [injectionForm, setInjectionForm] = useState({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
   const [savingInjection, setSavingInjection] = useState(false);
+  const [editingInjectionId, setEditingInjectionId] = useState<string | null>(null);
 
   const saveInjection = async (passwordOverride?: string): Promise<boolean> => {
     if (!encounterId) return false;
@@ -880,7 +886,7 @@ function NurseWorkbenchInner() {
     if (!requireNurseSelected()) return false;
     try {
       setSavingInjection(true);
-      await NursingService.saveInjection({
+      const payload = {
         encounterId,
         medicineName: injectionForm.medicineName.trim(),
         dose: injectionForm.dose.trim(),
@@ -888,9 +894,16 @@ function NurseWorkbenchInner() {
         notes: injectionForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
         password: passwordOverride,
-      });
-      toast.success("Medication administration recorded");
+      };
+      if (editingInjectionId) {
+        await NursingService.updateInjection(editingInjectionId, payload);
+        toast.success("Medication administration corrected");
+      } else {
+        await NursingService.saveInjection(payload);
+        toast.success("Medication administration recorded");
+      }
       setInjectionForm({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
+      setEditingInjectionId(null);
       await refreshChart();
       return true;
     } catch (error) {
@@ -902,6 +915,34 @@ function NurseWorkbenchInner() {
     }
   };
 
+  const startEditInjection = (i: InjectionType) => {
+    setEditingInjectionId(i.injectionRecordId);
+    setInjectionForm({ medicineName: i.medicineName, dose: i.dose, route: i.route || "Oral (PO)", notes: i.notes || "" });
+  };
+
+  const cancelEditInjection = () => {
+    setEditingInjectionId(null);
+    setInjectionForm({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
+  };
+
+  const removeInjectionRecord = async (i: InjectionType, passwordOverride?: string): Promise<boolean> => {
+    if (!requireNurseSelected()) return false;
+    try {
+      await NursingService.removeInjection(i.injectionRecordId, isAdmin ? selectedNurseId : undefined, passwordOverride);
+      toast.success("Medication administration record removed");
+      await refreshChart();
+      return true;
+    } catch (error) {
+      if (handleEncounterLockError(error, (pw) => removeInjectionRecord(i, pw))) return false;
+      toast.error(errorMessage(error, "Failed to remove medication administration record"));
+      return false;
+    }
+  };
+
+  const confirmRemoveInjection = (i: InjectionType) => {
+    confirmDeleteToast(<span>Delete this medication administration record?</span>, () => removeInjectionRecord(i));
+  };
+
   // ---------------- WOUND CARE FORM ----------------
   const [dressingForm, setDressingForm] = useState({
     woundType: "",
@@ -910,6 +951,7 @@ function NurseWorkbenchInner() {
     notes: "",
   });
   const [savingDressing, setSavingDressing] = useState(false);
+  const [editingDressingId, setEditingDressingId] = useState<string | null>(null);
 
   const saveDressing = async (passwordOverride?: string): Promise<boolean> => {
     if (!encounterId) return false;
@@ -920,7 +962,7 @@ function NurseWorkbenchInner() {
     if (!requireNurseSelected()) return false;
     try {
       setSavingDressing(true);
-      await NursingService.saveDressing({
+      const payload = {
         encounterId,
         woundType: dressingForm.woundType,
         dressingMaterial: dressingForm.dressingMaterial,
@@ -928,9 +970,16 @@ function NurseWorkbenchInner() {
         notes: dressingForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
         password: passwordOverride,
-      });
-      toast.success("Wound care entry recorded");
+      };
+      if (editingDressingId) {
+        await NursingService.updateDressing(editingDressingId, payload);
+        toast.success("Wound care entry updated");
+      } else {
+        await NursingService.saveDressing(payload);
+        toast.success("Wound care entry recorded");
+      }
       setDressingForm({ woundType: "", dressingMaterial: "", infectionSigns: false, notes: "" });
+      setEditingDressingId(null);
       await refreshChart();
       return true;
     } catch (error) {
@@ -942,9 +991,32 @@ function NurseWorkbenchInner() {
     }
   };
 
+  const startEditDressing = (d: DressingType) => {
+    setEditingDressingId(d.dressingTaskId);
+    setDressingForm({ woundType: d.woundType || "", dressingMaterial: d.dressingMaterial || "", infectionSigns: d.infectionSigns, notes: d.notes || "" });
+  };
+
+  const cancelEditDressing = () => {
+    setEditingDressingId(null);
+    setDressingForm({ woundType: "", dressingMaterial: "", infectionSigns: false, notes: "" });
+  };
+
+  const removeDressingRecord = (d: DressingType) => {
+    confirmDeleteToast(<span>Delete this wound care entry?</span>, async () => {
+      try {
+        await NursingService.removeDressing(d.dressingTaskId);
+        toast.success("Wound care entry removed");
+        await refreshChart();
+      } catch (error) {
+        toast.error(errorMessage(error, "Failed to remove wound care entry"));
+      }
+    });
+  };
+
   // ---------------- BLOOD SUGAR FORM ----------------
   const [sugarForm, setSugarForm] = useState({ sugarLevel: "", type: "Random", notes: "" });
   const [savingSugar, setSavingSugar] = useState(false);
+  const [editingSugarId, setEditingSugarId] = useState<string | null>(null);
 
   const saveBloodSugar = async (passwordOverride?: string): Promise<boolean> => {
     if (!encounterId) return false;
@@ -955,16 +1027,23 @@ function NurseWorkbenchInner() {
     if (!requireNurseSelected()) return false;
     try {
       setSavingSugar(true);
-      await NursingService.saveBloodSugar({
+      const payload = {
         encounterId,
         sugarLevel: Number(sugarForm.sugarLevel),
         type: sugarForm.type,
         notes: sugarForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
         password: passwordOverride,
-      });
-      toast.success("Blood sugar reading recorded");
+      };
+      if (editingSugarId) {
+        await NursingService.updateBloodSugar(editingSugarId, payload);
+        toast.success("Blood sugar reading updated");
+      } else {
+        await NursingService.saveBloodSugar(payload);
+        toast.success("Blood sugar reading recorded");
+      }
       setSugarForm({ sugarLevel: "", type: "Random", notes: "" });
+      setEditingSugarId(null);
       await refreshChart();
       return true;
     } catch (error) {
@@ -976,9 +1055,32 @@ function NurseWorkbenchInner() {
     }
   };
 
+  const startEditSugar = (b: BloodSugarType) => {
+    setEditingSugarId(b.bloodSugarTaskId);
+    setSugarForm({ sugarLevel: String(b.sugarLevel), type: b.type || "Random", notes: b.notes || "" });
+  };
+
+  const cancelEditSugar = () => {
+    setEditingSugarId(null);
+    setSugarForm({ sugarLevel: "", type: "Random", notes: "" });
+  };
+
+  const removeSugarRecord = (b: BloodSugarType) => {
+    confirmDeleteToast(<span>Delete this blood sugar reading?</span>, async () => {
+      try {
+        await NursingService.removeBloodSugar(b.bloodSugarTaskId);
+        toast.success("Blood sugar reading removed");
+        await refreshChart();
+      } catch (error) {
+        toast.error(errorMessage(error, "Failed to remove blood sugar reading"));
+      }
+    });
+  };
+
   // ---------------- IV FLUIDS FORM ----------------
   const [ivForm, setIvForm] = useState({ fluidType: "", volume: "", rate: "", notes: "" });
   const [savingIv, setSavingIv] = useState(false);
+  const [editingIvId, setEditingIvId] = useState<string | null>(null);
 
   const saveIVFluids = async (passwordOverride?: string): Promise<boolean> => {
     if (!encounterId) return false;
@@ -989,7 +1091,7 @@ function NurseWorkbenchInner() {
     if (!requireNurseSelected()) return false;
     try {
       setSavingIv(true);
-      await NursingService.saveIVFluids({
+      const payload = {
         encounterId,
         fluidType: ivForm.fluidType.trim(),
         volume: Number(ivForm.volume),
@@ -997,9 +1099,16 @@ function NurseWorkbenchInner() {
         notes: ivForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
         password: passwordOverride,
-      });
-      toast.success("IV fluids entry recorded");
+      };
+      if (editingIvId) {
+        await NursingService.updateIVFluids(editingIvId, payload);
+        toast.success("IV fluids entry updated");
+      } else {
+        await NursingService.saveIVFluids(payload);
+        toast.success("IV fluids entry recorded");
+      }
       setIvForm({ fluidType: "", volume: "", rate: "", notes: "" });
+      setEditingIvId(null);
       await refreshChart();
       return true;
     } catch (error) {
@@ -1011,9 +1120,32 @@ function NurseWorkbenchInner() {
     }
   };
 
+  const startEditIv = (f: IVFluidsType) => {
+    setEditingIvId(f.ivFluidsTaskId);
+    setIvForm({ fluidType: f.fluidType || "", volume: String(f.volume), rate: String(f.rate), notes: f.notes || "" });
+  };
+
+  const cancelEditIv = () => {
+    setEditingIvId(null);
+    setIvForm({ fluidType: "", volume: "", rate: "", notes: "" });
+  };
+
+  const removeIvRecord = (f: IVFluidsType) => {
+    confirmDeleteToast(<span>Delete this IV fluids entry?</span>, async () => {
+      try {
+        await NursingService.removeIVFluids(f.ivFluidsTaskId);
+        toast.success("IV fluids entry removed");
+        await refreshChart();
+      } catch (error) {
+        toast.error(errorMessage(error, "Failed to remove IV fluids entry"));
+      }
+    });
+  };
+
   // ---------------- ALLERGY FORM ----------------
   const [allergyForm, setAllergyForm] = useState({ substance: "", reaction: "" });
   const [savingAllergy, setSavingAllergy] = useState(false);
+  const [editingAllergyId, setEditingAllergyId] = useState<string | null>(null);
 
   const saveAllergy = async () => {
     if (!selectedPatientId) return;
@@ -1026,16 +1158,19 @@ function NurseWorkbenchInner() {
     if (!requireDoctorSelectedForAllergy()) return;
     try {
       setSavingAllergy(true);
-      await EmrService.addAllergy(
-        selectedPatientId,
-        {
-          substance: allergyForm.substance.trim(),
-          reaction: allergyForm.reaction.trim() || undefined,
-        },
-        isAdmin ? selectedDoctorId : undefined
-      );
-      toast.success("Allergy recorded");
+      const payload = {
+        substance: allergyForm.substance.trim(),
+        reaction: allergyForm.reaction.trim() || undefined,
+      };
+      if (editingAllergyId) {
+        await EmrService.updateAllergy(editingAllergyId, payload, isAdmin ? selectedDoctorId : undefined);
+        toast.success("Allergy corrected");
+      } else {
+        await EmrService.addAllergy(selectedPatientId, payload, isAdmin ? selectedDoctorId : undefined);
+        toast.success("Allergy recorded");
+      }
       setAllergyForm({ substance: "", reaction: "" });
+      setEditingAllergyId(null);
       const res = await EmrService.getPatientSummary(selectedPatientId);
       setSummary(res.data);
     } catch (error) {
@@ -1045,9 +1180,37 @@ function NurseWorkbenchInner() {
     }
   };
 
+  const startEditAllergy = (a: AllergyType) => {
+    setEditingAllergyId(a.patientAllergyId);
+    setAllergyForm({ substance: a.substance, reaction: a.reaction || "" });
+  };
+
+  const cancelEditAllergy = () => {
+    setEditingAllergyId(null);
+    setAllergyForm({ substance: "", reaction: "" });
+  };
+
+  const removeAllergyRecord = (a: AllergyType) => {
+    if (!selectedPatientId) return;
+    confirmDeleteToast(
+      <span>Delete allergy <b className="text-red-500 ml-1">{a.substance}</b>?</span>,
+      async () => {
+        try {
+          await EmrService.removeAllergy(a.patientAllergyId, isAdmin ? selectedDoctorId : undefined);
+          toast.success("Allergy removed");
+          const res = await EmrService.getPatientSummary(selectedPatientId);
+          setSummary(res.data);
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove allergy"));
+        }
+      }
+    );
+  };
+
   // ---------------- SPECIAL REMARK FORM ----------------
   const [remarkForm, setRemarkForm] = useState({ remarkType: REMARK_TYPES[0], description: "" });
   const [savingRemark, setSavingRemark] = useState(false);
+  const [editingRemarkId, setEditingRemarkId] = useState<string | null>(null);
 
   const saveSpecialRemark = async () => {
     if (!selectedPatientId) return;
@@ -1057,12 +1220,19 @@ function NurseWorkbenchInner() {
     }
     try {
       setSavingRemark(true);
-      await NursingService.addSpecialRemark(selectedPatientId, {
+      const payload = {
         remarkType: remarkForm.remarkType,
         description: remarkForm.description.trim(),
-      });
-      toast.success("Special remark added");
+      };
+      if (editingRemarkId) {
+        await NursingService.updateSpecialRemark(editingRemarkId, payload);
+        toast.success("Special remark updated");
+      } else {
+        await NursingService.addSpecialRemark(selectedPatientId, payload);
+        toast.success("Special remark added");
+      }
       setRemarkForm({ remarkType: REMARK_TYPES[0], description: "" });
+      setEditingRemarkId(null);
       await refreshChart();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to add special remark"));
@@ -1071,10 +1241,36 @@ function NurseWorkbenchInner() {
     }
   };
 
+  const startEditRemark = (r: SpecialRemarkType) => {
+    setEditingRemarkId(r.specialRemarkId);
+    setRemarkForm({ remarkType: r.remarkType, description: r.description });
+  };
+
+  const cancelEditRemark = () => {
+    setEditingRemarkId(null);
+    setRemarkForm({ remarkType: REMARK_TYPES[0], description: "" });
+  };
+
+  const removeSpecialRemark = (r: SpecialRemarkType) => {
+    confirmDeleteToast(<span>Delete this special remark?</span>, async () => {
+      try {
+        await NursingService.removeSpecialRemark(r.specialRemarkId);
+        toast.success("Special remark removed");
+        await refreshChart();
+      } catch (error) {
+        toast.error(errorMessage(error, "Failed to remove special remark"));
+      }
+    });
+  };
+
   // ---------------- NURSE NOTES (rich text + confidential toggle) ----------------
+  // Confidential notes are write-only from this composer (no confidential-note list is
+  // rendered on this page - see the standalone /nursing/confidential-notes page for that,
+  // which has its own edit/delete). Only the shared Nurse Notes list below is editable here.
   const [nurseNoteHtml, setNurseNoteHtml] = useState("");
   const [nurseNoteConfidential, setNurseNoteConfidential] = useState(false);
   const [savingNurseNote, setSavingNurseNote] = useState(false);
+  const [editingNurseNoteId, setEditingNurseNoteId] = useState<string | null>(null);
 
   const saveNurseNote = async () => {
     if (!selectedPatientId) return;
@@ -1091,7 +1287,10 @@ function NurseWorkbenchInner() {
         isConfidential: nurseNoteConfidential,
         nurseId: isAdmin ? selectedNurseId : undefined,
       };
-      if (nurseNoteConfidential) {
+      if (editingNurseNoteId) {
+        await NursingService.updateNote(editingNurseNoteId, payload);
+        toast.success("Nurse note updated");
+      } else if (nurseNoteConfidential) {
         await NursingService.addConfidentialNote(selectedPatientId, payload);
         toast.success("Confidential note saved — visible only to you");
       } else {
@@ -1100,12 +1299,37 @@ function NurseWorkbenchInner() {
       }
       setNurseNoteHtml("");
       setNurseNoteConfidential(false);
+      setEditingNurseNoteId(null);
       await refreshChart();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to save note"));
     } finally {
       setSavingNurseNote(false);
     }
+  };
+
+  const startEditNurseNote = (n: NurseNoteType) => {
+    setEditingNurseNoteId(n.nurseNoteId);
+    setNurseNoteHtml(n.contentHtml);
+    setNurseNoteConfidential(false);
+  };
+
+  const cancelEditNurseNote = () => {
+    setEditingNurseNoteId(null);
+    setNurseNoteHtml("");
+    setNurseNoteConfidential(false);
+  };
+
+  const removeNurseNote = (n: NurseNoteType) => {
+    confirmDeleteToast(<span>Delete this nurse note?</span>, async () => {
+      try {
+        await NursingService.removeNote(n.nurseNoteId);
+        toast.success("Nurse note removed");
+        await refreshChart();
+      } catch (error) {
+        toast.error(errorMessage(error, "Failed to remove note"));
+      }
+    });
   };
 
   // ---------------- TREATMENTS (doctor-ordered, mark done only) ----------------
@@ -1269,9 +1493,17 @@ function NurseWorkbenchInner() {
                   {summary.allergies.map((a) => (
                     <span
                       key={a.patientAllergyId}
-                      className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-2.5 py-1 text-xs font-semibold text-red-700 dark:text-red-400"
+                      className="group flex items-center gap-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-2.5 py-1 text-xs font-semibold text-red-700 dark:text-red-400"
                     >
                       {a.substance} {a.reaction ? `— ${a.reaction}` : ""}
+                      <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
+                          <Pencil size={10} />
+                        </button>
+                        <button onClick={() => removeAllergyRecord(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
+                          <Trash2 size={10} />
+                        </button>
+                      </span>
                     </span>
                   ))}
                 </div>
@@ -1283,10 +1515,18 @@ function NurseWorkbenchInner() {
                   {chart.specialRemarks.map((r) => (
                     <span
                       key={r.specialRemarkId}
-                      className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-400"
+                      className="group flex items-center gap-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-400"
                       title={r.description}
                     >
                       {r.remarkType}: {r.description}
+                      <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => startEditRemark(r)} title="Edit" className="p-0.5 hover:bg-black/10 rounded-full">
+                          <Pencil size={10} />
+                        </button>
+                        <button onClick={() => removeSpecialRemark(r)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
+                          <Trash2 size={10} />
+                        </button>
+                      </span>
                     </span>
                   ))}
                 </div>
@@ -1780,18 +2020,35 @@ function NurseWorkbenchInner() {
                       </select>
                     </div>
                     <textarea placeholder="Notes..." value={injectionForm.notes} onChange={(e) => setInjectionForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={() => saveInjection()} disabled={savingInjection} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Entry
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveInjection()} disabled={savingInjection} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingInjectionId ? "Save Correction" : "Save Entry"}
+                      </button>
+                      {editingInjectionId && (
+                        <button onClick={cancelEditInjection} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
 
                 {chart && chart.injections.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
                     {chart.injections.slice(0, 5).map((i) => (
-                      <div key={i.injectionRecordId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div key={i.injectionRecordId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
                         <span className="font-medium">{i.medicineName} · {i.dose} · {i.route}</span>
-                        <span className="text-xs text-muted-foreground">{formatDateTime(i.givenAt)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{formatDateTime(i.givenAt)}</span>
+                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => startEditInjection(i)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => confirmRemoveInjection(i)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1829,20 +2086,37 @@ function NurseWorkbenchInner() {
                       <span className="text-sm">Signs of infection observed (redness, swelling, warmth, or discharge)</span>
                     </div>
                     <textarea placeholder="Notes..." value={dressingForm.notes} onChange={(e) => setDressingForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={() => saveDressing()} disabled={savingDressing} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Entry
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveDressing()} disabled={savingDressing} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingDressingId ? "Save Changes" : "Save Entry"}
+                      </button>
+                      {editingDressingId && (
+                        <button onClick={cancelEditDressing} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
 
                 {chart && chart.dressings.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
                     {chart.dressings.slice(0, 5).map((d) => (
-                      <div key={d.dressingTaskId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div key={d.dressingTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
                         <span className="font-medium">{d.woundType} · {d.dressingMaterial}</span>
-                        <span className={`text-xs ${d.infectionSigns ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>
-                          {d.infectionSigns ? "Infection signs" : formatDate(d.createdAt)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs ${d.infectionSigns ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>
+                            {d.infectionSigns ? "Infection signs" : formatDate(d.createdAt)}
+                          </span>
+                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => startEditDressing(d)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => removeDressingRecord(d)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1867,18 +2141,35 @@ function NurseWorkbenchInner() {
                       </select>
                     </div>
                     <textarea placeholder="Notes..." value={sugarForm.notes} onChange={(e) => setSugarForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={() => saveBloodSugar()} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Entry
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveBloodSugar()} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingSugarId ? "Save Changes" : "Save Entry"}
+                      </button>
+                      {editingSugarId && (
+                        <button onClick={cancelEditSugar} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
 
                 {chart && chart.bloodSugarChecks.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
                     {chart.bloodSugarChecks.slice(0, 5).map((s) => (
-                      <div key={s.bloodSugarTaskId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div key={s.bloodSugarTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
                         <span className="font-medium">{s.sugarLevel} mg/dL · {s.type}</span>
-                        <span className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</span>
+                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => startEditSugar(s)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => removeSugarRecord(s)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1898,18 +2189,35 @@ function NurseWorkbenchInner() {
                       <input type="number" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value }))} className="h-10 text-sm" />
                     </div>
                     <textarea placeholder="Notes..." value={ivForm.notes} onChange={(e) => setIvForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={() => saveIVFluids()} disabled={savingIv} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Entry
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveIVFluids()} disabled={savingIv} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingIvId ? "Save Changes" : "Save Entry"}
+                      </button>
+                      {editingIvId && (
+                        <button onClick={cancelEditIv} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
 
                 {chart && chart.ivFluids.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
                     {chart.ivFluids.slice(0, 5).map((f) => (
-                      <div key={f.ivFluidsTaskId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div key={f.ivFluidsTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
                         <span className="font-medium">{f.fluidType} · {f.volume}ml @ {f.rate}ml/hr</span>
-                        <span className="text-xs text-muted-foreground">{formatDateTime(f.createdAt)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{formatDateTime(f.createdAt)}</span>
+                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => startEditIv(f)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => removeIvRecord(f)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1928,9 +2236,16 @@ function NurseWorkbenchInner() {
                     <input type="text" placeholder="Substance (e.g. Penicillin)" value={allergyForm.substance} onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))} className="h-10 text-sm" />
                     <input type="text" placeholder="Reaction (optional)" value={allergyForm.reaction} onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))} className="h-10 text-sm" />
                   </div>
-                  <button onClick={saveAllergy} disabled={savingAllergy} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                    <Save size={15} /> Add Allergy
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={saveAllergy} disabled={savingAllergy} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> {editingAllergyId ? "Save Correction" : "Add Allergy"}
+                    </button>
+                    {editingAllergyId && (
+                      <button onClick={cancelEditAllergy} className="text-sm font-semibold text-muted-foreground hover:underline">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Special Remarks — write-only here; already shown as chips in the header card above */}
@@ -1946,9 +2261,16 @@ function NurseWorkbenchInner() {
                     </select>
                     <input type="text" placeholder="Description" value={remarkForm.description} onChange={(e) => setRemarkForm((p) => ({ ...p, description: e.target.value }))} className="h-10 text-sm" />
                   </div>
-                  <button onClick={saveSpecialRemark} disabled={savingRemark} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                    <Save size={15} /> Add Remark
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={saveSpecialRemark} disabled={savingRemark} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> {editingRemarkId ? "Save Changes" : "Add Remark"}
+                    </button>
+                    {editingRemarkId && (
+                      <button onClick={cancelEditRemark} className="text-sm font-semibold text-muted-foreground hover:underline">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -1967,18 +2289,35 @@ function NurseWorkbenchInner() {
                       <Lock size={13} className="text-muted-foreground" /> Mark as confidential (visible only to me)
                     </span>
                   </div>
-                  <button onClick={saveNurseNote} disabled={savingNurseNote} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                    <Save size={15} /> {nurseNoteConfidential ? "Save Confidentially" : "Save Note"}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={saveNurseNote} disabled={savingNurseNote} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> {editingNurseNoteId ? "Save Changes" : nurseNoteConfidential ? "Save Confidentially" : "Save Note"}
+                    </button>
+                    {editingNurseNoteId && (
+                      <button onClick={cancelEditNurseNote} className="text-sm font-semibold text-muted-foreground hover:underline">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
 
               {chart && chart.nurseNotes.length > 0 && (
                 <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
                   {chart.nurseNotes.slice(0, 5).map((n) => (
-                    <div key={n.nurseNoteId} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                    <div key={n.nurseNoteId} className="group rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
                       <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: n.contentHtml }} />
-                      <span className="text-xs text-muted-foreground">{n.nurseName || "Nurse"} · {formatDateTime(n.createdAt)}</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">{n.nurseName || "Nurse"} · {formatDateTime(n.createdAt)}</span>
+                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => startEditNurseNote(n)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                            <Pencil size={12} />
+                          </button>
+                          <button onClick={() => removeNurseNote(n)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>

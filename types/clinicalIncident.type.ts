@@ -76,8 +76,11 @@ export interface ClinicalIncidentCreatePayload {
   contributingFactorOtherText?: string;
 }
 
-export interface ClinicalIncidentUpdatePayload {
-  rootCauseAnalysis?: string;
-  correctiveActions?: string;
+// Same shape as create (minus category, which never changes on an edit) so the create form
+// can double as the edit form - only accepted while Status is not Closed. eventDateTime is
+// optional here (unlike create) so a plain status-only update - e.g. the list's inline status
+// dropdown - doesn't need to resend the rest of the report.
+export interface ClinicalIncidentUpdatePayload extends Omit<ClinicalIncidentCreatePayload, "category" | "eventDateTime"> {
+  eventDateTime?: string;
   status?: string;
 }

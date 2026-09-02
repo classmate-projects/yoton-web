@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Droplets, Plus, Trash2 } from "lucide-react";
+import { Droplets, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { HandHygieneService } from "@/services/handHygiene.service";
 import { DepartmentSerivce } from "@/services/department.service";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { HandHygieneObservationInput, HandHygieneSessionType } from "@/types/handHygiene.type";
 import { DepartmentTypes } from "@/types/department.type";
 
@@ -55,6 +56,10 @@ export default function HandHygienePage() {
   const [observationDate, setObservationDate] = useState("");
   const [observations, setObservations] = useState<HandHygieneObservationInput[]>([{ ...emptyObservation }]);
   const [isSaving, setIsSaving] = useState(false);
+  // Set while correcting an existing session - reuses the same form as recording a new one,
+  // matching every other add-form-doubles-as-edit-form in this feature. Editing replaces the
+  // whole observation batch rather than diffing individual rows.
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
 
   const fetchSessions = async () => {
     setLoading(true);
@@ -77,6 +82,45 @@ export default function HandHygienePage() {
     setObservations((prev) => prev.map((o, i) => (i === index ? { ...o, [field]: value } : o)));
   };
 
+  const resetSessionForm = () => {
+    setDepartmentId("");
+    setWard("");
+    setObservationDate("");
+    setObservations([{ ...emptyObservation }]);
+    setEditingSessionId(null);
+  };
+
+  const startEditSession = (s: HandHygieneSessionType) => {
+    setDepartmentId(s.departmentId || "");
+    setWard(s.ward || "");
+    setObservationDate(s.observationDate ? s.observationDate.slice(0, 10) : "");
+    setObservations(
+      s.observations.length > 0
+        ? s.observations.map((o) => ({
+            professionalCode: o.professionalCode || "",
+            indicationCode: o.indicationCode || "",
+            actionCode: o.actionCode || "",
+          }))
+        : [{ ...emptyObservation }]
+    );
+    setEditingSessionId(s.handHygieneAuditSessionId);
+  };
+
+  const removeSession = (s: HandHygieneSessionType) => {
+    confirmDeleteToast(
+      <span>Delete this audit session ({s.observationCount} observations)?</span>,
+      async () => {
+        try {
+          await HandHygieneService.removeSession(s.handHygieneAuditSessionId);
+          toast.success("Audit session removed");
+          await fetchSessions();
+        } catch {
+          toast.error("Failed to remove audit session");
+        }
+      }
+    );
+  };
+
   const submitSession = async () => {
     if (!observationDate) {
       toast.error("Observation date is required");
@@ -90,20 +134,23 @@ export default function HandHygienePage() {
 
     try {
       setIsSaving(true);
-      await HandHygieneService.createSession({
+      const payload = {
         departmentId: departmentId || undefined,
         ward: ward || undefined,
         observationDate,
         observations: validObservations,
-      });
-      toast.success("Audit session recorded");
-      setDepartmentId("");
-      setWard("");
-      setObservationDate("");
-      setObservations([{ ...emptyObservation }]);
+      };
+      if (editingSessionId) {
+        await HandHygieneService.updateSession(editingSessionId, payload);
+        toast.success("Audit session updated");
+      } else {
+        await HandHygieneService.createSession(payload);
+        toast.success("Audit session recorded");
+      }
+      resetSessionForm();
       await fetchSessions();
     } catch {
-      toast.error("Failed to record audit session");
+      toast.error(editingSessionId ? "Failed to update audit session" : "Failed to record audit session");
     } finally {
       setIsSaving(false);
     }
@@ -194,13 +241,20 @@ export default function HandHygienePage() {
           </button>
         </div>
 
-        <button
-          onClick={submitSession}
-          disabled={isSaving}
-          className="self-start flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-        >
-          Save Session
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={submitSession}
+            disabled={isSaving}
+            className="self-start flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {editingSessionId ? "Save Changes" : "Save Session"}
+          </button>
+          {editingSessionId && (
+            <button onClick={resetSessionForm} className="text-sm font-semibold text-muted-foreground hover:underline">
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -219,9 +273,17 @@ export default function HandHygienePage() {
                   {new Date(s.observationDate).toLocaleDateString()} · {s.auditorName || "Unknown auditor"}
                 </p>
               </div>
-              <span className="rounded-full bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5">
-                {s.observationCount} observations
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5">
+                  {s.observationCount} observations
+                </span>
+                <button onClick={() => startEditSession(s)} title="Edit" className="p-1.5 hover:bg-primary/10 rounded-full text-primary">
+                  <Pencil size={14} />
+                </button>
+                <button onClick={() => removeSession(s)} title="Delete" className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive">
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
           ))}
         </div>

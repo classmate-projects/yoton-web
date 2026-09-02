@@ -19,6 +19,14 @@ export const LabService = {
     const { data } = await api.post(ENDPOINTS.LAB.CREATE, payload);
     return data;
   },
+  update: async (id: string, payload: CreateLabRequestPayload) => {
+    const { data } = await api.put(ENDPOINTS.LAB.UPDATE(id), payload);
+    return data;
+  },
+  remove: async (id: string) => {
+    const { data } = await api.delete(ENDPOINTS.LAB.REMOVE(id));
+    return data;
+  },
   updateStatus: async (labRequestId: string, status: string) => {
     const { data } = await api.post(ENDPOINTS.LAB.UPDATE_STATUS, {
       labRequestId,

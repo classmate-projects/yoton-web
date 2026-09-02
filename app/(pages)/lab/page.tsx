@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
-import { FlaskConical } from "lucide-react";
+import { FlaskConical, Pencil, Trash2 } from "lucide-react";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { LabService } from "@/services/lab.service";
 import { ReceptionService } from "@/services/reception.service";
 import { ConfigListService } from "@/services/configList.service";
@@ -75,6 +76,9 @@ export default function LaboratoryPage() {
   const [priority, setPriority] = useState("Normal");
   const [source, setSource] = useState("InHouse");
   const [price, setPrice] = useState("");
+  // Set while correcting an existing not-yet-Completed request - reuses the same modal/form
+  // as creating a new one, matching every other add-form-doubles-as-edit-form in this feature.
+  const [editingLabRequestId, setEditingLabRequestId] = useState<string | null>(null);
 
   const [uploadingId, setUploadingId] = useState<string | null>(null);
 
@@ -180,12 +184,46 @@ export default function LaboratoryPage() {
 
   const openCreateModal = () => {
     resetForm();
+    setEditingLabRequestId(null);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (request: LabRequestType) => {
+    resetForm();
+    setEditingLabRequestId(request.labRequestId);
+    const matchedPatient = patients.find((p) => p.opId === request.patientId);
+    if (matchedPatient) {
+      setSelectedPatient(matchedPatient);
+      setPatientSearch(matchedPatient.name);
+    }
+    setSelectedDoctorId(request.doctorId || "");
+    setTestType(request.testType || "");
+    setTestListItemId(request.listItemId || undefined);
+    setPriority(request.priority);
+    setSource(request.source);
+    setPrice(request.price != null ? String(request.price) : "");
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
+    setEditingLabRequestId(null);
     resetForm();
+  };
+
+  const removeLabRequest = (request: LabRequestType) => {
+    confirmDeleteToast(
+      <span>Delete this lab request for <b className="text-red-500 ml-1">{request.patientName}</b>?</span>,
+      async () => {
+        try {
+          await LabService.remove(request.labRequestId);
+          toast.success("Lab request removed");
+          fetchAll();
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove lab request"));
+        }
+      }
+    );
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -197,7 +235,7 @@ export default function LaboratoryPage() {
 
     try {
       setIsSubmitting(true);
-      const data = await LabService.create({
+      const payload = {
         patientId: selectedPatient.opId,
         doctorId: selectedDoctorId || undefined,
         testType,
@@ -205,12 +243,15 @@ export default function LaboratoryPage() {
         priority,
         source,
         price: price ? Number(price) : undefined,
-      });
-      toast.success(data.message || "Lab request created");
+      };
+      const data = editingLabRequestId
+        ? await LabService.update(editingLabRequestId, payload)
+        : await LabService.create(payload);
+      toast.success(data.message || (editingLabRequestId ? "Lab request corrected" : "Lab request created"));
       closeModal();
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to create lab request"));
+      toast.error(errorMessage(error, editingLabRequestId ? "Failed to correct lab request" : "Failed to create lab request"));
     } finally {
       setIsSubmitting(false);
     }
@@ -428,9 +469,9 @@ export default function LaboratoryPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
           <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
-            <h2 className="text-2xl font-semibold mb-1 text-foreground">New Lab Request</h2>
+            <h2 className="text-2xl font-semibold mb-1 text-foreground">{editingLabRequestId ? "Correct Lab Request" : "New Lab Request"}</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              Register a new laboratory test request for a patient.
+              {editingLabRequestId ? "Correcting a request before it's completed." : "Register a new laboratory test request for a patient."}
             </p>
 
             <form onSubmit={handleCreate} className="flex flex-col gap-4">
@@ -561,7 +602,7 @@ export default function LaboratoryPage() {
                   disabled={isSubmitting}
                   className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full disabled:opacity-60"
                 >
-                  {isSubmitting ? "Saving..." : "Create Request"}
+                  {isSubmitting ? "Saving..." : editingLabRequestId ? "Save Correction" : "Create Request"}
                 </button>
               </div>
             </form>
@@ -710,6 +751,24 @@ export default function LaboratoryPage() {
                             >
                               View Report
                             </button>
+                          )}
+                          {!isNurse && r.status !== "Completed" && r.status !== "Delivered" && (
+                            <>
+                              <button
+                                onClick={() => openEditModal(r)}
+                                title="Correct request"
+                                className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                onClick={() => removeLabRequest(r)}
+                                title="Delete request"
+                                className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>

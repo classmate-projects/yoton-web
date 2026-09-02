@@ -15,4 +15,12 @@ export const ClinicalIncidentService = {
     const { data } = await api.put(ENDPOINTS.CLINICAL_INCIDENT.UPDATE(id), payload);
     return data;
   },
+  reopen: async (id: string) => {
+    const { data } = await api.put(ENDPOINTS.CLINICAL_INCIDENT.REOPEN(id));
+    return data;
+  },
+  remove: async (id: string) => {
+    const { data } = await api.delete(ENDPOINTS.CLINICAL_INCIDENT.REMOVE(id));
+    return data;
+  },
 };

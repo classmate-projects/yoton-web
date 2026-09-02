@@ -38,6 +38,7 @@ export interface LabRequestType {
   lastPrintedAt: string | null;
   lastPrintedByName: string | null;
   resultValues: LabResultValueType[];
+  correctedFromId: string | null;
 }
 
 export interface LabSummaryType {

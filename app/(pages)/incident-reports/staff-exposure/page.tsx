@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShieldAlert, Plus, X } from "lucide-react";
+import { Pencil, Plus, RotateCcw, ShieldAlert, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { StaffExposureService } from "@/services/staffExposure.service";
 import { UserService } from "@/services/user.service";
 import { DepartmentSerivce } from "@/services/department.service";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { StaffExposureCreatePayload, StaffExposureType } from "@/types/staffExposure.type";
 import { DepartmentTypes } from "@/types/department.type";
 
@@ -92,6 +93,9 @@ export default function StaffExposurePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [departments, setDepartments] = useState<DepartmentTypes[]>([]);
+  // Set while correcting an existing not-Closed report - reuses the same form as filing a
+  // new one, matching every other add-form-doubles-as-edit-form in this feature.
+  const [editingIncidentId, setEditingIncidentId] = useState<string | null>(null);
 
   const fetchIncidents = async () => {
     setLoading(true);
@@ -115,6 +119,64 @@ export default function StaffExposurePage() {
   }, []);
 
   const exposureType = form.exposureTypeCode;
+
+  const resetForm = () => {
+    setForm(emptyForm);
+    setEditingIncidentId(null);
+  };
+
+  const startEditReport = (i: StaffExposureType) => {
+    setForm({
+      exposedStaffUserId: i.exposedStaffUserId || "",
+      isTempAgencyStaff: i.isTempAgencyStaff,
+      position: i.position || "",
+      homeDepartmentId: i.homeDepartmentId || "",
+      hoursOnDutyAtExposure: i.hoursOnDutyAtExposure != null ? String(i.hoursOnDutyAtExposure) : "",
+      eventDateTime: i.eventDateTime ? i.eventDateTime.slice(0, 16) : "",
+      exposureTypeCode: i.exposureTypeCode || "",
+      fluidTissueTypeCode: i.fluidTissueTypeCode || "",
+      exposureLocationCode: i.exposureLocationCode || "",
+      bodySiteCode: i.bodySiteCode || "",
+      bodySiteOtherText: i.bodySiteOtherText || "",
+      objectCausingInjuryCode: i.objectCausingInjuryCode || "",
+      objectCausingInjuryDetailText: i.objectCausingInjuryDetailText || "",
+      injuryDescriptionText: i.injuryDescriptionText || "",
+      injuryTypeCode: i.injuryTypeCode || "",
+      bloodExposureAmountCode: i.bloodExposureAmountCode || "",
+      activityCode: i.activityCode || "",
+      barriersUsedCode: i.barriersUsedCode || "",
+      woundDescriptionCode: i.woundDescriptionCode || "",
+      biteActivityCode: i.biteActivityCode || "",
+      notes: i.notes || "",
+    });
+    setEditingIncidentId(i.staffExposureIncidentId);
+    setShowForm(true);
+  };
+
+  const removeReport = (i: StaffExposureType) => {
+    confirmDeleteToast(
+      <span>Delete this staff exposure report?</span>,
+      async () => {
+        try {
+          await StaffExposureService.remove(i.staffExposureIncidentId);
+          toast.success("Exposure report removed");
+          await fetchIncidents();
+        } catch {
+          toast.error("Failed to remove exposure report");
+        }
+      }
+    );
+  };
+
+  const reopenReport = async (i: StaffExposureType) => {
+    try {
+      await StaffExposureService.reopen(i.staffExposureIncidentId);
+      toast.success("Report reopened");
+      await fetchIncidents();
+    } catch {
+      toast.error("Failed to reopen report");
+    }
+  };
 
   const submitReport = async () => {
     if (!form.eventDateTime) {
@@ -152,13 +214,18 @@ export default function StaffExposurePage() {
 
     try {
       setIsSaving(true);
-      await StaffExposureService.create(payload);
-      toast.success("Exposure incident reported");
-      setForm(emptyForm);
+      if (editingIncidentId) {
+        await StaffExposureService.update(editingIncidentId, payload);
+        toast.success("Exposure report updated");
+      } else {
+        await StaffExposureService.create(payload);
+        toast.success("Exposure incident reported");
+      }
+      resetForm();
       setShowForm(false);
       await fetchIncidents();
     } catch {
-      toast.error("Failed to report exposure incident");
+      toast.error(editingIncidentId ? "Failed to update exposure report" : "Failed to report exposure incident");
     } finally {
       setIsSaving(false);
     }
@@ -188,7 +255,10 @@ export default function StaffExposurePage() {
           </p>
         </div>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => {
+            if (showForm) resetForm();
+            setShowForm((v) => !v);
+          }}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
         >
           {showForm ? <X size={16} /> : <Plus size={16} />}
@@ -397,7 +467,7 @@ export default function StaffExposurePage() {
             disabled={isSaving}
             className="self-start flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
-            Report Exposure
+            {editingIncidentId ? "Save Changes" : "Report Exposure"}
           </button>
         </div>
       )}
@@ -417,15 +487,37 @@ export default function StaffExposurePage() {
                   </span>
                   {i.homeDepartmentName && <span className="text-xs text-muted-foreground">· {i.homeDepartmentName}</span>}
                 </div>
-                <select
-                  value={i.status}
-                  onChange={(e) => updateStatus(i.staffExposureIncidentId, e.target.value)}
-                  className="h-8 text-xs"
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-1.5">
+                  {i.status === "Closed" ? (
+                    <button
+                      onClick={() => reopenReport(i)}
+                      title="Reopen"
+                      className="flex items-center gap-1 h-8 px-2 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10"
+                    >
+                      <RotateCcw size={12} /> Reopen
+                    </button>
+                  ) : (
+                    <select
+                      value={i.status}
+                      onChange={(e) => updateStatus(i.staffExposureIncidentId, e.target.value)}
+                      className="h-8 text-xs"
+                    >
+                      {STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  )}
+                  {i.status !== "Closed" && (
+                    <>
+                      <button onClick={() => startEditReport(i)} title="Edit" className="p-1.5 hover:bg-primary/10 rounded-full text-primary">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => removeReport(i)} title="Delete" className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive">
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
                 Event: {new Date(i.eventDateTime).toLocaleString()} · Reported: {new Date(i.reportedAt).toLocaleString()}

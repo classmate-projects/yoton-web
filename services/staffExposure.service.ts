@@ -15,4 +15,12 @@ export const StaffExposureService = {
     const { data } = await api.put(ENDPOINTS.STAFF_EXPOSURE.UPDATE(id), payload);
     return data;
   },
+  reopen: async (id: string) => {
+    const { data } = await api.put(ENDPOINTS.STAFF_EXPOSURE.REOPEN(id));
+    return data;
+  },
+  remove: async (id: string) => {
+    const { data } = await api.delete(ENDPOINTS.STAFF_EXPOSURE.REMOVE(id));
+    return data;
+  },
 };
