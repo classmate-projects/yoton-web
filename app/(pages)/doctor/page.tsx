@@ -32,6 +32,7 @@ import {
   X,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import DatePicker from "@/components/DatePicker";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
 import ReviewOfSystemsPanel, { ReviewOfSystemsValue } from "@/components/doctor/ReviewOfSystemsPanel";
@@ -2139,11 +2140,11 @@ function DoctorWorkbenchInner() {
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <CalendarPlus size={18} className="text-primary" /> Follow-Up
                   </h2>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={followUpForm.followUpDate}
-                    onChange={(e) => setFollowUpForm((p) => ({ ...p, followUpDate: e.target.value }))}
-                    className="h-10 text-sm"
+                    onChange={(v) => setFollowUpForm((p) => ({ ...p, followUpDate: v }))}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
                   />
                   <textarea
                     placeholder="Follow-up instructions (optional)"

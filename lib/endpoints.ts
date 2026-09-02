@@ -59,6 +59,9 @@ export const ENDPOINTS = {
         GET_VISIT_QUEUE: (status?: string) => `/api/reception/visit/queue${status ? `?status=${status}` : ""}`,
         UPLOAD_DOCUMENT: (patientId: string) => `/api/reception/patient/${patientId}/document`,
         GET_APPOINTMENT_REQUESTS: `/api/reception/appointment-requests`,
+        GET_PENDING_FOLLOW_UPS: `/api/reception/follow-ups/pending`,
+        CONFIRM_FOLLOW_UP: (id: string) => `/api/reception/follow-ups/${id}/confirm`,
+        DISMISS_FOLLOW_UP: (id: string) => `/api/reception/follow-ups/${id}`,
         RESEND_WELCOME_EMAIL: (patientId: string) => `/api/reception/${patientId}/resend-welcome-email`,
     },
     ROLE: {

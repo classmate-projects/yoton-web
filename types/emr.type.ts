@@ -143,6 +143,24 @@ export interface FollowUpType {
   followUpId: string;
   patientId: string | null;
   patientName: string | null;
+  doctorId: string | null;
+  doctorName: string | null;
+  followUpDate: string;
+  instructions: string | null;
+  status: "Pending" | "Confirmed" | "Dismissed";
+  confirmedAppointmentId: string | null;
+  createdAt: string;
+}
+
+// GET /api/reception/follow-ups/pending - reception's own trimmed view (see
+// ReceptionController.GetPendingFollowUps), always Status === "Pending" so that field isn't
+// carried here at all.
+export interface PendingFollowUpType {
+  followUpId: string;
+  patientId: string | null;
+  patientName: string | null;
+  doctorId: string | null;
+  doctorName: string | null;
   followUpDate: string;
   instructions: string | null;
   createdAt: string;

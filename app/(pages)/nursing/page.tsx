@@ -11,6 +11,8 @@ import {
   Ban,
   Bandage,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   ClipboardCheck,
   ClipboardList,
   Clock,
@@ -32,7 +34,6 @@ import {
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import RichTextEditor from "@/components/RichTextEditor";
-import TrendChart from "@/components/TrendChart";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
 import { EmrService } from "@/services/emr.service";
@@ -42,6 +43,16 @@ import { UserType } from "@/types/user.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { EmrPatientListItem, PatientSummaryType } from "@/types/emr.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   NurseDashboardSummaryType,
   NursingChartType,
@@ -277,6 +288,10 @@ function NurseWorkbenchInner() {
   // reason, before the nurse fills it in) means refused; absence means recorded normally.
   const [triageRefusals, setTriageRefusals] = useState<Partial<Record<TriageVitalField, string>>>({});
   const [savingTriage, setSavingTriage] = useState(false);
+  // Collapsed by default - triage is a one-time intake assessment, not something a nurse
+  // reopens on every visit to this patient's chart the way vitals/tasks are, so it shouldn't
+  // eat the top of the screen unless a nurse actually clicks in to use or review it.
+  const [isTriageExpanded, setIsTriageExpanded] = useState(false);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -702,7 +717,14 @@ function NurseWorkbenchInner() {
   });
   const [savingVitals, setSavingVitals] = useState(false);
   const [vitalsView, setVitalsView] = useState<"table" | "trend">("table");
-  const [trendMetric, setTrendMetric] = useState<"heartRate" | "temperature" | "oxygenSaturation" | "respiratoryRate" | "systolic" | "ewsScore">("ewsScore");
+  // Which TREND_METRICS keys are currently plotted - multi-select via checkboxes (see the
+  // Trend view below) rather than TrendChart's old one-metric-at-a-time dropdown, each its
+  // own colored line on one shared chart. Starts with every metric checked.
+  const [visibleTrendMetrics, setVisibleTrendMetrics] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(Object.keys(TREND_METRICS).map((k) => [k, true]))
+  );
+  const toggleTrendMetric = (key: string) =>
+    setVisibleTrendMetrics((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const liveBmi = (() => {
     const height = Number(vitalsForm.heightCm);
@@ -1217,8 +1239,14 @@ function NurseWorkbenchInner() {
                 existing triage on this encounter shows it prefilled for editing rather than a
                 second copy. */}
             <div className="card p-6 flex flex-col gap-5">
-              <div className="flex items-center justify-between gap-4">
+              <button
+                type="button"
+                onClick={() => setIsTriageExpanded((prev) => !prev)}
+                aria-expanded={isTriageExpanded}
+                className="flex items-center justify-between gap-4 cursor-pointer text-left"
+              >
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  {isTriageExpanded ? <ChevronDown size={18} className="text-muted-foreground" /> : <ChevronRight size={18} className="text-muted-foreground" />}
                   <ClipboardCheck size={18} className="text-primary" /> Triage
                 </h2>
                 {chart?.triage && (
@@ -1226,8 +1254,10 @@ function NurseWorkbenchInner() {
                     Last saved by {chart.triage.nurseName || "—"} · {formatDateTime(chart.triage.createdAt)}
                   </span>
                 )}
-              </div>
+              </button>
 
+              {isTriageExpanded && (
+              <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm rounded-lg border border-border bg-muted/20 p-3">
                 <div>
                   <p className="text-xs text-muted-foreground">IP Number</p>
@@ -1397,6 +1427,8 @@ function NurseWorkbenchInner() {
                   </button>
                 )}
               </div>
+              </>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1553,15 +1585,23 @@ function NurseWorkbenchInner() {
                         </button>
                       </div>
                       {vitalsView === "trend" && (
-                        <select
-                          value={trendMetric}
-                          onChange={(e) => setTrendMetric(e.target.value as typeof trendMetric)}
-                          className="h-8 text-xs"
-                        >
+                        <div className="flex flex-wrap gap-3">
                           {Object.entries(TREND_METRICS).map(([key, m]) => (
-                            <option key={key} value={key}>{m.label}</option>
+                            <label
+                              key={key}
+                              className="flex items-center gap-1.5 text-xs font-medium cursor-pointer select-none"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={visibleTrendMetrics[key] ?? true}
+                                onChange={() => toggleTrendMetric(key)}
+                                className="h-3.5 w-3.5 cursor-pointer"
+                                style={{ accentColor: m.color }}
+                              />
+                              <span style={{ color: m.color }}>{m.label}</span>
+                            </label>
                           ))}
-                        </select>
+                        </div>
                       )}
                     </div>
 
@@ -1599,15 +1639,38 @@ function NurseWorkbenchInner() {
                         </table>
                       </div>
                     ) : (
-                      <TrendChart
-                        color={TREND_METRICS[trendMetric].color}
-                        formatValue={(v) => `${v}${TREND_METRICS[trendMetric].unit}`}
-                        data={[...chart.vitals].reverse().map((v) => ({
-                          label: new Date(v.recordedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-                          fullLabel: formatDateTime(v.recordedAt),
-                          value: v[trendMetric],
-                        }))}
-                      />
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={[...chart.vitals].reverse().map((v) => ({
+                              label: new Date(v.recordedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+                              fullLabel: formatDateTime(v.recordedAt),
+                              ...v,
+                            }))}
+                            margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} />
+                            <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.fullLabel ?? ""} />
+                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                            {Object.entries(TREND_METRICS)
+                              .filter(([key]) => visibleTrendMetrics[key])
+                              .map(([key, m]) => (
+                                <Line
+                                  key={key}
+                                  type="monotone"
+                                  dataKey={key}
+                                  name={m.label}
+                                  stroke={m.color}
+                                  connectNulls
+                                  dot={{ r: 3 }}
+                                  isAnimationActive={false}
+                                />
+                              ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
                     )}
                   </div>
                 )}

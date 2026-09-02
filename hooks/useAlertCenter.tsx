@@ -111,6 +111,75 @@ export function useAlertCenter(role: string, userId: string | undefined) {
     };
   }, [isAdmin, isReception]);
 
+  // ---------------- Doctor-requested follow-ups (admin, reception) ----------------
+  // A follow-up isn't a confirmed appointment - reception sees the alert, then either
+  // confirms it into a real slot or dismisses it (see app/(pages)/appointments/page.tsx's
+  // "Pending Follow-Ups" section and ReceptionController.ConfirmFollowUp/DismissFollowUp).
+  useEffect(() => {
+    if (!isAdmin && !isReception) return;
+    let isMounted = true;
+    ReceptionService.getPendingFollowUps()
+      .then((data) => {
+        if (!isMounted) return;
+        const existing: AlertItem[] = (data.data ?? []).map(
+          (f: { followUpId: string; patientName: string | null; doctorName: string | null; followUpDate: string }) => ({
+            id: `followup-${f.followUpId}`,
+            navLink: "/appointments",
+            title: "Follow-up requested",
+            message: `Dr. ${f.doctorName ?? "—"} requested a follow-up for ${f.patientName ?? "a patient"} around ${new Date(f.followUpDate).toLocaleDateString()}`,
+            timestamp: Date.now(),
+          })
+        );
+        setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
+        setUnreadCount((prev) => prev + existing.length);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [isAdmin, isReception]);
+
+  useEffect(() => {
+    if (!isAdmin && !isReception) return;
+    let isMounted = true;
+
+    const handleAdded = (event: { followUpId: string; patientName: string | null; doctorName: string | null; followUpDate: string }) => {
+      if (!isMounted) return;
+      pushAlert(
+        {
+          id: `followup-${event.followUpId}`,
+          navLink: "/appointments",
+          title: "Follow-up requested",
+          message: `Dr. ${event.doctorName ?? "—"} requested a follow-up for ${event.patientName ?? "a patient"} around ${new Date(event.followUpDate).toLocaleDateString()}`,
+          timestamp: Date.now(),
+        },
+        <span>Dr. {event.doctorName ?? "—"} requested a follow-up for <b>{event.patientName ?? "a patient"}</b></span>
+      );
+    };
+    const handleResolved = (event: { followUpId: string }) => {
+      if (!isMounted) return;
+      dropAlert(`followup-${event.followUpId}`);
+    };
+
+    const connect = async () => {
+      const connection = await getSignalRConnection();
+      if (!isMounted) return;
+      connection.off("followUpAdded", handleAdded);
+      connection.off("followUpResolved", handleResolved);
+      connection.on("followUpAdded", handleAdded);
+      connection.on("followUpResolved", handleResolved);
+    };
+    connect();
+
+    return () => {
+      isMounted = false;
+      getSignalRConnection().then((connection) => {
+        connection.off("followUpAdded", handleAdded);
+        connection.off("followUpResolved", handleResolved);
+      });
+    };
+  }, [isAdmin, isReception]);
+
   // ---------------- Encounter corrections proposed (doctor - needs their acknowledgment) ----------------
   useEffect(() => {
     if (!isDoctor) return;

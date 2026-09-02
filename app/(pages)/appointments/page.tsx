@@ -32,11 +32,13 @@ import DatePicker from "@/components/DatePicker";
 import { ReceptionService } from "@/services/reception.service";
 import {
   AppointmentRequestType,
+  AppointmentSlotType,
   DoctorDaySlotsType,
   DoctorGridType,
   PatientListItemType,
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
+import { PendingFollowUpType } from "@/types/emr.type";
 import { VisitType } from "@/types/visit.type";
 import { useAppointmentRequestSignalR } from "@/hooks/useAppointmentRequestSignalR";
 import { getInitials } from "@/lib/getInitials";
@@ -94,6 +96,20 @@ export default function Appointments() {
   const [processingRequestId, setProcessingRequestId] = useState<
     string | null
   >(null);
+
+  // ---------------- Pending follow-ups (doctor-requested, awaiting reception) ----------------
+  const [pendingFollowUps, setPendingFollowUps] = useState<PendingFollowUpType[]>([]);
+  const [isLoadingFollowUps, setIsLoadingFollowUps] = useState(false);
+  const [dismissingFollowUpId, setDismissingFollowUpId] = useState<string | null>(null);
+  // Confirming a follow-up needs an actual bookable slot, unlike Appointment Requests'
+  // one-click Confirm - FollowUp.followUpDate is only ever a day the doctor suggested, so
+  // this opens its own small date+slot picker for that fixed doctor (see openConfirmFollowUp).
+  const [confirmingFollowUp, setConfirmingFollowUp] = useState<PendingFollowUpType | null>(null);
+  const [followUpConfirmDate, setFollowUpConfirmDate] = useState<Date>(new Date());
+  const [followUpDaySlots, setFollowUpDaySlots] = useState<DoctorDaySlotsType | null>(null);
+  const [isLoadingFollowUpSlots, setIsLoadingFollowUpSlots] = useState(false);
+  const [followUpSelectedSlot, setFollowUpSelectedSlot] = useState<AppointmentSlotType | null>(null);
+  const [isConfirmingFollowUp, setIsConfirmingFollowUp] = useState(false);
 
   // ---------------- Fetch specialization/doctor grid ----------------
   const fetchGrid = async () => {
@@ -224,6 +240,102 @@ export default function Appointments() {
       }
     } finally {
       setProcessingRequestId(null);
+    }
+  };
+
+  // ---------------- Fetch pending follow-ups (doctor-requested) ----------------
+  const fetchPendingFollowUps = async () => {
+    try {
+      setIsLoadingFollowUps(true);
+      const data = await ReceptionService.getPendingFollowUps();
+      setPendingFollowUps(data.data ?? []);
+    } catch (error) {
+      console.error("Failed to fetch pending follow-ups:", error);
+    } finally {
+      setIsLoadingFollowUps(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingFollowUps();
+  }, []);
+
+  // A full refetch (rather than a bespoke incremental merge) on either event - same
+  // "just reload the small list" approach this page already uses for the grid/patients/
+  // visit queue above, and simpler to keep correct than hand-merging live payloads.
+  useSignalRRefetch(["followUpAdded", "followUpResolved"], fetchPendingFollowUps);
+
+  const openConfirmFollowUp = (followUp: PendingFollowUpType) => {
+    setConfirmingFollowUp(followUp);
+    setFollowUpConfirmDate(new Date(followUp.followUpDate));
+    setFollowUpDaySlots(null);
+    setFollowUpSelectedSlot(null);
+  };
+
+  const closeConfirmFollowUp = () => {
+    setConfirmingFollowUp(null);
+    setFollowUpDaySlots(null);
+    setFollowUpSelectedSlot(null);
+  };
+
+  const fetchFollowUpSlots = async (doctorId: string, date: Date) => {
+    try {
+      setIsLoadingFollowUpSlots(true);
+      setFollowUpSelectedSlot(null);
+      const data = await ReceptionService.getDoctorSlots(doctorId, toDateInputValue(date));
+      setFollowUpDaySlots(data.data ?? null);
+    } catch (error) {
+      console.error("Failed to fetch doctor slots:", error);
+      toast.error("Failed to load slots for this doctor");
+      setFollowUpDaySlots(null);
+    } finally {
+      setIsLoadingFollowUpSlots(false);
+    }
+  };
+
+  useEffect(() => {
+    if (confirmingFollowUp?.doctorId) {
+      fetchFollowUpSlots(confirmingFollowUp.doctorId, followUpConfirmDate);
+    }
+  }, [confirmingFollowUp, followUpConfirmDate]);
+
+  const handleConfirmFollowUp = async () => {
+    if (!confirmingFollowUp || !followUpSelectedSlot) {
+      toast.warning("Please select an available time slot");
+      return;
+    }
+    try {
+      setIsConfirmingFollowUp(true);
+      const data = await ReceptionService.confirmFollowUp(confirmingFollowUp.followUpId, followUpSelectedSlot.start);
+      if (data.status === false) {
+        toast.error(data.message || "This slot has just been booked. Please choose another slot.");
+        fetchFollowUpSlots(confirmingFollowUp.doctorId!, followUpConfirmDate);
+        return;
+      }
+      toast.success(data.message || "Follow-up confirmed and appointment booked");
+      setPendingFollowUps((prev) => prev.filter((f) => f.followUpId !== confirmingFollowUp.followUpId));
+      closeConfirmFollowUp();
+    } catch (error) {
+      toast.error(
+        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to confirm follow-up" : "Failed to confirm follow-up"
+      );
+    } finally {
+      setIsConfirmingFollowUp(false);
+    }
+  };
+
+  const handleDismissFollowUp = async (followUp: PendingFollowUpType) => {
+    try {
+      setDismissingFollowUpId(followUp.followUpId);
+      const data = await ReceptionService.dismissFollowUp(followUp.followUpId);
+      toast.success(data.message || "Follow-up dismissed");
+      setPendingFollowUps((prev) => prev.filter((f) => f.followUpId !== followUp.followUpId));
+    } catch (error) {
+      toast.error(
+        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to dismiss follow-up" : "Failed to dismiss follow-up"
+      );
+    } finally {
+      setDismissingFollowUpId(null);
     }
   };
 
@@ -552,6 +664,84 @@ export default function Appointments() {
             </div>
           </div>
         </div>
+
+        <section className="card p-5">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+              <CalendarPlus className="text-primary" size={20} /> Pending follow-ups
+              {pendingFollowUps.length > 0 && (
+                <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
+                  {pendingFollowUps.length}
+                </span>
+              )}
+            </h2>
+            <button
+              onClick={fetchPendingFollowUps}
+              title="Refresh"
+              aria-label="Refresh"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 cursor-pointer"
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
+          {isLoadingFollowUps ? (
+            <LoadingSpinner />
+          ) : pendingFollowUps.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No follow-ups awaiting confirmation.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs font-semibold uppercase text-muted-foreground border-b border-border">
+                    <th className="pb-2 pr-4">Patient</th>
+                    <th className="pb-2 pr-4">Doctor</th>
+                    <th className="pb-2 pr-4">Suggested date</th>
+                    <th className="pb-2 pr-4">Instructions</th>
+                    <th className="pb-2 pr-4">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingFollowUps.map((followUp) => (
+                    <tr key={followUp.followUpId} className="border-b border-border last:border-0">
+                      <td className="py-2 pr-4 font-medium text-foreground">
+                        {followUp.patientName ?? "Unknown"}
+                      </td>
+                      <td className="py-2 pr-4 text-muted-foreground">
+                        {followUp.doctorName ? `Dr. ${followUp.doctorName}` : "—"}
+                      </td>
+                      <td className="py-2 pr-4 text-muted-foreground">
+                        {format(new Date(followUp.followUpDate), "d MMM yyyy")}
+                      </td>
+                      <td className="py-2 pr-4 max-w-[200px] truncate text-muted-foreground">
+                        {followUp.instructions || "—"}
+                      </td>
+                      <td className="py-2 pr-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openConfirmFollowUp(followUp)}
+                            disabled={dismissingFollowUpId === followUp.followUpId}
+                            className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                          >
+                            <Check size={13} /> Confirm
+                          </button>
+                          <button
+                            onClick={() => handleDismissFollowUp(followUp)}
+                            disabled={dismissingFollowUpId === followUp.followUpId}
+                            className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                          >
+                            <X size={13} /> Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
         <section className="card p-5">
           <div className="flex items-center justify-between gap-4 mb-4">
@@ -1267,6 +1457,85 @@ export default function Appointments() {
                 className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmingFollowUp && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-border">
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-semibold text-foreground">Confirm follow-up</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {confirmingFollowUp.patientName ?? "Unknown"} •{" "}
+                  {confirmingFollowUp.doctorName ? `Dr. ${confirmingFollowUp.doctorName}` : "—"}
+                </p>
+              </div>
+              <button
+                onClick={closeConfirmFollowUp}
+                className="text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">Date</label>
+                <DatePicker
+                  value={toDateInputValue(followUpConfirmDate)}
+                  onChange={(v) => v && setFollowUpConfirmDate(new Date(`${v}T00:00:00`))}
+                  dateFormat="dd-MM-yyyy"
+                  placeholder="DD-MM-YYYY"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">Available slots</label>
+                {isLoadingFollowUpSlots ? (
+                  <LoadingSpinner />
+                ) : (followUpDaySlots?.slots.filter((s) => s.isAvailable).length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground">No open slots for this doctor on this day.</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2 max-h-56 overflow-y-auto">
+                    {followUpDaySlots!.slots
+                      .filter((s) => s.isAvailable)
+                      .map((slot) => (
+                        <button
+                          key={slot.start}
+                          type="button"
+                          onClick={() => setFollowUpSelectedSlot(slot)}
+                          className={`rounded-lg border px-2 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                            followUpSelectedSlot?.start === slot.start
+                              ? "border-primary bg-primary text-white"
+                              : "border-emerald-600/30 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400"
+                          }`}
+                        >
+                          <Clock size={13} className="inline mr-1" />
+                          {format(new Date(slot.start), "h:mm a")}
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={closeConfirmFollowUp}
+                className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmFollowUp}
+                disabled={isConfirmingFollowUp || !followUpSelectedSlot}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                {isConfirmingFollowUp ? "Booking..." : "Confirm & book"}
               </button>
             </div>
           </div>

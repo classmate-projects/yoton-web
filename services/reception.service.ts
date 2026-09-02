@@ -99,6 +99,18 @@ export const ReceptionService = {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_APPOINTMENT_REQUESTS)
         return data;
     },
+    getPendingFollowUps: async () => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_PENDING_FOLLOW_UPS)
+        return data;
+    },
+    confirmFollowUp: async (id: string, appointmentDate: string) => {
+        const { data } = await api.put(ENDPOINTS.RECEPTION.CONFIRM_FOLLOW_UP(id), { appointmentDate })
+        return data;
+    },
+    dismissFollowUp: async (id: string) => {
+        const { data } = await api.delete(ENDPOINTS.RECEPTION.DISMISS_FOLLOW_UP(id))
+        return data;
+    },
     updateAppointmentStatus: async (appointmentId: string, status: string) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.UPDATE_STATUS, {
             AppointmentId: appointmentId,
