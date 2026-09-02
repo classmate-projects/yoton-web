@@ -39,6 +39,7 @@ export interface LabRequestType {
   lastPrintedByName: string | null;
   resultValues: LabResultValueType[];
   correctedFromId: string | null;
+  correctedFrom: LabRequestType | null;
 }
 
 export interface LabSummaryType {

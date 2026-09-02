@@ -13,18 +13,45 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
 import { ReceptionService } from "@/services/reception.service";
-import { PatientGetAllType, VisitListItemType } from "@/types/reception.type";
+import { ConfigListService } from "@/services/configList.service";
+import { PatientFullDetailsType, PatientGetAllType, VisitListItemType } from "@/types/reception.type";
 import {
   AppointmentSlotType,
   DoctorDaySlotsType,
   DoctorGridType,
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
+import { ListItemType } from "@/types/configList.type";
 import { toDateInputValue } from "@/lib/date";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
+
+// Walk-in-only payment/insurance touch-up (see openWalkInModal) - a lighter version of
+// patient-entry's own Payment Details section, same field set minus the per-category Fee
+// Schedule grid (that's a negotiated-rate config, not something reception fills in per visit).
+const emptyInsuranceForm = {
+  paymentType: "Cash",
+  eligibilityMode: "",
+  eligibilityCheckedDate: "",
+  eligibilityID: "",
+  eligibilityVisitID: "",
+  insuranceProvider: "",
+  subInsurance: "",
+  networkType: "",
+  insuranceCardNo: "",
+  extraCardNo: "",
+  insuranceEffectiveFrom: "",
+  insuranceExpiryDate: "",
+  certificateNo: "",
+  dependentsNo: "",
+  insuranceClaimNo: "",
+  maxInsuranceLiability: "",
+  insuranceApprovalLimit: "",
+  maxInsuranceCopay: "",
+  coPayPatientPercent: "",
+};
 
 type PatientListMode = "register" | "visit";
 const PATIENTS_PAGE_SIZE = 50;
@@ -84,6 +111,17 @@ export default function PatientRecordsPage() {
   const [selectedSlot, setSelectedSlot] = useState<AppointmentSlotType | null>(null);
   const [visitNotes, setVisitNotes] = useState("");
   const [isBookingWalkIn, setIsBookingWalkIn] = useState(false);
+
+  // Payment & Insurance touch-up - walk-in only (not Edit Visit), since the underlying data
+  // lives on the patient's own record, not a per-visit concept. walkInPatientDetails holds
+  // everything else about the patient (name/sex/etc.) untouched, fetched once so the
+  // eventual update call doesn't blank out fields this form never shows.
+  const [walkInPatientDetails, setWalkInPatientDetails] = useState<PatientFullDetailsType | null>(null);
+  const [isLoadingWalkInPatient, setIsLoadingWalkInPatient] = useState(false);
+  const [insuranceForm, setInsuranceForm] = useState(emptyInsuranceForm);
+  const [insuranceProviders, setInsuranceProviders] = useState<ListItemType[]>([]);
+  const [isLoadingInsuranceProviders, setIsLoadingInsuranceProviders] = useState(false);
+  const isInsuranceOrCorporate = insuranceForm.paymentType !== "Cash";
 
   const modalPatient = walkInPatient ?? editingVisit;
 
@@ -176,6 +214,40 @@ export default function PatientRecordsPage() {
   const openWalkInModal = async (patient: PatientGetAllType) => {
     setWalkInPatient(patient);
     await resetVisitModalPickers();
+
+    setInsuranceForm(emptyInsuranceForm);
+    setIsLoadingWalkInPatient(true);
+    try {
+      const res = await ReceptionService.getPatientById(patient.opId);
+      const details: PatientFullDetailsType = res.data;
+      setWalkInPatientDetails(details);
+      setInsuranceForm({
+        paymentType: details.paymentType || "Cash",
+        eligibilityMode: details.eligibilityMode || "",
+        eligibilityCheckedDate: details.eligibilityCheckedDate || "",
+        eligibilityID: details.eligibilityID || "",
+        eligibilityVisitID: details.eligibilityVisitID || "",
+        insuranceProvider: details.insuranceProvider || "",
+        subInsurance: details.subInsurance || "",
+        networkType: details.networkType || "",
+        insuranceCardNo: details.insuranceCardNo || "",
+        extraCardNo: details.extraCardNo || "",
+        insuranceEffectiveFrom: details.insuranceEffectiveFrom || "",
+        insuranceExpiryDate: details.insuranceExpiryDate || "",
+        certificateNo: details.certificateNo || "",
+        dependentsNo: details.dependentsNo || "",
+        insuranceClaimNo: details.insuranceClaimNo || "",
+        maxInsuranceLiability: details.maxInsuranceLiability != null ? String(details.maxInsuranceLiability) : "",
+        insuranceApprovalLimit: details.insuranceApprovalLimit != null ? String(details.insuranceApprovalLimit) : "",
+        maxInsuranceCopay: details.maxInsuranceCopay != null ? String(details.maxInsuranceCopay) : "",
+        coPayPatientPercent: details.coPayPatientPercent != null ? String(details.coPayPatientPercent) : "",
+      });
+    } catch (error) {
+      console.error("Failed to fetch patient payment/insurance details:", error);
+      toast.error("Failed to load patient's payment/insurance details");
+    } finally {
+      setIsLoadingWalkInPatient(false);
+    }
   };
 
   // Reassigning a visit always starts the doctor/slot picker from scratch (see
@@ -192,7 +264,28 @@ export default function PatientRecordsPage() {
     setSelectedDoctor(null);
     setDaySlots(null);
     setSelectedSlot(null);
+    setWalkInPatientDetails(null);
+    setInsuranceForm(emptyInsuranceForm);
   };
+
+  // Lazily loaded on first actual need, like patient-entry's own copy of this - most walk-ins
+  // are Cash and never touch this list.
+  useEffect(() => {
+    if (!isInsuranceOrCorporate || insuranceProviders.length > 0) return;
+    (async () => {
+      try {
+        setIsLoadingInsuranceProviders(true);
+        const data = await ConfigListService.get("InsuranceProvider");
+        setInsuranceProviders(data.data ?? []);
+      } catch (error) {
+        console.error("Failed to fetch insurance providers:", error);
+        toast.error("Failed to load insurance providers");
+      } finally {
+        setIsLoadingInsuranceProviders(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInsuranceOrCorporate]);
 
   const fetchWalkInSlots = async (doctorId: string, date: Date) => {
     try {
@@ -267,8 +360,49 @@ export default function PatientRecordsPage() {
       return;
     }
 
+    if (!editingVisit && isInsuranceOrCorporate) {
+      if (!insuranceForm.insuranceProvider || !insuranceForm.insuranceCardNo || !insuranceForm.insuranceExpiryDate) {
+        toast.warning(`${insuranceForm.paymentType} Provider, Card No and Expiry Date are required`);
+        return;
+      }
+    }
+
     try {
       setIsBookingWalkIn(true);
+
+      // Payment/insurance lives on the patient's own record, not a per-visit concept - saved
+      // via the same UpdatePatient endpoint the full Edit Patient form uses, just scoped to
+      // this one section. Walk-in only (not Edit Visit) per how this form is entered.
+      if (!editingVisit && walkInPatientDetails) {
+        const toNumberOrUndefined = (value: string) => (value.trim() === "" ? undefined : Number(value));
+        const toDateOrUndefined = (value: string) => (value.trim() === "" ? undefined : value);
+        const registeredBy = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ?? "";
+
+        await ReceptionService.updatePatient(walkInPatientDetails.opId, {
+          ...walkInPatientDetails,
+          registeredBy,
+          paymentType: insuranceForm.paymentType,
+          eligibilityMode: insuranceForm.eligibilityMode || undefined,
+          eligibilityCheckedDate: toDateOrUndefined(insuranceForm.eligibilityCheckedDate),
+          eligibilityID: insuranceForm.eligibilityID || undefined,
+          eligibilityVisitID: insuranceForm.eligibilityVisitID || undefined,
+          insuranceProvider: insuranceForm.insuranceProvider || undefined,
+          subInsurance: insuranceForm.subInsurance || undefined,
+          networkType: insuranceForm.networkType || undefined,
+          insuranceCardNo: insuranceForm.insuranceCardNo || undefined,
+          extraCardNo: insuranceForm.extraCardNo || undefined,
+          insuranceEffectiveFrom: toDateOrUndefined(insuranceForm.insuranceEffectiveFrom),
+          insuranceExpiryDate: toDateOrUndefined(insuranceForm.insuranceExpiryDate),
+          certificateNo: insuranceForm.certificateNo || undefined,
+          dependentsNo: insuranceForm.dependentsNo || undefined,
+          insuranceClaimNo: insuranceForm.insuranceClaimNo || undefined,
+          maxInsuranceLiability: toNumberOrUndefined(insuranceForm.maxInsuranceLiability),
+          insuranceApprovalLimit: toNumberOrUndefined(insuranceForm.insuranceApprovalLimit),
+          maxInsuranceCopay: toNumberOrUndefined(insuranceForm.maxInsuranceCopay),
+          coPayPatientPercent: toNumberOrUndefined(insuranceForm.coPayPatientPercent),
+        });
+      }
+
       const data = editingVisit
         ? await ReceptionService.reassignVisit(editingVisit.visitId, {
             doctorId: selectedDoctor.doctorId,
@@ -840,6 +974,194 @@ export default function PatientRecordsPage() {
                   className="w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
+
+              {/* Payment & Insurance - walk-in only (see openWalkInModal's own comment on
+                  why this doesn't apply to Edit Visit). Saved via UpdatePatient, same as the
+                  full Edit Patient form - this is just a quicker way in for the common case
+                  of fixing/adding insurance right when the patient walks in. */}
+              {!editingVisit && (
+                <div className="rounded-lg border border-border p-4 flex flex-col gap-3">
+                  <p className="text-sm font-semibold text-foreground/90">Payment & Insurance</p>
+                  {isLoadingWalkInPatient ? (
+                    <LoadingSpinner />
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Payment Type</label>
+                        <select
+                          value={insuranceForm.paymentType}
+                          onChange={(e) => setInsuranceForm((p) => ({ ...p, paymentType: e.target.value }))}
+                          className="w-full h-10 text-sm"
+                        >
+                          <option value="Cash">Cash</option>
+                          <option value="Insurance">Insurance</option>
+                          <option value="Corporate">Corporate</option>
+                        </select>
+                      </div>
+
+                      {isInsuranceOrCorporate && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                              {insuranceForm.paymentType} Provider <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              value={insuranceForm.insuranceProvider}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, insuranceProvider: e.target.value }))}
+                              required
+                              className="w-full h-10 text-sm"
+                            >
+                              <option value="">{isLoadingInsuranceProviders ? "Loading..." : "Select Provider"}</option>
+                              {insuranceProviders.map((p) => (
+                                <option key={p.listItemId} value={p.name}>{p.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Sub Insurance</label>
+                            <input
+                              type="text"
+                              value={insuranceForm.subInsurance}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, subInsurance: e.target.value }))}
+                              placeholder="Plan / sub-category"
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Network Type</label>
+                            <select
+                              value={insuranceForm.networkType}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, networkType: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            >
+                              <option value="">Select Network Type</option>
+                              <option value="Open Network">Open Network</option>
+                              <option value="Restricted Network">Restricted Network</option>
+                              <option value="Copay Network">Copay Network</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                              {insuranceForm.paymentType} Card No <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={insuranceForm.insuranceCardNo}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, insuranceCardNo: e.target.value }))}
+                              required
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Extra Card No</label>
+                            <input
+                              type="text"
+                              value={insuranceForm.extraCardNo}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, extraCardNo: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{insuranceForm.paymentType} Effective From</label>
+                            <DatePicker
+                              value={insuranceForm.insuranceEffectiveFrom}
+                              onChange={(v) => setInsuranceForm((p) => ({ ...p, insuranceEffectiveFrom: v }))}
+                              dateFormat="dd-MM-yyyy"
+                              placeholder="DD-MM-YYYY"
+                              className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                              {insuranceForm.paymentType} Expiry Date <span className="text-red-500">*</span>
+                            </label>
+                            <DatePicker
+                              value={insuranceForm.insuranceExpiryDate}
+                              onChange={(v) => setInsuranceForm((p) => ({ ...p, insuranceExpiryDate: v }))}
+                              required
+                              dateFormat="dd-MM-yyyy"
+                              placeholder="DD-MM-YYYY"
+                              className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Certificate No.</label>
+                            <input
+                              type="text"
+                              value={insuranceForm.certificateNo}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, certificateNo: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Dependents No.</label>
+                            <input
+                              type="text"
+                              value={insuranceForm.dependentsNo}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, dependentsNo: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Insurance Claim No.</label>
+                            <input
+                              type="text"
+                              value={insuranceForm.insuranceClaimNo}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, insuranceClaimNo: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Max. Insurance Liability</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={insuranceForm.maxInsuranceLiability}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, maxInsuranceLiability: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Insurance Approval Limit</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={insuranceForm.insuranceApprovalLimit}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, insuranceApprovalLimit: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Max. Insurance Copay</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={insuranceForm.maxInsuranceCopay}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, maxInsuranceCopay: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Co-Pay Patient (%)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={insuranceForm.coPayPatientPercent}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, coPayPatientPercent: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3 mt-8">

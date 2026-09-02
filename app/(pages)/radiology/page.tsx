@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Pencil, ScanLine, Trash2, X } from "lucide-react";
 import { MdAdd, MdOutlineFileUpload, MdOutlineImage } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { RadiologyService } from "@/services/radiology.service";
 import { ReceptionService } from "@/services/reception.service";
@@ -652,6 +653,17 @@ export default function RadiologyPage() {
                             </>
                           )}
                         </div>
+                        {r.correctedFrom && (
+                          <CorrectedFromNote>
+                            <div>
+                              Previous: {r.correctedFrom.scanType ?? "—"}
+                              {r.correctedFrom.bodyParts ? ` · ${r.correctedFrom.bodyParts}` : ""}
+                              {` · ${r.correctedFrom.priority}`}
+                              {r.correctedFrom.notes ? ` · ${r.correctedFrom.notes}` : ""}
+                            </div>
+                            <div>Requested {formatDateTime(r.correctedFrom.createdAt)}</div>
+                          </CorrectedFromNote>
+                        )}
                       </td>
                     </tr>
                   );

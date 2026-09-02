@@ -9,6 +9,7 @@ import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
+import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { LabService } from "@/services/lab.service";
 import { ReceptionService } from "@/services/reception.service";
@@ -771,6 +772,16 @@ export default function LaboratoryPage() {
                             </>
                           )}
                         </div>
+                        {r.correctedFrom && (
+                          <CorrectedFromNote>
+                            <div>
+                              Previous: {r.correctedFrom.testType ?? "—"} · qty {r.correctedFrom.quantity} ·{" "}
+                              {r.correctedFrom.priority}
+                              {r.correctedFrom.remarks ? ` · ${r.correctedFrom.remarks}` : ""}
+                            </div>
+                            <div>Requested {formatDateTime(r.correctedFrom.requestedDate)}</div>
+                          </CorrectedFromNote>
+                        )}
                       </td>
                     </tr>
                   );

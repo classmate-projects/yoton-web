@@ -42,6 +42,7 @@ import PrescriptionPrintout from "@/components/prescription/PrescriptionPrintout
 import FloatingSaveRevertBar from "@/components/FloatingSaveRevertBar";
 import ToggleButton from "@/components/ToggleButton";
 import VitalsHistoryModal from "@/components/VitalsHistoryModal";
+import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { getUserDetail } from "@/lib/userDetail";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { EmrService } from "@/services/emr.service";
@@ -1709,6 +1710,16 @@ function DoctorWorkbenchInner() {
                               </button>
                             </div>
                           </div>
+                          {c.correctedFrom && (
+                            <CorrectedFromNote>
+                              <p>
+                                Previous: {c.correctedFrom.name}
+                                {c.correctedFrom.diagnosedYear ? ` · diagnosed ${c.correctedFrom.diagnosedYear}` : ""}
+                                {` · ${c.correctedFrom.status}`}
+                                {c.correctedFrom.diabetesType ? ` · ${c.correctedFrom.diabetesType}` : ""}
+                              </p>
+                            </CorrectedFromNote>
+                          )}
                         </div>
                       ))
                     ) : (
@@ -1806,17 +1817,27 @@ function DoctorWorkbenchInner() {
                         summary.allergies.map((a) => (
                           <span
                             key={a.patientAllergyId}
-                            className="group flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-1.5 text-sm text-red-700 dark:text-red-400"
+                            className="group flex flex-col gap-1 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-1.5 text-sm text-red-700 dark:text-red-400"
                           >
-                            {a.substance} {a.reaction ? `— ${a.reaction}` : ""}
-                            <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
-                                <Pencil size={11} />
-                              </button>
-                              <button onClick={() => removeAllergy(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
-                                <Trash2 size={11} />
-                              </button>
+                            <span className="flex items-center gap-2">
+                              {a.substance} {a.reaction ? `— ${a.reaction}` : ""}
+                              <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
+                                  <Pencil size={11} />
+                                </button>
+                                <button onClick={() => removeAllergy(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
+                                  <Trash2 size={11} />
+                                </button>
+                              </span>
                             </span>
+                            {a.correctedFrom && (
+                              <CorrectedFromNote>
+                                <p>
+                                  Previous: {a.correctedFrom.substance}
+                                  {a.correctedFrom.reaction ? ` · reaction: ${a.correctedFrom.reaction}` : ""}
+                                </p>
+                              </CorrectedFromNote>
+                            )}
                           </span>
                         ))
                       ) : (
@@ -1913,19 +1934,34 @@ function DoctorWorkbenchInner() {
                                 </td>
                                 <td className="text-xs text-muted-foreground max-w-48 truncate">{m.instructions || "—"}</td>
                                 <td>
-                                  <div className="flex items-center gap-3">
-                                    <button
-                                      onClick={() => discontinueMedication(m.medicationId)}
-                                      className="text-sm font-semibold text-red-600 hover:underline"
-                                    >
-                                      Discontinue
-                                    </button>
-                                    <button onClick={() => setEditingMedication(m)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
-                                      <Pencil size={13} />
-                                    </button>
-                                    <button onClick={() => removeMedication(m)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
-                                      <Trash2 size={13} />
-                                    </button>
+                                  <div className="flex flex-col items-start gap-1">
+                                    <div className="flex items-center gap-3">
+                                      <button
+                                        onClick={() => discontinueMedication(m.medicationId)}
+                                        className="text-sm font-semibold text-red-600 hover:underline"
+                                      >
+                                        Discontinue
+                                      </button>
+                                      <button onClick={() => setEditingMedication(m)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                        <Pencil size={13} />
+                                      </button>
+                                      <button onClick={() => removeMedication(m)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                    {m.correctedFrom && (
+                                      <CorrectedFromNote>
+                                        <p>
+                                          Previous: {m.correctedFrom.drugName} ·{" "}
+                                          {m.correctedFrom.dosage
+                                            ? `${m.correctedFrom.dosage}${m.correctedFrom.dosageUnit ? ` ${m.correctedFrom.dosageUnit}` : ""}`
+                                            : "—"}{" "}
+                                          · {m.correctedFrom.frequency || "—"}
+                                          {m.correctedFrom.durationDays ? ` · ${m.correctedFrom.durationDays} days` : ""}
+                                          {m.correctedFrom.route ? ` · ${m.correctedFrom.route}` : ""}
+                                        </p>
+                                      </CorrectedFromNote>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -2406,6 +2442,15 @@ function DoctorWorkbenchInner() {
                                 Record seen date
                               </button>
                             </div>
+                          )}
+                          {r.correctedFrom && (
+                            <CorrectedFromNote>
+                              <p>
+                                Previous: {r.correctedFrom.targetSpecializationName ?? r.correctedFrom.externalFacility ?? "—"}
+                                {` · ${r.correctedFrom.priority}`}
+                                {r.correctedFrom.notes ? ` · ${r.correctedFrom.notes}` : ""}
+                              </p>
+                            </CorrectedFromNote>
                           )}
                         </div>
                       ))}

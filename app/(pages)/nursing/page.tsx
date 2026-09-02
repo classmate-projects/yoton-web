@@ -38,6 +38,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
+import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
@@ -1923,7 +1924,19 @@ function NurseWorkbenchInner() {
                           <tbody>
                             {chart.vitals.slice(0, 5).map((v) => (
                               <tr key={v.vitalsRecordId}>
-                                <td className="text-xs">{formatDateTime(v.recordedAt)}</td>
+                                <td className="text-xs">
+                                  {formatDateTime(v.recordedAt)}
+                                  {v.correctedFrom && (
+                                    <CorrectedFromNote>
+                                      <div>
+                                        Previous: {v.correctedFrom.systolic}/{v.correctedFrom.diastolic} mmHg · HR {v.correctedFrom.heartRate} · Temp {v.correctedFrom.temperature}°C · SpO2 {v.correctedFrom.oxygenSaturation}%
+                                      </div>
+                                      <div>
+                                        Recorded {formatDateTime(v.correctedFrom.recordedAt)} by {v.correctedFrom.nurseName ?? "—"}
+                                      </div>
+                                    </CorrectedFromNote>
+                                  )}
+                                </td>
                                 <td>{v.systolic}/{v.diastolic} mmHg</td>
                                 <td>{v.heartRate} bpm</td>
                                 <td>{v.temperature}°C</td>
@@ -2036,19 +2049,32 @@ function NurseWorkbenchInner() {
                 {chart && chart.injections.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
                     {chart.injections.slice(0, 5).map((i) => (
-                      <div key={i.injectionRecordId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
-                        <span className="font-medium">{i.medicineName} · {i.dose} · {i.route}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">{formatDateTime(i.givenAt)}</span>
-                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => startEditInjection(i)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
-                              <Pencil size={12} />
-                            </button>
-                            <button onClick={() => confirmRemoveInjection(i)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
-                              <Trash2 size={12} />
-                            </button>
+                      <div key={i.injectionRecordId} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                        <div className="group flex items-center justify-between">
+                          <span className="font-medium">{i.medicineName} · {i.dose} · {i.route}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">{formatDateTime(i.givenAt)}</span>
+                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => startEditInjection(i)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                <Pencil size={12} />
+                              </button>
+                              <button onClick={() => confirmRemoveInjection(i)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
                           </div>
                         </div>
+                        {i.correctedFrom && (
+                          <CorrectedFromNote>
+                            <div>
+                              Previous: {i.correctedFrom.medicineName} · {i.correctedFrom.dose} · {i.correctedFrom.route}
+                            </div>
+                            {i.correctedFrom.notes && <div>{i.correctedFrom.notes}</div>}
+                            <div>
+                              Given {formatDateTime(i.correctedFrom.givenAt)} by {i.correctedFrom.nurseName ?? "—"}
+                            </div>
+                          </CorrectedFromNote>
+                        )}
                       </div>
                     ))}
                   </div>

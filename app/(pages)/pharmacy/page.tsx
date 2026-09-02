@@ -8,6 +8,7 @@ import { Pencil, Pill, Trash2 } from "lucide-react";
 import { MdAdd, MdWarning } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
+import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { PharmacyService } from "@/services/pharmacy.service";
 import { ReceptionService } from "@/services/reception.service";
@@ -884,6 +885,18 @@ export default function PharmacyPage() {
                                 <span className="text-xs text-muted-foreground">—</span>
                               )}
                             </div>
+                            {rx.correctedFrom && (
+                              <CorrectedFromNote>
+                                <div>
+                                  Previous:{" "}
+                                  {rx.correctedFrom.items
+                                    .map((i) => `${i.medicineName} x${i.quantity}`)
+                                    .join(", ")}
+                                  {rx.correctedFrom.notes ? ` — ${rx.correctedFrom.notes}` : ""}
+                                </div>
+                                <div>Recorded {formatDate(rx.correctedFrom.createdAt)}</div>
+                              </CorrectedFromNote>
+                            )}
                           </td>
                         </tr>
                       );

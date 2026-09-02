@@ -44,6 +44,7 @@ export interface VitalsType {
   recordedAt: string;
   isCritical: boolean;
   correctedFromId: string | null;
+  correctedFrom: VitalsType | null;
 }
 
 // One normalized reading from GET .../vitals-history - merges VitalsRecord's own
@@ -128,6 +129,7 @@ export interface InjectionType {
   notes: string | null;
   givenAt: string;
   correctedFromId: string | null;
+  correctedFrom: InjectionType | null;
 }
 
 export interface DressingType {
