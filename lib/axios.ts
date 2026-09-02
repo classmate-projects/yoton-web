@@ -48,6 +48,15 @@ api.interceptors.response.use(
         localStorage.removeItem("yoton_user_detail");
         await fetch("/api/logout", { method: "POST" });
         window.location.href = "/login";
+        // A hard redirect is already underway - never resolve/reject back to the
+        // caller. Every page's own catch block would otherwise still run in the
+        // brief window before navigation actually tears the app down, logging a
+        // scary (but meaningless) "Request failed with status code 401" to the
+        // console/Next.js error overlay for something that isn't actually a bug -
+        // this is expected on every logout (in-flight or SignalR-triggered
+        // refetches losing their token) and the interceptor above already deals
+        // with it in full.
+        return new Promise(() => {});
       }
     }
     return Promise.reject(error);
