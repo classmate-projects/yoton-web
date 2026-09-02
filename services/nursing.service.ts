@@ -52,6 +52,14 @@ export const NursingService = {
     const { data } = await api.post(ENDPOINTS.NURSING.SAVE_VITALS, payload);
     return data;
   },
+  updateVitals: async (vitalsRecordId: string, payload: VitalsPayload) => {
+    const { data } = await api.put(ENDPOINTS.NURSING.UPDATE_VITALS(vitalsRecordId), payload);
+    return data;
+  },
+  removeVitals: async (vitalsRecordId: string, nurseId?: string, password?: string) => {
+    const { data } = await api.delete(ENDPOINTS.NURSING.REMOVE_VITALS(vitalsRecordId, nurseId, password));
+    return data;
+  },
   saveInjection: async (payload: InjectionPayload) => {
     const { data } = await api.post(ENDPOINTS.NURSING.SAVE_INJECTION, payload);
     return data;

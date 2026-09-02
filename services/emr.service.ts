@@ -108,6 +108,14 @@ export const EmrService = {
     const { data } = await api.post(ENDPOINTS.EMR.ADD_QUICK_NOTE(patientId, doctorId), { notes });
     return data;
   },
+  updateQuickNote: async (consultationNoteId: string, notes: string, doctorId?: string) => {
+    const { data } = await api.put(ENDPOINTS.EMR.UPDATE_QUICK_NOTE(consultationNoteId, doctorId), { notes });
+    return data;
+  },
+  removeQuickNote: async (consultationNoteId: string, doctorId?: string) => {
+    const { data } = await api.delete(ENDPOINTS.EMR.REMOVE_QUICK_NOTE(consultationNoteId, doctorId));
+    return data;
+  },
   getDocuments: async (patientId: string) => {
     const { data } = await api.get(ENDPOINTS.EMR.GET_DOCUMENTS(patientId));
     return data;

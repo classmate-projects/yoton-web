@@ -43,6 +43,7 @@ export interface VitalsType {
   notes: string | null;
   recordedAt: string;
   isCritical: boolean;
+  correctedFromId: string | null;
 }
 
 // One normalized reading from GET .../vitals-history - merges VitalsRecord's own

@@ -118,6 +118,8 @@ export const ENDPOINTS = {
             return `/api/emr/quick-notes${query ? `?${query}` : ""}`;
         },
         ADD_QUICK_NOTE: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/quick-note${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE_QUICK_NOTE: (consultationNoteId: string, doctorId?: string) => `/api/emr/quick-note/${consultationNoteId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        REMOVE_QUICK_NOTE: (consultationNoteId: string, doctorId?: string) => `/api/emr/quick-note/${consultationNoteId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_DOCUMENTS: (patientId: string) => `/api/emr/patient/${patientId}/documents`,
         MARK_DOCUMENT_VIEWED: (patientId: string, id: string) => `/api/emr/patient/${patientId}/documents/${id}/mark-viewed`,
         ADD_TREATMENT: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/treatment${doctorId ? `?doctorId=${doctorId}` : ""}`,
@@ -245,6 +247,14 @@ export const ENDPOINTS = {
         ENSURE_ENCOUNTER: (patientId: string) => `/api/nursing/patient/${patientId}/encounter/ensure`,
         END_ENCOUNTER: (encounterId: string) => `/api/nursing/encounter/${encounterId}/end`,
         SAVE_VITALS: `/api/nursing/vitals`,
+        UPDATE_VITALS: (vitalsRecordId: string) => `/api/nursing/vitals/${vitalsRecordId}`,
+        REMOVE_VITALS: (vitalsRecordId: string, nurseId?: string, password?: string) => {
+            const params = new URLSearchParams();
+            if (nurseId) params.set("nurseId", nurseId);
+            if (password) params.set("password", password);
+            const query = params.toString();
+            return `/api/nursing/vitals/${vitalsRecordId}${query ? `?${query}` : ""}`;
+        },
         SAVE_INJECTION: `/api/nursing/injection`,
         SAVE_DRESSING: `/api/nursing/dressing`,
         SAVE_BLOOD_SUGAR: `/api/nursing/blood-sugar`,

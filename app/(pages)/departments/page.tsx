@@ -13,6 +13,7 @@ import SpecializationModal from "@/components/SpecializationModal";
 import { DepartmentSerivce } from "@/services/department.service";
 import { SpecializationService } from "@/services/specialization.service";
 import { SpecializationTypes } from "@/types/specialization.type";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -193,17 +194,12 @@ export default function DepartmentsPage() {
 
   // confirm before delete
   const confirmDelete = (id: string, name: string) => {
-    toast(
+    confirmDeleteToast(
       <span>
         Are you sure you want to delete{" "}
         <b className="text-red-500 ml-1">{name}</b>
       </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => handleDelete(id),
-        },
-      },
+      () => handleDelete(id)
     );
   };
 
@@ -259,16 +255,11 @@ export default function DepartmentsPage() {
   };
 
   const confirmDeleteSpec = (id: string, name: string) => {
-    toast(
+    confirmDeleteToast(
       <span>
         Are you sure you want to delete specialization <b className="text-red-500 ml-1">{name}</b>?
       </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => handleDeleteSpecialization(id),
-        },
-      }
+      () => handleDeleteSpecialization(id)
     );
   };
 

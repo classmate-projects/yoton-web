@@ -36,6 +36,7 @@ import { NurseShiftInput } from "@/types/nursing.type";
 import { StaffEmploymentEventType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 
 const TERMINATION_REASONS = [
   { value: "Retired60Plus", label: "Retired (60+ years)" },
@@ -167,19 +168,12 @@ export default function UserManagement() {
 
   // show toast for permission to delete user 
   const handleDelete = (id: string, name: string) => {
-    toast(
+    confirmDeleteToast(
       <span>
         Are you sure, you want to delete{" "}
         <b className="text-red-500 ml-1">{name}</b>
       </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => {
-            handleDeleteUser(id);
-          },
-        },
-      },
+      () => handleDeleteUser(id)
     );
   };
 

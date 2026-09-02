@@ -434,38 +434,51 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             (logo + a handful of Recent icons) and made this wheel-scrollable with nothing
             visible to justify it. overflow-hidden while collapsed just clips that invisible
             overflow instead of exposing it as real scroll. */}
-        <div data-sidebar-scroll className={`flex min-h-0 flex-1 flex-col no-scrollbar scroll-smooth ${isExpanded ? "overflow-y-auto" : "overflow-hidden"}`}>
+        {/* pt-1.5: the collapsed-only notification badge below sits at -top-1/-right-1 (a
+            small negative offset so it "peeks out" of the logo tile's corner) - with no
+            padding here, that offset pokes just past this div's own top edge and the
+            overflow-hidden set below (needed to hide the invisible nav-height overflow, see
+            the comment above) clips it into a flat-topped crescent instead of a full circle. */}
+        <div data-sidebar-scroll className={`flex min-h-0 flex-1 flex-col no-scrollbar scroll-smooth pt-1.5 ${isExpanded ? "overflow-y-auto" : "overflow-hidden"}`}>
         <div className={`flex items-center transition-all duration-300 ease-in-out ${isExpanded ? "mb-8 px-2" : "mb-4 flex-col gap-2 justify-center"}`}>
-          <div className="relative h-10 w-10 shrink-0">
+          <div className="relative h-12 w-12 shrink-0">
             {/* Collapsed: company logo (falls back to the bundled Yoton logo).
                 Expanded: the signed-in user's own photo, or their initials when
                 no photo has been uploaded. Collapsing reverts to the company
-                logo either way. */}
+                logo either way.
+                Company/bundled logos sit in a padded bg-card box with object-contain
+                (matches the login page's own logo treatment) so an uploaded logo's
+                real aspect ratio is never center-cropped to fit a square - only the
+                user's photo (a headshot, meant to fill the square) uses object-cover. */}
             {isExpanded ? (
               currentUser?.userImage ? (
                 // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path; not eligible for next/image's static optimization
                 <img
                   src={backendAssetUrl(currentUser.userImage) ?? undefined}
                   alt={currentUser?.name || "User"}
-                  className="h-10 w-10 rounded-lg object-cover shadow-sm"
+                  className="h-12 w-12 rounded-lg object-cover shadow-sm"
                 />
               ) : (
                 <div
-                  className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold text-white shadow-sm"
+                  className="flex h-12 w-12 items-center justify-center rounded-lg text-base font-bold text-white shadow-sm"
                   style={{ backgroundColor: getAvatarColor(currentUser?.userId || currentUser?.name) }}
                 >
-                  {currentUser?.name ? getInitials(currentUser.name) : <UserRound size={18} />}
+                  {currentUser?.name ? getInitials(currentUser.name) : <UserRound size={20} />}
                 </div>
               )
             ) : currentUser?.companyLogoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path; not eligible for next/image's static optimization
-              <img
-                src={backendAssetUrl(currentUser.companyLogoUrl) ?? undefined}
-                alt={currentUser?.companyName || "Company logo"}
-                className="h-10 w-10 rounded-lg object-cover shadow-sm"
-              />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-card shadow-sm">
+                {/* eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path; not eligible for next/image's static optimization */}
+                <img
+                  src={backendAssetUrl(currentUser.companyLogoUrl) ?? undefined}
+                  alt={currentUser?.companyName || "Company logo"}
+                  className="h-full w-full object-contain"
+                />
+              </div>
             ) : (
-              <Image src={logo} alt="logo" height={40} width={40} className="rounded-lg shadow-sm" loading="eager" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-card shadow-sm">
+                <Image src={logo} alt="logo" height={48} width={48} className="h-full w-full object-contain" loading="eager" />
+              </div>
             )}
 
             {!isExpanded && mounted && canSeeAlerts && unreadCount > 0 && (

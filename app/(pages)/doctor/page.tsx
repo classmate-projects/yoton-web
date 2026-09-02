@@ -20,6 +20,7 @@ import {
   History,
   Lock,
   NotebookPen,
+  Pencil,
   Pill,
   Plus,
   Save,
@@ -28,6 +29,7 @@ import {
   Stethoscope,
   Stamp,
   StickyNote,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -41,6 +43,7 @@ import FloatingSaveRevertBar from "@/components/FloatingSaveRevertBar";
 import ToggleButton from "@/components/ToggleButton";
 import VitalsHistoryModal from "@/components/VitalsHistoryModal";
 import { getUserDetail } from "@/lib/userDetail";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
 import { SpecializationService } from "@/services/specialization.service";
@@ -943,6 +946,8 @@ function DoctorWorkbenchInner() {
 
   // ---------------- QUICK NOTE ----------------
   const [noteText, setNoteText] = useState("");
+  const [editingQuickNoteId, setEditingQuickNoteId] = useState<string | null>(null);
+  const [editingQuickNoteText, setEditingQuickNoteText] = useState("");
 
   const addQuickNote = async () => {
     if (!selectedPatientId || !noteText.trim() || !requireDoctorSelected()) return;
@@ -954,6 +959,44 @@ function DoctorWorkbenchInner() {
     } catch (error) {
       toast.error(errorMessage(error, "Failed to add note"));
     }
+  };
+
+  const startEditQuickNote = (note: QuickNoteType) => {
+    setEditingQuickNoteId(note.consultationNoteId);
+    setEditingQuickNoteText(note.notes ?? "");
+  };
+
+  const cancelEditQuickNote = () => {
+    setEditingQuickNoteId(null);
+    setEditingQuickNoteText("");
+  };
+
+  const saveEditQuickNote = async () => {
+    if (!selectedPatientId || !editingQuickNoteId || !editingQuickNoteText.trim()) return;
+    try {
+      await EmrService.updateQuickNote(editingQuickNoteId, editingQuickNoteText.trim(), doctorIdParam);
+      toast.success("Note updated");
+      cancelEditQuickNote();
+      await fetchQuickNotes(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to update note"));
+    }
+  };
+
+  const removeQuickNote = (note: QuickNoteType) => {
+    if (!selectedPatientId) return;
+    confirmDeleteToast(
+      <span>Delete this note?</span>,
+      async () => {
+        try {
+          await EmrService.removeQuickNote(note.consultationNoteId, doctorIdParam);
+          toast.success("Note removed");
+          await fetchQuickNotes(selectedPatientId);
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove note"));
+        }
+      }
+    );
   };
 
   const filteredPatients = patients.filter(
@@ -2192,15 +2235,61 @@ function DoctorWorkbenchInner() {
                   </button>
                   <div className="flex flex-col gap-2 max-h-56 overflow-y-auto">
                     {quickNotes.length > 0 ? (
-                      quickNotes.map((n) => (
-                        <div
-                          key={n.consultationNoteId}
-                          className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm"
-                        >
-                          <p className="text-foreground">{n.notes}</p>
-                          <p className="text-xs text-muted-foreground mt-1">{formatDateTime(n.createdAt)}</p>
-                        </div>
-                      ))
+                      quickNotes.map((n) =>
+                        editingQuickNoteId === n.consultationNoteId ? (
+                          <div
+                            key={n.consultationNoteId}
+                            className="rounded-lg border border-primary/40 bg-muted/30 px-3 py-2 text-sm flex flex-col gap-2"
+                          >
+                            <textarea
+                              value={editingQuickNoteText}
+                              onChange={(e) => setEditingQuickNoteText(e.target.value)}
+                              className="w-full min-h-14 text-sm"
+                              autoFocus
+                            />
+                            <div className="flex items-center gap-3 justify-end">
+                              <button
+                                onClick={cancelEditQuickNote}
+                                className="text-xs font-semibold text-muted-foreground hover:underline"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={saveEditQuickNote}
+                                className="text-xs font-semibold text-primary hover:underline"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            key={n.consultationNoteId}
+                            className="group rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm"
+                          >
+                            <p className="text-foreground">{n.notes}</p>
+                            <div className="flex items-center justify-between mt-1">
+                              <p className="text-xs text-muted-foreground">{formatDateTime(n.createdAt)}</p>
+                              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => startEditQuickNote(n)}
+                                  title="Edit note"
+                                  className="p-1 hover:bg-primary/10 rounded-full text-primary"
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                                <button
+                                  onClick={() => removeQuickNote(n)}
+                                  title="Delete note"
+                                  className="p-1 hover:bg-destructive/10 rounded-full text-destructive"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      )
                     ) : (
                       <p className="text-sm text-muted-foreground">No notes yet.</p>
                     )}

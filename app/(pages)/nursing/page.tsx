@@ -22,6 +22,7 @@ import {
   HeartPulse,
   Lock,
   LogOut,
+  Pencil,
   Pill,
   PlayCircle,
   Save,
@@ -30,12 +31,14 @@ import {
   Stethoscope,
   Syringe,
   Thermometer,
+  Trash2,
   Users,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
 import { UserService } from "@/services/user.service";
@@ -61,6 +64,7 @@ import {
   UntouchedPatientType,
   TriageVitalField,
   TriagePayload,
+  VitalsType,
 } from "@/types/nursing.type";
 
 const REMARK_TYPES = ["Refusal", "ClinicalConcern", "Other"];
@@ -716,6 +720,11 @@ function NurseWorkbenchInner() {
     notes: "",
   });
   const [savingVitals, setSavingVitals] = useState(false);
+  // Set while correcting an existing vitals row (reuses the same form/button as adding a
+  // new one, mirroring how Department/Role edit reuses their own create form). A correction
+  // never overwrites the original in place - the API soft-deletes it and inserts a fresh,
+  // linked row - so this only changes which endpoint saveVitals calls, not what it sends.
+  const [editingVitalsId, setEditingVitalsId] = useState<string | null>(null);
   const [vitalsView, setVitalsView] = useState<"table" | "trend">("table");
   // Which TREND_METRICS keys are currently plotted - multi-select via checkboxes (see the
   // Trend view below) rather than TrendChart's old one-metric-at-a-time dropdown, each its
@@ -777,7 +786,7 @@ function NurseWorkbenchInner() {
     if (!requireNurseSelected()) return false;
     try {
       setSavingVitals(true);
-      await NursingService.saveVitals({
+      const payload = {
         encounterId,
         systolic: Number(vitalsForm.systolic),
         diastolic: Number(vitalsForm.diastolic),
@@ -793,9 +802,16 @@ function NurseWorkbenchInner() {
         notes: vitalsForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
         password: passwordOverride,
-      });
-      toast.success("Vitals recorded");
+      };
+      if (editingVitalsId) {
+        await NursingService.updateVitals(editingVitalsId, payload);
+        toast.success("Vitals corrected");
+      } else {
+        await NursingService.saveVitals(payload);
+        toast.success("Vitals recorded");
+      }
       setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, bmiExclusionReason: "", notes: "" });
+      setEditingVitalsId(null);
       await refreshChart();
       return true;
     } catch (error) {
@@ -805,6 +821,50 @@ function NurseWorkbenchInner() {
     } finally {
       setSavingVitals(false);
     }
+  };
+
+  const startEditVitals = (v: VitalsType) => {
+    setEditingVitalsId(v.vitalsRecordId);
+    setVitalsForm({
+      systolic: String(v.systolic ?? ""),
+      diastolic: String(v.diastolic ?? ""),
+      heartRate: String(v.heartRate ?? ""),
+      temperature: String(v.temperature ?? ""),
+      respiratoryRate: String(v.respiratoryRate ?? ""),
+      oxygenSaturation: String(v.oxygenSaturation ?? ""),
+      heightCm: v.heightCm ? String(v.heightCm) : "",
+      weightKg: v.weightKg ? String(v.weightKg) : "",
+      consciousnessLevel: v.consciousnessLevel || "Alert",
+      supplementalOxygen: v.supplementalOxygen,
+      bmiExclusionReason: v.bmiExclusionReason || "",
+      notes: v.notes || "",
+    });
+  };
+
+  const cancelEditVitals = () => {
+    setEditingVitalsId(null);
+    setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, bmiExclusionReason: "", notes: "" });
+  };
+
+  const removeVitalsRecord = async (v: VitalsType, passwordOverride?: string): Promise<boolean> => {
+    if (!requireNurseSelected()) return false;
+    try {
+      await NursingService.removeVitals(v.vitalsRecordId, isAdmin ? selectedNurseId : undefined, passwordOverride);
+      toast.success("Vitals record removed");
+      await refreshChart();
+      return true;
+    } catch (error) {
+      if (handleEncounterLockError(error, (pw) => removeVitalsRecord(v, pw))) return false;
+      toast.error(errorMessage(error, "Failed to remove vitals record"));
+      return false;
+    }
+  };
+
+  const confirmRemoveVitals = (v: VitalsType) => {
+    confirmDeleteToast(
+      <span>Delete this vitals record?</span>,
+      () => removeVitalsRecord(v)
+    );
   };
 
   // ---------------- MEDICATION ADMINISTRATION FORM ----------------
@@ -1561,9 +1621,16 @@ function NurseWorkbenchInner() {
                       </select>
                     </div>
                     <textarea placeholder="Notes..." value={vitalsForm.notes} onChange={(e) => setVitalsForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={() => saveVitals()} disabled={savingVitals} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Vitals
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveVitals()} disabled={savingVitals} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingVitalsId ? "Save Correction" : "Save Vitals"}
+                      </button>
+                      {editingVitalsId && (
+                        <button onClick={cancelEditVitals} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
 
@@ -1629,9 +1696,25 @@ function NurseWorkbenchInner() {
                                   </span>
                                 </td>
                                 <td>
-                                  {v.isCritical && (
-                                    <span className="rounded-full bg-red-100 text-red-700 text-xs px-2 py-0.5 font-semibold">Critical</span>
-                                  )}
+                                  <div className="flex items-center gap-1.5">
+                                    {v.isCritical && (
+                                      <span className="rounded-full bg-red-100 text-red-700 text-xs px-2 py-0.5 font-semibold">Critical</span>
+                                    )}
+                                    <button
+                                      onClick={() => startEditVitals(v)}
+                                      title="Correct this reading"
+                                      className="p-1 hover:bg-primary/10 rounded-full text-primary"
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                    <button
+                                      onClick={() => confirmRemoveVitals(v)}
+                                      title="Delete this reading"
+                                      className="p-1 hover:bg-destructive/10 rounded-full text-destructive"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}

@@ -15,6 +15,7 @@ import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import { DEFAULT_ROLE_ICON_KEY, getRoleIcon } from "@/helpers/roleIcons";
 import RoleIconPicker from "@/components/RoleIconPicker";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 // Settings is always reachable regardless of role, and Confidential Notes is nurse-only
@@ -169,19 +170,12 @@ export default function RoleManagementPage() {
   }
 
   const RequestDeleteRole = (roleId: string, name: string) => {
-    toast(
+    confirmDeleteToast(
       <span>
         Are you sure you want to delete the role{" "}
         <b className="text-red-500 ml-1">{name}</b>?
       </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => handleRoleDelete(roleId),
-        },
-        duration: 10000,
-        closeButton: true,
-      },
+      () => handleRoleDelete(roleId)
     );
   };
 

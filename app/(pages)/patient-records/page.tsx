@@ -21,6 +21,7 @@ import {
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
 import { toDateInputValue } from "@/lib/date";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
@@ -353,17 +354,12 @@ export default function PatientRecordsPage() {
   };
 
   const confirmDelete = (id: string, name: string) => {
-    toast(
+    confirmDeleteToast(
       <span>
         Are you sure you want to delete {" "}
         <b className="text-red-500 ml-1">{name}</b>
       </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => handleDelete(id)
-        }
-      }
+      () => handleDelete(id)
     )
   }
 

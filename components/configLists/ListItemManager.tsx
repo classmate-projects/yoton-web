@@ -12,6 +12,7 @@ import { ConfigListService } from "@/services/configList.service";
 import { TestParameterService } from "@/services/testParameter.service";
 import { ConfigListType, ListItemType } from "@/types/configList.type";
 import { TestParameterType } from "@/types/testParameter.type";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 
 const errorMessage = (error: unknown, fallback: string) => {
   if (error && typeof error === "object" && "response" in error) {
@@ -160,25 +161,18 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   };
 
   const removeItem = async (id: string, name: string) => {
-    toast(
+    confirmDeleteToast(
       <span>
         Delete <b className="text-red-500 ml-1">{name}</b> from this list?
       </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: async () => {
-            try {
-              await ConfigListService.remove(id);
-              toast.success("Item deleted");
-              await fetchItems();
-            } catch (error) {
-              toast.error(errorMessage(error, "Failed to delete item"));
-            }
-          },
-        },
-        duration: 10000,
-        closeButton: true,
+      async () => {
+        try {
+          await ConfigListService.remove(id);
+          toast.success("Item deleted");
+          await fetchItems();
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to delete item"));
+        }
       }
     );
   };
