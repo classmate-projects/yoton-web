@@ -28,6 +28,7 @@ export interface ChronicConditionType {
   hasPcos: boolean;
   hasEsrd: boolean;
   createdAt: string;
+  correctedFromId: string | null;
 }
 
 export interface AllergyType {
@@ -36,6 +37,7 @@ export interface AllergyType {
   reaction: string | null;
   recordedByRole: string | null;
   createdAt: string;
+  correctedFromId: string | null;
 }
 
 export interface TaperingStepType {
@@ -72,6 +74,7 @@ export interface MedicationType {
   endedAt: string | null;
   administrations: MedicationAdministrationType[];
   taperingSteps: TaperingStepType[];
+  correctedFromId: string | null;
 }
 
 export interface SpecialRemarkType {
@@ -177,6 +180,7 @@ export interface ReferralType {
   externalFacility: string | null;
   dateSeenBySpecialist: string | null;
   createdAt: string;
+  correctedFromId: string | null;
 }
 
 export interface DentalVisitExtraType {

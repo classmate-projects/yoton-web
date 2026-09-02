@@ -53,14 +53,19 @@ import { ConfigListService } from "@/services/configList.service";
 import { NursingService } from "@/services/nursing.service";
 import {
   ActiveCaseItemType,
+  AllergyType,
+  ChronicConditionType,
   DoctorConfidentialNoteType,
   DoctorDashboardSummaryType,
   EmrPatientListItem,
   EncounterCorrectionType,
+  FollowUpType,
   MedicationPayload,
+  MedicationType,
   PatientInsuranceCoverageType,
   PatientSummaryType,
   QuickNoteType,
+  ReferralType,
   SpecialRemarkType,
   TodayScheduleItemType,
 } from "@/types/emr.type";
@@ -512,6 +517,7 @@ function DoctorWorkbenchInner() {
   });
   const isDiabetesCondition = conditionForm.name.toLowerCase().includes("diabet");
   const isHypertensionCondition = conditionForm.name.toLowerCase().includes("hypertension");
+  const [editingConditionId, setEditingConditionId] = useState<string | null>(null);
 
   const addCondition = async () => {
     if (!selectedPatientId || !conditionForm.name.trim()) {
@@ -520,20 +526,22 @@ function DoctorWorkbenchInner() {
     }
     if (!requireDoctorSelected()) return;
     try {
-      await EmrService.addChronicCondition(
-        selectedPatientId,
-        {
-          name: conditionForm.name.trim(),
-          diagnosedYear: conditionForm.diagnosedYear ? Number(conditionForm.diagnosedYear) : undefined,
-          status: conditionForm.status,
-          diabetesType: isDiabetesCondition && conditionForm.diabetesType ? conditionForm.diabetesType : undefined,
-          diagnosisDate: conditionForm.diagnosisDate || undefined,
-          hasPcos: isDiabetesCondition ? conditionForm.hasPcos : undefined,
-          hasEsrd: isHypertensionCondition ? conditionForm.hasEsrd : undefined,
-        },
-        doctorIdParam
-      );
-      toast.success("Chronic condition added");
+      const payload = {
+        name: conditionForm.name.trim(),
+        diagnosedYear: conditionForm.diagnosedYear ? Number(conditionForm.diagnosedYear) : undefined,
+        status: conditionForm.status,
+        diabetesType: isDiabetesCondition && conditionForm.diabetesType ? conditionForm.diabetesType : undefined,
+        diagnosisDate: conditionForm.diagnosisDate || undefined,
+        hasPcos: isDiabetesCondition ? conditionForm.hasPcos : undefined,
+        hasEsrd: isHypertensionCondition ? conditionForm.hasEsrd : undefined,
+      };
+      if (editingConditionId) {
+        await EmrService.updateChronicCondition(editingConditionId, payload, doctorIdParam);
+        toast.success("Chronic condition corrected");
+      } else {
+        await EmrService.addChronicCondition(selectedPatientId, payload, doctorIdParam);
+        toast.success("Chronic condition added");
+      }
       setConditionForm({
         name: "",
         diagnosedYear: "",
@@ -543,14 +551,50 @@ function DoctorWorkbenchInner() {
         hasPcos: false,
         hasEsrd: false,
       });
+      setEditingConditionId(null);
       await fetchSummary(selectedPatientId);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add condition"));
+      toast.error(errorMessage(error, editingConditionId ? "Failed to correct condition" : "Failed to add condition"));
     }
+  };
+
+  const startEditCondition = (c: ChronicConditionType) => {
+    setEditingConditionId(c.chronicConditionId);
+    setConditionForm({
+      name: c.name,
+      diagnosedYear: c.diagnosedYear ? String(c.diagnosedYear) : "",
+      status: c.status || "Managed",
+      diabetesType: c.diabetesType || "",
+      diagnosisDate: c.diagnosisDate || "",
+      hasPcos: c.hasPcos,
+      hasEsrd: c.hasEsrd,
+    });
+  };
+
+  const cancelEditCondition = () => {
+    setEditingConditionId(null);
+    setConditionForm({ name: "", diagnosedYear: "", status: "Managed", diabetesType: "", diagnosisDate: "", hasPcos: false, hasEsrd: false });
+  };
+
+  const removeCondition = (c: ChronicConditionType) => {
+    if (!selectedPatientId) return;
+    confirmDeleteToast(
+      <span>Delete condition <b className="text-red-500 ml-1">{c.name}</b>?</span>,
+      async () => {
+        try {
+          await EmrService.removeChronicCondition(c.chronicConditionId, doctorIdParam);
+          toast.success("Chronic condition removed");
+          await fetchSummary(selectedPatientId);
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove condition"));
+        }
+      }
+    );
   };
 
   // ---------------- ALLERGIES ----------------
   const [allergyForm, setAllergyForm] = useState({ substance: "", reaction: "" });
+  const [editingAllergyId, setEditingAllergyId] = useState<string | null>(null);
 
   const addAllergy = async () => {
     if (!selectedPatientId || !allergyForm.substance.trim()) {
@@ -559,34 +603,71 @@ function DoctorWorkbenchInner() {
     }
     if (!requireDoctorSelected()) return;
     try {
-      await EmrService.addAllergy(
-        selectedPatientId,
-        { substance: allergyForm.substance.trim(), reaction: allergyForm.reaction.trim() || undefined },
-        doctorIdParam
-      );
-      toast.success("Allergy added");
+      const payload = { substance: allergyForm.substance.trim(), reaction: allergyForm.reaction.trim() || undefined };
+      if (editingAllergyId) {
+        await EmrService.updateAllergy(editingAllergyId, payload, doctorIdParam);
+        toast.success("Allergy corrected");
+      } else {
+        await EmrService.addAllergy(selectedPatientId, payload, doctorIdParam);
+        toast.success("Allergy added");
+      }
       setAllergyForm({ substance: "", reaction: "" });
+      setEditingAllergyId(null);
       await fetchSummary(selectedPatientId);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add allergy"));
+      toast.error(errorMessage(error, editingAllergyId ? "Failed to correct allergy" : "Failed to add allergy"));
     }
   };
 
+  const startEditAllergy = (a: AllergyType) => {
+    setEditingAllergyId(a.patientAllergyId);
+    setAllergyForm({ substance: a.substance, reaction: a.reaction || "" });
+  };
+
+  const cancelEditAllergy = () => {
+    setEditingAllergyId(null);
+    setAllergyForm({ substance: "", reaction: "" });
+  };
+
+  const removeAllergy = (a: AllergyType) => {
+    if (!selectedPatientId) return;
+    confirmDeleteToast(
+      <span>Delete allergy <b className="text-red-500 ml-1">{a.substance}</b>?</span>,
+      async () => {
+        try {
+          await EmrService.removeAllergy(a.patientAllergyId, doctorIdParam);
+          toast.success("Allergy removed");
+          await fetchSummary(selectedPatientId);
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove allergy"));
+        }
+      }
+    );
+  };
+
   // ---------------- MEDICATIONS ----------------
+  const [editingMedication, setEditingMedication] = useState<MedicationType | null>(null);
+
   const addMedication = async (payload: MedicationPayload): Promise<boolean> => {
     if (!selectedPatientId) return false;
     if (!requireDoctorSelected()) return false;
     try {
-      await EmrService.addMedication(
-        selectedPatientId,
-        { ...payload, encounterId: summary?.latestEncounter?.encounterId },
-        doctorIdParam
-      );
-      toast.success("Medication order added");
+      if (editingMedication) {
+        await EmrService.updateMedication(editingMedication.medicationId, payload, doctorIdParam);
+        toast.success("Medication corrected");
+        setEditingMedication(null);
+      } else {
+        await EmrService.addMedication(
+          selectedPatientId,
+          { ...payload, encounterId: summary?.latestEncounter?.encounterId },
+          doctorIdParam
+        );
+        toast.success("Medication order added");
+      }
       await fetchSummary(selectedPatientId);
       return true;
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add medication"));
+      toast.error(errorMessage(error, editingMedication ? "Failed to correct medication" : "Failed to add medication"));
       return false;
     }
   };
@@ -600,6 +681,22 @@ function DoctorWorkbenchInner() {
     } catch (error) {
       toast.error(errorMessage(error, "Failed to discontinue medication"));
     }
+  };
+
+  const removeMedication = (m: MedicationType) => {
+    if (!selectedPatientId) return;
+    confirmDeleteToast(
+      <span>Delete medication order <b className="text-red-500 ml-1">{m.drugName}</b>?</span>,
+      async () => {
+        try {
+          await EmrService.removeMedication(m.medicationId, doctorIdParam);
+          toast.success("Medication order removed");
+          await fetchSummary(selectedPatientId);
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove medication order"));
+        }
+      }
+    );
   };
 
   // ---------------- TREATMENTS (non-drug orders; nurse can only mark Done) ----------------
@@ -736,20 +833,53 @@ function DoctorWorkbenchInner() {
   // ---------------- CONFIDENTIAL STATEMENT (visible only to this doctor) ----------------
   const [confidentialText, setConfidentialText] = useState("");
   const [isSavingConfidential, setIsSavingConfidential] = useState(false);
+  const [editingConfidentialNoteId, setEditingConfidentialNoteId] = useState<string | null>(null);
 
   const addConfidentialNote = async () => {
     if (!selectedPatientId || !confidentialText.trim()) return;
     try {
       setIsSavingConfidential(true);
-      await EmrService.addConfidentialNote(selectedPatientId, { contentHtml: confidentialText.trim() });
-      toast.success("Confidential statement saved");
+      if (editingConfidentialNoteId) {
+        await EmrService.updateConfidentialNote(editingConfidentialNoteId, { contentHtml: confidentialText.trim() });
+        toast.success("Confidential statement updated");
+      } else {
+        await EmrService.addConfidentialNote(selectedPatientId, { contentHtml: confidentialText.trim() });
+        toast.success("Confidential statement saved");
+      }
       setConfidentialText("");
+      setEditingConfidentialNoteId(null);
       await fetchConfidentialNotes(selectedPatientId);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to save confidential statement"));
     } finally {
       setIsSavingConfidential(false);
     }
+  };
+
+  const startEditConfidentialNote = (n: DoctorConfidentialNoteType) => {
+    setEditingConfidentialNoteId(n.doctorConfidentialNoteId);
+    setConfidentialText(n.contentHtml);
+  };
+
+  const cancelEditConfidentialNote = () => {
+    setEditingConfidentialNoteId(null);
+    setConfidentialText("");
+  };
+
+  const removeConfidentialNote = (n: DoctorConfidentialNoteType) => {
+    if (!selectedPatientId) return;
+    confirmDeleteToast(
+      <span>Delete this confidential statement?</span>,
+      async () => {
+        try {
+          await EmrService.removeConfidentialNote(n.doctorConfidentialNoteId);
+          toast.success("Confidential statement removed");
+          await fetchConfidentialNotes(selectedPatientId);
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove confidential statement"));
+        }
+      }
+    );
   };
 
   // ---------------- DIAGNOSIS ----------------
@@ -797,6 +927,7 @@ function DoctorWorkbenchInner() {
 
   // ---------------- FOLLOW-UP ----------------
   const [followUpForm, setFollowUpForm] = useState({ followUpDate: "", instructions: "" });
+  const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(null);
 
   const addFollowUp = async () => {
     if (!selectedPatientId || !followUpForm.followUpDate) {
@@ -805,21 +936,50 @@ function DoctorWorkbenchInner() {
     }
     if (!requireDoctorSelected()) return;
     try {
-      await EmrService.addFollowUp(
-        selectedPatientId,
-        {
-          encounterId: summary?.latestEncounter?.encounterId,
-          followUpDate: followUpForm.followUpDate,
-          instructions: followUpForm.instructions.trim() || undefined,
-        },
-        doctorIdParam
-      );
-      toast.success("Follow-up added");
+      const payload = {
+        encounterId: summary?.latestEncounter?.encounterId,
+        followUpDate: followUpForm.followUpDate,
+        instructions: followUpForm.instructions.trim() || undefined,
+      };
+      if (editingFollowUpId) {
+        await EmrService.updateFollowUp(editingFollowUpId, payload, doctorIdParam);
+        toast.success("Follow-up updated");
+      } else {
+        await EmrService.addFollowUp(selectedPatientId, payload, doctorIdParam);
+        toast.success("Follow-up added");
+      }
       setFollowUpForm({ followUpDate: "", instructions: "" });
+      setEditingFollowUpId(null);
       await fetchSummary(selectedPatientId);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add follow-up"));
+      toast.error(errorMessage(error, editingFollowUpId ? "Failed to update follow-up" : "Failed to add follow-up"));
     }
+  };
+
+  const startEditFollowUp = (f: FollowUpType) => {
+    setEditingFollowUpId(f.followUpId);
+    setFollowUpForm({ followUpDate: f.followUpDate, instructions: f.instructions || "" });
+  };
+
+  const cancelEditFollowUp = () => {
+    setEditingFollowUpId(null);
+    setFollowUpForm({ followUpDate: "", instructions: "" });
+  };
+
+  const removeFollowUp = (f: FollowUpType) => {
+    if (!selectedPatientId) return;
+    confirmDeleteToast(
+      <span>Delete this follow-up?</span>,
+      async () => {
+        try {
+          await EmrService.removeFollowUp(f.followUpId, doctorIdParam);
+          toast.success("Follow-up removed");
+          await fetchSummary(selectedPatientId);
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove follow-up"));
+        }
+      }
+    );
   };
 
   const markDocumentViewed = async (id: string) => {
@@ -843,6 +1003,7 @@ function DoctorWorkbenchInner() {
   });
   const [referralOutcomeDates, setReferralOutcomeDates] = useState<Record<string, string>>({});
   const [savingOutcomeId, setSavingOutcomeId] = useState<string | null>(null);
+  const [editingReferralId, setEditingReferralId] = useState<string | null>(null);
 
   const addReferral = async () => {
     if (!selectedPatientId || !referralForm.targetSpecializationId) {
@@ -851,19 +1012,21 @@ function DoctorWorkbenchInner() {
     }
     if (!requireDoctorSelected()) return;
     try {
-      await EmrService.addReferral(
-        selectedPatientId,
-        {
-          encounterId: summary?.latestEncounter?.encounterId,
-          targetSpecializationId: referralForm.targetSpecializationId,
-          priority: referralForm.priority,
-          notes: referralForm.notes.trim() || undefined,
-          cancerSiteListItemId: referralForm.cancerSiteListItemId || undefined,
-          externalFacility: referralForm.externalFacility.trim() || undefined,
-        },
-        doctorIdParam
-      );
-      toast.success("Referral created");
+      const payload = {
+        encounterId: summary?.latestEncounter?.encounterId,
+        targetSpecializationId: referralForm.targetSpecializationId,
+        priority: referralForm.priority,
+        notes: referralForm.notes.trim() || undefined,
+        cancerSiteListItemId: referralForm.cancerSiteListItemId || undefined,
+        externalFacility: referralForm.externalFacility.trim() || undefined,
+      };
+      if (editingReferralId) {
+        await EmrService.updateReferral(editingReferralId, payload, doctorIdParam);
+        toast.success("Referral corrected");
+      } else {
+        await EmrService.addReferral(selectedPatientId, payload, doctorIdParam);
+        toast.success("Referral created");
+      }
       setReferralForm({
         targetSpecializationId: "",
         priority: "Routine",
@@ -872,10 +1035,44 @@ function DoctorWorkbenchInner() {
         cancerSiteName: "",
         externalFacility: "",
       });
+      setEditingReferralId(null);
       await fetchSummary(selectedPatientId);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to create referral"));
+      toast.error(errorMessage(error, editingReferralId ? "Failed to correct referral" : "Failed to create referral"));
     }
+  };
+
+  const startEditReferral = (r: ReferralType) => {
+    setEditingReferralId(r.referralId);
+    setReferralForm({
+      targetSpecializationId: r.targetSpecializationId || "",
+      priority: r.priority || "Routine",
+      notes: r.notes || "",
+      cancerSiteListItemId: r.cancerSiteListItemId || "",
+      cancerSiteName: r.cancerSiteName || "",
+      externalFacility: r.externalFacility || "",
+    });
+  };
+
+  const cancelEditReferral = () => {
+    setEditingReferralId(null);
+    setReferralForm({ targetSpecializationId: "", priority: "Routine", notes: "", cancerSiteListItemId: "", cancerSiteName: "", externalFacility: "" });
+  };
+
+  const removeReferral = (r: ReferralType) => {
+    if (!selectedPatientId) return;
+    confirmDeleteToast(
+      <span>Delete this referral to <b className="text-red-500 ml-1">{r.targetSpecializationName}</b>?</span>,
+      async () => {
+        try {
+          await EmrService.removeReferral(r.referralId, doctorIdParam);
+          toast.success("Referral removed");
+          await fetchSummary(selectedPatientId);
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove referral"));
+        }
+      }
+    );
   };
 
   const saveReferralOutcome = async (referralId: string) => {
@@ -1233,19 +1430,36 @@ function DoctorWorkbenchInner() {
                     onChange={(e) => setConfidentialText(e.target.value)}
                     className="w-full min-h-16 text-sm"
                   />
-                  <button
-                    onClick={addConfidentialNote}
-                    disabled={isSavingConfidential || !confidentialText.trim()}
-                    className="self-start flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                  >
-                    <Lock size={15} /> Save Privately
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={addConfidentialNote}
+                      disabled={isSavingConfidential || !confidentialText.trim()}
+                      className="self-start flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                    >
+                      <Lock size={15} /> {editingConfidentialNoteId ? "Save Changes" : "Save Privately"}
+                    </button>
+                    {editingConfidentialNoteId && (
+                      <button onClick={cancelEditConfidentialNote} className="text-sm font-semibold text-muted-foreground hover:underline">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                   {confidentialNotes.length > 0 && (
                     <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
                       {confidentialNotes.map((n) => (
-                        <div key={n.doctorConfidentialNoteId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
+                        <div key={n.doctorConfidentialNoteId} className="group rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
                           <p className="text-foreground">{n.contentHtml}</p>
-                          <p className="text-xs text-muted-foreground mt-1">{formatDateTime(n.createdAt)}</p>
+                          <div className="flex items-center justify-between mt-1">
+                            <p className="text-xs text-muted-foreground">{formatDateTime(n.createdAt)}</p>
+                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => startEditConfidentialNote(n)} title="Edit" className="p-1 hover:bg-black/10 rounded-full text-amber-700">
+                                <Pencil size={12} />
+                              </button>
+                              <button onClick={() => removeConfidentialNote(n)} title="Delete" className="p-1 hover:bg-black/10 rounded-full text-destructive">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1474,7 +1688,7 @@ function DoctorWorkbenchInner() {
                       summary.chronicConditions.map((c) => (
                         <div
                           key={c.chronicConditionId}
-                          className="rounded-lg border border-border bg-muted/30 px-3 py-2 min-w-48"
+                          className="group rounded-lg border border-border bg-muted/30 px-3 py-2 min-w-48"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-semibold text-sm text-foreground">{c.name}</span>
@@ -1482,9 +1696,19 @@ function DoctorWorkbenchInner() {
                               {c.status}
                             </span>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Diagnosed {c.diagnosedYear ?? "—"}
-                          </p>
+                          <div className="flex items-center justify-between mt-1">
+                            <p className="text-xs text-muted-foreground">
+                              Diagnosed {c.diagnosedYear ?? "—"}
+                            </p>
+                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => startEditCondition(c)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                <Pencil size={12} />
+                              </button>
+                              <button onClick={() => removeCondition(c)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       ))
                     ) : (
@@ -1518,8 +1742,13 @@ function DoctorWorkbenchInner() {
                       onClick={addCondition}
                       className="flex items-center gap-1 rounded-lg border border-primary/30 px-3 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
                     >
-                      <Plus size={14} /> Add Condition
+                      <Plus size={14} /> {editingConditionId ? "Save Correction" : "Add Condition"}
                     </button>
+                    {editingConditionId && (
+                      <button onClick={cancelEditCondition} className="text-sm font-semibold text-muted-foreground hover:underline">
+                        Cancel
+                      </button>
+                    )}
                   </div>
 
                   {(isDiabetesCondition || isHypertensionCondition) && (
@@ -1577,9 +1806,17 @@ function DoctorWorkbenchInner() {
                         summary.allergies.map((a) => (
                           <span
                             key={a.patientAllergyId}
-                            className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-1.5 text-sm text-red-700 dark:text-red-400"
+                            className="group flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-1.5 text-sm text-red-700 dark:text-red-400"
                           >
                             {a.substance} {a.reaction ? `— ${a.reaction}` : ""}
+                            <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
+                                <Pencil size={11} />
+                              </button>
+                              <button onClick={() => removeAllergy(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
+                                <Trash2 size={11} />
+                              </button>
+                            </span>
                           </span>
                         ))
                       ) : (
@@ -1605,8 +1842,13 @@ function DoctorWorkbenchInner() {
                         onClick={addAllergy}
                         className="flex items-center gap-1 rounded-lg border border-primary/30 px-3 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
                       >
-                        <Plus size={14} /> Add
+                        <Plus size={14} /> {editingAllergyId ? "Save Correction" : "Add"}
                       </button>
+                      {editingAllergyId && (
+                        <button onClick={cancelEditAllergy} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1671,12 +1913,20 @@ function DoctorWorkbenchInner() {
                                 </td>
                                 <td className="text-xs text-muted-foreground max-w-48 truncate">{m.instructions || "—"}</td>
                                 <td>
-                                  <button
-                                    onClick={() => discontinueMedication(m.medicationId)}
-                                    className="text-sm font-semibold text-red-600 hover:underline"
-                                  >
-                                    Discontinue
-                                  </button>
+                                  <div className="flex items-center gap-3">
+                                    <button
+                                      onClick={() => discontinueMedication(m.medicationId)}
+                                      className="text-sm font-semibold text-red-600 hover:underline"
+                                    >
+                                      Discontinue
+                                    </button>
+                                    <button onClick={() => setEditingMedication(m)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                      <Pencil size={13} />
+                                    </button>
+                                    <button onClick={() => removeMedication(m)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -1814,7 +2064,11 @@ function DoctorWorkbenchInner() {
               </div>
 
               <div className="flex flex-col gap-6">
-                <MedicationOrderPanel onSubmit={addMedication} />
+                <MedicationOrderPanel
+                  onSubmit={addMedication}
+                  editingMedication={editingMedication}
+                  onCancelEdit={() => setEditingMedication(null)}
+                />
 
                 {/* Investigation ordering */}
                 <div className="card p-6 flex flex-col gap-3">
@@ -2083,12 +2337,19 @@ function DoctorWorkbenchInner() {
                     onChange={(e) => setReferralForm((p) => ({ ...p, notes: e.target.value }))}
                     className="w-full min-h-16 text-sm"
                   />
-                  <button
-                    onClick={addReferral}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-                  >
-                    <Share2 size={15} /> Send Referral
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={addReferral}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                    >
+                      <Share2 size={15} /> {editingReferralId ? "Save Correction" : "Send Referral"}
+                    </button>
+                    {editingReferralId && (
+                      <button onClick={cancelEditReferral} className="text-sm font-semibold text-muted-foreground hover:underline">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                   {summary.referrals.length > 0 && (
                     <div className="flex flex-col gap-1.5 border-t border-border pt-3">
                       {summary.referrals.map((r) => (
@@ -2103,13 +2364,25 @@ function DoctorWorkbenchInner() {
                                 <span className="ml-2 text-xs text-muted-foreground">({r.cancerSiteName})</span>
                               )}
                             </span>
-                            <span
-                              className={`text-xs font-semibold ${
-                                r.priority === "Urgent" ? "text-red-600" : "text-muted-foreground"
-                              }`}
-                            >
-                              {r.priority}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-xs font-semibold ${
+                                  r.priority === "Urgent" ? "text-red-600" : "text-muted-foreground"
+                                }`}
+                              >
+                                {r.priority}
+                              </span>
+                              {!r.dateSeenBySpecialist && (
+                                <>
+                                  <button onClick={() => startEditReferral(r)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                    <Pencil size={12} />
+                                  </button>
+                                  <button onClick={() => removeReferral(r)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                    <Trash2 size={12} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
                           {r.dateSeenBySpecialist ? (
                             <span className="text-xs text-emerald-600">
@@ -2195,21 +2468,40 @@ function DoctorWorkbenchInner() {
                     onChange={(e) => setFollowUpForm((p) => ({ ...p, instructions: e.target.value }))}
                     className="w-full min-h-14 text-sm"
                   />
-                  <button
-                    onClick={addFollowUp}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-                  >
-                    <CalendarPlus size={15} /> Add Follow-Up
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={addFollowUp}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                    >
+                      <CalendarPlus size={15} /> {editingFollowUpId ? "Save Changes" : "Add Follow-Up"}
+                    </button>
+                    {editingFollowUpId && (
+                      <button onClick={cancelEditFollowUp} className="text-sm font-semibold text-muted-foreground hover:underline">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                   {summary.followUps.length > 0 && (
                     <div className="flex flex-col gap-1.5 border-t border-border pt-3">
                       {summary.followUps.map((f) => (
                         <div
                           key={f.followUpId}
-                          className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
+                          className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
                         >
-                          <span className="font-medium">{formatDate(f.followUpDate)}</span>
-                          {f.instructions && <span className="text-xs text-muted-foreground truncate ml-2">{f.instructions}</span>}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-medium shrink-0">{formatDate(f.followUpDate)}</span>
+                            {f.instructions && <span className="text-xs text-muted-foreground truncate">{f.instructions}</span>}
+                          </div>
+                          {f.status === "Pending" && (
+                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                              <button onClick={() => startEditFollowUp(f)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                <Pencil size={12} />
+                              </button>
+                              <button onClick={() => removeFollowUp(f)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

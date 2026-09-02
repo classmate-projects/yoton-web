@@ -72,8 +72,24 @@ export const EmrService = {
     const { data } = await api.post(ENDPOINTS.EMR.ADD_CHRONIC_CONDITION(patientId, doctorId), payload);
     return data;
   },
+  updateChronicCondition: async (chronicConditionId: string, payload: ChronicConditionPayload, doctorId?: string) => {
+    const { data } = await api.put(ENDPOINTS.EMR.UPDATE_CHRONIC_CONDITION(chronicConditionId, doctorId), payload);
+    return data;
+  },
+  removeChronicCondition: async (chronicConditionId: string, doctorId?: string) => {
+    const { data } = await api.delete(ENDPOINTS.EMR.REMOVE_CHRONIC_CONDITION(chronicConditionId, doctorId));
+    return data;
+  },
   addAllergy: async (patientId: string, payload: AllergyPayload, doctorId?: string) => {
     const { data } = await api.post(ENDPOINTS.EMR.ADD_ALLERGY(patientId, doctorId), payload);
+    return data;
+  },
+  updateAllergy: async (patientAllergyId: string, payload: AllergyPayload, doctorId?: string) => {
+    const { data } = await api.put(ENDPOINTS.EMR.UPDATE_ALLERGY(patientAllergyId, doctorId), payload);
+    return data;
+  },
+  removeAllergy: async (patientAllergyId: string, doctorId?: string) => {
+    const { data } = await api.delete(ENDPOINTS.EMR.REMOVE_ALLERGY(patientAllergyId, doctorId));
     return data;
   },
   addMedication: async (patientId: string, payload: MedicationPayload, doctorId?: string) => {
@@ -84,12 +100,28 @@ export const EmrService = {
     const { data } = await api.put(ENDPOINTS.EMR.DISCONTINUE_MEDICATION(medicationId, doctorId));
     return data;
   },
+  updateMedication: async (medicationId: string, payload: MedicationPayload, doctorId?: string) => {
+    const { data } = await api.put(ENDPOINTS.EMR.UPDATE_MEDICATION(medicationId, doctorId), payload);
+    return data;
+  },
+  removeMedication: async (medicationId: string, doctorId?: string) => {
+    const { data } = await api.delete(ENDPOINTS.EMR.REMOVE_MEDICATION(medicationId, doctorId));
+    return data;
+  },
   addReferral: async (patientId: string, payload: ReferralPayload, doctorId?: string) => {
     const { data } = await api.post(ENDPOINTS.EMR.ADD_REFERRAL(patientId, doctorId), payload);
     return data;
   },
   setReferralOutcome: async (referralId: string, payload: ReferralOutcomePayload, doctorId?: string) => {
     const { data } = await api.put(ENDPOINTS.EMR.SET_REFERRAL_OUTCOME(referralId, doctorId), payload);
+    return data;
+  },
+  updateReferral: async (referralId: string, payload: ReferralPayload, doctorId?: string) => {
+    const { data } = await api.put(ENDPOINTS.EMR.UPDATE_REFERRAL(referralId, doctorId), payload);
+    return data;
+  },
+  removeReferral: async (referralId: string, doctorId?: string) => {
+    const { data } = await api.delete(ENDPOINTS.EMR.REMOVE_REFERRAL(referralId, doctorId));
     return data;
   },
   saveDentalExtras: async (patientId: string, payload: DentalVisitExtraPayload, doctorId?: string) => {
@@ -128,6 +160,14 @@ export const EmrService = {
     const { data } = await api.post(ENDPOINTS.EMR.ADD_CONFIDENTIAL_NOTE(patientId), payload);
     return data;
   },
+  updateConfidentialNote: async (doctorConfidentialNoteId: string, payload: DoctorConfidentialNotePayload) => {
+    const { data } = await api.put(ENDPOINTS.EMR.UPDATE_CONFIDENTIAL_NOTE(doctorConfidentialNoteId), payload);
+    return data;
+  },
+  removeConfidentialNote: async (doctorConfidentialNoteId: string) => {
+    const { data } = await api.delete(ENDPOINTS.EMR.REMOVE_CONFIDENTIAL_NOTE(doctorConfidentialNoteId));
+    return data;
+  },
   getConfidentialNotes: async (patientId?: string) => {
     const { data } = await api.get(ENDPOINTS.EMR.GET_CONFIDENTIAL_NOTES(patientId));
     return data;
@@ -146,6 +186,14 @@ export const EmrService = {
   },
   addFollowUp: async (patientId: string, payload: FollowUpPayload, doctorId?: string) => {
     const { data } = await api.post(ENDPOINTS.EMR.ADD_FOLLOW_UP(patientId, doctorId), payload);
+    return data;
+  },
+  updateFollowUp: async (followUpId: string, payload: FollowUpPayload, doctorId?: string) => {
+    const { data } = await api.put(ENDPOINTS.EMR.UPDATE_FOLLOW_UP(followUpId, doctorId), payload);
+    return data;
+  },
+  removeFollowUp: async (followUpId: string, doctorId?: string) => {
+    const { data } = await api.delete(ENDPOINTS.EMR.REMOVE_FOLLOW_UP(followUpId, doctorId));
     return data;
   },
   getFollowUps: async (doctorId?: string) => {
