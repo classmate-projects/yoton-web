@@ -8,6 +8,51 @@ const api = axios.create({
   },
 });
 
+// The access token is short-lived by design (Jwt:AccessTokenMinutes on the API), so a 401
+// from an expired-but-otherwise-valid session is the expected common case, not an error -
+// this silently exchanges it for a new one via the refresh token cookie (see
+// app/api/auth/refresh/route.ts) and retries, instead of bouncing the user to /login every
+// time the token ages out mid-session. Concurrent requests that 401 at the same moment
+// share a single in-flight refresh call rather than each racing to rotate the same refresh
+// token (the API only accepts a refresh token once - see RefreshTokenService.RotateAsync).
+let isRefreshing = false;
+let refreshWaiters: Array<(token: string | null) => void> = [];
+
+function onRefreshed(token: string | null) {
+  refreshWaiters.forEach((resolve) => resolve(token));
+  refreshWaiters = [];
+}
+
+// Exported for useProactiveTokenRefresh - lib/chatSignalR.ts's accessTokenFactory only reads
+// localStorage lazily when a connection/reconnect actually happens, so nothing otherwise
+// notices the access token going stale while a WebSocket stays open for longer than its
+// lifetime. This lets that hook keep the stored token fresh on its own timer.
+export async function refreshAccessToken(): Promise<string | null> {
+  if (isRefreshing) {
+    return new Promise((resolve) => refreshWaiters.push(resolve));
+  }
+
+  isRefreshing = true;
+  try {
+    const res = await fetch("/api/auth/refresh", { method: "POST" });
+    if (!res.ok) {
+      onRefreshed(null);
+      return null;
+    }
+
+    const data = await res.json();
+    const token = data.token as string;
+    localStorage.setItem("yoton_token", token);
+    onRefreshed(token);
+    return token;
+  } catch {
+    onRefreshed(null);
+    return null;
+  } finally {
+    isRefreshing = false;
+  }
+}
+
 api.interceptors.request.use(
   (config) => {
     if (typeof window !== "undefined") {
@@ -28,13 +73,14 @@ api.interceptors.request.use(
   }
 );
 
-// A 401 here means the bearer token is missing/expired/invalid — stale local
-// auth state that a retry can't fix. Clear it and bounce to login. This must
-// also clear the httpOnly "token" cookie via /api/logout (same as the sidebar
-// logout button): proxy.ts gates page navigation on that cookie, not
-// localStorage, and its Max-Age outlives the JWT's own expiry — so if we only
-// clear localStorage here, proxy.ts sees the still-present cookie and
-// redirects straight back from /login to "/", looping forever.
+// A 401 here usually just means the short-lived access token has aged out - try exchanging
+// it for a new one via the refresh token cookie and retrying, exactly once per request. Only
+// once that also fails (refresh token itself expired/revoked, or there never was one) is this
+// treated as truly stale auth state that a retry can't fix: clear it and bounce to login. That
+// path must also clear the httpOnly "token" cookie via /api/logout (same as the sidebar logout
+// button): proxy.ts gates page navigation on that cookie, not localStorage, so if we only
+// clear localStorage here, proxy.ts sees the still-present cookie and redirects straight back
+// from /login to "/", looping forever.
 api.interceptors.response.use(
   (response) => {
     if (typeof window !== "undefined") endApiRequest();
@@ -43,6 +89,26 @@ api.interceptors.response.use(
   async (error) => {
     if (typeof window !== "undefined") {
       endApiRequest();
+
+      const originalRequest = error.config;
+      if (
+        error.response?.status === 401 &&
+        window.location.pathname !== "/login" &&
+        originalRequest &&
+        !originalRequest._retry
+      ) {
+        originalRequest._retry = true;
+        const newToken = await refreshAccessToken();
+
+        if (newToken) {
+          // api(originalRequest) re-enters the request interceptor above, which calls
+          // startApiRequest() itself - this would double-count if it were called here too.
+          originalRequest.headers = originalRequest.headers ?? {};
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
+        }
+      }
+
       if (error.response?.status === 401 && window.location.pathname !== "/login") {
         localStorage.removeItem("yoton_token");
         localStorage.removeItem("yoton_user_detail");

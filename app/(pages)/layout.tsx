@@ -11,6 +11,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
+import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
 import { onUserDetailChange } from "@/lib/userDetail";
 
 // Pages that are reachable by URL (e.g. from a button on an admin page) but
@@ -96,6 +97,7 @@ export default function PageLayout({
   const router = useRouter();
 
   const { warningSecondsLeft, stayLoggedIn } = useIdleLogout();
+  useProactiveTokenRefresh();
 
   // Mobile-only drawer state. On desktop the sidebar is always in flow (hover
   // rail), so this is inert there; on mobile the hamburger in the top bar opens
