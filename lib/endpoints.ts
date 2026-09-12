@@ -191,6 +191,29 @@ export const ENDPOINTS = {
         GET_PATIENT_FLAGS: () => `/api/compliance-data/patient-flags`,
         UPDATE_PATIENT_FLAGS: (chronicConditionId: string) => `/api/compliance-data/patient-flags/${chronicConditionId}`,
     },
+    AUDIT_LOG: {
+        GET_ALL: (params: {
+            userId?: string;
+            module?: string;
+            method?: string;
+            from?: string;
+            to?: string;
+            page?: number;
+            pageSize?: number;
+        }) => {
+            const query = new URLSearchParams();
+            if (params.userId) query.set("userId", params.userId);
+            if (params.module) query.set("module", params.module);
+            if (params.method) query.set("method", params.method);
+            if (params.from) query.set("from", params.from);
+            if (params.to) query.set("to", params.to);
+            if (params.page) query.set("page", String(params.page));
+            if (params.pageSize) query.set("pageSize", String(params.pageSize));
+            const qs = query.toString();
+            return `/api/audit-log${qs ? `?${qs}` : ""}`;
+        },
+        GET_MODULES: () => `/api/audit-log/modules`,
+    },
     CONFIG_LIST: {
         GET: (listType: string, search?: string, page?: number, pageSize?: number) => {
             const params = new URLSearchParams();

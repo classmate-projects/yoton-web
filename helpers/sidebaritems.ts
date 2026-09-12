@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -241,6 +241,16 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Compliance Data",
         navLink: "/compliance-data",
         icon: ShieldCheck,
+        group: "Configuration"
+    },
+
+    // Every user action, login to logout - see Yoton-API/Middlewares/AuditLogMiddleware.cs.
+    // A normal admin-grantable module like the others above.
+    {
+        id: 31,
+        name: "Audit Log",
+        navLink: "/audit-log",
+        icon: ScrollText,
         group: "Configuration"
     },
 
