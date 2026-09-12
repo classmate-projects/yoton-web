@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -231,6 +231,17 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         navLink: "/patient-satisfaction",
         icon: Smile,
         group: "User Modules"
+    },
+
+    // Closes KPI regulatory data gaps that have no other source in the EMR (staff FTE for
+    // PL4.2, patient exclusion flags for PL4.8/PL4.9/PL4.10) - a normal admin-grantable
+    // module, force-assignable to whichever HR/Quality/Compliance role maintains this data.
+    {
+        id: 30,
+        name: "Compliance Data",
+        navLink: "/compliance-data",
+        icon: ShieldCheck,
+        group: "Configuration"
     },
 
     // Always reachable regardless of role or allow-list - see app/(pages)/layout.tsx and

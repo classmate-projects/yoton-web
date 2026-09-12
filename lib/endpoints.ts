@@ -185,6 +185,12 @@ export const ENDPOINTS = {
         DOWNLOAD: (reportKey: string, start: string, end: string) =>
             `/api/reports/kpi/${encodeURIComponent(reportKey)}/download?start=${start}&end=${end}`,
     },
+    COMPLIANCE_DATA: {
+        GET_STAFF_FTE: () => `/api/compliance-data/staff-fte`,
+        UPDATE_STAFF_FTE: (userId: string) => `/api/compliance-data/staff-fte/${userId}`,
+        GET_PATIENT_FLAGS: () => `/api/compliance-data/patient-flags`,
+        UPDATE_PATIENT_FLAGS: (chronicConditionId: string) => `/api/compliance-data/patient-flags/${chronicConditionId}`,
+    },
     CONFIG_LIST: {
         GET: (listType: string, search?: string, page?: number, pageSize?: number) => {
             const params = new URLSearchParams();
