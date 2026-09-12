@@ -11,4 +11,8 @@ export const AuditLogService = {
     const { data } = await api.get(ENDPOINTS.AUDIT_LOG.GET_MODULES());
     return data;
   },
+  getVersions: async (auditLogId: string) => {
+    const { data } = await api.get(ENDPOINTS.AUDIT_LOG.GET_VERSIONS(auditLogId));
+    return data;
+  },
 };

@@ -213,6 +213,7 @@ export const ENDPOINTS = {
             return `/api/audit-log${qs ? `?${qs}` : ""}`;
         },
         GET_MODULES: () => `/api/audit-log/modules`,
+        GET_VERSIONS: (auditLogId: string) => `/api/audit-log/${auditLogId}/versions`,
     },
     CONFIG_LIST: {
         GET: (listType: string, search?: string, page?: number, pageSize?: number) => {

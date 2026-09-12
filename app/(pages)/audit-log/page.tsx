@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ScrollText, Loader2, Eye, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { ScrollText, Loader2, Eye, X, ChevronLeft, ChevronRight, History } from "lucide-react";
 import { toast } from "sonner";
 import DatePicker from "@/components/DatePicker";
 import { AuditLogService } from "@/services/auditLog.service";
@@ -15,6 +15,41 @@ const PAGE_SIZE = 50;
 
 function formatDateTime(value: string): string {
   return new Date(value).toLocaleString();
+}
+
+interface FieldDiff {
+  field: string;
+  from: unknown;
+  to: unknown;
+}
+
+// Compares two log entries' "Changes" JSON key-by-key. Neither side needs to be a full
+// record - just whatever fields that particular request submitted - so a field only present
+// on one side still shows up (as "—" on the other).
+function diffChanges(previous: string | null, current: string | null): FieldDiff[] {
+  if (!previous || !current) return [];
+  try {
+    const prevObj = JSON.parse(previous) as Record<string, unknown>;
+    const currObj = JSON.parse(current) as Record<string, unknown>;
+    const keys = new Set([...Object.keys(prevObj), ...Object.keys(currObj)]);
+    const diffs: FieldDiff[] = [];
+    keys.forEach((key) => {
+      const from = prevObj[key];
+      const to = currObj[key];
+      if (JSON.stringify(from) !== JSON.stringify(to)) {
+        diffs.push({ field: key, from, to });
+      }
+    });
+    return diffs;
+  } catch {
+    return [];
+  }
+}
+
+function formatValue(value: unknown): string {
+  if (value === undefined) return "—";
+  if (value === null) return "null";
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 export default function AuditLogPage() {
@@ -34,6 +69,24 @@ export default function AuditLogPage() {
   const [to, setTo] = useState("");
 
   const [viewing, setViewing] = useState<AuditLogType | null>(null);
+
+  const [historyFor, setHistoryFor] = useState<AuditLogType | null>(null);
+  const [versions, setVersions] = useState<AuditLogType[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+
+  const openHistory = async (log: AuditLogType) => {
+    setHistoryFor(log);
+    setLoadingVersions(true);
+    try {
+      const res = await AuditLogService.getVersions(log.auditLogId);
+      setVersions(res.data ?? []);
+    } catch {
+      toast.error("Failed to load version history");
+      setVersions([]);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -196,13 +249,24 @@ export default function AuditLogPage() {
                       </span>
                     </td>
                     <td className="py-2 pr-4">
-                      <button
-                        onClick={() => setViewing(log)}
-                        title="View"
-                        className="flex items-center justify-center rounded-full p-1.5 text-primary hover:bg-primary/10"
-                      >
-                        <Eye size={14} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setViewing(log)}
+                          title="View"
+                          className="flex items-center justify-center rounded-full p-1.5 text-primary hover:bg-primary/10"
+                        >
+                          <Eye size={14} />
+                        </button>
+                        {log.changes && (
+                          <button
+                            onClick={() => openHistory(log)}
+                            title="Version history"
+                            className="flex items-center justify-center rounded-full p-1.5 text-primary hover:bg-primary/10"
+                          >
+                            <History size={14} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -292,6 +356,78 @@ export default function AuditLogPage() {
                 </div>
               )}
             </dl>
+          </div>
+        </div>
+      )}
+
+      {historyFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setHistoryFor(null)}>
+          <div
+            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">Version History</h2>
+              <button onClick={() => setHistoryFor(null)} className="rounded-full p-1 hover:bg-muted">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="mb-4 break-all font-mono text-xs text-muted-foreground">{historyFor.path}</p>
+
+            {loadingVersions ? (
+              <div className="flex items-center justify-center py-10 text-muted-foreground">
+                <Loader2 className="animate-spin" size={20} />
+              </div>
+            ) : versions.length <= 1 ? (
+              <p className="text-sm text-muted-foreground">
+                No earlier versions found for this exact record — this looks like the first (or only) action
+                against it captured in the log.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {versions.map((v, i) => {
+                  const previous = i > 0 ? versions[i - 1] : null;
+                  const diffs = previous ? diffChanges(previous.changes, v.changes) : [];
+                  return (
+                    <div key={v.auditLogId} className="rounded-lg border border-border p-3">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground">
+                          Version {i + 1}
+                          {v.auditLogId === historyFor.auditLogId ? " (this entry)" : ""}
+                        </span>
+                        <span>
+                          {formatDateTime(v.createdAt)} · {v.username || "—"}
+                        </span>
+                      </div>
+                      {i === 0 ? (
+                        <p className="text-xs text-muted-foreground">Initial value — nothing to compare against.</p>
+                      ) : diffs.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No field-level differences from the previous version.</p>
+                      ) : (
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-left text-muted-foreground">
+                              <th className="pb-1 pr-3">Field</th>
+                              <th className="pb-1 pr-3">Previous</th>
+                              <th className="pb-1">Current</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {diffs.map((d) => (
+                              <tr key={d.field}>
+                                <td className="pr-3 py-0.5 font-medium text-foreground">{d.field}</td>
+                                <td className="pr-3 py-0.5 text-destructive">{formatValue(d.from)}</td>
+                                <td className="py-0.5 text-primary">{formatValue(d.to)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
