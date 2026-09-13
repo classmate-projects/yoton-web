@@ -6,6 +6,7 @@ import { getSignalRConnection } from "@/lib/signalR";
 import { ReceptionService } from "@/services/reception.service";
 import { EmrService } from "@/services/emr.service";
 import { PharmacyService } from "@/services/pharmacy.service";
+import { ensureNotificationPermission, showAlertNotification } from "@/lib/notifications";
 
 export interface AlertItem {
   id: string;
@@ -13,6 +14,7 @@ export interface AlertItem {
   title: string;
   message: string;
   timestamp: number;
+  read: boolean;
 }
 
 const MAX_ALERTS = 30;
@@ -31,18 +33,37 @@ export function useAlertCenter(role: string, userId: string | undefined) {
   const canSeeAlerts = isAdmin || isReception || isDoctor || isPharmacist;
 
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  // Derived, not its own state - unreadCount used to be tracked separately and incremented
+  // by hand at every call site, which could only ever drift from the truth. The alert list
+  // (specifically each item's own `read` flag - see markAlertRead/markAllRead below) is the
+  // single source of truth now.
+  const unreadCount = alerts.filter((a) => !a.read).length;
   const [isRinging, setIsRinging] = useState(false);
 
-  const pushAlert = (item: AlertItem, toastNode?: ReactNode) => {
-    setAlerts((prev) => [item, ...prev.filter((a) => a.id !== item.id)].slice(0, MAX_ALERTS));
-    setUnreadCount((prev) => prev + 1);
+  const pushAlert = (item: Omit<AlertItem, "read">, toastNode?: ReactNode) => {
+    const unread: AlertItem = { ...item, read: false };
+    setAlerts((prev) => [unread, ...prev.filter((a) => a.id !== item.id)].slice(0, MAX_ALERTS));
     setIsRinging(true);
     window.setTimeout(() => setIsRinging(false), 700);
     if (toastNode) toast(toastNode);
+
+    // Every alert that reaches the bell also goes out as a real OS notification via the
+    // service worker (not just when the tab is backgrounded) - showAlertNotification itself
+    // is a no-op if permission was never granted or was explicitly muted (see
+    // lib/notifications.ts), so this is safe to call unconditionally.
+    ensureNotificationPermission().then((granted) => {
+      if (granted) showAlertNotification(item.title, item.message, item.navLink);
+    });
   };
 
   const dropAlert = (id: string) => setAlerts((prev) => prev.filter((a) => a.id !== id));
+
+  // Individual alerts are marked read as the user opens each one (NotificationBell's goTo);
+  // markAllRead backs the panel's "Read all" button for clearing the whole list in one go.
+  const markAlertRead = (id: string) =>
+    setAlerts((prev) => prev.map((a) => (a.id === id && !a.read ? { ...a, read: true } : a)));
+
+  const markAllRead = () => setAlerts((prev) => prev.map((a) => (a.read ? a : { ...a, read: true })));
 
   // ---------------- Appointment requests (admin, reception) ----------------
   useEffect(() => {
@@ -58,10 +79,10 @@ export function useAlertCenter(role: string, userId: string | undefined) {
             title: "Appointment request",
             message: `${r.patientName ?? "A patient"} requested ${r.doctorName ?? "a doctor"} for ${new Date(r.appointmentDate).toLocaleString()}`,
             timestamp: Date.now(),
+            read: false,
           })
         );
         setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
-        setUnreadCount((prev) => prev + existing.length);
       })
       .catch(() => {});
     return () => {
@@ -100,14 +121,14 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       connection.on("appointmentRequested", handleRequested);
       connection.on("appointmentStatusUpdated", handleStatusUpdated);
     };
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         connection.off("appointmentRequested", handleRequested);
         connection.off("appointmentStatusUpdated", handleStatusUpdated);
-      });
+      }).catch(() => {});
     };
   }, [isAdmin, isReception]);
 
@@ -128,10 +149,10 @@ export function useAlertCenter(role: string, userId: string | undefined) {
             title: "Follow-up requested",
             message: `Dr. ${f.doctorName ?? "—"} requested a follow-up for ${f.patientName ?? "a patient"} around ${new Date(f.followUpDate).toLocaleDateString()}`,
             timestamp: Date.now(),
+            read: false,
           })
         );
         setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
-        setUnreadCount((prev) => prev + existing.length);
       })
       .catch(() => {});
     return () => {
@@ -169,14 +190,14 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       connection.on("followUpAdded", handleAdded);
       connection.on("followUpResolved", handleResolved);
     };
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         connection.off("followUpAdded", handleAdded);
         connection.off("followUpResolved", handleResolved);
-      });
+      }).catch(() => {});
     };
   }, [isAdmin, isReception]);
 
@@ -194,10 +215,10 @@ export function useAlertCenter(role: string, userId: string | undefined) {
             title: "Correction needs your review",
             message: `${c.proposedByName ?? "An admin"} proposed a correction for ${c.patientName ?? "a patient"}'s encounter`,
             timestamp: Date.now(),
+            read: false,
           })
         );
         setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
-        setUnreadCount((prev) => prev + existing.length);
       })
       .catch(() => {});
     return () => {
@@ -235,14 +256,14 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       connection.on("encounterCorrectionProposed", handleProposed);
       connection.on("encounterCorrectionResolved", handleResolved);
     };
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         connection.off("encounterCorrectionProposed", handleProposed);
         connection.off("encounterCorrectionResolved", handleResolved);
-      });
+      }).catch(() => {});
     };
   }, [isDoctor, userId]);
 
@@ -272,13 +293,13 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       connection.off("encounterCorrectionResolved", handleResolved);
       connection.on("encounterCorrectionResolved", handleResolved);
     };
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         connection.off("encounterCorrectionResolved", handleResolved);
-      });
+      }).catch(() => {});
     };
   }, [isAdmin, userId]);
 
@@ -307,13 +328,13 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       connection.off("patientDocumentUploaded", handleUploaded);
       connection.on("patientDocumentUploaded", handleUploaded);
     };
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         connection.off("patientDocumentUploaded", handleUploaded);
-      });
+      }).catch(() => {});
     };
   }, [isAdmin, isReception]);
 
@@ -330,9 +351,9 @@ export function useAlertCenter(role: string, userId: string | undefined) {
           title: "Low stock",
           message: `${m.name} is down to ${m.stock} units`,
           timestamp: Date.now(),
+          read: false,
         }));
         setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
-        setUnreadCount((prev) => prev + existing.length);
       })
       .catch(() => {});
     return () => {
@@ -364,13 +385,13 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       connection.off("medicineLowStock", handleLowStock);
       connection.on("medicineLowStock", handleLowStock);
     };
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         connection.off("medicineLowStock", handleLowStock);
-      });
+      }).catch(() => {});
     };
   }, [isAdmin, isPharmacist]);
 
@@ -414,18 +435,16 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       connection.on("labStatusUpdated", handleLabUpdated);
       connection.on("radiologyStatusUpdated", handleRadiologyUpdated);
     };
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         connection.off("labStatusUpdated", handleLabUpdated);
         connection.off("radiologyStatusUpdated", handleRadiologyUpdated);
-      });
+      }).catch(() => {});
     };
   }, [isDoctor, userId]);
 
-  const clearUnread = () => setUnreadCount(0);
-
-  return { canSeeAlerts, alerts, unreadCount, isRinging, clearUnread };
+  return { canSeeAlerts, alerts, unreadCount, isRinging, markAlertRead, markAllRead };
 }

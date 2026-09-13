@@ -81,13 +81,13 @@ export function useUnreadAppointmentRequests(role: string) {
       connection.off("appointmentStatusUpdated", handleStatusUpdated);
       connection.on("appointmentStatusUpdated", handleStatusUpdated);
     };
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         connection.off("appointmentStatusUpdated", handleStatusUpdated);
-      });
+      }).catch(() => {});
     };
   }, [canSeeRequests]);
 

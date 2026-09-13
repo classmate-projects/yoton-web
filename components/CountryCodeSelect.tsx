@@ -51,6 +51,12 @@ export default function CountryCodeSelect({
   // onFocus otherwise can't tell "a real Tab into this button" (should open) apart from "we
   // just returned focus here ourselves" (shouldn't).
   const skipNextFocusOpen = useRef(false);
+  // Set on the trigger's onMouseDown, read (and cleared) by onFocus - a mouse click focuses
+  // the button before the click event fires, so onFocus and onClick would otherwise both act
+  // on the same click: onFocus opens it, then onClick's toggle immediately closes it again.
+  // Marking "this focus came from a mousedown" lets onFocus stand down and leave opening to
+  // onClick for mouse interactions, while still opening on focus for real keyboard Tabbing.
+  const mouseDownRef = useRef(false);
 
   // Matches on country name OR dialing code, either with or without the leading "+" - typing
   // "ind" finds India/Indonesia, typing "91" or "+91" both find India's code.
@@ -141,6 +147,9 @@ export default function CountryCodeSelect({
         ref={triggerRef}
         id={id}
         disabled={disabled}
+        onMouseDown={() => {
+          mouseDownRef.current = true;
+        }}
         onClick={() => (open ? setOpen(false) : openPicker())}
         onFocus={() => {
           // A real Tab into this button should open the list, same as clicking it -
@@ -149,6 +158,12 @@ export default function CountryCodeSelect({
           // programmatically returns focus here, so that doesn't immediately reopen it.
           if (skipNextFocusOpen.current) {
             skipNextFocusOpen.current = false;
+            return;
+          }
+          if (mouseDownRef.current) {
+            // This focus is the browser's own pre-click focus, not a keyboard Tab - let
+            // onClick (fired next, on mouseup) handle opening it instead.
+            mouseDownRef.current = false;
             return;
           }
           openPicker();

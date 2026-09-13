@@ -30,13 +30,13 @@ export function useRolePermissionsSync(userRole: string) {
       connection.on("rolePermissionsUpdated", handleUpdated);
     };
 
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         connection.off("rolePermissionsUpdated", handleUpdated);
-      });
+      }).catch(() => {});
     };
   }, [userRole]);
 }

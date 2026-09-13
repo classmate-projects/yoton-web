@@ -249,7 +249,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   ];
 
   const userRole = currentUser?.role || "";
-  const { canSeeAlerts, alerts, unreadCount, isRinging, clearUnread } =
+  const { canSeeAlerts, alerts, unreadCount, isRinging, markAlertRead, markAllRead } =
     useAlertCenter(userRole, currentUser?.userId);
   const { unreadCount: unreadChatCount, clearUnread: clearUnreadChat } = useUnreadChatCount(!!userRole);
   useRolePermissionsSync(userRole);
@@ -505,7 +505,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                 alerts={alerts}
                 unreadCount={unreadCount}
                 isRinging={isRinging}
-                onOpen={clearUnread}
+                onMarkRead={markAlertRead}
+                onMarkAllRead={markAllRead}
               />
             </div>
           )}
