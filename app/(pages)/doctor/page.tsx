@@ -1786,6 +1786,7 @@ function DoctorWorkbenchInner() {
                               <option value="Type1">Type 1</option>
                               <option value="Type2">Type 2</option>
                               <option value="Gestational">Gestational</option>
+                              <option value="SteroidInduced">Steroid-Induced</option>
                               <option value="Other">Other</option>
                             </select>
                           </div>
