@@ -32,5 +32,18 @@ export const RoleService = {
     setAllowedModules: async (id: string, allowedModules: string[]) => {
         const { data } = await api.put(ENDPOINTS.ROLE.SET_ALLOWED_MODULES(id), { allowedModules });
         return data;
+    },
+
+    // Step-up re-auth (the caller's own password) required server-side - see
+    // RoleController.ForceModule's comment on why granting one of these is deliberately
+    // harder than the plain checklist.
+    forceAssignModule: async (id: string, moduleKey: string, adminPassword: string) => {
+        const { data } = await api.put(ENDPOINTS.ROLE.FORCE_MODULE(id), { moduleKey, adminPassword });
+        return data;
+    },
+
+    revokeModule: async (id: string, moduleKey: string) => {
+        const { data } = await api.put(ENDPOINTS.ROLE.REVOKE_MODULE(id), { moduleKey });
+        return data;
     }
 }

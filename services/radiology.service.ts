@@ -19,6 +19,14 @@ export const RadiologyService = {
     const { data } = await api.post(ENDPOINTS.RADIOLOGY.CREATE, payload);
     return data;
   },
+  update: async (id: string, payload: CreateRadiologyRequestPayload) => {
+    const { data } = await api.put(ENDPOINTS.RADIOLOGY.UPDATE(id), payload);
+    return data;
+  },
+  remove: async (id: string) => {
+    const { data } = await api.delete(ENDPOINTS.RADIOLOGY.REMOVE(id));
+    return data;
+  },
   updateStatus: async (radiologyRequestId: string, status: string, scheduledDate?: string) => {
     const { data } = await api.post(ENDPOINTS.RADIOLOGY.UPDATE_STATUS, {
       radiologyRequestId,

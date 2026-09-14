@@ -1,5 +1,6 @@
 import { HubConnection, HubConnectionBuilder } from "@microsoft/signalr";
 import { baseUrl } from "./constants";
+import { signalRLogger } from "./signalRLogger";
 
 let connection: HubConnection | null = null;
 let connectionPromise: Promise<HubConnection> | null = null;
@@ -11,7 +12,21 @@ export async function getSignalRConnection() {
     connection = new HubConnectionBuilder()
       .withUrl(`${baseUrl}/notify`)
       .withAutomaticReconnect()
+      .configureLogging(signalRLogger)
+      // Default 30s is too tight for a throttled background tab - Chrome/Edge slow down
+      // timers on inactive tabs, which can delay the server's 15s keep-alive ping past the
+      // client's timeout even though the socket is perfectly healthy. 60s gives that slack
+      // without meaningfully delaying detection of an actually-dead connection.
+      .withServerTimeout(60_000)
       .build();
+
+    connection.onreconnecting(() => console.warn("[SignalR] Reconnecting to /notify..."));
+    connection.onreconnected(() => console.info("[SignalR] Reconnected to /notify."));
+    connection.onclose((error) => {
+      if (error) console.error("[SignalR] /notify connection closed and gave up reconnecting:", error);
+      connection = null;
+      connectionPromise = null;
+    });
 
     try {
       await connection.start();

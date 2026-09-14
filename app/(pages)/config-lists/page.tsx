@@ -17,6 +17,7 @@ const LIST_TYPES: { value: ConfigListType; label: string; hint: string }[] = [
   { value: "Frequency", label: "Frequency", hint: "e.g. Once daily, Twice daily — Code can hold a session pattern like 1111" },
   { value: "InsuranceProvider", label: "Insurance Provider", hint: "Selectable at patient registration when Payment Type is Insurance or Corporate" },
   { value: "DrugType", label: "Drug Type", hint: "Tablet, Syrup, Injection, Cream — selectable when prescribing on the doctor workbench" },
+  { value: "CancerSite", label: "Cancer Site", hint: "Selectable on an urgent suspected-cancer referral in the doctor workbench" },
 ];
 
 export default function ConfigListsPage() {

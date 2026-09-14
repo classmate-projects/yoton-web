@@ -47,7 +47,7 @@ export function useRoleSignalR(
       connection.on("roleDeleted", handleRoleDeleted);
     };
 
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
@@ -56,7 +56,7 @@ export function useRoleSignalR(
         connection.off("roleCreated", handleRoleCreated);
         connection.off("roleUpdated", handleRoleUpdated);
         connection.off("roleDeleted", handleRoleDeleted);
-      });
+      }).catch(() => {});
     };
   }, [setRoles]);
 }

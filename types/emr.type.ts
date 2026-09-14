@@ -2,12 +2,20 @@ import { MedicationAdministrationType, NurseNoteType, TreatmentType } from "./nu
 
 export interface EmrPatientListItem {
   opId: string;
+  // Hospital-assigned outpatient number - what the UI shows as "MRN". opId itself stays
+  // internal (routing, FK payloads, React keys) and is never shown to a user.
+  opNumber: string | null;
   name: string;
   age: number | null;
   sex: string | null;
   lastAppointmentDate: string | null;
   lastAppointmentStatus: string | null;
   assignedDoctorName: string | null;
+  assignedSpecialtyName: string | null;
+  chiefComplaint: string | null;
+  phone: string | null;
+  nationalID: string | null;
+  passportNumber: string | null;
 }
 
 export interface ChronicConditionType {
@@ -15,7 +23,13 @@ export interface ChronicConditionType {
   name: string;
   diagnosedYear: number | null;
   status: string;
+  diabetesType: string | null; // Type1, Type2, Gestational, Other
+  diagnosisDate: string | null;
+  hasPcos: boolean;
+  hasEsrd: boolean;
   createdAt: string;
+  correctedFromId: string | null;
+  correctedFrom: ChronicConditionType | null;
 }
 
 export interface AllergyType {
@@ -24,6 +38,8 @@ export interface AllergyType {
   reaction: string | null;
   recordedByRole: string | null;
   createdAt: string;
+  correctedFromId: string | null;
+  correctedFrom: AllergyType | null;
 }
 
 export interface TaperingStepType {
@@ -60,6 +76,8 @@ export interface MedicationType {
   endedAt: string | null;
   administrations: MedicationAdministrationType[];
   taperingSteps: TaperingStepType[];
+  correctedFromId: string | null;
+  correctedFrom: MedicationType | null;
 }
 
 export interface SpecialRemarkType {
@@ -131,6 +149,24 @@ export interface FollowUpType {
   followUpId: string;
   patientId: string | null;
   patientName: string | null;
+  doctorId: string | null;
+  doctorName: string | null;
+  followUpDate: string;
+  instructions: string | null;
+  status: "Pending" | "Confirmed" | "Dismissed";
+  confirmedAppointmentId: string | null;
+  createdAt: string;
+}
+
+// GET /api/reception/follow-ups/pending - reception's own trimmed view (see
+// ReceptionController.GetPendingFollowUps), always Status === "Pending" so that field isn't
+// carried here at all.
+export interface PendingFollowUpType {
+  followUpId: string;
+  patientId: string | null;
+  patientName: string | null;
+  doctorId: string | null;
+  doctorName: string | null;
   followUpDate: string;
   instructions: string | null;
   createdAt: string;
@@ -142,6 +178,24 @@ export interface ReferralType {
   targetSpecializationName: string | null;
   priority: string;
   notes: string | null;
+  cancerSiteListItemId: string | null;
+  cancerSiteName: string | null;
+  externalFacility: string | null;
+  dateSeenBySpecialist: string | null;
+  createdAt: string;
+  correctedFromId: string | null;
+  correctedFrom: ReferralType | null;
+}
+
+export interface DentalVisitExtraType {
+  dentalVisitExtraId: string;
+  fissureSealantApplied: boolean;
+  fluorideApplied: boolean;
+  sdfApplied: boolean;
+  oralHygieneEducationGiven: boolean;
+  lifestyleEducationGiven: boolean;
+  smokingCessationEducationGiven: boolean;
+  comprehensiveDentalPlanProvided: boolean;
   createdAt: string;
 }
 
@@ -154,6 +208,8 @@ export interface PatientSummaryType {
   phone: string | null;
   email: string | null;
   address: string | null;
+  maritalStatus: string | null;
+  nationality: string | null;
   chronicConditions: ChronicConditionType[];
   allergies: AllergyType[];
   currentMedications: MedicationType[];
@@ -167,6 +223,7 @@ export interface PatientSummaryType {
   followUps: FollowUpType[];
   documents: PatientDocumentType[];
   unviewedDocumentCount: number;
+  dentalVisitExtras: DentalVisitExtraType[];
 }
 
 export interface DoctorDashboardSummaryType {
@@ -175,6 +232,7 @@ export interface DoctorDashboardSummaryType {
   todaysAppointments: number;
   pendingReports: number;
   urgentItems: number;
+  isDentalSpecialty: boolean;
 }
 
 export interface TodayScheduleItemType {
@@ -283,6 +341,10 @@ export interface ChronicConditionPayload {
   name: string;
   diagnosedYear?: number;
   status?: string;
+  diabetesType?: string; // Type1, Type2, Gestational, Other
+  diagnosisDate?: string;
+  hasPcos?: boolean;
+  hasEsrd?: boolean;
 }
 
 export interface AllergyPayload {
@@ -346,6 +408,23 @@ export interface ReferralPayload {
   targetSpecializationId: string;
   priority?: string;
   notes?: string;
+  cancerSiteListItemId?: string;
+  externalFacility?: string;
+}
+
+export interface ReferralOutcomePayload {
+  dateSeenBySpecialist: string;
+}
+
+export interface DentalVisitExtraPayload {
+  encounterId?: string;
+  fissureSealantApplied?: boolean;
+  fluorideApplied?: boolean;
+  sdfApplied?: boolean;
+  oralHygieneEducationGiven?: boolean;
+  lifestyleEducationGiven?: boolean;
+  smokingCessationEducationGiven?: boolean;
+  comprehensiveDentalPlanProvided?: boolean;
 }
 
 export interface TreatmentPayload {

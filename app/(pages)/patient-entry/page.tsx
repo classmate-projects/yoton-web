@@ -1,20 +1,21 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import {
   MdOutlinePersonOutline,
   MdOutlineLocalPhone,
   MdOutlineFilePresent,
   MdOutlinePayment,
-  MdExpandMore,
   MdClose,
 } from "react-icons/md";
 import { format } from "date-fns";
 import { countryDetails } from "@/helpers/countyDetails";
+import { getNationalIdFormat, passportNumberRegex } from "@/helpers/nationalIdFormats";
 import { ReceptionService } from "@/services/reception.service";
 import { ConfigListService } from "@/services/configList.service";
 import { toast } from "sonner";
-import { ReceptionCreatePatientType, InsuranceCoverageRow } from "@/types/reception.type";
+import { ReceptionCreatePatientType, InsuranceCoverageRow, PatientFullDetailsType } from "@/types/reception.type";
 import { ListItemType } from "@/types/configList.type";
 import {
   AppointmentSlotType,
@@ -23,7 +24,10 @@ import {
 } from "@/types/appointment.type";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
+import CountryCodeSelect from "@/components/CountryCodeSelect";
+import ToggleButton from "@/components/ToggleButton";
 import { toDateInputValue } from "@/lib/date";
+import { isValidEmail } from "@/lib/validation";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 // Cash needs nothing further; Insurance and Corporate share the exact same
@@ -62,6 +66,14 @@ const emptyCoverages = (): Record<string, CoverageFormRow> =>
   );
 
 export default function PatientEntryPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // Present only when reached via Patient Records' "Edit" action (see that page's
+  // renderActions) - reuses this same registration form instead of a second one, matching
+  // how Staff Registration already handles create+edit with one form.
+  const editId = searchParams.get("edit");
+  const isEditMode = !!editId;
+  const [isLoadingPatient, setIsLoadingPatient] = useState(isEditMode);
   const [formData, setFormData] = useState({
     name: "",
     sex: "",
@@ -83,6 +95,7 @@ export default function PatientEntryPage() {
     chronicStatus: false,
     emergencyContact: "",
     emergencyContactPhone: "",
+    emergencyContactPhoneCode: "+971",
     paymentType: "Cash",
     eligibilityMode: "",
     eligibilityCheckedDate: "",
@@ -109,7 +122,137 @@ export default function PatientEntryPage() {
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [companyCountry, setCompanyCountry] = useState<string | undefined>(undefined);
   const isInsuranceOrCorporate = formData.paymentType !== "Cash";
+  // Only flagged once something's actually been typed - an empty required field is caught
+  // by the browser's own `required` validation on submit, not this live format check.
+  const emailInvalid = formData.email.length > 0 && !isValidEmail(formData.email);
+  // National ID format follows the clinic's own admin-configured Country (Settings), not
+  // whichever nationality is picked for this particular patient - a UAE clinic always
+  // expects Emirates ID, regardless of the patient's own nationality.
+  const nationalIdFormat = getNationalIdFormat(companyCountry);
+  // National significant number length for whichever dialing code is currently selected -
+  // caps how many digits the phone field accepts. Falls back to 15 (E.164's global max
+  // significant-digit count) if the code somehow isn't in the list.
+  const selectedPhoneLength =
+    countryDetails.find((c) => c.phoneCode === formData.phoneCode)?.phoneLength ?? 15;
+  const selectedEmergencyPhoneLength =
+    countryDetails.find((c) => c.phoneCode === formData.emergencyContactPhoneCode)?.phoneLength ?? 15;
+
+  useEffect(() => {
+    const stored = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
+    setCompanyCountry(stored.country);
+  }, []);
+
+  // Prefills the whole form from the existing patient's saved details when reached in edit
+  // mode - the API has no separate dialing-code field for the emergency contact (see
+  // handleSubmit's own comment), so its stored value ("+97112345678") is split back into
+  // code + number here by matching the longest known dialing code prefix, the inverse of
+  // how it was joined on save.
+  useEffect(() => {
+    if (!editId) return;
+    (async () => {
+      try {
+        setIsLoadingPatient(true);
+        const res = await ReceptionService.getPatientById(editId);
+        const p: PatientFullDetailsType = res.data;
+
+        const emergencyCode = [...countryDetails]
+          .sort((a, b) => b.phoneCode.length - a.phoneCode.length)
+          .find((c) => p.emergencyContactPhone?.startsWith(c.phoneCode));
+        const emergencyContactPhoneCode = emergencyCode?.phoneCode ?? "+971";
+        const emergencyContactPhone = emergencyCode
+          ? p.emergencyContactPhone.slice(emergencyCode.phoneCode.length)
+          : p.emergencyContactPhone ?? "";
+
+        setFormData({
+          name: p.name ?? "",
+          sex: p.sex ?? "",
+          dateOfBirth: p.dateOfBirth ?? "",
+          phone: p.phone ?? "",
+          phoneCode: p.phoneCode || "+971",
+          email: p.email ?? "",
+          address: p.address ?? "",
+          nationality: p.nationality ?? "",
+          passportNumber: p.passportNumber ?? "",
+          nationalID: p.nationalID ?? "",
+          fatherName: p.fatherName ?? "",
+          motherName: p.motherName ?? "",
+          patientType: p.patientType || "Normal",
+          visaType: p.visaType ?? "",
+          maritalStatus: p.maritalStatus ?? "",
+          designation: p.designation ?? "",
+          referralStatus: p.referralStatus ?? false,
+          chronicStatus: p.chronicStatus ?? false,
+          emergencyContact: p.emergencyContact ?? "",
+          emergencyContactPhone,
+          emergencyContactPhoneCode,
+          paymentType: p.paymentType || "Cash",
+          eligibilityMode: p.eligibilityMode ?? "",
+          eligibilityCheckedDate: p.eligibilityCheckedDate ?? "",
+          eligibilityID: p.eligibilityID ?? "",
+          eligibilityVisitID: p.eligibilityVisitID ?? "",
+          insuranceProvider: p.insuranceProvider ?? "",
+          subInsurance: p.subInsurance ?? "",
+          networkType: p.networkType ?? "",
+          insuranceCardNo: p.insuranceCardNo ?? "",
+          extraCardNo: p.extraCardNo ?? "",
+          insuranceEffectiveFrom: p.insuranceEffectiveFrom ?? "",
+          insuranceExpiryDate: p.insuranceExpiryDate ?? "",
+          certificateNo: p.certificateNo ?? "",
+          dependentsNo: p.dependentsNo ?? "",
+          insuranceClaimNo: p.insuranceClaimNo ?? "",
+          maxInsuranceLiability: p.maxInsuranceLiability?.toString() ?? "",
+          insuranceApprovalLimit: p.insuranceApprovalLimit?.toString() ?? "",
+          maxInsuranceCopay: p.maxInsuranceCopay?.toString() ?? "",
+          coPayPatientPercent: p.coPayPatientPercent?.toString() ?? "",
+          password: "",
+        });
+
+        if (p.insuranceCoverages && p.insuranceCoverages.length > 0) {
+          setCoverages((prev) => {
+            const next = { ...prev };
+            for (const row of p.insuranceCoverages!) {
+              if (!(row.serviceCategory in next)) continue;
+              next[row.serviceCategory] = {
+                deductible: row.deductible?.toString() ?? "",
+                deductibleAppliesTo: row.deductibleAppliesTo ?? "",
+                coPayPercent: row.coPayPercent?.toString() ?? "",
+                coPayMin: row.coPayMin?.toString() ?? "",
+                coPayMax: row.coPayMax?.toString() ?? "",
+                coPayAppliesTo: row.coPayAppliesTo ?? "",
+              };
+            }
+            return next;
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load patient for editing:", err);
+        toast.error("Failed to load patient details");
+      } finally {
+        setIsLoadingPatient(false);
+      }
+    })();
+  }, [editId]);
+
+  // Re-clamps an already-typed phone number if switching to a dialing code with a shorter
+  // national number length leaves it over the new limit (e.g. 10 digits typed for +234
+  // Nigeria, then the code is changed to +974 Qatar's 8-digit numbers).
+  useEffect(() => {
+    setFormData((prev) =>
+      prev.phone.length > selectedPhoneLength
+        ? { ...prev, phone: prev.phone.slice(0, selectedPhoneLength) }
+        : prev,
+    );
+  }, [selectedPhoneLength]);
+
+  useEffect(() => {
+    setFormData((prev) =>
+      prev.emergencyContactPhone.length > selectedEmergencyPhoneLength
+        ? { ...prev, emergencyContactPhone: prev.emergencyContactPhone.slice(0, selectedEmergencyPhoneLength) }
+        : prev,
+    );
+  }, [selectedEmergencyPhoneLength]);
 
   const updateCoverage = (
     category: string,
@@ -155,6 +298,7 @@ export default function PatientEntryPage() {
   >([]);
   const [isLoadingSpecializations, setIsLoadingSpecializations] =
     useState(false);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
   const [selectedSpecializationId, setSelectedSpecializationId] = useState("");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [consultDate, setConsultDate] = useState(() =>
@@ -167,6 +311,31 @@ export default function PatientEntryPage() {
   );
   const [consultNotes, setConsultNotes] = useState("");
   const [isBookingConsult, setIsBookingConsult] = useState(false);
+
+  // Deduped from `specializations` itself rather than a separate department fetch - every
+  // specialization here already carries its own department, and this modal only ever needs
+  // departments that actually have an active, doctor-staffed specialization under them.
+  // Mirrors patient-records/page.tsx's Walk-in modal (walkInDepartments) exactly.
+  const consultDepartments = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of specializations) {
+      if (s.departmentId && !seen.has(s.departmentId)) seen.set(s.departmentId, s.departmentName ?? s.departmentId);
+    }
+    return Array.from(seen, ([value, label]) => ({ value, label }));
+  }, [specializations]);
+
+  const consultSpecializations = useMemo(
+    () => specializations.filter((s) => !selectedDepartmentId || s.departmentId === selectedDepartmentId),
+    [specializations, selectedDepartmentId]
+  );
+
+  // A previously-picked specialization may no longer be valid once the department changes.
+  useEffect(() => {
+    if (selectedSpecializationId && !consultSpecializations.some((s) => s.specializationId === selectedSpecializationId)) {
+      setSelectedSpecializationId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDepartmentId, specializations]);
 
   const doctorsForSpecialization =
     specializations.find((s) => s.specializationId === selectedSpecializationId)
@@ -203,6 +372,7 @@ export default function PatientEntryPage() {
   const closeConsultFlow = () => {
     setRegisteredPatient(null);
     setShowConsultForm(false);
+    setSelectedDepartmentId("");
     setSelectedSpecializationId("");
     setSelectedDoctorId("");
     setDaySlots(null);
@@ -289,7 +459,7 @@ export default function PatientEntryPage() {
   };
 
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => {
     const { name, value, type } = e.target;
     const inputElement = e.target as HTMLInputElement;
@@ -300,15 +470,54 @@ export default function PatientEntryPage() {
     setError("");
   };
 
+  // Strips anything that isn't a digit and caps the result to `maxDigits`, so pasted or typed
+  // text can never leave letters/symbols behind or overrun the selected country's phone length.
+  const digitsOnly = (raw: string, maxDigits: number) => raw.replace(/\D/g, "").slice(0, maxDigits);
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, phone: digitsOnly(e.target.value, selectedPhoneLength) }));
+    setError("");
+  };
+
+  const handleEmergencyContactPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({
+      ...prev,
+      emergencyContactPhone: digitsOnly(e.target.value, selectedEmergencyPhoneLength),
+    }));
+    setError("");
+  };
+
   // Form submission handler
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     setLoading(true);
 
+    if (!isValidEmail(formData.email)) {
+      setError("Enter a valid email address (e.g. john@example.com).");
+      setLoading(false);
+      return;
+    }
+
     // Validate that at least one of National ID or Passport Number is filled
     if (!formData.nationalID && !formData.passportNumber) {
       setError("Please provide either National ID or Passport Number");
+      setLoading(false);
+      return;
+    }
+
+    // Format is nationality-specific for National ID (Emirates ID for UAE, Aadhaar for
+    // India, ...) and one standard pattern for Passport Number regardless of nationality.
+    if (formData.nationalID && nationalIdFormat.regex && !nationalIdFormat.regex.test(formData.nationalID)) {
+      setError(
+        `${nationalIdFormat.label} format looks incorrect. Expected format: ${nationalIdFormat.placeholder}`
+      );
+      setLoading(false);
+      return;
+    }
+
+    if (formData.passportNumber && !passportNumberRegex.test(formData.passportNumber)) {
+      setError("Passport Number format looks incorrect. Expected 6-9 letters/digits.");
       setLoading(false);
       return;
     }
@@ -340,6 +549,10 @@ export default function PatientEntryPage() {
     const payload: ReceptionCreatePatientType = {
       ...formData,
       registeredBy,
+      // The API has no separate dialing-code field for the emergency contact (unlike the
+      // patient's own phone/phoneCode pair), so the selected code is folded into the one
+      // string field it does expect.
+      emergencyContactPhone: formData.emergencyContactPhoneCode + formData.emergencyContactPhone,
       eligibilityCheckedDate: toDateOrUndefined(formData.eligibilityCheckedDate),
       insuranceEffectiveFrom: toDateOrUndefined(formData.insuranceEffectiveFrom),
       insuranceExpiryDate: toDateOrUndefined(formData.insuranceExpiryDate),
@@ -365,6 +578,14 @@ export default function PatientEntryPage() {
     const wasManualEligibility = formData.eligibilityMode === "Manual";
 
     try {
+      if (isEditMode) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, ...updatePayload } = payload;
+        const data = await ReceptionService.updatePatient(editId!, updatePayload);
+        toast.success(data.message || "Patient updated successfully");
+        router.push("/patient-records");
+        return;
+      }
       const data = await ReceptionService.createPatinet(payload)
       toast.success(data.message)
       resetForm();
@@ -372,9 +593,9 @@ export default function PatientEntryPage() {
       setNeedsEligibilityDoc(wasManualEligibility);
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || "Failed to register patient");
+        toast.error(error.response?.data?.message || `Failed to ${isEditMode ? "update" : "register"} patient`);
       } else {
-        toast.error("Failed to register patient");
+        toast.error(`Failed to ${isEditMode ? "update" : "register"} patient`);
       }
     } finally {
       setLoading(false)
@@ -404,6 +625,7 @@ export default function PatientEntryPage() {
       chronicStatus: false,
       emergencyContact: "",
       emergencyContactPhone: "",
+      emergencyContactPhoneCode: "+971",
       paymentType: "Cash",
       eligibilityMode: "",
       eligibilityCheckedDate: "",
@@ -428,17 +650,26 @@ export default function PatientEntryPage() {
     setCoverages(emptyCoverages());
   };
 
+  if (isLoadingPatient) {
+    return (
+      <div className="mainPage flex h-full items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
   return (
     <>
       <form onSubmit={handleSubmit} className="mainPage flex flex-col gap-6">
         {/* Header */}
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl font-bold text-foreground">
-            New Patient Entry
+            {isEditMode ? "Edit Patient" : "New Patient Entry"}
           </h1>
           <p className="text-base text-foreground/80">
-            Complete patient registration form. All fields marked with * are
-            required.
+            {isEditMode
+              ? "Update this patient's registration details. All fields marked with * are required."
+              : "Complete patient registration form. All fields marked with * are required."}
           </p>
         </div>
 
@@ -507,6 +738,8 @@ export default function PatientEntryPage() {
                 }
                 max={toDateInputValue(new Date())}
                 required
+                dateFormat="dd-MM-yyyy"
+                placeholder="DD-MM-YYYY"
                 className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </div>
@@ -638,44 +871,26 @@ export default function PatientEntryPage() {
                 Phone Number <span className="text-red-500">*</span>
               </label>
               <div className="flex border border-border rounded-lg focus-within:ring-2 focus-within:ring-primary focus-within:border-transparent overflow-hidden">
-                {/* Phone Code Display and Dropdown */}
-                <div className="relative w-20 shrink-0">
-                  <div className="absolute left-4 top-2.5 text-foreground font-medium pointer-events-none z-10">
-                    {formData.phoneCode}
-                  </div>
-                  <div className="absolute right-1 top-2.5 pointer-events-none z-10 text-muted-foreground">
-                    <MdExpandMore size={20} />
-                  </div>
-                  <select
-                    id="phoneCode"
-                    name="phoneCode"
-                    value={formData.phoneCode}
-                    onChange={handleInputChange}
-                    required
-                    className="px-4 py-2.5 border-r border-border ring-transparent! focus:outline-none! rounded-none! text-foreground bg-card w-full shrink-0 appearance-none cursor-pointer"
-                    style={{ color: "transparent" }}
-                  >
-                    {countryDetails.map((country, index) => (
-                      <option
-                        key={index}
-                        value={country.phoneCode}
-                        className="text-foreground bg-card"
-                      >
-                        {country.phoneCode} - {country.country}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <CountryCodeSelect
+                  id="phoneCode"
+                  name="phoneCode"
+                  value={formData.phoneCode}
+                  onChange={(code) => setFormData((prev) => ({ ...prev, phoneCode: code }))}
+                  required
+                  className="flex h-11 shrink-0 items-center gap-1 border-r border-border px-3 text-foreground transition-colors hover:bg-muted"
+                />
 
                 {/* Phone Input */}
                 <input
                   type="tel"
                   id="phone"
                   name="phone"
+                  inputMode="numeric"
                   value={formData.phone}
-                  onChange={handleInputChange}
+                  onChange={handlePhoneChange}
                   required
-                  placeholder="0501234567"
+                  maxLength={selectedPhoneLength}
+                  placeholder={"5".padEnd(selectedPhoneLength, "0")}
                   className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent rounded-none!"
                 />
               </div>
@@ -694,8 +909,16 @@ export default function PatientEntryPage() {
                 onChange={handleInputChange}
                 required
                 placeholder="john@example.com"
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                aria-invalid={emailInvalid}
+                className={`px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent text-foreground bg-transparent ${
+                  emailInvalid
+                    ? "border-red-500 focus:ring-red-500"
+                    : "border-border focus:ring-primary"
+                }`}
               />
+              {emailInvalid && (
+                <p className="text-red-500 text-xs">Enter a valid email address (e.g. john@example.com).</p>
+              )}
             </div>
 
             {/* Address */}
@@ -703,14 +926,14 @@ export default function PatientEntryPage() {
               <label htmlFor="Address" className="font-semibold text-foreground/90">
                 Address
               </label>
-              <input
-                type="text"
+              <textarea
                 id="address"
                 name="address"
                 value={formData.address}
                 onChange={handleInputChange}
                 placeholder="Abu Dhabi"
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
+                rows={2}
+                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent resize-y min-h-11"
               />
             </div>
 
@@ -742,16 +965,30 @@ export default function PatientEntryPage() {
               >
                 Emergency Contact Phone <span className="text-red-500">*</span>
               </label>
-              <input
-                type="tel"
-                id="emergencyContactPhone"
-                name="emergencyContactPhone"
-                value={formData.emergencyContactPhone}
-                onChange={handleInputChange}
-                required
-                placeholder="0509876543"
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
-              />
+              <div className="flex border border-border rounded-lg focus-within:ring-2 focus-within:ring-primary focus-within:border-transparent overflow-hidden">
+                <CountryCodeSelect
+                  id="emergencyContactPhoneCode"
+                  name="emergencyContactPhoneCode"
+                  value={formData.emergencyContactPhoneCode}
+                  onChange={(code) =>
+                    setFormData((prev) => ({ ...prev, emergencyContactPhoneCode: code }))
+                  }
+                  required
+                  className="flex h-11 shrink-0 items-center gap-1 border-r border-border px-3 text-foreground transition-colors hover:bg-muted"
+                />
+                <input
+                  type="tel"
+                  id="emergencyContactPhone"
+                  name="emergencyContactPhone"
+                  inputMode="numeric"
+                  value={formData.emergencyContactPhone}
+                  onChange={handleEmergencyContactPhoneChange}
+                  required
+                  maxLength={selectedEmergencyPhoneLength}
+                  placeholder={"5".padEnd(selectedEmergencyPhoneLength, "0")}
+                  className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent rounded-none!"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -764,8 +1001,8 @@ export default function PatientEntryPage() {
           </div>
           <hr className="mb-6 border-border" />
           <p className="mb-6 text-sm text-foreground/80">
-            <span className="text-red-500">*</span> Please provide either
-            National ID or Passport Number
+            <span className="text-red-500">*</span> Please provide either{" "}
+            {nationalIdFormat.label} or Passport Number
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -775,7 +1012,7 @@ export default function PatientEntryPage() {
                 htmlFor="nationalID"
                 className="font-semibold text-foreground/90"
               >
-                National ID
+                {nationalIdFormat.label}
               </label>
               <input
                 type="text"
@@ -783,7 +1020,7 @@ export default function PatientEntryPage() {
                 name="nationalID"
                 value={formData.nationalID}
                 onChange={handleInputChange}
-                placeholder="784-1234-5678901-2"
+                placeholder={nationalIdFormat.placeholder ?? "National ID"}
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
@@ -864,20 +1101,19 @@ export default function PatientEntryPage() {
             {/* Checkboxes */}
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="chronicStatus"
-                  name="chronicStatus"
-                  checked={formData.chronicStatus}
-                  onChange={handleInputChange}
-                  className="cursor-pointer bg-transparent"
-                />
                 <label
                   htmlFor="chronicStatus"
                   className="font-semibold text-foreground/90 cursor-pointer"
                 >
                   Chronic Status
                 </label>
+                <ToggleButton
+                  id="chronicStatus"
+                  checked={formData.chronicStatus}
+                  onChange={(checked) =>
+                    setFormData((prev) => ({ ...prev, chronicStatus: checked }))
+                  }
+                />
               </div>
             </div>
           </div>
@@ -940,6 +1176,8 @@ export default function PatientEntryPage() {
                     value={formData.eligibilityCheckedDate}
                     onChange={(v) => setFormData((prev) => ({ ...prev, eligibilityCheckedDate: v }))}
                     max={toDateInputValue(new Date())}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
                     className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   />
                 </div>
@@ -1056,6 +1294,8 @@ export default function PatientEntryPage() {
                   <DatePicker
                     value={formData.insuranceEffectiveFrom}
                     onChange={(v) => setFormData((prev) => ({ ...prev, insuranceEffectiveFrom: v }))}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
                     className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   />
                 </div>
@@ -1069,6 +1309,8 @@ export default function PatientEntryPage() {
                     value={formData.insuranceExpiryDate}
                     onChange={(v) => setFormData((prev) => ({ ...prev, insuranceExpiryDate: v }))}
                     required
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
                     className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   />
                 </div>
@@ -1277,14 +1519,16 @@ export default function PatientEntryPage() {
             type="submit"
             className="flex-1 bg-primary hover:opacity-90 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md cursor-pointer"
           >
-            {loading ? "Registering..." : "Register Patient"}
+            {isEditMode
+              ? loading ? "Saving..." : "Save Changes"
+              : loading ? "Registering..." : "Register Patient"}
           </button>
           <button
             type="button"
-            onClick={resetForm}
+            onClick={isEditMode ? () => router.push("/patient-records") : resetForm}
             className="flex-1 bg-muted hover:bg-muted/80 text-foreground font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md"
           >
-            Clear Form
+            {isEditMode ? "Cancel" : "Clear Form"}
           </button>
         </div>
       </form>
@@ -1379,10 +1623,37 @@ export default function PatientEntryPage() {
                 </div>
 
                 <div className="flex flex-col gap-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="flex flex-col gap-2">
                       <label className="font-semibold text-foreground/90 text-sm">
                         Department
+                      </label>
+                      <select
+                        value={selectedDepartmentId}
+                        onChange={(e) => {
+                          setSelectedDepartmentId(e.target.value);
+                          setSelectedDoctorId("");
+                          setDaySlots(null);
+                          setSelectedSlot(null);
+                        }}
+                        className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
+                      >
+                        <option value="">
+                          {isLoadingSpecializations
+                            ? "Loading..."
+                            : "Select department"}
+                        </option>
+                        {consultDepartments.map((d) => (
+                          <option key={d.value} value={d.value}>
+                            {d.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label className="font-semibold text-foreground/90 text-sm">
+                        Specialty
                       </label>
                       <select
                         value={selectedSpecializationId}
@@ -1397,9 +1668,9 @@ export default function PatientEntryPage() {
                         <option value="">
                           {isLoadingSpecializations
                             ? "Loading..."
-                            : "Select department"}
+                            : "Select specialty"}
                         </option>
-                        {specializations.map((s) => (
+                        {consultSpecializations.map((s) => (
                           <option
                             key={s.specializationId}
                             value={s.specializationId}
@@ -1444,6 +1715,8 @@ export default function PatientEntryPage() {
                         setSelectedSlot(null);
                       }}
                       min={toDateInputValue(new Date())}
+                      dateFormat="dd-MM-yyyy"
+                      placeholder="DD-MM-YYYY"
                       className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     />
                   </div>

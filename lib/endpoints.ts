@@ -32,7 +32,16 @@ export const ENDPOINTS = {
     },
     RECEPTION: {
         GET_ALL_PATIENTS: `/api/reception/get-all/patient`,
+        GET_VISIT_LIST: (from?: string, to?: string) => {
+            const params = new URLSearchParams();
+            if (from) params.set("from", from);
+            if (to) params.set("to", to);
+            const qs = params.toString();
+            return `/api/reception/visits/list${qs ? `?${qs}` : ""}`;
+        },
         CREATE_PATIENT: `/api/reception/create-patient`,
+        GET_PATIENT_BY_ID: (id: string) => `/api/reception/patient/${id}`,
+        UPDATE_PATIENT: (id: string) => `/api/reception/patient/${id}`,
         UPDATE_SCEDULE: `/api/reception/update-schedule`,
         GET_DOCTOR_AVAILABILITY: `/api/reception/doctor-availability`,
         GET_ALL_APPOINTMENTS: `/api/reception/get-all/appointment`,
@@ -46,9 +55,13 @@ export const ENDPOINTS = {
         CHECK_IN: `/api/reception/check-in`,
         WALK_IN: `/api/reception/walk-in`,
         GET_VISIT: (id: string) => `/api/reception/visit/${id}`,
+        REASSIGN_VISIT: (id: string) => `/api/reception/visit/${id}`,
         GET_VISIT_QUEUE: (status?: string) => `/api/reception/visit/queue${status ? `?status=${status}` : ""}`,
         UPLOAD_DOCUMENT: (patientId: string) => `/api/reception/patient/${patientId}/document`,
         GET_APPOINTMENT_REQUESTS: `/api/reception/appointment-requests`,
+        GET_PENDING_FOLLOW_UPS: `/api/reception/follow-ups/pending`,
+        CONFIRM_FOLLOW_UP: (id: string) => `/api/reception/follow-ups/${id}/confirm`,
+        DISMISS_FOLLOW_UP: (id: string) => `/api/reception/follow-ups/${id}`,
         RESEND_WELCOME_EMAIL: (patientId: string) => `/api/reception/${patientId}/resend-welcome-email`,
     },
     ROLE: {
@@ -58,6 +71,8 @@ export const ENDPOINTS = {
         DELETE: (id: string) => `/api/role/delete/${id}`,
         GET_ALLOWED_MODULES: (id: string) => `/api/role/${id}/allowed-modules`,
         SET_ALLOWED_MODULES: (id: string) => `/api/role/${id}/allowed-modules`,
+        FORCE_MODULE: (id: string) => `/api/role/${id}/force-module`,
+        REVOKE_MODULE: (id: string) => `/api/role/${id}/revoke-module`,
     },
     SPECIALIZATION: {
         GET: `/api/specialization/get-all`,
@@ -71,9 +86,13 @@ export const ENDPOINTS = {
         CREATE: `/api/user/create`,
         UPDATE: (id: string) => `/api/user/update/${id}`,
         DELETE: (id: string) => `/api/user/delete/${id}`,
+        RESTORE: (id: string) => `/api/user/${id}/restore`,
+        REHIRE: (id: string) => `/api/user/${id}/rehire`,
         GET_ASSIGNED_DOCTORS: `/api/user/assigned-doctors`,
         CREATE_ASSIGN_DOCTOR: `/api/user/assign-doctor`,
-        GET_SCHEDULED_DOCTOR: (doctorId: string) => `/api/user/${doctorId}/schedule`
+        GET_SCHEDULED_DOCTOR: (doctorId: string) => `/api/user/${doctorId}/schedule`,
+        TERMINATE: (id: string) => `/api/user/${id}/terminate`,
+        GET_EMPLOYMENT_HISTORY: (id: string) => `/api/user/${id}/employment-history`,
     },
     EMR: {
         GET_PATIENTS: (doctorId?: string) => `/api/emr/patients${doctorId ? `?doctorId=${doctorId}` : ""}`,
@@ -85,10 +104,20 @@ export const ENDPOINTS = {
         UPSERT_ENCOUNTER: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/encounter${doctorId ? `?doctorId=${doctorId}` : ""}`,
         FINISH_ENCOUNTER: (encounterId: string, doctorId?: string) => `/api/emr/encounter/${encounterId}/finish${doctorId ? `?doctorId=${doctorId}` : ""}`,
         ADD_CHRONIC_CONDITION: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/chronic-condition${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE_CHRONIC_CONDITION: (chronicConditionId: string, doctorId?: string) => `/api/emr/chronic-condition/${chronicConditionId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        REMOVE_CHRONIC_CONDITION: (chronicConditionId: string, doctorId?: string) => `/api/emr/chronic-condition/${chronicConditionId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         ADD_ALLERGY: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/allergy${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE_ALLERGY: (patientAllergyId: string, doctorId?: string) => `/api/emr/allergy/${patientAllergyId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        REMOVE_ALLERGY: (patientAllergyId: string, doctorId?: string) => `/api/emr/allergy/${patientAllergyId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         ADD_MEDICATION: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/medication${doctorId ? `?doctorId=${doctorId}` : ""}`,
         DISCONTINUE_MEDICATION: (medicationId: string, doctorId?: string) => `/api/emr/medication/${medicationId}/discontinue${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE_MEDICATION: (medicationId: string, doctorId?: string) => `/api/emr/medication/${medicationId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        REMOVE_MEDICATION: (medicationId: string, doctorId?: string) => `/api/emr/medication/${medicationId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         ADD_REFERRAL: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/referral${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        SET_REFERRAL_OUTCOME: (referralId: string, doctorId?: string) => `/api/emr/referral/${referralId}/outcome${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE_REFERRAL: (referralId: string, doctorId?: string) => `/api/emr/referral/${referralId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        REMOVE_REFERRAL: (referralId: string, doctorId?: string) => `/api/emr/referral/${referralId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        SAVE_DENTAL_EXTRAS: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/dental-extras${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_QUICK_NOTES: (doctorId?: string, patientId?: string) => {
             const params = new URLSearchParams();
             if (doctorId) params.set("doctorId", doctorId);
@@ -97,21 +126,94 @@ export const ENDPOINTS = {
             return `/api/emr/quick-notes${query ? `?${query}` : ""}`;
         },
         ADD_QUICK_NOTE: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/quick-note${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE_QUICK_NOTE: (consultationNoteId: string, doctorId?: string) => `/api/emr/quick-note/${consultationNoteId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        REMOVE_QUICK_NOTE: (consultationNoteId: string, doctorId?: string) => `/api/emr/quick-note/${consultationNoteId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_DOCUMENTS: (patientId: string) => `/api/emr/patient/${patientId}/documents`,
         MARK_DOCUMENT_VIEWED: (patientId: string, id: string) => `/api/emr/patient/${patientId}/documents/${id}/mark-viewed`,
         ADD_TREATMENT: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/treatment${doctorId ? `?doctorId=${doctorId}` : ""}`,
         ADD_CONFIDENTIAL_NOTE: (patientId: string) => `/api/emr/patient/${patientId}/confidential-note`,
+        UPDATE_CONFIDENTIAL_NOTE: (doctorConfidentialNoteId: string) => `/api/emr/confidential-note/${doctorConfidentialNoteId}`,
+        REMOVE_CONFIDENTIAL_NOTE: (doctorConfidentialNoteId: string) => `/api/emr/confidential-note/${doctorConfidentialNoteId}`,
         GET_CONFIDENTIAL_NOTES: (patientId?: string) => `/api/emr/confidential-notes${patientId ? `?patientId=${patientId}` : ""}`,
         ADD_DIAGNOSIS: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/diagnosis${doctorId ? `?doctorId=${doctorId}` : ""}`,
         SET_PRIMARY_DIAGNOSIS: (encounterDiagnosisId: string, doctorId?: string) => `/api/emr/diagnosis/${encounterDiagnosisId}/set-primary${doctorId ? `?doctorId=${doctorId}` : ""}`,
         REMOVE_DIAGNOSIS: (encounterDiagnosisId: string, doctorId?: string) => `/api/emr/diagnosis/${encounterDiagnosisId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         ADD_FOLLOW_UP: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/follow-up${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE_FOLLOW_UP: (followUpId: string, doctorId?: string) => `/api/emr/follow-up/${followUpId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        REMOVE_FOLLOW_UP: (followUpId: string, doctorId?: string) => `/api/emr/follow-up/${followUpId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_FOLLOW_UPS: (doctorId?: string) => `/api/emr/follow-ups${doctorId ? `?doctorId=${doctorId}` : ""}`,
         PROPOSE_ENCOUNTER_CORRECTION: (patientId: string, encounterId: string) => `/api/emr/patient/${patientId}/encounter/${encounterId}/propose-correction`,
         GET_ENCOUNTER_CORRECTIONS: (patientId: string, encounterId: string) => `/api/emr/patient/${patientId}/encounter/${encounterId}/corrections`,
         GET_MY_PENDING_CORRECTIONS: () => `/api/emr/my-pending-corrections`,
         ACKNOWLEDGE_CORRECTION: (correctionId: string) => `/api/emr/encounter/correction/${correctionId}/acknowledge`,
         REJECT_CORRECTION: (correctionId: string) => `/api/emr/encounter/correction/${correctionId}/reject`,
+    },
+    CLINICAL_INCIDENT: {
+        GET_ALL: (category?: string, status?: string) => {
+            const params = new URLSearchParams();
+            if (category) params.set("category", category);
+            if (status) params.set("status", status);
+            const query = params.toString();
+            return `/api/clinical-incidents${query ? `?${query}` : ""}`;
+        },
+        CREATE: () => `/api/clinical-incidents`,
+        UPDATE: (id: string) => `/api/clinical-incidents/${id}`,
+        REOPEN: (id: string) => `/api/clinical-incidents/${id}/reopen`,
+        REMOVE: (id: string) => `/api/clinical-incidents/${id}`,
+    },
+    STAFF_EXPOSURE: {
+        GET_ALL: (status?: string) => `/api/staff-exposure${status ? `?status=${status}` : ""}`,
+        CREATE: () => `/api/staff-exposure`,
+        UPDATE: (id: string) => `/api/staff-exposure/${id}`,
+        REOPEN: (id: string) => `/api/staff-exposure/${id}/reopen`,
+        REMOVE: (id: string) => `/api/staff-exposure/${id}`,
+    },
+    HAND_HYGIENE: {
+        GET_SESSIONS: () => `/api/hand-hygiene/sessions`,
+        CREATE_SESSION: () => `/api/hand-hygiene/sessions`,
+        UPDATE_SESSION: (id: string) => `/api/hand-hygiene/sessions/${id}`,
+        REMOVE_SESSION: (id: string) => `/api/hand-hygiene/sessions/${id}`,
+    },
+    PATIENT_SATISFACTION: {
+        GET_ALL: () => `/api/patient-satisfaction`,
+        CREATE: () => `/api/patient-satisfaction`,
+        UPDATE: (id: string) => `/api/patient-satisfaction/${id}`,
+        REMOVE: (id: string) => `/api/patient-satisfaction/${id}`,
+    },
+    KPI_REPORT: {
+        GET_CATALOG: () => `/api/reports/kpi`,
+        DOWNLOAD: (reportKey: string, start: string, end: string) =>
+            `/api/reports/kpi/${encodeURIComponent(reportKey)}/download?start=${start}&end=${end}`,
+    },
+    COMPLIANCE_DATA: {
+        GET_STAFF_FTE: () => `/api/compliance-data/staff-fte`,
+        UPDATE_STAFF_FTE: (userId: string) => `/api/compliance-data/staff-fte/${userId}`,
+        GET_PATIENT_FLAGS: () => `/api/compliance-data/patient-flags`,
+        UPDATE_PATIENT_FLAGS: (chronicConditionId: string) => `/api/compliance-data/patient-flags/${chronicConditionId}`,
+    },
+    AUDIT_LOG: {
+        GET_ALL: (params: {
+            userId?: string;
+            module?: string;
+            method?: string;
+            from?: string;
+            to?: string;
+            page?: number;
+            pageSize?: number;
+        }) => {
+            const query = new URLSearchParams();
+            if (params.userId) query.set("userId", params.userId);
+            if (params.module) query.set("module", params.module);
+            if (params.method) query.set("method", params.method);
+            if (params.from) query.set("from", params.from);
+            if (params.to) query.set("to", params.to);
+            if (params.page) query.set("page", String(params.page));
+            if (params.pageSize) query.set("pageSize", String(params.pageSize));
+            const qs = query.toString();
+            return `/api/audit-log${qs ? `?${qs}` : ""}`;
+        },
+        GET_MODULES: () => `/api/audit-log/modules`,
+        GET_VERSIONS: (auditLogId: string) => `/api/audit-log/${auditLogId}/versions`,
     },
     CONFIG_LIST: {
         GET: (listType: string, search?: string, page?: number, pageSize?: number) => {
@@ -133,6 +235,8 @@ export const ENDPOINTS = {
         GET_PENDING: `/api/Lab/pending`,
         GET_SUMMARY: `/api/Lab/summary`,
         CREATE: `/api/Lab`,
+        UPDATE: (id: string) => `/api/Lab/${id}`,
+        REMOVE: (id: string) => `/api/Lab/${id}`,
         UPDATE_STATUS: `/api/Lab/status`,
         UPLOAD_RESULT: `/api/Lab/upload-result`,
         COLLECT_SAMPLE: `/api/Lab/collect-sample`,
@@ -144,6 +248,8 @@ export const ENDPOINTS = {
         GET_PENDING: `/api/Radiology/pending`,
         GET_SUMMARY: `/api/Radiology/summary`,
         CREATE: `/api/Radiology`,
+        UPDATE: (id: string) => `/api/Radiology/${id}`,
+        REMOVE: (id: string) => `/api/Radiology/${id}`,
         UPDATE_STATUS: `/api/Radiology/status`,
         UPLOAD_RESULT: `/api/Radiology/upload-result`,
         UPLOAD_IMAGES: `/api/Radiology/upload-images`,
@@ -158,10 +264,14 @@ export const ENDPOINTS = {
         GET_MEDICINES: `/api/Pharmacy/medicine`,
         GET_LOW_STOCK: `/api/Pharmacy/medicine/low-stock`,
         ADD_MEDICINE: `/api/Pharmacy/medicine`,
+        UPDATE_MEDICINE: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}`,
+        REMOVE_MEDICINE: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}`,
         UPDATE_STOCK: `/api/Pharmacy/medicine/stock`,
         GET_PRESCRIPTIONS: `/api/Pharmacy/prescription`,
         GET_PENDING_PRESCRIPTIONS: `/api/Pharmacy/prescription/pending`,
         CREATE_PRESCRIPTION: `/api/Pharmacy/prescription`,
+        UPDATE_PRESCRIPTION: (prescriptionId: string) => `/api/Pharmacy/prescription/${prescriptionId}`,
+        REMOVE_PRESCRIPTION: (prescriptionId: string) => `/api/Pharmacy/prescription/${prescriptionId}`,
         ISSUE: `/api/Pharmacy/issue`,
         GET_SUMMARY: `/api/Pharmacy/summary`,
         GET_MEDICATION_QUEUE: (status: "pending" | "all") => `/api/Pharmacy/medication-queue?status=${status}`,
@@ -191,22 +301,53 @@ export const ENDPOINTS = {
         GET_TASKS: (status?: string) => `/api/nursing/tasks${status ? `?status=${status}` : ""}`,
         UPDATE_TASK_STATUS: `/api/nursing/status`,
         GET_PATIENT_CHART: (patientId: string) => `/api/nursing/patient/${patientId}/chart`,
+        GET_VITALS_HISTORY: (patientId: string) => `/api/nursing/patient/${patientId}/vitals-history`,
         ENSURE_ENCOUNTER: (patientId: string) => `/api/nursing/patient/${patientId}/encounter/ensure`,
         END_ENCOUNTER: (encounterId: string) => `/api/nursing/encounter/${encounterId}/end`,
         SAVE_VITALS: `/api/nursing/vitals`,
+        UPDATE_VITALS: (vitalsRecordId: string) => `/api/nursing/vitals/${vitalsRecordId}`,
+        REMOVE_VITALS: (vitalsRecordId: string, nurseId?: string, password?: string) => {
+            const params = new URLSearchParams();
+            if (nurseId) params.set("nurseId", nurseId);
+            if (password) params.set("password", password);
+            const query = params.toString();
+            return `/api/nursing/vitals/${vitalsRecordId}${query ? `?${query}` : ""}`;
+        },
         SAVE_INJECTION: `/api/nursing/injection`,
+        UPDATE_INJECTION: (injectionRecordId: string) => `/api/nursing/injection/${injectionRecordId}`,
+        REMOVE_INJECTION: (injectionRecordId: string, nurseId?: string, password?: string) => {
+            const params = new URLSearchParams();
+            if (nurseId) params.set("nurseId", nurseId);
+            if (password) params.set("password", password);
+            const query = params.toString();
+            return `/api/nursing/injection/${injectionRecordId}${query ? `?${query}` : ""}`;
+        },
         SAVE_DRESSING: `/api/nursing/dressing`,
+        UPDATE_DRESSING: (dressingTaskId: string) => `/api/nursing/dressing/${dressingTaskId}`,
+        REMOVE_DRESSING: (dressingTaskId: string) => `/api/nursing/dressing/${dressingTaskId}`,
         SAVE_BLOOD_SUGAR: `/api/nursing/blood-sugar`,
+        UPDATE_BLOOD_SUGAR: (bloodSugarTaskId: string) => `/api/nursing/blood-sugar/${bloodSugarTaskId}`,
+        REMOVE_BLOOD_SUGAR: (bloodSugarTaskId: string) => `/api/nursing/blood-sugar/${bloodSugarTaskId}`,
         SAVE_IV_FLUIDS: `/api/nursing/iv-fluids`,
+        UPDATE_IV_FLUIDS: (ivFluidsTaskId: string) => `/api/nursing/iv-fluids/${ivFluidsTaskId}`,
+        REMOVE_IV_FLUIDS: (ivFluidsTaskId: string) => `/api/nursing/iv-fluids/${ivFluidsTaskId}`,
         ADD_SPECIAL_REMARK: (patientId: string) => `/api/nursing/patient/${patientId}/special-remark`,
+        UPDATE_SPECIAL_REMARK: (specialRemarkId: string) => `/api/nursing/special-remark/${specialRemarkId}`,
+        REMOVE_SPECIAL_REMARK: (specialRemarkId: string) => `/api/nursing/special-remark/${specialRemarkId}`,
         ADD_NOTE: (patientId: string) => `/api/nursing/patient/${patientId}/note`,
+        UPDATE_NOTE: (nurseNoteId: string) => `/api/nursing/note/${nurseNoteId}`,
+        REMOVE_NOTE: (nurseNoteId: string) => `/api/nursing/note/${nurseNoteId}`,
         GET_NOTES: (patientId: string) => `/api/nursing/patient/${patientId}/notes`,
         ADD_CONFIDENTIAL_NOTE: (patientId: string) => `/api/nursing/patient/${patientId}/confidential-note`,
+        UPDATE_CONFIDENTIAL_NOTE: (confidentialNoteId: string) => `/api/nursing/confidential-note/${confidentialNoteId}`,
+        REMOVE_CONFIDENTIAL_NOTE: (confidentialNoteId: string) => `/api/nursing/confidential-note/${confidentialNoteId}`,
         GET_CONFIDENTIAL_NOTES: (patientId?: string) => `/api/nursing/confidential-notes${patientId ? `?patientId=${patientId}` : ""}`,
         ADD_EXAMINATION_NOTE: (patientId: string) => `/api/nursing/patient/${patientId}/examination-note`,
         MARK_TREATMENT_DONE: (treatmentId: string) => `/api/nursing/treatment/${treatmentId}/mark-done`,
         ADMINISTER_MEDICATION: (medicationId: string) => `/api/nursing/medication/${medicationId}/administer`,
         GET_WORK_QUEUE: `/api/nursing/work-queue`,
+        GET_UNTOUCHED_PATIENTS: `/api/nursing/untouched-patients`,
+        SAVE_TRIAGE: (patientId: string) => `/api/nursing/patient/${patientId}/triage`,
         GET_NURSE_SHIFTS: (nurseId: string) => `/api/nursing/nurse/${nurseId}/shifts`,
         SET_NURSE_SHIFTS: (nurseId: string) => `/api/nursing/nurse/${nurseId}/shifts`,
         GET_ON_DUTY_NOW: `/api/nursing/on-duty-now`,

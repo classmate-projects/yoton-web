@@ -11,6 +11,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
+import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
 import { onUserDetailChange } from "@/lib/userDetail";
 
 // Pages that are reachable by URL (e.g. from a button on an admin page) but
@@ -32,15 +33,19 @@ interface ProtectedRoute {
 const extraProtectedRoutes: ProtectedRoute[] = [
   { navLink: "/role-management", hardcodedRoles: ["admin"] },
   { navLink: "/user-registration", hardcodedRoles: ["admin"] },
-  // Only reachable via the merged "Departments & Staff" tile's subItems, so it shares
-  // its permission rather than having its own.
-  { navLink: "/assign-doctor", moduleKey: "/departments" },
 ];
 
 // Settings and Confidential Notes are never part of the allow-list (see
 // helpers/sidebaritems.ts's comments on each) - Settings is always reachable, and
 // Confidential Notes has its own hardcoded nurse-only rule instead. Check-in is a normal
-// admin-grantable module like any other (see Role Management).
+// admin-grantable module like any other (see Role Management). User Management, Departments
+// & Staff, Configurable Lists, ICD Codes and Reports are admin-only *by default* (backend's
+// ModuleKeys.AdminOnly - excluded from the Role Management checklist, see its comment) but
+// deliberately NOT hardcoded here the way /role-management and /user-registration above
+// are: RoleController.ForceModule can still grant one of them to a specific non-admin role,
+// and that role's allowedModules (checked below, same as any other module) is what actually
+// reflects a force-grant like that - a hardcoded rule here would keep blocking the page even
+// after the backend legitimately allows it.
 const protectedRoutes: ProtectedRoute[] = [
   ...sidebarMenuItems
     .filter((item) => item.navLink !== "/settings")
@@ -92,6 +97,7 @@ export default function PageLayout({
   const router = useRouter();
 
   const { warningSecondsLeft, stayLoggedIn } = useIdleLogout();
+  useProactiveTokenRefresh();
 
   // Mobile-only drawer state. On desktop the sidebar is always in flow (hover
   // rail), so this is inert there; on mobile the hamburger in the top bar opens

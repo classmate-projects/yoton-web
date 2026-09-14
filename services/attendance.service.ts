@@ -12,8 +12,9 @@ export const AttendanceService = {
         return data;
     },
 
-    checkOut: async () => {
-        const { data } = await api.post(ENDPOINTS.ATTENDANCE.CHECK_OUT);
+    // Requires the caller's own password - see AttendanceController.CheckOut's own comment.
+    checkOut: async (password: string) => {
+        const { data } = await api.post(ENDPOINTS.ATTENDANCE.CHECK_OUT, { password });
         return data;
     },
 

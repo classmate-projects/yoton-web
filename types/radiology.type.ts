@@ -26,6 +26,8 @@ export interface RadiologyRequestType {
   resultFilePath: string | null;
   scanFilePath: string | null;
   imageUrls: string[];
+  correctedFromId: string | null;
+  correctedFrom: RadiologyRequestType | null;
 }
 
 export interface RadiologySummaryType {

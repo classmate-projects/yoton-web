@@ -7,7 +7,8 @@ export type ConfigListType =
   | "DosageUnit"
   | "Frequency"
   | "InsuranceProvider"
-  | "DrugType";
+  | "DrugType"
+  | "CancerSite";
 
 export interface ListItemType {
   listItemId: string;

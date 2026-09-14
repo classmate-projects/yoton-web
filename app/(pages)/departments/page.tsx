@@ -13,6 +13,7 @@ import SpecializationModal from "@/components/SpecializationModal";
 import { DepartmentSerivce } from "@/services/department.service";
 import { SpecializationService } from "@/services/specialization.service";
 import { SpecializationTypes } from "@/types/specialization.type";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -193,17 +194,12 @@ export default function DepartmentsPage() {
 
   // confirm before delete
   const confirmDelete = (id: string, name: string) => {
-    toast(
+    confirmDeleteToast(
       <span>
         Are you sure you want to delete{" "}
         <b className="text-red-500 ml-1">{name}</b>
       </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => handleDelete(id),
-        },
-      },
+      () => handleDelete(id)
     );
   };
 
@@ -259,16 +255,11 @@ export default function DepartmentsPage() {
   };
 
   const confirmDeleteSpec = (id: string, name: string) => {
-    toast(
+    confirmDeleteToast(
       <span>
         Are you sure you want to delete specialization <b className="text-red-500 ml-1">{name}</b>?
       </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => handleDeleteSpecialization(id),
-        },
-      }
+      () => handleDeleteSpecialization(id)
     );
   };
 
@@ -405,20 +396,18 @@ export default function DepartmentsPage() {
                   return (
                     <React.Fragment key={department.departmentId}>
                       <tr
-                        className={`${!department.isActive ? "bg-destructive/5 opacity-80" : ""} hover:bg-muted/30 transition-colors`}
+                        onClick={() => deptSpecs.length > 0 && toggleExpand(department.departmentId)}
+                        className={`${!department.isActive ? "bg-destructive/5 opacity-80" : ""} ${deptSpecs.length > 0 ? "cursor-pointer" : ""} hover:bg-muted/30 transition-colors`}
                       >
                         <td className="pl-4">
                           {deptSpecs.length > 0 && (
-                            <button
-                              onClick={() => toggleExpand(department.departmentId)}
-                              className="p-1 hover:bg-muted rounded transition-colors cursor-pointer"
-                            >
+                            <div className="p-1 rounded transition-colors">
                               {isExpanded ? (
                                 <MdExpandLess size={24} className="text-muted-foreground" />
                               ) : (
                                 <MdExpandMore size={24} className="text-muted-foreground" />
                               )}
-                            </button>
+                            </div>
                           )}
                         </td>
                         <td className="font-semibold capitalize text-foreground">
@@ -427,7 +416,7 @@ export default function DepartmentsPage() {
                         <td className="text-foreground/80">
                           {department.description || "No description provided."}
                         </td>
-                        <td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-center items-center gap-2">
                             <button
                               onClick={() => openSpecModal(department.departmentId)}

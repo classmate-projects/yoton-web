@@ -18,6 +18,10 @@ export interface CurrentUserDetail {
     // for the single place every page should read this from rather than hardcoding a symbol.
     currencyCode?: string;
     currencySymbol?: string;
+    // Admin-configurable in Settings - the clinic's own home country, used e.g. to decide
+    // which National ID format (Emirates ID, Aadhaar, ...) Patient Entry expects, regardless
+    // of any individual patient's own nationality. See helpers/nationalIdFormats.ts.
+    country?: string;
     // Minutes of inactivity before an auto-logout - same value for every signed-in user,
     // no per-user override. See hooks/useIdleLogout.ts.
     idleTimeoutMinutes?: number;
@@ -42,15 +46,42 @@ export interface UserCreateType {
     password: string;
     role: string
     phone: string
+    gender?: string;
+    nationality?: string;
+    departmentId?: string;
+    hireDate?: string;
 }
 
 
 export interface UserUpdateType {
     name: string;
+    username?: string;
     email: string;
     role: string;
     phone: string
     isActive: boolean
+    gender?: string;
+    nationality?: string;
+    departmentId?: string;
+    hireDate?: string;
+    // Only rehashed/applied server-side when non-empty - leave unset to keep the current password.
+    password?: string;
+}
+
+export interface TerminateUserPayload {
+    terminationDate: string;
+    terminationReason: string;
+    terminationReasonOtherText?: string;
+}
+
+export interface StaffEmploymentEventType {
+    staffEmploymentEventId: string;
+    departmentId: string | null;
+    departmentName: string | null;
+    hireDate: string;
+    terminationDate: string | null;
+    terminationReason: string | null;
+    terminationReasonOtherText: string | null;
 }
 
 export interface UserAssignedDoctorCreateType {

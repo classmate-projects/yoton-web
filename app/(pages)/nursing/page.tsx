@@ -8,16 +8,21 @@ import {
   ArrowLeft,
   Activity,
   AlertTriangle,
+  Ban,
   Bandage,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   ClipboardCheck,
   ClipboardList,
+  Clock,
   Droplets,
   FileText,
   Flag,
   HeartPulse,
   Lock,
   LogOut,
+  Pencil,
   Pill,
   PlayCircle,
   Save,
@@ -26,24 +31,46 @@ import {
   Stethoscope,
   Syringe,
   Thermometer,
+  Trash2,
   Users,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import RichTextEditor from "@/components/RichTextEditor";
-import TrendChart from "@/components/TrendChart";
 import ToggleButton from "@/components/ToggleButton";
+import DatePicker from "@/components/DatePicker";
+import CorrectedFromNote from "@/components/CorrectedFromNote";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
 import { UserService } from "@/services/user.service";
 import { UserType } from "@/types/user.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
-import { EmrPatientListItem, PatientSummaryType } from "@/types/emr.type";
+import { AllergyType, EmrPatientListItem, PatientSummaryType, SpecialRemarkType } from "@/types/emr.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   NurseDashboardSummaryType,
   NursingChartType,
   WorkQueueItemType,
   NurseOnDutyType,
+  UntouchedPatientType,
+  TriageVitalField,
+  TriagePayload,
+  VitalsType,
+  InjectionType,
+  DressingType,
+  BloodSugarType,
+  IVFluidsType,
+  NurseNoteType,
 } from "@/types/nursing.type";
 
 const REMARK_TYPES = ["Refusal", "ClinicalConcern", "Other"];
@@ -72,6 +99,159 @@ const formatDate = (value: string | null | undefined) =>
 const formatDateTime = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString() : "—";
 
+const isSameLocalDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+// "Last Visit" reads better as Today/Yesterday than a repeated date the nurse already knows
+// they're looking at "today" for - anything older just falls back to the plain date.
+const formatVisitDate = (value: string | null | undefined) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  const today = new Date();
+  if (isSameLocalDay(date, today)) return "Today";
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (isSameLocalDay(date, yesterday)) return "Yesterday";
+  return date.toLocaleDateString();
+};
+
+// How long a patient has been waiting untouched, for the grid cards below.
+const formatWaitingSince = (checkedInAt: string) => {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(checkedInAt).getTime()) / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+};
+
+// <input type="datetime-local"> needs "YYYY-MM-DDTHH:mm" in local time, not an ISO string.
+const toDateTimeLocalValue = (value: string | null | undefined) => {
+  const date = value ? new Date(value) : new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+type TriageFieldType = "number" | "date";
+
+interface TriageFieldConfig {
+  key: TriageVitalField;
+  label: string;
+  unit?: string;
+  type: TriageFieldType;
+  step?: string;
+}
+
+// Rendered generically (see renderTriageVitalRow below) rather than one hand-written JSX
+// block per field - keeps the ~15 fields from Triage/SaveTriageRequest and this form in sync
+// by construction instead of by careful copy-pasting.
+const TRIAGE_VITAL_FIELDS: TriageFieldConfig[] = [
+  { key: "Height", label: "Height", unit: "cm", type: "number" },
+  { key: "Weight", label: "Weight", unit: "kg", type: "number" },
+  { key: "Temperature", label: "Temperature", unit: "deg C", type: "number", step: "0.1" },
+  { key: "HeartRate", label: "Heart rate", unit: "BPM", type: "number" },
+  { key: "BPSystolic", label: "B.P (Systolic)", unit: "mmHg", type: "number" },
+  { key: "BPDiastolic", label: "B.P (Diastolic)", unit: "mmHg", type: "number" },
+  { key: "BPMean", label: "B.P (M)", unit: "mmHg", type: "number" },
+  { key: "Chest", label: "Chest", unit: "cm", type: "number" },
+  { key: "Waist", label: "Waist", unit: "cm", type: "number" },
+  { key: "Respiratory", label: "Respiratory", unit: "bpm", type: "number" },
+  { key: "OxygenSaturation", label: "O2 Saturation", unit: "%", type: "number" },
+  { key: "BloodSugar", label: "Blood Sugar", unit: "mmol/L", type: "number", step: "0.1" },
+  { key: "Hip", label: "Hip", unit: "cm", type: "number" },
+];
+
+const TRIAGE_OBSTETRIC_FIELDS: TriageFieldConfig[] = [
+  { key: "Edd", label: "EDD", type: "date" },
+  { key: "Para", label: "Para", type: "number" },
+  { key: "Gravida", label: "Gravida", type: "number" },
+  { key: "Lmp", label: "LMP", type: "date" },
+];
+
+// Idle state uses the app's usual light-tint-badge idiom (bg-X-50 dark:bg-X-950/30 + matching
+// border/text) rather than a full-saturation fill - the saturated color is reserved for
+// whichever level is actually selected, so the row reads as "one clear choice" instead of a
+// wall of five equally loud colors.
+const TRIAGE_PRIORITY_LEVELS = [
+  {
+    level: 1, label: "Level I", name: "Resuscitation", eta: "Immediate",
+    idle: "border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400",
+    active: "border-red-600 bg-red-600 text-white shadow-md shadow-red-600/30",
+  },
+  {
+    level: 2, label: "Level II", name: "UCC", eta: "15 min",
+    idle: "border-orange-200 dark:border-orange-900 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400",
+    active: "border-orange-500 bg-orange-500 text-white shadow-md shadow-orange-500/30",
+  },
+  {
+    level: 3, label: "Level III", name: "Urgent", eta: "30 min",
+    idle: "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400",
+    active: "border-amber-500 bg-amber-500 text-white shadow-md shadow-amber-500/30",
+  },
+  {
+    level: 4, label: "Level IV", name: "Less Urgent", eta: "60 min",
+    idle: "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400",
+    active: "border-emerald-600 bg-emerald-600 text-white shadow-md shadow-emerald-600/30",
+  },
+  {
+    level: 5, label: "Level V", name: "Non Urgent", eta: "120 min",
+    idle: "border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400",
+    active: "border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-600/30",
+  },
+] as const;
+
+const TRIAGE_SYMPTOM_ROWS = [
+  { key: "burnOrTrauma", label: "Does the patient present Burn or Trauma symptoms?" },
+  { key: "cardiacRespiratoryDigestive", label: "Is the patient experiencing Cardiac Respiratory & Digestive symptoms?" },
+  { key: "otherEmergencySymptoms", label: "Any Other emergency symptoms?" },
+] as const;
+
+interface TriageFormState {
+  priorityLevel: number | null;
+  burnOrTrauma: string;
+  burnOrTraumaDetail: string;
+  cardiacRespiratoryDigestive: string;
+  cardiacRespiratoryDigestiveDetail: string;
+  otherEmergencySymptoms: string;
+  otherEmergencySymptomsDetail: string;
+  tempSite: string;
+  patientRefused: boolean;
+  actionDateTime: string;
+  values: Record<TriageVitalField, string>;
+}
+
+const emptyTriageValues = (): Record<TriageVitalField, string> => ({
+  Height: "",
+  Weight: "",
+  Temperature: "",
+  HeartRate: "",
+  BPSystolic: "",
+  BPDiastolic: "",
+  BPMean: "",
+  Chest: "",
+  Waist: "",
+  Respiratory: "",
+  OxygenSaturation: "",
+  BloodSugar: "",
+  Hip: "",
+  Edd: "",
+  Para: "",
+  Gravida: "",
+  Lmp: "",
+});
+
+const emptyTriageForm = (): TriageFormState => ({
+  priorityLevel: null,
+  burnOrTrauma: "",
+  burnOrTraumaDetail: "",
+  cardiacRespiratoryDigestive: "",
+  cardiacRespiratoryDigestiveDetail: "",
+  otherEmergencySymptoms: "",
+  otherEmergencySymptomsDetail: "",
+  tempSite: "",
+  patientRefused: false,
+  actionDateTime: toDateTimeLocalValue(null),
+  values: emptyTriageValues(),
+});
+
 function NurseWorkbenchInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -94,7 +274,15 @@ function NurseWorkbenchInner() {
   const [workQueue, setWorkQueue] = useState<WorkQueueItemType[]>([]);
   const [onDutyNurses, setOnDutyNurses] = useState<NurseOnDutyType[]>([]);
   const [patients, setPatients] = useState<EmrPatientListItem[]>([]);
+  // Checked-in visits no nurse has opened yet (Visit.Status still "CheckedIn") - see
+  // NursingController.GetUntouchedPatients. Fetched in the same fetchWorkbench bundle below
+  // so it rides that same SignalR-triggered live refresh for free.
+  const [untouchedPatients, setUntouchedPatients] = useState<UntouchedPatientType[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  // Filters Patient Monitoring to patients whose last visit falls on this exact date -
+  // "YYYY-MM-DD" from a plain <input type="date">, so the nurse can jump to a specific past
+  // or future day instead of only ever seeing everyone's most recent visit.
+  const [dateFilter, setDateFilter] = useState("");
   const [isLoadingWorkbench, setIsLoadingWorkbench] = useState(true);
 
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
@@ -103,6 +291,17 @@ function NurseWorkbenchInner() {
   const [encounterId, setEncounterId] = useState<string | null>(null);
   const [isLoadingChart, setIsLoadingChart] = useState(false);
   const [isEndingEncounter, setIsEndingEncounter] = useState(false);
+
+  // ---------------- TRIAGE FORM ----------------
+  const [triageForm, setTriageForm] = useState<TriageFormState>(emptyTriageForm());
+  // Which vitals are toggled "patient refused" - key present (even with an empty-string
+  // reason, before the nurse fills it in) means refused; absence means recorded normally.
+  const [triageRefusals, setTriageRefusals] = useState<Partial<Record<TriageVitalField, string>>>({});
+  const [savingTriage, setSavingTriage] = useState(false);
+  // Collapsed by default - triage is a one-time intake assessment, not something a nurse
+  // reopens on every visit to this patient's chart the way vitals/tasks are, so it shouldn't
+  // eat the top of the screen unless a nurse actually clicks in to use or review it.
+  const [isTriageExpanded, setIsTriageExpanded] = useState(false);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -161,16 +360,18 @@ function NurseWorkbenchInner() {
   const fetchWorkbench = async () => {
     try {
       setIsLoadingWorkbench(true);
-      const [dashboardRes, workQueueRes, onDutyRes, patientsRes] = await Promise.all([
+      const [dashboardRes, workQueueRes, onDutyRes, patientsRes, untouchedRes] = await Promise.all([
         NursingService.getDashboardSummary(),
         NursingService.getWorkQueue(),
         NursingService.getOnDutyNow(),
         EmrService.getPatients(),
+        NursingService.getUntouchedPatients(),
       ]);
       setDashboard(dashboardRes.data || null);
       setWorkQueue(workQueueRes.data || []);
       setOnDutyNurses(onDutyRes.data || []);
       setPatients(patientsRes.data || []);
+      setUntouchedPatients(untouchedRes.data || []);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load workbench data"));
     } finally {
@@ -212,8 +413,17 @@ function NurseWorkbenchInner() {
   };
 
   // ---------------- PATIENT CHART ----------------
-  const openPatient = async (patientId: string) => {
+  const [currentVisitId, setCurrentVisitId] = useState<string | null>(null);
+
+  // visitId is normally implied by the page's own URL (?visitId=, arriving from Reception's
+  // visit queue) - but a click from the Untouched Patients grid below knows its own visit
+  // directly, so it needs to be able to pass it through explicitly instead. That's what
+  // actually advances Visit.Status CheckedIn -> WithNurse (see EnsureActiveEncounter), which
+  // is what makes that patient drop off the grid.
+  const openPatient = async (patientId: string, visitId?: string) => {
+    const resolvedVisitId = visitId ?? visitIdParam;
     setSelectedPatientId(patientId);
+    setCurrentVisitId(resolvedVisitId ?? null);
     setIsLoadingChart(true);
     try {
       // Reading the chart works fine for admin either way, but starting/resuming an
@@ -225,7 +435,7 @@ function NurseWorkbenchInner() {
         NursingService.getPatientChart(patientId),
         canStartEncounter
           ? NursingService.ensureActiveEncounter(patientId, {
-              visitId: visitIdParam,
+              visitId: resolvedVisitId,
               nurseId: isAdmin ? selectedNurseId : undefined,
             })
           : Promise.resolve({ data: null }),
@@ -281,7 +491,223 @@ function NurseWorkbenchInner() {
     setSummary(null);
     setChart(null);
     setEncounterId(null);
+    setCurrentVisitId(null);
     fetchWorkbench();
+  };
+
+  // Prefills from the active encounter's saved triage (if any) whenever a different patient/
+  // encounter is opened - keyed on encounterId rather than chart.triage itself so an
+  // unrelated refreshChart() elsewhere (after saving vitals, a note, etc.) can't clobber
+  // whatever the nurse is still mid-typing into this form.
+  useEffect(() => {
+    if (!encounterId) {
+      setTriageForm(emptyTriageForm());
+      setTriageRefusals({});
+      return;
+    }
+    const t = chart?.triage;
+    if (!t) {
+      setTriageForm(emptyTriageForm());
+      setTriageRefusals({});
+      return;
+    }
+    setTriageForm({
+      priorityLevel: t.priorityLevel,
+      burnOrTrauma: t.burnOrTrauma ?? "",
+      burnOrTraumaDetail: t.burnOrTraumaDetail ?? "",
+      cardiacRespiratoryDigestive: t.cardiacRespiratoryDigestive ?? "",
+      cardiacRespiratoryDigestiveDetail: t.cardiacRespiratoryDigestiveDetail ?? "",
+      otherEmergencySymptoms: t.otherEmergencySymptoms ?? "",
+      otherEmergencySymptomsDetail: t.otherEmergencySymptomsDetail ?? "",
+      tempSite: t.tempSite ?? "",
+      patientRefused: t.patientRefused,
+      actionDateTime: toDateTimeLocalValue(t.actionDateTime),
+      values: {
+        Height: t.heightCm?.toString() ?? "",
+        Weight: t.weightKg?.toString() ?? "",
+        Temperature: t.temperature?.toString() ?? "",
+        HeartRate: t.heartRate?.toString() ?? "",
+        BPSystolic: t.bpSystolic?.toString() ?? "",
+        BPDiastolic: t.bpDiastolic?.toString() ?? "",
+        BPMean: t.bpMean?.toString() ?? "",
+        Chest: t.chest?.toString() ?? "",
+        Waist: t.waist?.toString() ?? "",
+        Respiratory: t.respiratory?.toString() ?? "",
+        OxygenSaturation: t.oxygenSaturation?.toString() ?? "",
+        BloodSugar: t.bloodSugar?.toString() ?? "",
+        Hip: t.hip?.toString() ?? "",
+        Edd: t.edd ?? "",
+        Para: t.para?.toString() ?? "",
+        Gravida: t.gravida?.toString() ?? "",
+        Lmp: t.lmp ?? "",
+      },
+    });
+    setTriageRefusals(Object.fromEntries(t.refusals.map((r) => [r.vitalField, r.reason])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encounterId]);
+
+  const toggleTriageVitalRefusal = (field: TriageVitalField) => {
+    setTriageRefusals((prev) => {
+      if (field in prev) {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      }
+      return { ...prev, [field]: "" };
+    });
+  };
+
+  const handleSaveTriage = async () => {
+    if (!encounterId) return;
+    if (!requireNurseSelected()) return;
+
+    const missingReason = Object.entries(triageRefusals).find(([, reason]) => !reason?.trim());
+    if (missingReason) {
+      toast.error("Enter a reason for every refused vital before saving.");
+      return;
+    }
+
+    const numberOrUndefined = (field: TriageVitalField) => {
+      if (field in triageRefusals) return undefined;
+      const raw = triageForm.values[field];
+      if (!raw || raw.trim() === "") return undefined;
+      const n = Number(raw);
+      return Number.isNaN(n) ? undefined : n;
+    };
+    const dateOrUndefined = (field: TriageVitalField) => {
+      if (field in triageRefusals) return undefined;
+      const raw = triageForm.values[field];
+      return raw ? raw : undefined;
+    };
+
+    const payload: TriagePayload = {
+      encounterId,
+      visitId: currentVisitId ?? undefined,
+      priorityLevel: triageForm.priorityLevel ?? undefined,
+      burnOrTrauma: triageForm.burnOrTrauma || undefined,
+      burnOrTraumaDetail: triageForm.burnOrTraumaDetail || undefined,
+      cardiacRespiratoryDigestive: triageForm.cardiacRespiratoryDigestive || undefined,
+      cardiacRespiratoryDigestiveDetail: triageForm.cardiacRespiratoryDigestiveDetail || undefined,
+      otherEmergencySymptoms: triageForm.otherEmergencySymptoms || undefined,
+      otherEmergencySymptomsDetail: triageForm.otherEmergencySymptomsDetail || undefined,
+      heightCm: numberOrUndefined("Height"),
+      weightKg: numberOrUndefined("Weight"),
+      temperature: numberOrUndefined("Temperature"),
+      tempSite: triageForm.tempSite || undefined,
+      heartRate: numberOrUndefined("HeartRate"),
+      bpSystolic: numberOrUndefined("BPSystolic"),
+      bpDiastolic: numberOrUndefined("BPDiastolic"),
+      bpMean: numberOrUndefined("BPMean"),
+      chest: numberOrUndefined("Chest"),
+      waist: numberOrUndefined("Waist"),
+      respiratory: numberOrUndefined("Respiratory"),
+      oxygenSaturation: numberOrUndefined("OxygenSaturation"),
+      bloodSugar: numberOrUndefined("BloodSugar"),
+      hip: numberOrUndefined("Hip"),
+      edd: dateOrUndefined("Edd"),
+      para: numberOrUndefined("Para"),
+      gravida: numberOrUndefined("Gravida"),
+      lmp: dateOrUndefined("Lmp"),
+      patientRefused: triageForm.patientRefused,
+      actionDateTime: triageForm.actionDateTime ? new Date(triageForm.actionDateTime).toISOString() : undefined,
+      refusals: Object.entries(triageRefusals).map(([vitalField, reason]) => ({
+        vitalField: vitalField as TriageVitalField,
+        reason: reason ?? "",
+      })),
+      nurseId: isAdmin ? selectedNurseId : undefined,
+    };
+
+    try {
+      setSavingTriage(true);
+      await NursingService.saveTriage(selectedPatientId!, payload);
+      toast.success("Triage saved");
+      await refreshChart();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save triage"));
+    } finally {
+      setSavingTriage(false);
+    }
+  };
+
+  const triageBmi = (() => {
+    const h = parseFloat(triageForm.values.Height);
+    const w = parseFloat(triageForm.values.Weight);
+    if (!h || !w) return null;
+    return Math.round((w / Math.pow(h / 100, 2)) * 10) / 10;
+  })();
+
+  // One row per "Vital Signs in Triage" field - shared by the vitals and obstetric groups
+  // below, since both are the same {label, input, refuse-toggle} shape (see
+  // TRIAGE_VITAL_FIELDS/TRIAGE_OBSTETRIC_FIELDS).
+  const renderTriageVitalRow = (field: TriageFieldConfig) => {
+    const isRefused = field.key in triageRefusals;
+    return (
+      <div key={field.key} className="flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-xs font-medium text-muted-foreground">
+            {field.label}
+            {field.unit ? ` (${field.unit})` : ""}
+          </label>
+          <button
+            type="button"
+            onClick={() => toggleTriageVitalRefusal(field.key)}
+            title={isRefused ? "Patient refused this vital — click to undo" : "Mark patient refused"}
+            // Out of the tab order on purpose - it sits right before each field's own input
+            // in DOM order, so left tabbable it stole focus on the way to every next field
+            // instead of just the fields themselves. Still fully clickable with the mouse.
+            tabIndex={-1}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${isRefused ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}
+          >
+            <Ban size={16} />
+          </button>
+        </div>
+        {field.type === "date" ? (
+          <DatePicker
+            value={triageForm.values[field.key]}
+            onChange={(v) =>
+              setTriageForm((prev) => ({ ...prev, values: { ...prev.values, [field.key]: v } }))
+            }
+            disabled={isRefused}
+            dateFormat="dd-MM-yyyy"
+            placeholder="DD-MM-YYYY"
+          />
+        ) : (
+          <input
+            type={field.type}
+            step={field.step}
+            disabled={isRefused}
+            value={triageForm.values[field.key]}
+            onChange={(e) =>
+              setTriageForm((prev) => ({ ...prev, values: { ...prev.values, [field.key]: e.target.value } }))
+            }
+            className="text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+        )}
+        {field.key === "Temperature" && !isRefused && (
+          <select
+            value={triageForm.tempSite}
+            onChange={(e) => setTriageForm((prev) => ({ ...prev, tempSite: e.target.value }))}
+            className="text-xs mt-0.5"
+          >
+            <option value="">Site…</option>
+            <option value="Oral">Oral</option>
+            <option value="Axillary">Axillary</option>
+            <option value="Tympanic">Tympanic</option>
+            <option value="Rectal">Rectal</option>
+          </select>
+        )}
+        {isRefused && (
+          <input
+            type="text"
+            required
+            placeholder="Refusal reason (required)"
+            value={triageRefusals[field.key] ?? ""}
+            onChange={(e) => setTriageRefusals((prev) => ({ ...prev, [field.key]: e.target.value }))}
+            className="text-xs border-red-300 focus:border-red-400"
+          />
+        )}
+      </div>
+    );
   };
 
   // ---------------- VITALS FORM ----------------
@@ -296,11 +722,24 @@ function NurseWorkbenchInner() {
     weightKg: "",
     consciousnessLevel: "Alert",
     supplementalOxygen: false,
+    bmiExclusionReason: "",
     notes: "",
   });
   const [savingVitals, setSavingVitals] = useState(false);
+  // Set while correcting an existing vitals row (reuses the same form/button as adding a
+  // new one, mirroring how Department/Role edit reuses their own create form). A correction
+  // never overwrites the original in place - the API soft-deletes it and inserts a fresh,
+  // linked row - so this only changes which endpoint saveVitals calls, not what it sends.
+  const [editingVitalsId, setEditingVitalsId] = useState<string | null>(null);
   const [vitalsView, setVitalsView] = useState<"table" | "trend">("table");
-  const [trendMetric, setTrendMetric] = useState<"heartRate" | "temperature" | "oxygenSaturation" | "respiratoryRate" | "systolic" | "ewsScore">("ewsScore");
+  // Which TREND_METRICS keys are currently plotted - multi-select via checkboxes (see the
+  // Trend view below) rather than TrendChart's old one-metric-at-a-time dropdown, each its
+  // own colored line on one shared chart. Starts with every metric checked.
+  const [visibleTrendMetrics, setVisibleTrendMetrics] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(Object.keys(TREND_METRICS).map((k) => [k, true]))
+  );
+  const toggleTrendMetric = (key: string) =>
+    setVisibleTrendMetrics((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const liveBmi = (() => {
     const height = Number(vitalsForm.heightCm);
@@ -309,16 +748,51 @@ function NurseWorkbenchInner() {
     return (weight / Math.pow(height / 100, 2)).toFixed(1);
   })();
 
-  const saveVitals = async () => {
-    if (!encounterId) return;
+  // ---------------- ENCOUNTER LOCK (password re-auth after nurse closes the encounter) ----------------
+  // Once EndEncounter has run, the 5 clinical-task write endpoints below (vitals, injection,
+  // dressing, blood sugar, IV fluids) respond 423 instead of saving - this catches that,
+  // parks the retry, and lets the password-prompt modal replay the exact same save once
+  // confirmed, instead of duplicating this handling in every save function.
+  const [encounterLock, setEncounterLock] = useState<{ retry: (password: string) => Promise<boolean> } | null>(null);
+  const [encounterLockPassword, setEncounterLockPassword] = useState("");
+  const [submittingEncounterLock, setSubmittingEncounterLock] = useState(false);
+
+  const handleEncounterLockError = (error: unknown, retry: (password: string) => Promise<boolean>): boolean => {
+    if (axios.isAxiosError(error) && error.response?.status === 423) {
+      setEncounterLock({ retry });
+      return true;
+    }
+    return false;
+  };
+
+  // Only closes the modal once the retried save actually succeeds - a wrong password on
+  // retry shows its own toast (from the save function's own catch block) and leaves the
+  // modal open so the user can just try again, instead of forcing them to re-trigger the
+  // whole save from scratch.
+  const confirmEncounterLockPassword = async () => {
+    if (!encounterLock || !encounterLockPassword.trim()) return;
+    setSubmittingEncounterLock(true);
+    try {
+      const succeeded = await encounterLock.retry(encounterLockPassword);
+      if (succeeded) {
+        setEncounterLock(null);
+        setEncounterLockPassword("");
+      }
+    } finally {
+      setSubmittingEncounterLock(false);
+    }
+  };
+
+  const saveVitals = async (passwordOverride?: string): Promise<boolean> => {
+    if (!encounterId) return false;
     if (!vitalsForm.systolic || !vitalsForm.diastolic || !vitalsForm.heartRate) {
       toast.error("Blood pressure and heart rate are required");
-      return;
+      return false;
     }
-    if (!requireNurseSelected()) return;
+    if (!requireNurseSelected()) return false;
     try {
       setSavingVitals(true);
-      await NursingService.saveVitals({
+      const payload = {
         encounterId,
         systolic: Number(vitalsForm.systolic),
         diastolic: Number(vitalsForm.diastolic),
@@ -330,48 +804,144 @@ function NurseWorkbenchInner() {
         weightKg: Number(vitalsForm.weightKg || 0),
         consciousnessLevel: vitalsForm.consciousnessLevel,
         supplementalOxygen: vitalsForm.supplementalOxygen,
+        bmiExclusionReason: vitalsForm.bmiExclusionReason || undefined,
         notes: vitalsForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
-      });
-      toast.success("Vitals recorded");
-      setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, notes: "" });
+        password: passwordOverride,
+      };
+      if (editingVitalsId) {
+        await NursingService.updateVitals(editingVitalsId, payload);
+        toast.success("Vitals corrected");
+      } else {
+        await NursingService.saveVitals(payload);
+        toast.success("Vitals recorded");
+      }
+      setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, bmiExclusionReason: "", notes: "" });
+      setEditingVitalsId(null);
       await refreshChart();
+      return true;
     } catch (error) {
+      if (handleEncounterLockError(error, (pw) => saveVitals(pw))) return false;
       toast.error(errorMessage(error, "Failed to save vitals"));
+      return false;
     } finally {
       setSavingVitals(false);
     }
   };
 
+  const startEditVitals = (v: VitalsType) => {
+    setEditingVitalsId(v.vitalsRecordId);
+    setVitalsForm({
+      systolic: String(v.systolic ?? ""),
+      diastolic: String(v.diastolic ?? ""),
+      heartRate: String(v.heartRate ?? ""),
+      temperature: String(v.temperature ?? ""),
+      respiratoryRate: String(v.respiratoryRate ?? ""),
+      oxygenSaturation: String(v.oxygenSaturation ?? ""),
+      heightCm: v.heightCm ? String(v.heightCm) : "",
+      weightKg: v.weightKg ? String(v.weightKg) : "",
+      consciousnessLevel: v.consciousnessLevel || "Alert",
+      supplementalOxygen: v.supplementalOxygen,
+      bmiExclusionReason: v.bmiExclusionReason || "",
+      notes: v.notes || "",
+    });
+  };
+
+  const cancelEditVitals = () => {
+    setEditingVitalsId(null);
+    setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, bmiExclusionReason: "", notes: "" });
+  };
+
+  const removeVitalsRecord = async (v: VitalsType, passwordOverride?: string): Promise<boolean> => {
+    if (!requireNurseSelected()) return false;
+    try {
+      await NursingService.removeVitals(v.vitalsRecordId, isAdmin ? selectedNurseId : undefined, passwordOverride);
+      toast.success("Vitals record removed");
+      await refreshChart();
+      return true;
+    } catch (error) {
+      if (handleEncounterLockError(error, (pw) => removeVitalsRecord(v, pw))) return false;
+      toast.error(errorMessage(error, "Failed to remove vitals record"));
+      return false;
+    }
+  };
+
+  const confirmRemoveVitals = (v: VitalsType) => {
+    confirmDeleteToast(
+      <span>Delete this vitals record?</span>,
+      () => removeVitalsRecord(v)
+    );
+  };
+
   // ---------------- MEDICATION ADMINISTRATION FORM ----------------
   const [injectionForm, setInjectionForm] = useState({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
   const [savingInjection, setSavingInjection] = useState(false);
+  const [editingInjectionId, setEditingInjectionId] = useState<string | null>(null);
 
-  const saveInjection = async () => {
-    if (!encounterId) return;
+  const saveInjection = async (passwordOverride?: string): Promise<boolean> => {
+    if (!encounterId) return false;
     if (!injectionForm.medicineName.trim() || !injectionForm.dose.trim()) {
       toast.error("Medicine name and dose are required");
-      return;
+      return false;
     }
-    if (!requireNurseSelected()) return;
+    if (!requireNurseSelected()) return false;
     try {
       setSavingInjection(true);
-      await NursingService.saveInjection({
+      const payload = {
         encounterId,
         medicineName: injectionForm.medicineName.trim(),
         dose: injectionForm.dose.trim(),
         route: injectionForm.route,
         notes: injectionForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
-      });
-      toast.success("Medication administration recorded");
+        password: passwordOverride,
+      };
+      if (editingInjectionId) {
+        await NursingService.updateInjection(editingInjectionId, payload);
+        toast.success("Medication administration corrected");
+      } else {
+        await NursingService.saveInjection(payload);
+        toast.success("Medication administration recorded");
+      }
       setInjectionForm({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
+      setEditingInjectionId(null);
       await refreshChart();
+      return true;
     } catch (error) {
+      if (handleEncounterLockError(error, (pw) => saveInjection(pw))) return false;
       toast.error(errorMessage(error, "Failed to save medication entry"));
+      return false;
     } finally {
       setSavingInjection(false);
     }
+  };
+
+  const startEditInjection = (i: InjectionType) => {
+    setEditingInjectionId(i.injectionRecordId);
+    setInjectionForm({ medicineName: i.medicineName, dose: i.dose, route: i.route || "Oral (PO)", notes: i.notes || "" });
+  };
+
+  const cancelEditInjection = () => {
+    setEditingInjectionId(null);
+    setInjectionForm({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
+  };
+
+  const removeInjectionRecord = async (i: InjectionType, passwordOverride?: string): Promise<boolean> => {
+    if (!requireNurseSelected()) return false;
+    try {
+      await NursingService.removeInjection(i.injectionRecordId, isAdmin ? selectedNurseId : undefined, passwordOverride);
+      toast.success("Medication administration record removed");
+      await refreshChart();
+      return true;
+    } catch (error) {
+      if (handleEncounterLockError(error, (pw) => removeInjectionRecord(i, pw))) return false;
+      toast.error(errorMessage(error, "Failed to remove medication administration record"));
+      return false;
+    }
+  };
+
+  const confirmRemoveInjection = (i: InjectionType) => {
+    confirmDeleteToast(<span>Delete this medication administration record?</span>, () => removeInjectionRecord(i));
   };
 
   // ---------------- WOUND CARE FORM ----------------
@@ -382,98 +952,201 @@ function NurseWorkbenchInner() {
     notes: "",
   });
   const [savingDressing, setSavingDressing] = useState(false);
+  const [editingDressingId, setEditingDressingId] = useState<string | null>(null);
 
-  const saveDressing = async () => {
-    if (!encounterId) return;
+  const saveDressing = async (passwordOverride?: string): Promise<boolean> => {
+    if (!encounterId) return false;
     if (!dressingForm.woundType || !dressingForm.dressingMaterial) {
       toast.error("Wound type and dressing material are required");
-      return;
+      return false;
     }
-    if (!requireNurseSelected()) return;
+    if (!requireNurseSelected()) return false;
     try {
       setSavingDressing(true);
-      await NursingService.saveDressing({
+      const payload = {
         encounterId,
         woundType: dressingForm.woundType,
         dressingMaterial: dressingForm.dressingMaterial,
         infectionSigns: dressingForm.infectionSigns,
         notes: dressingForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
-      });
-      toast.success("Wound care entry recorded");
+        password: passwordOverride,
+      };
+      if (editingDressingId) {
+        await NursingService.updateDressing(editingDressingId, payload);
+        toast.success("Wound care entry updated");
+      } else {
+        await NursingService.saveDressing(payload);
+        toast.success("Wound care entry recorded");
+      }
       setDressingForm({ woundType: "", dressingMaterial: "", infectionSigns: false, notes: "" });
+      setEditingDressingId(null);
       await refreshChart();
+      return true;
     } catch (error) {
+      if (handleEncounterLockError(error, (pw) => saveDressing(pw))) return false;
       toast.error(errorMessage(error, "Failed to save wound care entry"));
+      return false;
     } finally {
       setSavingDressing(false);
     }
   };
 
+  const startEditDressing = (d: DressingType) => {
+    setEditingDressingId(d.dressingTaskId);
+    setDressingForm({ woundType: d.woundType || "", dressingMaterial: d.dressingMaterial || "", infectionSigns: d.infectionSigns, notes: d.notes || "" });
+  };
+
+  const cancelEditDressing = () => {
+    setEditingDressingId(null);
+    setDressingForm({ woundType: "", dressingMaterial: "", infectionSigns: false, notes: "" });
+  };
+
+  const removeDressingRecord = (d: DressingType) => {
+    confirmDeleteToast(<span>Delete this wound care entry?</span>, async () => {
+      try {
+        await NursingService.removeDressing(d.dressingTaskId);
+        toast.success("Wound care entry removed");
+        await refreshChart();
+      } catch (error) {
+        toast.error(errorMessage(error, "Failed to remove wound care entry"));
+      }
+    });
+  };
+
   // ---------------- BLOOD SUGAR FORM ----------------
   const [sugarForm, setSugarForm] = useState({ sugarLevel: "", type: "Random", notes: "" });
   const [savingSugar, setSavingSugar] = useState(false);
+  const [editingSugarId, setEditingSugarId] = useState<string | null>(null);
 
-  const saveBloodSugar = async () => {
-    if (!encounterId) return;
+  const saveBloodSugar = async (passwordOverride?: string): Promise<boolean> => {
+    if (!encounterId) return false;
     if (!sugarForm.sugarLevel) {
       toast.error("Sugar level is required");
-      return;
+      return false;
     }
-    if (!requireNurseSelected()) return;
+    if (!requireNurseSelected()) return false;
     try {
       setSavingSugar(true);
-      await NursingService.saveBloodSugar({
+      const payload = {
         encounterId,
         sugarLevel: Number(sugarForm.sugarLevel),
         type: sugarForm.type,
         notes: sugarForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
-      });
-      toast.success("Blood sugar reading recorded");
+        password: passwordOverride,
+      };
+      if (editingSugarId) {
+        await NursingService.updateBloodSugar(editingSugarId, payload);
+        toast.success("Blood sugar reading updated");
+      } else {
+        await NursingService.saveBloodSugar(payload);
+        toast.success("Blood sugar reading recorded");
+      }
       setSugarForm({ sugarLevel: "", type: "Random", notes: "" });
+      setEditingSugarId(null);
       await refreshChart();
+      return true;
     } catch (error) {
+      if (handleEncounterLockError(error, (pw) => saveBloodSugar(pw))) return false;
       toast.error(errorMessage(error, "Failed to save blood sugar reading"));
+      return false;
     } finally {
       setSavingSugar(false);
     }
   };
 
+  const startEditSugar = (b: BloodSugarType) => {
+    setEditingSugarId(b.bloodSugarTaskId);
+    setSugarForm({ sugarLevel: String(b.sugarLevel), type: b.type || "Random", notes: b.notes || "" });
+  };
+
+  const cancelEditSugar = () => {
+    setEditingSugarId(null);
+    setSugarForm({ sugarLevel: "", type: "Random", notes: "" });
+  };
+
+  const removeSugarRecord = (b: BloodSugarType) => {
+    confirmDeleteToast(<span>Delete this blood sugar reading?</span>, async () => {
+      try {
+        await NursingService.removeBloodSugar(b.bloodSugarTaskId);
+        toast.success("Blood sugar reading removed");
+        await refreshChart();
+      } catch (error) {
+        toast.error(errorMessage(error, "Failed to remove blood sugar reading"));
+      }
+    });
+  };
+
   // ---------------- IV FLUIDS FORM ----------------
   const [ivForm, setIvForm] = useState({ fluidType: "", volume: "", rate: "", notes: "" });
   const [savingIv, setSavingIv] = useState(false);
+  const [editingIvId, setEditingIvId] = useState<string | null>(null);
 
-  const saveIVFluids = async () => {
-    if (!encounterId) return;
+  const saveIVFluids = async (passwordOverride?: string): Promise<boolean> => {
+    if (!encounterId) return false;
     if (!ivForm.fluidType.trim() || !ivForm.volume || !ivForm.rate) {
       toast.error("Fluid type, volume, and rate are required");
-      return;
+      return false;
     }
-    if (!requireNurseSelected()) return;
+    if (!requireNurseSelected()) return false;
     try {
       setSavingIv(true);
-      await NursingService.saveIVFluids({
+      const payload = {
         encounterId,
         fluidType: ivForm.fluidType.trim(),
         volume: Number(ivForm.volume),
         rate: Number(ivForm.rate),
         notes: ivForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
-      });
-      toast.success("IV fluids entry recorded");
+        password: passwordOverride,
+      };
+      if (editingIvId) {
+        await NursingService.updateIVFluids(editingIvId, payload);
+        toast.success("IV fluids entry updated");
+      } else {
+        await NursingService.saveIVFluids(payload);
+        toast.success("IV fluids entry recorded");
+      }
       setIvForm({ fluidType: "", volume: "", rate: "", notes: "" });
+      setEditingIvId(null);
       await refreshChart();
+      return true;
     } catch (error) {
+      if (handleEncounterLockError(error, (pw) => saveIVFluids(pw))) return false;
       toast.error(errorMessage(error, "Failed to save IV fluids entry"));
+      return false;
     } finally {
       setSavingIv(false);
     }
   };
 
+  const startEditIv = (f: IVFluidsType) => {
+    setEditingIvId(f.ivFluidsTaskId);
+    setIvForm({ fluidType: f.fluidType || "", volume: String(f.volume), rate: String(f.rate), notes: f.notes || "" });
+  };
+
+  const cancelEditIv = () => {
+    setEditingIvId(null);
+    setIvForm({ fluidType: "", volume: "", rate: "", notes: "" });
+  };
+
+  const removeIvRecord = (f: IVFluidsType) => {
+    confirmDeleteToast(<span>Delete this IV fluids entry?</span>, async () => {
+      try {
+        await NursingService.removeIVFluids(f.ivFluidsTaskId);
+        toast.success("IV fluids entry removed");
+        await refreshChart();
+      } catch (error) {
+        toast.error(errorMessage(error, "Failed to remove IV fluids entry"));
+      }
+    });
+  };
+
   // ---------------- ALLERGY FORM ----------------
   const [allergyForm, setAllergyForm] = useState({ substance: "", reaction: "" });
   const [savingAllergy, setSavingAllergy] = useState(false);
+  const [editingAllergyId, setEditingAllergyId] = useState<string | null>(null);
 
   const saveAllergy = async () => {
     if (!selectedPatientId) return;
@@ -486,16 +1159,19 @@ function NurseWorkbenchInner() {
     if (!requireDoctorSelectedForAllergy()) return;
     try {
       setSavingAllergy(true);
-      await EmrService.addAllergy(
-        selectedPatientId,
-        {
-          substance: allergyForm.substance.trim(),
-          reaction: allergyForm.reaction.trim() || undefined,
-        },
-        isAdmin ? selectedDoctorId : undefined
-      );
-      toast.success("Allergy recorded");
+      const payload = {
+        substance: allergyForm.substance.trim(),
+        reaction: allergyForm.reaction.trim() || undefined,
+      };
+      if (editingAllergyId) {
+        await EmrService.updateAllergy(editingAllergyId, payload, isAdmin ? selectedDoctorId : undefined);
+        toast.success("Allergy corrected");
+      } else {
+        await EmrService.addAllergy(selectedPatientId, payload, isAdmin ? selectedDoctorId : undefined);
+        toast.success("Allergy recorded");
+      }
       setAllergyForm({ substance: "", reaction: "" });
+      setEditingAllergyId(null);
       const res = await EmrService.getPatientSummary(selectedPatientId);
       setSummary(res.data);
     } catch (error) {
@@ -505,9 +1181,37 @@ function NurseWorkbenchInner() {
     }
   };
 
+  const startEditAllergy = (a: AllergyType) => {
+    setEditingAllergyId(a.patientAllergyId);
+    setAllergyForm({ substance: a.substance, reaction: a.reaction || "" });
+  };
+
+  const cancelEditAllergy = () => {
+    setEditingAllergyId(null);
+    setAllergyForm({ substance: "", reaction: "" });
+  };
+
+  const removeAllergyRecord = (a: AllergyType) => {
+    if (!selectedPatientId) return;
+    confirmDeleteToast(
+      <span>Delete allergy <b className="text-red-500 ml-1">{a.substance}</b>?</span>,
+      async () => {
+        try {
+          await EmrService.removeAllergy(a.patientAllergyId, isAdmin ? selectedDoctorId : undefined);
+          toast.success("Allergy removed");
+          const res = await EmrService.getPatientSummary(selectedPatientId);
+          setSummary(res.data);
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove allergy"));
+        }
+      }
+    );
+  };
+
   // ---------------- SPECIAL REMARK FORM ----------------
   const [remarkForm, setRemarkForm] = useState({ remarkType: REMARK_TYPES[0], description: "" });
   const [savingRemark, setSavingRemark] = useState(false);
+  const [editingRemarkId, setEditingRemarkId] = useState<string | null>(null);
 
   const saveSpecialRemark = async () => {
     if (!selectedPatientId) return;
@@ -517,12 +1221,19 @@ function NurseWorkbenchInner() {
     }
     try {
       setSavingRemark(true);
-      await NursingService.addSpecialRemark(selectedPatientId, {
+      const payload = {
         remarkType: remarkForm.remarkType,
         description: remarkForm.description.trim(),
-      });
-      toast.success("Special remark added");
+      };
+      if (editingRemarkId) {
+        await NursingService.updateSpecialRemark(editingRemarkId, payload);
+        toast.success("Special remark updated");
+      } else {
+        await NursingService.addSpecialRemark(selectedPatientId, payload);
+        toast.success("Special remark added");
+      }
       setRemarkForm({ remarkType: REMARK_TYPES[0], description: "" });
+      setEditingRemarkId(null);
       await refreshChart();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to add special remark"));
@@ -531,10 +1242,36 @@ function NurseWorkbenchInner() {
     }
   };
 
+  const startEditRemark = (r: SpecialRemarkType) => {
+    setEditingRemarkId(r.specialRemarkId);
+    setRemarkForm({ remarkType: r.remarkType, description: r.description });
+  };
+
+  const cancelEditRemark = () => {
+    setEditingRemarkId(null);
+    setRemarkForm({ remarkType: REMARK_TYPES[0], description: "" });
+  };
+
+  const removeSpecialRemark = (r: SpecialRemarkType) => {
+    confirmDeleteToast(<span>Delete this special remark?</span>, async () => {
+      try {
+        await NursingService.removeSpecialRemark(r.specialRemarkId);
+        toast.success("Special remark removed");
+        await refreshChart();
+      } catch (error) {
+        toast.error(errorMessage(error, "Failed to remove special remark"));
+      }
+    });
+  };
+
   // ---------------- NURSE NOTES (rich text + confidential toggle) ----------------
+  // Confidential notes are write-only from this composer (no confidential-note list is
+  // rendered on this page - see the standalone /nursing/confidential-notes page for that,
+  // which has its own edit/delete). Only the shared Nurse Notes list below is editable here.
   const [nurseNoteHtml, setNurseNoteHtml] = useState("");
   const [nurseNoteConfidential, setNurseNoteConfidential] = useState(false);
   const [savingNurseNote, setSavingNurseNote] = useState(false);
+  const [editingNurseNoteId, setEditingNurseNoteId] = useState<string | null>(null);
 
   const saveNurseNote = async () => {
     if (!selectedPatientId) return;
@@ -551,7 +1288,10 @@ function NurseWorkbenchInner() {
         isConfidential: nurseNoteConfidential,
         nurseId: isAdmin ? selectedNurseId : undefined,
       };
-      if (nurseNoteConfidential) {
+      if (editingNurseNoteId) {
+        await NursingService.updateNote(editingNurseNoteId, payload);
+        toast.success("Nurse note updated");
+      } else if (nurseNoteConfidential) {
         await NursingService.addConfidentialNote(selectedPatientId, payload);
         toast.success("Confidential note saved — visible only to you");
       } else {
@@ -560,12 +1300,37 @@ function NurseWorkbenchInner() {
       }
       setNurseNoteHtml("");
       setNurseNoteConfidential(false);
+      setEditingNurseNoteId(null);
       await refreshChart();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to save note"));
     } finally {
       setSavingNurseNote(false);
     }
+  };
+
+  const startEditNurseNote = (n: NurseNoteType) => {
+    setEditingNurseNoteId(n.nurseNoteId);
+    setNurseNoteHtml(n.contentHtml);
+    setNurseNoteConfidential(false);
+  };
+
+  const cancelEditNurseNote = () => {
+    setEditingNurseNoteId(null);
+    setNurseNoteHtml("");
+    setNurseNoteConfidential(false);
+  };
+
+  const removeNurseNote = (n: NurseNoteType) => {
+    confirmDeleteToast(<span>Delete this nurse note?</span>, async () => {
+      try {
+        await NursingService.removeNote(n.nurseNoteId);
+        toast.success("Nurse note removed");
+        await refreshChart();
+      } catch (error) {
+        toast.error(errorMessage(error, "Failed to remove note"));
+      }
+    });
   };
 
   // ---------------- TREATMENTS (doctor-ordered, mark done only) ----------------
@@ -623,12 +1388,19 @@ function NurseWorkbenchInner() {
     }
   };
 
-  const filteredPatients = patients.filter(
-    (p) =>
+  const filteredPatients = patients.filter((p) => {
+    const matchesSearch =
       p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.opNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.opId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+      p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase());
+    // dateFilter is a plain "YYYY-MM-DD" from <input type="date"> - parsed as local midnight,
+    // matching how lastAppointmentDate (which can be a future scheduled visit, not just a
+    // past one - see EmrController.GetPatients) is compared below by calendar day.
+    const matchesDate =
+      !dateFilter || (!!p.lastAppointmentDate && isSameLocalDay(new Date(p.lastAppointmentDate), new Date(`${dateFilter}T00:00:00`)));
+    return matchesSearch && matchesDate;
+  });
 
   if (!checkedAuth) {
     return (
@@ -702,7 +1474,7 @@ function NurseWorkbenchInner() {
                     <HeartPulse className="text-primary" /> {summary.name}
                   </h1>
                   <p className="text-sm text-muted-foreground mt-1">
-                    MRN #{summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
+                    MRN {summary.opNumber || summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {summary.phone || "No phone"} · {summary.email || "No email"}
@@ -722,9 +1494,17 @@ function NurseWorkbenchInner() {
                   {summary.allergies.map((a) => (
                     <span
                       key={a.patientAllergyId}
-                      className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-2.5 py-1 text-xs font-semibold text-red-700 dark:text-red-400"
+                      className="group flex items-center gap-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-2.5 py-1 text-xs font-semibold text-red-700 dark:text-red-400"
                     >
                       {a.substance} {a.reaction ? `— ${a.reaction}` : ""}
+                      <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
+                          <Pencil size={10} />
+                        </button>
+                        <button onClick={() => removeAllergyRecord(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
+                          <Trash2 size={10} />
+                        </button>
+                      </span>
                     </span>
                   ))}
                 </div>
@@ -736,13 +1516,219 @@ function NurseWorkbenchInner() {
                   {chart.specialRemarks.map((r) => (
                     <span
                       key={r.specialRemarkId}
-                      className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-400"
+                      className="group flex items-center gap-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-400"
                       title={r.description}
                     >
                       {r.remarkType}: {r.description}
+                      <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => startEditRemark(r)} title="Edit" className="p-0.5 hover:bg-black/10 rounded-full">
+                          <Pencil size={10} />
+                        </button>
+                        <button onClick={() => removeSpecialRemark(r)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
+                          <Trash2 size={10} />
+                        </button>
+                      </span>
                     </span>
                   ))}
                 </div>
+              )}
+            </div>
+
+            {/* Triage - the nurse's initial assessment for this encounter, at the top since
+                it's normally the first thing recorded for a newly arrived patient. Upserted
+                per encounter (see NursingController.SaveTriage) - reopening a patient with an
+                existing triage on this encounter shows it prefilled for editing rather than a
+                second copy. */}
+            <div className="card p-6 flex flex-col gap-5">
+              <button
+                type="button"
+                onClick={() => setIsTriageExpanded((prev) => !prev)}
+                aria-expanded={isTriageExpanded}
+                className="flex items-center justify-between gap-4 cursor-pointer text-left"
+              >
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  {isTriageExpanded ? <ChevronDown size={18} className="text-muted-foreground" /> : <ChevronRight size={18} className="text-muted-foreground" />}
+                  <ClipboardCheck size={18} className="text-primary" /> Triage
+                </h2>
+                {chart?.triage && (
+                  <span className="text-xs text-muted-foreground">
+                    Last saved by {chart.triage.nurseName || "—"} · {formatDateTime(chart.triage.createdAt)}
+                  </span>
+                )}
+              </button>
+
+              {isTriageExpanded && (
+              <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm rounded-lg border border-border bg-muted/20 p-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">IP Number</p>
+                  <p className="font-semibold text-foreground">{summary.opNumber || summary.opId}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Marital Status</p>
+                  <p className="font-semibold text-foreground">{summary.maritalStatus || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Gender / Age / DOB</p>
+                  <p className="font-semibold text-foreground">{summary.sex || "—"} · {formatDate(summary.dateOfBirth)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Nationality</p>
+                  <p className="font-semibold text-foreground">{summary.nationality || "—"}</p>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
+                  <FileText size={13} /> Chief Complaint
+                </h3>
+                {/* Doctor-only now - a nurse can see it here once the doctor has documented
+                    it (encounter.ChiefComplaint), but never enter or edit it from Triage.
+                    The backend already refuses to persist a nurse-supplied value even if this
+                    were bypassed - see NursingController.SaveTriage's own comment - and once
+                    the encounter is Completed, EmrController.UpsertEncounter locks the whole
+                    row (chief complaint included) against every role, doctor and admin alike,
+                    same as the rest of the encounter. */}
+                {summary.latestEncounter?.chiefComplaint ? (
+                  <p className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
+                    {summary.latestEncounter.chiefComplaint}
+                  </p>
+                ) : (
+                  <p className="w-full rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+                    Not yet documented by the doctor.
+                  </p>
+                )}
+              </div>
+
+              <div className="border-t border-border pt-5">
+                <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                  <Flag size={13} /> Triage Priority
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                  {TRIAGE_PRIORITY_LEVELS.map((lvl) => {
+                    const selected = triageForm.priorityLevel === lvl.level;
+                    return (
+                      <label
+                        key={lvl.level}
+                        className={`relative flex flex-col gap-1 rounded-xl border p-3 transition-all ${
+                          canEdit ? "cursor-pointer" : "cursor-default"
+                        } ${selected ? lvl.active : `${lvl.idle} ${canEdit ? "hover:opacity-80" : ""}`}`}
+                      >
+                        <input
+                          type="radio"
+                          className="sr-only"
+                          disabled={!canEdit}
+                          checked={selected}
+                          onChange={() => setTriageForm((prev) => ({ ...prev, priorityLevel: lvl.level }))}
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-bold uppercase tracking-wide">{lvl.label}</span>
+                          {selected && <CheckCircle2 size={14} className="shrink-0" />}
+                        </div>
+                        <p className="text-sm font-bold leading-tight">{lvl.name}</p>
+                        <p className={`text-xs ${selected ? "text-white/80" : "opacity-70"}`}>{lvl.eta}</p>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="border-t border-border pt-5 flex flex-col gap-3">
+                <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  <Stethoscope size={13} /> Symptoms
+                </h3>
+                {TRIAGE_SYMPTOM_ROWS.map((row) => {
+                  const detailKey = `${row.key}Detail` as const;
+                  return (
+                    <div key={row.key} className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 rounded-lg border border-border bg-muted/20 p-3">
+                      <p className="text-sm text-foreground flex-1 sm:pt-2">{row.label}</p>
+                      <div className="inline-flex rounded-lg border border-border bg-muted p-0.5 shrink-0">
+                        {(["Yes", "No", "Unknown"] as const).map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() => setTriageForm((prev) => ({ ...prev, [row.key]: opt }))}
+                            className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                              triageForm[row.key] === opt
+                                ? "bg-card text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            } ${canEdit ? "cursor-pointer" : "cursor-default"}`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        placeholder="Details"
+                        disabled={!canEdit}
+                        value={triageForm[detailKey]}
+                        onChange={(e) => setTriageForm((prev) => ({ ...prev, [detailKey]: e.target.value }))}
+                        rows={1}
+                        className="text-sm sm:flex-1 sm:min-w-64 resize-y"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <fieldset disabled={!canEdit} className="contents">
+                <div className="border-t border-border pt-5">
+                  <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                    <Activity size={13} /> Vital Signs in Triage
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {TRIAGE_VITAL_FIELDS.map(renderTriageVitalRow)}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-muted-foreground">BMI (kg/m2)</label>
+                      <input type="text" disabled value={triageBmi != null ? String(triageBmi) : ""} className="text-sm opacity-70" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-border pt-5">
+                  <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                    <HeartPulse size={13} /> Obstetric
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {TRIAGE_OBSTETRIC_FIELDS.map(renderTriageVitalRow)}
+                  </div>
+                </div>
+              </fieldset>
+
+              <div className="border-t border-border pt-5 flex flex-wrap items-end justify-between gap-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <ToggleButton
+                      disabled={!canEdit}
+                      checked={triageForm.patientRefused}
+                      onChange={(checked) => setTriageForm((prev) => ({ ...prev, patientRefused: checked }))}
+                    />
+                    <span className="text-sm font-semibold text-foreground">Patient Refused (entire assessment)</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground block mb-1">Action Date Time</label>
+                    <input
+                      type="datetime-local"
+                      disabled={!canEdit}
+                      value={triageForm.actionDateTime}
+                      onChange={(e) => setTriageForm((prev) => ({ ...prev, actionDateTime: e.target.value }))}
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+
+                {canEdit && (
+                  <button
+                    onClick={handleSaveTriage}
+                    disabled={savingTriage || !encounterId}
+                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Save size={15} /> Save Triage
+                  </button>
+                )}
+              </div>
+              </>
               )}
             </div>
 
@@ -862,10 +1848,30 @@ function NurseWorkbenchInner() {
                         <span className="text-xs text-muted-foreground shrink-0">kg/m²</span>
                       </div>
                     </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground">BMI screening exclusion (if any)</label>
+                      <select
+                        value={vitalsForm.bmiExclusionReason}
+                        onChange={(e) => setVitalsForm((p) => ({ ...p, bmiExclusionReason: e.target.value }))}
+                        className="h-10 text-sm"
+                      >
+                        <option value="">None</option>
+                        <option value="Pregnant">Pregnant</option>
+                        <option value="PalliativeCare">Receiving palliative care</option>
+                        <option value="MedicalReason">Documented medical reason (urgent/emergent)</option>
+                      </select>
+                    </div>
                     <textarea placeholder="Notes..." value={vitalsForm.notes} onChange={(e) => setVitalsForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveVitals} disabled={savingVitals} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Vitals
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveVitals()} disabled={savingVitals} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingVitalsId ? "Save Correction" : "Save Vitals"}
+                      </button>
+                      {editingVitalsId && (
+                        <button onClick={cancelEditVitals} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
 
@@ -887,15 +1893,23 @@ function NurseWorkbenchInner() {
                         </button>
                       </div>
                       {vitalsView === "trend" && (
-                        <select
-                          value={trendMetric}
-                          onChange={(e) => setTrendMetric(e.target.value as typeof trendMetric)}
-                          className="h-8 text-xs"
-                        >
+                        <div className="flex flex-wrap gap-3">
                           {Object.entries(TREND_METRICS).map(([key, m]) => (
-                            <option key={key} value={key}>{m.label}</option>
+                            <label
+                              key={key}
+                              className="flex items-center gap-1.5 text-xs font-medium cursor-pointer select-none"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={visibleTrendMetrics[key] ?? true}
+                                onChange={() => toggleTrendMetric(key)}
+                                className="h-3.5 w-3.5 cursor-pointer"
+                                style={{ accentColor: m.color }}
+                              />
+                              <span style={{ color: m.color }}>{m.label}</span>
+                            </label>
                           ))}
-                        </select>
+                        </div>
                       )}
                     </div>
 
@@ -910,7 +1924,19 @@ function NurseWorkbenchInner() {
                           <tbody>
                             {chart.vitals.slice(0, 5).map((v) => (
                               <tr key={v.vitalsRecordId}>
-                                <td className="text-xs">{formatDateTime(v.recordedAt)}</td>
+                                <td className="text-xs">
+                                  {formatDateTime(v.recordedAt)}
+                                  {v.correctedFrom && (
+                                    <CorrectedFromNote>
+                                      <div>
+                                        Previous: {v.correctedFrom.systolic}/{v.correctedFrom.diastolic} mmHg · HR {v.correctedFrom.heartRate} · Temp {v.correctedFrom.temperature}°C · SpO2 {v.correctedFrom.oxygenSaturation}%
+                                      </div>
+                                      <div>
+                                        Recorded {formatDateTime(v.correctedFrom.recordedAt)} by {v.correctedFrom.nurseName ?? "—"}
+                                      </div>
+                                    </CorrectedFromNote>
+                                  )}
+                                </td>
                                 <td>{v.systolic}/{v.diastolic} mmHg</td>
                                 <td>{v.heartRate} bpm</td>
                                 <td>{v.temperature}°C</td>
@@ -923,9 +1949,25 @@ function NurseWorkbenchInner() {
                                   </span>
                                 </td>
                                 <td>
-                                  {v.isCritical && (
-                                    <span className="rounded-full bg-red-100 text-red-700 text-xs px-2 py-0.5 font-semibold">Critical</span>
-                                  )}
+                                  <div className="flex items-center gap-1.5">
+                                    {v.isCritical && (
+                                      <span className="rounded-full bg-red-100 text-red-700 text-xs px-2 py-0.5 font-semibold">Critical</span>
+                                    )}
+                                    <button
+                                      onClick={() => startEditVitals(v)}
+                                      title="Correct this reading"
+                                      className="p-1 hover:bg-primary/10 rounded-full text-primary"
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                    <button
+                                      onClick={() => confirmRemoveVitals(v)}
+                                      title="Delete this reading"
+                                      className="p-1 hover:bg-destructive/10 rounded-full text-destructive"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -933,15 +1975,38 @@ function NurseWorkbenchInner() {
                         </table>
                       </div>
                     ) : (
-                      <TrendChart
-                        color={TREND_METRICS[trendMetric].color}
-                        formatValue={(v) => `${v}${TREND_METRICS[trendMetric].unit}`}
-                        data={[...chart.vitals].reverse().map((v) => ({
-                          label: new Date(v.recordedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-                          fullLabel: formatDateTime(v.recordedAt),
-                          value: v[trendMetric],
-                        }))}
-                      />
+                      <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={[...chart.vitals].reverse().map((v) => ({
+                              label: new Date(v.recordedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+                              fullLabel: formatDateTime(v.recordedAt),
+                              ...v,
+                            }))}
+                            margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} />
+                            <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.fullLabel ?? ""} />
+                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                            {Object.entries(TREND_METRICS)
+                              .filter(([key]) => visibleTrendMetrics[key])
+                              .map(([key, m]) => (
+                                <Line
+                                  key={key}
+                                  type="monotone"
+                                  dataKey={key}
+                                  name={m.label}
+                                  stroke={m.color}
+                                  connectNulls
+                                  dot={{ r: 3 }}
+                                  isAnimationActive={false}
+                                />
+                              ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
                     )}
                   </div>
                 )}
@@ -968,18 +2033,48 @@ function NurseWorkbenchInner() {
                       </select>
                     </div>
                     <textarea placeholder="Notes..." value={injectionForm.notes} onChange={(e) => setInjectionForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveInjection} disabled={savingInjection} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Entry
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveInjection()} disabled={savingInjection} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingInjectionId ? "Save Correction" : "Save Entry"}
+                      </button>
+                      {editingInjectionId && (
+                        <button onClick={cancelEditInjection} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
 
                 {chart && chart.injections.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
                     {chart.injections.slice(0, 5).map((i) => (
-                      <div key={i.injectionRecordId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
-                        <span className="font-medium">{i.medicineName} · {i.dose} · {i.route}</span>
-                        <span className="text-xs text-muted-foreground">{formatDateTime(i.givenAt)}</span>
+                      <div key={i.injectionRecordId} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                        <div className="group flex items-center justify-between">
+                          <span className="font-medium">{i.medicineName} · {i.dose} · {i.route}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">{formatDateTime(i.givenAt)}</span>
+                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => startEditInjection(i)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                <Pencil size={12} />
+                              </button>
+                              <button onClick={() => confirmRemoveInjection(i)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        {i.correctedFrom && (
+                          <CorrectedFromNote>
+                            <div>
+                              Previous: {i.correctedFrom.medicineName} · {i.correctedFrom.dose} · {i.correctedFrom.route}
+                            </div>
+                            {i.correctedFrom.notes && <div>{i.correctedFrom.notes}</div>}
+                            <div>
+                              Given {formatDateTime(i.correctedFrom.givenAt)} by {i.correctedFrom.nurseName ?? "—"}
+                            </div>
+                          </CorrectedFromNote>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1017,20 +2112,37 @@ function NurseWorkbenchInner() {
                       <span className="text-sm">Signs of infection observed (redness, swelling, warmth, or discharge)</span>
                     </div>
                     <textarea placeholder="Notes..." value={dressingForm.notes} onChange={(e) => setDressingForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveDressing} disabled={savingDressing} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Entry
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveDressing()} disabled={savingDressing} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingDressingId ? "Save Changes" : "Save Entry"}
+                      </button>
+                      {editingDressingId && (
+                        <button onClick={cancelEditDressing} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
 
                 {chart && chart.dressings.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
                     {chart.dressings.slice(0, 5).map((d) => (
-                      <div key={d.dressingTaskId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div key={d.dressingTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
                         <span className="font-medium">{d.woundType} · {d.dressingMaterial}</span>
-                        <span className={`text-xs ${d.infectionSigns ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>
-                          {d.infectionSigns ? "Infection signs" : formatDate(d.createdAt)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs ${d.infectionSigns ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>
+                            {d.infectionSigns ? "Infection signs" : formatDate(d.createdAt)}
+                          </span>
+                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => startEditDressing(d)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => removeDressingRecord(d)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1055,18 +2167,35 @@ function NurseWorkbenchInner() {
                       </select>
                     </div>
                     <textarea placeholder="Notes..." value={sugarForm.notes} onChange={(e) => setSugarForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveBloodSugar} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Entry
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveBloodSugar()} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingSugarId ? "Save Changes" : "Save Entry"}
+                      </button>
+                      {editingSugarId && (
+                        <button onClick={cancelEditSugar} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
 
                 {chart && chart.bloodSugarChecks.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
                     {chart.bloodSugarChecks.slice(0, 5).map((s) => (
-                      <div key={s.bloodSugarTaskId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div key={s.bloodSugarTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
                         <span className="font-medium">{s.sugarLevel} mg/dL · {s.type}</span>
-                        <span className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</span>
+                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => startEditSugar(s)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => removeSugarRecord(s)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1086,18 +2215,35 @@ function NurseWorkbenchInner() {
                       <input type="number" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value }))} className="h-10 text-sm" />
                     </div>
                     <textarea placeholder="Notes..." value={ivForm.notes} onChange={(e) => setIvForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <button onClick={saveIVFluids} disabled={savingIv} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      <Save size={15} /> Save Entry
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveIVFluids()} disabled={savingIv} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingIvId ? "Save Changes" : "Save Entry"}
+                      </button>
+                      {editingIvId && (
+                        <button onClick={cancelEditIv} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
 
                 {chart && chart.ivFluids.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
                     {chart.ivFluids.slice(0, 5).map((f) => (
-                      <div key={f.ivFluidsTaskId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div key={f.ivFluidsTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
                         <span className="font-medium">{f.fluidType} · {f.volume}ml @ {f.rate}ml/hr</span>
-                        <span className="text-xs text-muted-foreground">{formatDateTime(f.createdAt)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{formatDateTime(f.createdAt)}</span>
+                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => startEditIv(f)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => removeIvRecord(f)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1116,9 +2262,16 @@ function NurseWorkbenchInner() {
                     <input type="text" placeholder="Substance (e.g. Penicillin)" value={allergyForm.substance} onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))} className="h-10 text-sm" />
                     <input type="text" placeholder="Reaction (optional)" value={allergyForm.reaction} onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))} className="h-10 text-sm" />
                   </div>
-                  <button onClick={saveAllergy} disabled={savingAllergy} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                    <Save size={15} /> Add Allergy
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={saveAllergy} disabled={savingAllergy} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> {editingAllergyId ? "Save Correction" : "Add Allergy"}
+                    </button>
+                    {editingAllergyId && (
+                      <button onClick={cancelEditAllergy} className="text-sm font-semibold text-muted-foreground hover:underline">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Special Remarks — write-only here; already shown as chips in the header card above */}
@@ -1134,9 +2287,16 @@ function NurseWorkbenchInner() {
                     </select>
                     <input type="text" placeholder="Description" value={remarkForm.description} onChange={(e) => setRemarkForm((p) => ({ ...p, description: e.target.value }))} className="h-10 text-sm" />
                   </div>
-                  <button onClick={saveSpecialRemark} disabled={savingRemark} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                    <Save size={15} /> Add Remark
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={saveSpecialRemark} disabled={savingRemark} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> {editingRemarkId ? "Save Changes" : "Add Remark"}
+                    </button>
+                    {editingRemarkId && (
+                      <button onClick={cancelEditRemark} className="text-sm font-semibold text-muted-foreground hover:underline">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -1149,22 +2309,41 @@ function NurseWorkbenchInner() {
               {canEdit && (
                 <>
                   <RichTextEditor value={nurseNoteHtml} onChange={setNurseNoteHtml} placeholder="Structured note with formatting..." />
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={nurseNoteConfidential} onChange={(e) => setNurseNoteConfidential(e.target.checked)} />
-                    <Lock size={13} className="text-muted-foreground" /> Mark as confidential (visible only to me)
-                  </label>
-                  <button onClick={saveNurseNote} disabled={savingNurseNote} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                    <Save size={15} /> {nurseNoteConfidential ? "Save Confidentially" : "Save Note"}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <ToggleButton checked={nurseNoteConfidential} onChange={setNurseNoteConfidential} />
+                    <span className="flex items-center gap-1.5 text-sm">
+                      <Lock size={13} className="text-muted-foreground" /> Mark as confidential (visible only to me)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button onClick={saveNurseNote} disabled={savingNurseNote} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                      <Save size={15} /> {editingNurseNoteId ? "Save Changes" : nurseNoteConfidential ? "Save Confidentially" : "Save Note"}
+                    </button>
+                    {editingNurseNoteId && (
+                      <button onClick={cancelEditNurseNote} className="text-sm font-semibold text-muted-foreground hover:underline">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
 
               {chart && chart.nurseNotes.length > 0 && (
                 <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
                   {chart.nurseNotes.slice(0, 5).map((n) => (
-                    <div key={n.nurseNoteId} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                    <div key={n.nurseNoteId} className="group rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
                       <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: n.contentHtml }} />
-                      <span className="text-xs text-muted-foreground">{n.nurseName || "Nurse"} · {formatDateTime(n.createdAt)}</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">{n.nurseName || "Nurse"} · {formatDateTime(n.createdAt)}</span>
+                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => startEditNurseNote(n)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                            <Pencil size={12} />
+                          </button>
+                          <button onClick={() => removeNurseNote(n)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1315,6 +2494,46 @@ function NurseWorkbenchInner() {
             </div>
           </div>
         )}
+
+        {encounterLock && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+            <div className="card w-full max-w-sm rounded-xl border border-border p-6 shadow-2xl mx-4">
+              <h2 className="text-lg font-semibold text-foreground">Encounter Closed</h2>
+              <p className="text-sm text-muted-foreground mt-1 mb-4">
+                This encounter has already been sent to the doctor. Enter your password to continue editing it.
+              </p>
+              <input
+                type="password"
+                autoFocus
+                value={encounterLockPassword}
+                onChange={(e) => setEncounterLockPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && confirmEncounterLockPassword()}
+                placeholder="Your password"
+                className="h-10 text-sm w-full"
+              />
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEncounterLock(null);
+                    setEncounterLockPassword("");
+                  }}
+                  className="w-1/3 border border-border text-muted-foreground font-semibold py-2.5 rounded-lg hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmEncounterLockPassword}
+                  disabled={submittingEncounterLock || !encounterLockPassword.trim()}
+                  className="w-full bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-semibold py-2.5 rounded-lg transition-colors"
+                >
+                  {submittingEncounterLock ? "Verifying..." : "Confirm & Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1363,6 +2582,48 @@ function NurseWorkbenchInner() {
         <LoadingSpinner />
       ) : (
         <div className="flex flex-col gap-6">
+          {/* Untouched Patients - every checked-in visit no nurse has opened yet (see
+              NursingController.GetUntouchedPatients). Opening one here (or from anywhere
+              else - Patient Monitoring, Work Queue) advances it past "CheckedIn" and it
+              drops off this grid live, no separate "start" step. Hidden entirely once empty
+              so a quiet day doesn't leave a permanent empty box at the top of the page. */}
+          {untouchedPatients.length > 0 && (
+            <div className="card p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <AlertTriangle size={18} className="text-amber-600" /> Untouched Patients
+                </h2>
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {untouchedPatients.length} waiting
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {untouchedPatients.map((p) => (
+                  <div
+                    key={p.visitId}
+                    onClick={() => p.patientId && openPatient(p.patientId, p.visitId)}
+                    className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 cursor-pointer hover:bg-muted/50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-sm text-foreground truncate">{p.patientName || "Unknown patient"}</p>
+                      <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 font-semibold shrink-0">
+                        {p.visitType === "WalkIn" ? "Walk-in" : "Appointment"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <p className="text-xs text-muted-foreground">
+                        {p.age != null ? `${p.age}y` : "—"} {p.sex ? `· ${p.sex}` : ""}
+                      </p>
+                      <p className="flex items-center gap-1 text-xs text-amber-700 font-semibold shrink-0">
+                        <Clock size={12} /> {formatWaitingSince(p.checkedInAt)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard icon={<Users size={18} />} label="Patients Under Care" value={dashboard?.patientsUnderCare ?? 0} />
@@ -1373,19 +2634,43 @@ function NurseWorkbenchInner() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 card p-6">
-              <div className="flex items-center justify-between mb-4 gap-4">
+              <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Users size={18} className="text-primary" /> Patient Monitoring
                 </h2>
-                <div className="relative w-64">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Search by name, MRN, or doctor..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full h-10 pl-9 text-sm"
+                <div className="flex items-center gap-2">
+                  <div className="relative w-56 sm:w-64">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search by name, MRN, or doctor..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full h-10 pl-9 text-sm"
+                    />
+                  </div>
+                  {/* Filters by lastAppointmentDate (which can be a future scheduled visit,
+                      not only a past one) - lets a nurse jump straight to a specific day
+                      instead of only ever seeing everyone's single most recent visit. Shared
+                      DatePicker (typeable + calendar), same dd-MM-yyyy convention as Date of
+                      Birth on Patient Entry - not the native browser date input. */}
+                  <DatePicker
+                    value={dateFilter}
+                    onChange={(v) => setDateFilter(v)}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
+                    className="flex h-10 w-36 items-center justify-between gap-2 rounded-lg border border-border bg-(--color-highlight) px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
+                  {dateFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setDateFilter("")}
+                      title="Clear date filter"
+                      className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -1403,10 +2688,23 @@ function NurseWorkbenchInner() {
                     {filteredPatients.length > 0 ? (
                       filteredPatients.map((p) => (
                         <tr key={p.opId}>
-                          <td className="font-mono text-xs">#{p.opId}</td>
+                          <td className="font-mono text-xs">{p.opNumber || p.opId}</td>
                           <td className="font-semibold">{p.name}</td>
                           <td>{p.assignedDoctorName || "—"}</td>
-                          <td>{formatDate(p.lastAppointmentDate)}</td>
+                          <td
+                            className={p.lastAppointmentDate ? "cursor-help underline decoration-dotted decoration-muted-foreground/50 underline-offset-4" : undefined}
+                            title={
+                              p.lastAppointmentDate
+                                ? [
+                                    `Doctor: ${p.assignedDoctorName || "—"}`,
+                                    `Specialty: ${p.assignedSpecialtyName || "—"}`,
+                                    `Chief complaint: ${p.chiefComplaint || "—"}`,
+                                  ].join("\n")
+                                : undefined
+                            }
+                          >
+                            {formatVisitDate(p.lastAppointmentDate)}
+                          </td>
                           <td>
                             <button
                               onClick={() => openPatient(p.opId)}

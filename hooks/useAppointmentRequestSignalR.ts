@@ -32,13 +32,13 @@ export function useAppointmentRequestSignalR(
       connection.on("appointmentRequested", handleAppointmentRequested);
     };
 
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         connection.off("appointmentRequested", handleAppointmentRequested);
-      });
+      }).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

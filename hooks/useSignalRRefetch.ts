@@ -32,13 +32,13 @@ export function useSignalRRefetch(events: string[], refetch: () => void) {
       });
     };
 
-    connect();
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
       getSignalRConnection().then((connection) => {
         eventList.forEach((event) => connection.off(event, handler));
-      });
+      }).catch(() => {});
     };
   }, [eventsKey]);
 }

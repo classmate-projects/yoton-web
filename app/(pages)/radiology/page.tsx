@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
-import { ScanLine, X } from "lucide-react";
+import { Pencil, ScanLine, Trash2, X } from "lucide-react";
 import { MdAdd, MdOutlineFileUpload, MdOutlineImage } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import CorrectedFromNote from "@/components/CorrectedFromNote";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { RadiologyService } from "@/services/radiology.service";
 import { ReceptionService } from "@/services/reception.service";
 import { RadiologyRequestType, RadiologySummaryType } from "@/types/radiology.type";
@@ -62,6 +64,9 @@ export default function RadiologyPage() {
   const [priority, setPriority] = useState("Normal");
   const [source, setSource] = useState("InHouse");
   const [price, setPrice] = useState("");
+  // Set while correcting an existing not-yet-Completed request - reuses the same modal/form
+  // as creating a new one, matching every other add-form-doubles-as-edit-form in this feature.
+  const [editingRadiologyRequestId, setEditingRadiologyRequestId] = useState<string | null>(null);
 
   const [scheduleFor, setScheduleFor] = useState<RadiologyRequestType | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
@@ -134,6 +139,7 @@ export default function RadiologyPage() {
       (p) =>
         p.name?.toLowerCase().includes(q) ||
         p.phone?.toLowerCase().includes(q) ||
+        p.opNumber?.toLowerCase().includes(q) ||
         p.opId?.toLowerCase().includes(q)
     );
   }, [patientSearch, patients]);
@@ -150,12 +156,45 @@ export default function RadiologyPage() {
 
   const openCreateModal = () => {
     resetForm();
+    setEditingRadiologyRequestId(null);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (request: RadiologyRequestType) => {
+    resetForm();
+    setEditingRadiologyRequestId(request.radiologyRequestId);
+    const matchedPatient = patients.find((p) => p.opId === request.patientId);
+    if (matchedPatient) {
+      setSelectedPatient(matchedPatient);
+      setPatientSearch(matchedPatient.name);
+    }
+    setSelectedDoctorId(request.doctorId || "");
+    setScanType(request.scanType || "");
+    setPriority(request.priority);
+    setSource(request.source);
+    setPrice(request.price != null ? String(request.price) : "");
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
+    setEditingRadiologyRequestId(null);
     resetForm();
+  };
+
+  const removeRadiologyRequest = (request: RadiologyRequestType) => {
+    confirmDeleteToast(
+      <span>Delete this radiology request for <b className="text-red-500 ml-1">{request.patientName}</b>?</span>,
+      async () => {
+        try {
+          await RadiologyService.remove(request.radiologyRequestId);
+          toast.success("Radiology request removed");
+          fetchAll();
+        } catch (error) {
+          toast.error(errorMessage(error, "Failed to remove radiology request"));
+        }
+      }
+    );
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -167,19 +206,22 @@ export default function RadiologyPage() {
 
     try {
       setIsSubmitting(true);
-      const data = await RadiologyService.create({
+      const payload = {
         patientId: selectedPatient.opId,
         doctorId: selectedDoctorId || undefined,
         scanType,
         priority,
         source,
         price: price ? Number(price) : undefined,
-      });
-      toast.success(data.message || "Radiology request created");
+      };
+      const data = editingRadiologyRequestId
+        ? await RadiologyService.update(editingRadiologyRequestId, payload)
+        : await RadiologyService.create(payload);
+      toast.success(data.message || (editingRadiologyRequestId ? "Radiology request corrected" : "Radiology request created"));
       closeModal();
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to create radiology request"));
+      toast.error(errorMessage(error, editingRadiologyRequestId ? "Failed to correct radiology request" : "Failed to create radiology request"));
     } finally {
       setIsSubmitting(false);
     }
@@ -321,9 +363,9 @@ export default function RadiologyPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
           <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
-            <h2 className="text-2xl font-semibold mb-1 text-foreground">New Scan Request</h2>
+            <h2 className="text-2xl font-semibold mb-1 text-foreground">{editingRadiologyRequestId ? "Correct Scan Request" : "New Scan Request"}</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              Register a new radiology scan request for a patient.
+              {editingRadiologyRequestId ? "Correcting a request before it's completed." : "Register a new radiology scan request for a patient."}
             </p>
 
             <form onSubmit={handleCreate} className="flex flex-col gap-4">
@@ -337,7 +379,7 @@ export default function RadiologyPage() {
                     setPatientSearch(e.target.value);
                     setSelectedPatient(null);
                   }}
-                  placeholder="Search by name, phone or OP ID..."
+                  placeholder="Search by name, phone or MRN..."
                   className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                 />
                 {!selectedPatient && filteredPatients.length > 0 && (
@@ -354,7 +396,7 @@ export default function RadiologyPage() {
                       >
                         <div className="font-medium text-foreground">{p.name}</div>
                         <div className="text-sm text-muted-foreground">
-                          {p.opId} • {p.phone}
+                          {p.opNumber || p.opId} • {p.phone}
                         </div>
                       </button>
                     ))}
@@ -441,7 +483,7 @@ export default function RadiologyPage() {
                   disabled={isSubmitting}
                   className="px-5 py-2.5 rounded-md bg-primary text-white hover:opacity-90 transition-all duration-200 cursor-pointer w-full disabled:opacity-60"
                 >
-                  {isSubmitting ? "Saving..." : "Create Request"}
+                  {isSubmitting ? "Saving..." : editingRadiologyRequestId ? "Save Correction" : "Create Request"}
                 </button>
               </div>
             </form>
@@ -592,7 +634,36 @@ export default function RadiologyPage() {
                               {r.imageUrls.length} image{r.imageUrls.length > 1 ? "s" : ""}
                             </button>
                           )}
+                          {!isNurse && r.status !== "Completed" && r.status !== "Delivered" && (
+                            <>
+                              <button
+                                onClick={() => openEditModal(r)}
+                                title="Correct request"
+                                className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                onClick={() => removeRadiologyRequest(r)}
+                                title="Delete request"
+                                className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </>
+                          )}
                         </div>
+                        {r.correctedFrom && (
+                          <CorrectedFromNote>
+                            <div>
+                              Previous: {r.correctedFrom.scanType ?? "—"}
+                              {r.correctedFrom.bodyParts ? ` · ${r.correctedFrom.bodyParts}` : ""}
+                              {` · ${r.correctedFrom.priority}`}
+                              {r.correctedFrom.notes ? ` · ${r.correctedFrom.notes}` : ""}
+                            </div>
+                            <div>Requested {formatDateTime(r.correctedFrom.createdAt)}</div>
+                          </CorrectedFromNote>
+                        )}
                       </td>
                     </tr>
                   );

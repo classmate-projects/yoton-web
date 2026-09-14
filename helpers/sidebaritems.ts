@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, CheckCircle2 } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -56,7 +56,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         group: "Configuration",
         subItems: [
             { id: 6, name: "Departments", navLink: "/departments", icon: buildingIcon },
-            { id: 8, name: "Assign Doctor", navLink: "/assign-doctor", icon: doctorIcon },
             // Same page as the "Doctors Availability" User Modules tile - the query
             // param is what tells the page to render editable for admin here specifically
             // (see doctor-availability/page.tsx's canEdit check).
@@ -187,6 +186,72 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         navLink: "/check-in",
         icon: CheckCircle2,
         group: "User Modules"
+    },
+
+    // HSPA-2 compliance KPI reports (see Services/Reports/ on the API side) - a normal
+    // admin-grantable module, not a permanent exemption.
+    {
+        id: 25,
+        name: "Reports",
+        navLink: "/reports/kpi",
+        icon: FileSpreadsheet,
+        group: "Configuration"
+    },
+
+    // Sentinel Events / Medication Errors / Dental Errors reporting - a normal
+    // admin-grantable module, feeds the PL4.3/PL4.4/PL4.7 KPI reports.
+    {
+        id: 26,
+        name: "Clinical Incidents",
+        navLink: "/incident-reports/clinical",
+        icon: AlertTriangle,
+        group: "User Modules"
+    },
+    // Fully separate from Clinical Incidents (staff, not a patient, is the subject) - feeds
+    // the PL4.2 KPI report.
+    {
+        id: 27,
+        name: "Staff Exposure",
+        navLink: "/incident-reports/staff-exposure",
+        icon: ShieldAlert,
+        group: "User Modules"
+    },
+    // Feeds the PL4.1 KPI report.
+    {
+        id: 28,
+        name: "Hand Hygiene Audit",
+        navLink: "/hand-hygiene",
+        icon: Droplets,
+        group: "User Modules"
+    },
+    // Feeds the PL5.1 KPI report.
+    {
+        id: 29,
+        name: "Patient Satisfaction",
+        navLink: "/patient-satisfaction",
+        icon: Smile,
+        group: "User Modules"
+    },
+
+    // Closes KPI regulatory data gaps that have no other source in the EMR (staff FTE for
+    // PL4.2, patient exclusion flags for PL4.8/PL4.9/PL4.10) - a normal admin-grantable
+    // module, force-assignable to whichever HR/Quality/Compliance role maintains this data.
+    {
+        id: 30,
+        name: "Compliance Data",
+        navLink: "/compliance-data",
+        icon: ShieldCheck,
+        group: "Configuration"
+    },
+
+    // Every user action, login to logout - see Yoton-API/Middlewares/AuditLogMiddleware.cs.
+    // A normal admin-grantable module like the others above.
+    {
+        id: 31,
+        name: "Audit Log",
+        navLink: "/audit-log",
+        icon: ScrollText,
+        group: "Configuration"
     },
 
     // Always reachable regardless of role or allow-list - see app/(pages)/layout.tsx and

@@ -15,6 +15,14 @@ export const PharmacyService = {
     const { data } = await api.post(ENDPOINTS.PHARMACY.ADD_MEDICINE, payload);
     return data;
   },
+  updateMedicine: async (medicineId: string, payload: AddMedicinePayload) => {
+    const { data } = await api.put(ENDPOINTS.PHARMACY.UPDATE_MEDICINE(medicineId), payload);
+    return data;
+  },
+  removeMedicine: async (medicineId: string) => {
+    const { data } = await api.delete(ENDPOINTS.PHARMACY.REMOVE_MEDICINE(medicineId));
+    return data;
+  },
   updateStock: async (medicineId: string, quantity: number) => {
     const { data } = await api.post(ENDPOINTS.PHARMACY.UPDATE_STOCK, {
       medicineId,
@@ -32,6 +40,14 @@ export const PharmacyService = {
   },
   createPrescription: async (payload: CreatePrescriptionPayload) => {
     const { data } = await api.post(ENDPOINTS.PHARMACY.CREATE_PRESCRIPTION, payload);
+    return data;
+  },
+  updatePrescription: async (prescriptionId: string, payload: CreatePrescriptionPayload) => {
+    const { data } = await api.put(ENDPOINTS.PHARMACY.UPDATE_PRESCRIPTION(prescriptionId), payload);
+    return data;
+  },
+  removePrescription: async (prescriptionId: string) => {
+    const { data } = await api.delete(ENDPOINTS.PHARMACY.REMOVE_PRESCRIPTION(prescriptionId));
     return data;
   },
   issue: async (prescriptionId: string, payload: IssueMedicinePayload) => {

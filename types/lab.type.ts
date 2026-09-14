@@ -11,6 +11,7 @@ export interface LabRequestType {
   labRequestId: string;
   patientId: string | null;
   patientName: string;
+  patientOPNumber: string | null;
   doctorId: string | null;
   doctorName: string | null;
   visitId: string | null;
@@ -37,6 +38,8 @@ export interface LabRequestType {
   lastPrintedAt: string | null;
   lastPrintedByName: string | null;
   resultValues: LabResultValueType[];
+  correctedFromId: string | null;
+  correctedFrom: LabRequestType | null;
 }
 
 export interface LabSummaryType {

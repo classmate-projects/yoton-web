@@ -1,6 +1,6 @@
 import { ENDPOINTS } from "@/lib/endpoints"
 import api from "@/lib/axios"
-import { UserAssignedDoctorCreateType, UserCreateType, UserUpdateType } from "@/types/user.type";
+import { UserAssignedDoctorCreateType, UserCreateType, UserUpdateType, TerminateUserPayload } from "@/types/user.type";
 
 export const UserService = {
     getAll: async () => {
@@ -24,6 +24,14 @@ export const UserService = {
         const { data } = await api.delete(ENDPOINTS.USER.DELETE(id))
         return data;
     },
+    restore: async (id: string, adminPassword: string) => {
+        const { data } = await api.post(ENDPOINTS.USER.RESTORE(id), { adminPassword })
+        return data;
+    },
+    rehire: async (id: string, adminPassword: string) => {
+        const { data } = await api.put(ENDPOINTS.USER.REHIRE(id), { adminPassword })
+        return data;
+    },
     get_assigned_doctors : async () => {
         const { data } = await api.get(ENDPOINTS.USER.GET_ASSIGNED_DOCTORS)
         return data;
@@ -35,5 +43,13 @@ export const UserService = {
     create_assign_doctor: async (payload: UserAssignedDoctorCreateType) => {
         const { data } = await api.post(ENDPOINTS.USER.CREATE_ASSIGN_DOCTOR, payload)
         return data;
-    } 
+    },
+    terminate: async (id: string, payload: TerminateUserPayload) => {
+        const { data } = await api.put(ENDPOINTS.USER.TERMINATE(id), payload)
+        return data;
+    },
+    getEmploymentHistory: async (id: string) => {
+        const { data } = await api.get(ENDPOINTS.USER.GET_EMPLOYMENT_HISTORY(id))
+        return data;
+    }
 }

@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import ApiLoadingBar from "@/components/ApiLoadingBar";
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,6 +14,20 @@ const geistSans = Geist({
 export const metadata: Metadata = {
   title: "Yoton",
   description: "Yoton - Electronic Health Record System for Hospital",
+  appleWebApp: {
+    title: "Yoton",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#2563eb" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f172a" },
+  ],
 };
 
 export default function RootLayout({
@@ -32,6 +47,7 @@ export default function RootLayout({
           defaultTheme="system"
           enableSystem
         >
+          <ServiceWorkerRegistration />
           <ApiLoadingBar />
           {children}
           <Toaster

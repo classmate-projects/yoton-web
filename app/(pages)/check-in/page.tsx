@@ -6,6 +6,7 @@ import { CheckCircle2, Clock, LogIn, LogOut } from "lucide-react";
 import { AttendanceService } from "@/services/attendance.service";
 import { AttendanceRecordType } from "@/types/attendance.type";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
 import { getUserDetail } from "@/lib/userDetail";
 
 const formatTime = (value: string | null) =>
@@ -18,6 +19,10 @@ export default function CheckInPage() {
   const [history, setHistory] = useState<AttendanceRecordType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Gates check-out behind the caller's own password (see AttendanceController.CheckOut's
+  // own comment) - a shared kiosk or an unattended, already-open session could otherwise
+  // end someone's paid attendance for the day with a single stray click.
+  const [confirmingCheckOut, setConfirmingCheckOut] = useState(false);
 
   const name = getUserDetail()?.name;
 
@@ -50,18 +55,13 @@ export default function CheckInPage() {
     }
   };
 
-  const handleCheckOut = async () => {
-    setIsSubmitting(true);
-    try {
-      const data = await AttendanceService.checkOut();
-      toast.success(data.message);
-      fetchToday();
-    } catch (error) {
-      toast.error("Failed to check out");
-      console.error(error);
-    } finally {
-      setIsSubmitting(false);
-    }
+  // Confirmed from the password prompt below - throws on failure (e.g. wrong password) so
+  // AdminPasswordConfirm can show the error inline and let the user retry.
+  const handleCheckOutConfirm = async (password: string) => {
+    const data = await AttendanceService.checkOut(password);
+    toast.success(data.message);
+    setConfirmingCheckOut(false);
+    fetchToday();
   };
 
   if (isLoading) {
@@ -115,7 +115,7 @@ export default function CheckInPage() {
             {!today.checkOutAt ? (
               <button
                 type="button"
-                onClick={handleCheckOut}
+                onClick={() => setConfirmingCheckOut(true)}
                 disabled={isSubmitting}
                 className="mx-auto flex items-center gap-2 rounded-md border border-border px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -143,6 +143,18 @@ export default function CheckInPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {confirmingCheckOut && (
+        <AdminPasswordConfirm
+          title="Confirm check-out"
+          description="Enter your password to confirm you're checking out for the day."
+          confirmLabel="Check Out"
+          confirmingLabel="Checking out..."
+          passwordPlaceholder="Your password"
+          onCancel={() => setConfirmingCheckOut(false)}
+          onConfirm={handleCheckOutConfirm}
+        />
       )}
     </div>
   );

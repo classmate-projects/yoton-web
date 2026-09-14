@@ -49,11 +49,15 @@ export function useUnreadChatCount(enabled: boolean) {
       connection.off("messageReceived", handleMessage);
       connection.on("messageReceived", handleMessage);
     };
-    connect();
+    // No token (e.g. mid-logout) or a genuine connection failure both just mean "no live
+    // updates this mount" - the mount-time fetch above already has the real count.
+    connect().catch(() => {});
 
     return () => {
       isMounted = false;
-      getChatConnection().then((connection) => connection.off("messageReceived", handleMessage));
+      getChatConnection()
+        .then((connection) => connection.off("messageReceived", handleMessage))
+        .catch(() => {});
     };
   }, [enabled]);
 

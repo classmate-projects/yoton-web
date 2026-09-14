@@ -6,7 +6,7 @@ import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import { RoleService } from "@/services/role.service";
 import { FormEvent, useEffect, useState } from "react";
-import { MdAdminPanelSettings, MdAdd, MdEdit, MdChecklist, MdClose } from "react-icons/md";
+import { MdAdminPanelSettings, MdAdd, MdEdit, MdChecklist, MdClose, MdLock, MdLockOpen } from "react-icons/md";
 import { toast } from "sonner";
 import axios from "axios";
 import { FetchedRoles } from "@/types/role.type";
@@ -14,19 +14,32 @@ import { useRoleSignalR } from "@/hooks/useRoleSignalR";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import { DEFAULT_ROLE_ICON_KEY, getRoleIcon } from "@/helpers/roleIcons";
 import RoleIconPicker from "@/components/RoleIconPicker";
+import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 // Settings is always reachable regardless of role, and Confidential Notes is nurse-only
 // and excludes even admin (NursingController's confidential-note endpoints refuse admin
 // outright) - neither is ever offered as a toggle here. See components/sidebar.tsx and
 // app/(pages)/layout.tsx's matching hardcoded exemptions.
-// Every module is offered to every role, built-in or brand new - access is now a per-role
-// allow-list (Cli_RoleModulePermissions) rather than a hardcoded roles[] array that a
-// hidden-modules table could only narrow, so there's no "eligibility" left to filter by.
-// A role with no configuration yet (a freshly created one) simply starts fully unchecked.
+// Every other module is offered to every role, built-in or brand new - access is now a
+// per-role allow-list (Cli_RoleModulePermissions) rather than a hardcoded roles[] array
+// that a hidden-modules table could only narrow, so there's no "eligibility" left to
+// filter by. A role with no configuration yet (a freshly created one) simply starts fully
+// unchecked.
 const allToggleableModules = sidebarMenuItems.filter(
   (item) => item.navLink !== "/settings" && item.navLink !== "/nursing/confidential-notes",
 );
+
+// Mirrors the backend's ModuleKeys.AdminOnly exactly - each is either full account/
+// permission administration or master reference/compliance data that shouldn't be
+// reshapeable by a delegated role, so none of them are delegable through the plain
+// checklist - shown below locked (rather than removed) so it's obvious *why* one can't be
+// checked instead of just silently missing. The backend rejects a plain checklist grant of
+// any of these outright even if this were bypassed (see ModuleKeys.AdminOnly's comment);
+// force-assigning one anyway is a separate, deliberately harder, password-confirmed path
+// (see handleForceAssignConfirm below and RoleController.ForceModule).
+const ADMIN_ONLY_MODULES = new Set(["/user-management", "/departments", "/config-lists", "/icd-codes", "/reports/kpi"]);
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<FetchedRoles[]>([]);
@@ -43,6 +56,18 @@ export default function RoleManagementPage() {
   const [visibleModules, setVisibleModules] = useState<Set<string>>(new Set());
   const [loadingPermissions, setLoadingPermissions] = useState(false);
   const [savingPermissions, setSavingPermissions] = useState(false);
+
+  // Which admin-only module (if any) is currently prompting for the admin's own password
+  // before force-assigning it - see handleForceAssignConfirm.
+  const [forceAssignTarget, setForceAssignTarget] = useState<{ navLink: string; name: string } | null>(null);
+
+  // Admin-only tiles fire their revoke/force-assign call immediately on click (see
+  // handleAdminOnlyModuleClick) rather than staging into visibleModules for the batched Save
+  // button - so unlike the plain checkboxes, a tile needs its own busy guard: without one, a
+  // fast double-click fires two revoke-module requests for the same row before the first
+  // response updates visibleModules, and the second one 500s (DbUpdateConcurrencyException,
+  // since the row the second request expects to delete is already gone).
+  const [pendingAdminOnlyModules, setPendingAdminOnlyModules] = useState<Set<string>>(new Set());
 
 
   // reset values
@@ -145,19 +170,12 @@ export default function RoleManagementPage() {
   }
 
   const RequestDeleteRole = (roleId: string, name: string) => {
-    toast(
+    confirmDeleteToast(
       <span>
         Are you sure you want to delete the role{" "}
         <b className="text-red-500 ml-1">{name}</b>?
       </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => handleRoleDelete(roleId),
-        },
-        duration: 10000,
-        closeButton: true,
-      },
+      () => handleRoleDelete(roleId)
     );
   };
 
@@ -221,6 +239,68 @@ export default function RoleManagementPage() {
     });
   };
 
+  // Admin-only tiles don't use handleToggleModule/Save Permissions at all - each click
+  // takes effect immediately through its own dedicated endpoint instead of being staged
+  // into visibleModules and batched into the next Save (see RoleController.ForceModule/
+  // RevokeModule's own comments on why granting and revoking these have different levels
+  // of friction).
+  const handleAdminOnlyModuleClick = (item: { navLink: string; name: string }) => {
+    if (pendingAdminOnlyModules.has(item.navLink)) return;
+    if (visibleModules.has(item.navLink)) {
+      void handleRevokeForcedModule(item.navLink);
+    } else {
+      setForceAssignTarget(item);
+    }
+  };
+
+  // Confirmed from the password prompt below - throws on failure (e.g. wrong password) so
+  // AdminPasswordConfirm can show the error inline and let the admin retry.
+  const handleForceAssignConfirm = async (adminPassword: string) => {
+    if (!permissionsRole || !forceAssignTarget) return;
+    const { navLink } = forceAssignTarget;
+    await RoleService.forceAssignModule(permissionsRole.roleId, navLink, adminPassword);
+    setVisibleModules((prev) => new Set(prev).add(navLink));
+    toast.success(`${forceAssignTarget.name} force-assigned to ${permissionsRole.name}`);
+    setForceAssignTarget(null);
+  };
+
+  // No password needed - revoking is always the safe direction. Guarded by
+  // pendingAdminOnlyModules (see its own comment) against double-click races.
+  const handleRevokeForcedModule = async (navLink: string) => {
+    if (!permissionsRole) return;
+    setPendingAdminOnlyModules((prev) => new Set(prev).add(navLink));
+    try {
+      await RoleService.revokeModule(permissionsRole.roleId, navLink);
+      setVisibleModules((prev) => {
+        const next = new Set(prev);
+        next.delete(navLink);
+        return next;
+      });
+      toast.success("Module access revoked");
+    } catch (error) {
+      console.error("Failed to revoke module", error);
+      toast.error("Failed to revoke module");
+    } finally {
+      setPendingAdminOnlyModules((prev) => {
+        const next = new Set(prev);
+        next.delete(navLink);
+        return next;
+      });
+    }
+  };
+
+  const grantableModules = allToggleableModules.filter((item) => !ADMIN_ONLY_MODULES.has(item.navLink));
+  const allModulesSelected =
+    grantableModules.length > 0 &&
+    grantableModules.every((item) => visibleModules.has(item.navLink));
+  const someModulesSelected = grantableModules.some((item) => visibleModules.has(item.navLink));
+
+  const handleToggleAllModules = () => {
+    setVisibleModules(
+      allModulesSelected ? new Set() : new Set(grantableModules.map((item) => item.navLink)),
+    );
+  };
+
   const handleSavePermissions = async () => {
     if (!permissionsRole) return;
     setSavingPermissions(true);
@@ -266,7 +346,7 @@ export default function RoleManagementPage() {
               <p className="text-gray-500">No roles configured.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3 h-[60dvh] overflow-y-scroll">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 content-start h-[60dvh] overflow-y-scroll">
               {roles
                 .slice()
                 .sort(
@@ -397,7 +477,7 @@ export default function RoleManagementPage() {
 
       {permissionsRole && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
-          <div className="bg-card w-full max-w-lg rounded-xl border border-border p-6 shadow-2xl mx-4">
+          <div className="bg-card w-full max-w-6xl rounded-xl border border-border p-6 shadow-2xl mx-4">
             <div className="flex items-start justify-between mb-1">
               <h2 className="text-2xl font-semibold text-foreground flex items-center gap-2">
                 <MdChecklist className="text-purple-600" />
@@ -414,6 +494,9 @@ export default function RoleManagementPage() {
             <p className="text-sm text-muted-foreground mb-6">
               Check a module to grant this role access to it. Every module starts unchecked
               for a role until you configure it; Settings is always available to every role.
+              The locked (<MdLock className="inline align-text-top" size={13} />) modules are
+              admin-only - click one to force-assign it after confirming your password, or
+              click a force-assigned one to revoke it.
             </p>
 
             {loadingPermissions ? (
@@ -421,23 +504,77 @@ export default function RoleManagementPage() {
                 <LoadingSpinner />
               </div>
             ) : (
-              <div className="flex flex-col gap-1 max-h-[50dvh] overflow-y-auto pr-1">
-                {allToggleableModules.map((item) => (
-                  <label
-                    key={item.navLink}
-                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={visibleModules.has(item.navLink)}
-                      onChange={() => handleToggleModule(item.navLink)}
-                      className="h-4 w-4 accent-purple-600 cursor-pointer"
-                    />
-                    <item.icon />
-                    <span className="text-sm font-medium">{item.name}</span>
-                  </label>
-                ))}
-              </div>
+              <>
+                <label className="flex items-center gap-2 p-2.5 mb-2 w-fit rounded-lg border border-border hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allModulesSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someModulesSelected && !allModulesSelected;
+                    }}
+                    onChange={handleToggleAllModules}
+                    className="h-4 w-4 shrink-0 accent-purple-600 cursor-pointer"
+                  />
+                  <span className="text-sm font-semibold">Select All</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 max-h-[50dvh] overflow-y-auto pr-1">
+                {allToggleableModules.map((item) => {
+                  const isAdminOnly = ADMIN_ONLY_MODULES.has(item.navLink);
+                  const isForceGranted = isAdminOnly && visibleModules.has(item.navLink);
+
+                  if (isAdminOnly) {
+                    const isPending = pendingAdminOnlyModules.has(item.navLink);
+                    return (
+                      <label
+                        key={item.navLink}
+                        title={
+                          isForceGranted
+                            ? "Force-assigned - click to revoke"
+                            : "Admin only - click to force-assign (requires your password)"
+                        }
+                        onClick={() => handleAdminOnlyModuleClick(item)}
+                        aria-disabled={isPending}
+                        className={`flex items-center gap-2 p-2.5 rounded-lg ${isPending ? "cursor-wait opacity-50" : "cursor-pointer"} ${
+                          isForceGranted
+                            ? "bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
+                            : "opacity-50 hover:opacity-75"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isForceGranted}
+                          readOnly
+                          className="h-4 w-4 shrink-0 accent-amber-600 pointer-events-none"
+                        />
+                        <item.icon />
+                        <span className="text-sm font-medium whitespace-nowrap">{item.name}</span>
+                        {isForceGranted ? (
+                          <MdLockOpen className="text-amber-600 shrink-0" size={14} />
+                        ) : (
+                          <MdLock className="text-muted-foreground shrink-0" size={14} />
+                        )}
+                      </label>
+                    );
+                  }
+
+                  return (
+                    <label
+                      key={item.navLink}
+                      className="flex items-center gap-2 p-2.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleModules.has(item.navLink)}
+                        onChange={() => handleToggleModule(item.navLink)}
+                        className="h-4 w-4 shrink-0 accent-purple-600 cursor-pointer"
+                      />
+                      <item.icon />
+                      <span className="text-sm font-medium whitespace-nowrap">{item.name}</span>
+                    </label>
+                  );
+                })}
+                </div>
+              </>
             )}
 
             <div className="flex gap-3 mt-6">
@@ -459,6 +596,23 @@ export default function RoleManagementPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {forceAssignTarget && permissionsRole && (
+        <AdminPasswordConfirm
+          title="Force-assign admin-only module"
+          description={
+            <>
+              Grant <b>{forceAssignTarget.name}</b> to{" "}
+              <b className="capitalize">{permissionsRole.name}</b>? Confirm your password to
+              continue - this is normally admin-only.
+            </>
+          }
+          confirmLabel="Force Assign"
+          confirmingLabel="Assigning..."
+          onCancel={() => setForceAssignTarget(null)}
+          onConfirm={handleForceAssignConfirm}
+        />
       )}
     </div>
   );

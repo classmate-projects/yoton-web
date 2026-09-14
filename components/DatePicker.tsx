@@ -13,6 +13,8 @@ import {
   isSameDay,
   isSameMonth,
   isToday,
+  isValid,
+  parse,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -31,6 +33,10 @@ interface DatePickerProps {
   required?: boolean;
   disabled?: boolean;
   className?: string;
+  // Display + typed format, e.g. "dd-MM-yyyy". Defaults to "MMM d, yyyy". When the format is
+  // purely numeric (day/month/year digits with simple separators, not a word-month like
+  // "MMM"), typing auto-inserts the format's own separators as digits are entered.
+  dateFormat?: string;
 }
 
 type View = "days" | "months" | "years";
@@ -61,6 +67,157 @@ function isYearDisabled(year: number, min: Date | null, max: Date | null) {
   return false;
 }
 
+const DEFAULT_DATE_FORMAT = "MMM d, yyyy";
+
+// Fallback formats accepted from typed input if the field's own `dateFormat` doesn't match -
+// covers the common ways people type a date by hand regardless of the display format in use.
+const TYPED_DATE_FORMATS = [
+  "yyyy-MM-dd",
+  "yyyy/MM/dd",
+  "dd-MM-yyyy",
+  "dd/MM/yyyy",
+  "MM/dd/yyyy",
+  "M/d/yyyy",
+  "MM-dd-yyyy",
+  "MMM d, yyyy",
+  "MMMM d, yyyy",
+  "MMM d yyyy",
+  "MMMM d yyyy",
+];
+
+function parseTypedDate(raw: string, dateFormat: string): Date | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const primary = parseStrict(trimmed, dateFormat);
+  if (primary) return primary;
+  for (const candidate of TYPED_DATE_FORMATS) {
+    const parsed = parseStrict(trimmed, candidate);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function formatForDisplay(value: string, dateFormat: string): string {
+  const date = parseDateInputValue(value);
+  return date ? format(date, dateFormat) : "";
+}
+
+// A format is "maskable" when every part of it is a day/month/year digit run or a simple
+// separator - e.g. "dd-MM-yyyy" or "yyyy/MM/dd". A word-month format like "MMM d, yyyy"
+// isn't, since "MMM" isn't something you can auto-insert digits into.
+function isNumericDateFormat(dateFormat: string): boolean {
+  return /^[dMy\-/. ]+$/.test(dateFormat) && !dateFormat.includes("MMM");
+}
+
+type FormatToken = { field: "d" | "M" | "y"; digits: number } | { literal: string };
+
+function tokenizeDateFormat(dateFormat: string): FormatToken[] {
+  const tokens: FormatToken[] = [];
+  let i = 0;
+  while (i < dateFormat.length) {
+    const ch = dateFormat[i];
+    if (ch === "d" || ch === "M" || ch === "y") {
+      let j = i;
+      while (j < dateFormat.length && dateFormat[j] === ch) j++;
+      tokens.push({ field: ch, digits: j - i });
+      i = j;
+    } else {
+      tokens.push({ literal: ch });
+      i++;
+    }
+  }
+  return tokens;
+}
+
+// Validates a fully-typed numeric date string against its own format's shape and per-field
+// ranges - e.g. "dd-MM-yyyy" becomes /^(0[1-9]|[12]\d|3[01])-(0[1-9]|1[0-2])-\d{4}$/, so day is
+// constrained to 01-31 and month to 01-12 by construction. This is a fast, explicit structural
+// check ahead of the calendar-aware date-fns parse in parseStrict below, which is what actually
+// catches calendar-invalid combinations (e.g. Feb 30) that a shape regex alone can't.
+function buildNumericFormatRegex(dateFormat: string): RegExp {
+  const pattern = tokenizeDateFormat(dateFormat)
+    .map((token) => {
+      if ("literal" in token) return token.literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (token.field === "d") return "(0[1-9]|[12]\\d|3[01])";
+      if (token.field === "M") return "(0[1-9]|1[0-2])";
+      return `\\d{${token.digits}}`;
+    })
+    .join("");
+  return new RegExp(`^${pattern}$`);
+}
+
+// Reads whichever day/month/year fields are fully typed so far out of a numeric-masked value,
+// leaving the rest null - lets the calendar track the day/month/year the user is actively
+// typing instead of only updating once the whole date parses as valid. digitsOnly is already
+// clamped into range by applyDateMask before this ever sees it, so no re-validation is needed
+// here beyond "is this field's digit group complete".
+function parsePartialDigits(text: string, dateFormat: string): { day: number | null; month: number | null; year: number | null } {
+  const tokens = tokenizeDateFormat(dateFormat);
+  const digitsOnly = text.replace(/\D/g, "");
+  let digitIndex = 0;
+  const parts: { day: number | null; month: number | null; year: number | null } = {
+    day: null,
+    month: null,
+    year: null,
+  };
+  for (const token of tokens) {
+    if ("literal" in token) continue;
+    const chunk = digitsOnly.slice(digitIndex, digitIndex + token.digits);
+    digitIndex += token.digits;
+    if (chunk.length !== token.digits) continue;
+    const n = Number(chunk);
+    if (token.field === "d") parts.day = n;
+    else if (token.field === "M") parts.month = n;
+    else parts.year = token.digits === 2 ? 2000 + n : n;
+  }
+  return parts;
+}
+
+// Live input mask: strips everything but digits out of whatever was typed/pasted, then
+// re-inserts the format's own separators as each digit group fills up - typing "24082026"
+// into a "dd-MM-yyyy" field produces "24-08-2026" as you go, and pasting the same works too.
+// Once a day or month group is fully typed, it's also clamped into range (1-31 / 1-12) right
+// away - typing "35" for the day snaps to "31" rather than silently accepting it and letting
+// it roll over into some other month on commit.
+function applyDateMask(raw: string, dateFormat: string): string {
+  const tokens = tokenizeDateFormat(dateFormat);
+  const totalDigits = tokens.reduce((sum, t) => sum + ("digits" in t ? t.digits : 0), 0);
+  const digitsOnly = raw.replace(/\D/g, "").slice(0, totalDigits);
+
+  let out = "";
+  let digitIndex = 0;
+  for (const token of tokens) {
+    if ("literal" in token) {
+      if (digitIndex < digitsOnly.length) out += token.literal;
+    } else {
+      let chunk = digitsOnly.slice(digitIndex, digitIndex + token.digits);
+      if (!chunk) break;
+      if (chunk.length === token.digits && token.field !== "y") {
+        const max = token.field === "d" ? 31 : 12;
+        const clamped = Math.min(Math.max(Number(chunk), 1), max);
+        chunk = String(clamped).padStart(token.digits, "0");
+      }
+      out += chunk;
+      digitIndex += token.digits;
+    }
+  }
+  return out;
+}
+
+// date-fns' parse() doesn't reject out-of-range day/month combinations (e.g. Feb 30) - it
+// silently rolls them over into a different, real date instead (Feb 30 -> Mar 2), which
+// isValid() then happily reports as valid. Re-formatting the parsed date with the same
+// format and comparing it back to what was actually typed catches that: a rollover always
+// changes the text, so a mismatch means the typed date was never real to begin with.
+function parseStrict(text: string, dateFormat: string): Date | null {
+  if (isNumericDateFormat(dateFormat) && !buildNumericFormatRegex(dateFormat).test(text)) {
+    return null;
+  }
+  const parsed = parse(text, dateFormat, new Date());
+  if (!isValid(parsed)) return null;
+  return format(parsed, dateFormat) === text ? parsed : null;
+}
+
 export default function DatePicker({
   value,
   onChange,
@@ -72,7 +229,9 @@ export default function DatePicker({
   required,
   disabled,
   className = "",
+  dateFormat = DEFAULT_DATE_FORMAT,
 }: DatePickerProps) {
+  const maskEnabled = useMemo(() => isNumericDateFormat(dateFormat), [dateFormat]);
   const selected = useMemo(() => parseDateInputValue(value), [value]);
   const minDate = useMemo(() => (min ? parseDateInputValue(min) : null), [min]);
   const maxDate = useMemo(() => (max ? parseDateInputValue(max) : null), [max]);
@@ -84,8 +243,55 @@ export default function DatePicker({
     Math.floor((selected ?? new Date()).getFullYear() / YEARS_PER_PAGE) * YEARS_PER_PAGE,
   );
 
+  // Editable text mirror of `value` - lets the field be typed into directly instead of
+  // only ever set by clicking a day. Kept as separate state (rather than driving the input
+  // straight off `value`) so keystrokes aren't clobbered by the yyyy-MM-dd <-> Date <->
+  // display-string round trip on every render; it's only resynced from `value` on commit
+  // (blur/Enter) or when a day is picked from the calendar.
+  const [text, setText] = useState(() => formatForDisplay(value, dateFormat));
+  useEffect(() => {
+    setText(formatForDisplay(value, dateFormat));
+  }, [value, dateFormat]);
+
+  // Whichever day/month/year fields are fully typed so far, independent of whether the whole
+  // date is valid yet - drives the calendar navigation and the in-progress day highlight below
+  // while the rest of the date is still being typed. Only meaningful for a numeric-masked
+  // format (e.g. "dd-MM-yyyy") - tokenizeDateFormat treats every d/M/y run as a fixed-width
+  // digit slot, which is wrong for a word-month format like the default "MMM d, yyyy" (its
+  // "MMM" isn't 3 digits). Left ungated, opening the picker on an already-filled "Aug 30,
+  // 2026" field stripped it to digits "302026" and sliced the first 3 as a "month" of 302,
+  // which the navigation effect below then rolled over into February 2051.
+  const typedParts = useMemo(
+    () => (open && maskEnabled ? parsePartialDigits(text, dateFormat) : { day: null, month: null, year: null }),
+    [open, maskEnabled, text, dateFormat],
+  );
+
+  // What's currently typed, resolved live to a Date once it forms a complete valid date -
+  // null while incomplete/invalid. Takes over from `selected` (the last committed value) for
+  // the grid's highlight and the popup's month/year while the field is focused, so the
+  // calendar tracks typing the way a normal date picker does instead of only updating on blur.
+  const liveTypedDate = useMemo(
+    () => (open ? parseTypedDate(text, dateFormat) : null),
+    [open, text, dateFormat],
+  );
+  const displayedDate = liveTypedDate ?? selected;
+  const digitsTyped = open && text.replace(/\D/g, "").length > 0;
+
+  // Navigates the calendar to whichever month/year is being typed, the moment each becomes
+  // available - falls back to whatever the grid is already showing for the part not typed yet,
+  // so typing the day first doesn't move the view, and typing the month jumps the grid right
+  // away instead of waiting for the year to complete the date too.
+  useEffect(() => {
+    if (!open || (typedParts.month == null && typedParts.year == null)) return;
+    setViewDate((d) => {
+      const year = typedParts.year ?? d.getFullYear();
+      const monthIndex = (typedParts.month ?? d.getMonth() + 1) - 1;
+      return year === d.getFullYear() && monthIndex === d.getMonth() ? d : new Date(year, monthIndex, 1);
+    });
+  }, [open, typedParts.month, typedParts.year]);
+
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   // Popup is portaled to document.body (see render below) so it can't be
   // clipped by an ancestor's `overflow: hidden` (e.g. the `.card` class) —
@@ -156,6 +362,28 @@ export default function DatePicker({
     setOpen(false);
   };
 
+  // Parses whatever's currently typed and, if it's a valid in-range date, commits it
+  // through onChange same as picking a day would; otherwise reverts the field back to
+  // the last committed value's display text. Fired on blur and on Enter.
+  const commitTypedValue = () => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      if (value !== "") onChange("");
+      else setText("");
+      return;
+    }
+
+    const parsed = parseTypedDate(trimmed, dateFormat);
+    if (!parsed || isDayDisabled(parsed)) {
+      setText(formatForDisplay(value, dateFormat));
+      return;
+    }
+
+    const iso = toDateInputValue(parsed);
+    if (iso !== value) onChange(iso);
+    else setText(formatForDisplay(value, dateFormat));
+  };
+
   const gridDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(viewDate));
     const end = endOfWeek(endOfMonth(viewDate));
@@ -164,24 +392,65 @@ export default function DatePicker({
 
   return (
     <div ref={wrapperRef} className="relative">
-      <button
+      <div
         ref={triggerRef}
-        type="button"
-        id={id}
-        disabled={disabled}
-        onClick={openPicker}
         aria-haspopup="dialog"
         aria-expanded={open}
         className={
           className ||
-          "flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-input bg-card px-4 py-2 text-left text-lg text-foreground ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          `flex h-11 w-full items-center gap-2 overflow-hidden rounded-xl border border-input bg-card px-4 py-2 text-lg text-foreground ring-offset-background transition-all focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${
+            disabled ? "cursor-not-allowed opacity-50" : ""
+          }`
         }
       >
-        <span className={selected ? "" : "text-muted-foreground"}>
-          {selected ? format(selected, "MMM d, yyyy") : placeholder}
-        </span>
-        <CalendarDays size={18} className="shrink-0 text-muted-foreground" />
-      </button>
+        <input
+          type="text"
+          id={id}
+          disabled={disabled}
+          required={required}
+          inputMode={maskEnabled ? "numeric" : undefined}
+          value={text}
+          onChange={(e) => setText(maskEnabled ? applyDateMask(e.target.value, dateFormat) : e.target.value)}
+          onFocus={(e) => {
+            e.target.select();
+            openPicker();
+          }}
+          onBlur={(e) => {
+            commitTypedValue();
+            // Closing only on an outside *click* (see the mousedown listener above) misses
+            // Tab/Shift+Tab, which moves focus without ever firing a click - the popup was
+            // then left open indefinitely until the user happened to click elsewhere.
+            // relatedTarget is the element about to receive focus; skip closing when it's a
+            // button inside the popup itself (day/month/year/Today/Clear) so a mouse click
+            // there isn't cut off mid-click - that button's own onClick already closes it.
+            if (!popupRef.current?.contains(e.relatedTarget as Node | null)) {
+              setOpen(false);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitTypedValue();
+              setOpen(false);
+            } else if (e.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+          placeholder={placeholder}
+          autoComplete="off"
+          className="min-w-0 flex-1 min-h-0 rounded-[inherit] border-0 bg-transparent p-0 text-left outline-none ring-0 ring-offset-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground disabled:cursor-not-allowed"
+        />
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={openPicker}
+          aria-label="Open calendar"
+          tabIndex={-1}
+          className="shrink-0 rounded-lg text-muted-foreground outline-none transition-colors hover:text-foreground disabled:cursor-not-allowed"
+        >
+          <CalendarDays size={18} />
+        </button>
+      </div>
 
       {/* Hidden input so this still participates in native form semantics
           (required validation, form.reset(), etc.) without rendering a
@@ -233,7 +502,15 @@ export default function DatePicker({
                 ))}
                 {gridDays.map((day) => {
                   const outOfMonth = !isSameMonth(day, viewDate);
-                  const isSelected = selected && isSameDay(day, selected);
+                  // While a full valid date is typed/selected, highlight exactly that day.
+                  // Otherwise, as soon as just the day digits are in, preview that day number
+                  // within whichever month the grid is currently showing - e.g. typing "18"
+                  // highlights the 18th right away, before month or year are typed at all.
+                  const isSelected = liveTypedDate
+                    ? isSameDay(day, liveTypedDate)
+                    : digitsTyped
+                      ? typedParts.day != null && !outOfMonth && day.getDate() === typedParts.day
+                      : !!(selected && isSameDay(day, selected));
                   const dayDisabled = isDayDisabled(day);
                   return (
                     <button
@@ -243,14 +520,16 @@ export default function DatePicker({
                       onClick={() => pickDay(day)}
                       className={[
                         "mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm transition-all",
-                        isSelected
-                          ? "bg-primary font-bold text-primary-foreground shadow-md shadow-primary/30"
-                          : dayDisabled
-                            ? "cursor-not-allowed text-muted-foreground/40"
+                        dayDisabled
+                          ? isSelected
+                            ? "cursor-not-allowed bg-muted text-muted-foreground/40 ring-1 ring-inset ring-destructive/50"
+                            : "cursor-not-allowed text-muted-foreground/40"
+                          : isSelected
+                            ? "bg-primary font-bold text-primary-foreground shadow-md shadow-primary/30"
                             : outOfMonth
                               ? "text-muted-foreground/50 hover:bg-muted"
                               : "text-foreground hover:bg-muted",
-                        !isSelected && isToday(day) ? "ring-1 ring-inset ring-primary/60" : "",
+                        !isSelected && !dayDisabled && isToday(day) ? "ring-1 ring-inset ring-primary/60" : "",
                       ].join(" ")}
                     >
                       {day.getDate()}
@@ -293,9 +572,9 @@ export default function DatePicker({
                 {MONTHS.map((label, monthIndex) => {
                   const monthDisabled = isMonthDisabled(viewDate.getFullYear(), monthIndex, minDate, maxDate);
                   const isSelectedMonth =
-                    selected &&
-                    selected.getFullYear() === viewDate.getFullYear() &&
-                    selected.getMonth() === monthIndex;
+                    displayedDate &&
+                    displayedDate.getFullYear() === viewDate.getFullYear() &&
+                    displayedDate.getMonth() === monthIndex;
                   return (
                     <button
                       type="button"
@@ -349,7 +628,7 @@ export default function DatePicker({
               <div className="grid grid-cols-3 gap-1.5">
                 {Array.from({ length: YEARS_PER_PAGE }, (_, i) => yearsPageStart + i).map((year) => {
                   const yearDisabled = isYearDisabled(year, minDate, maxDate);
-                  const isSelectedYear = selected && selected.getFullYear() === year;
+                  const isSelectedYear = displayedDate && displayedDate.getFullYear() === year;
                   return (
                     <button
                       type="button"

@@ -53,8 +53,12 @@ export default function ElectronicMedicalRecordPage() {
   const filteredPatients = patients.filter(
     (p) =>
       p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.opNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.opId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase())
+      p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.nationalID?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.passportNumber?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (selectedPatientId) {
@@ -79,7 +83,7 @@ export default function ElectronicMedicalRecordPage() {
                 <FileText className="text-primary" /> {summary.name}
               </h1>
               <p className="text-sm text-muted-foreground">
-                MRN #{summary.opId} · {summary.sex || "—"}
+                MRN {summary.opNumber || summary.opId} · {summary.sex || "—"}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Read-only — doctor notes, diagnosis, and treatment plans cannot be edited here.
@@ -211,7 +215,7 @@ export default function ElectronicMedicalRecordPage() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search by name, MRN, or doctor..."
+              placeholder="Search by name, phone, MRN, doctor, national ID, or passport..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full h-10 pl-9 text-sm"
@@ -231,7 +235,7 @@ export default function ElectronicMedicalRecordPage() {
                 {filteredPatients.length > 0 ? (
                   filteredPatients.map((p) => (
                     <tr key={p.opId}>
-                      <td className="font-mono text-xs">#{p.opId}</td>
+                      <td className="font-mono text-xs">{p.opNumber || p.opId}</td>
                       <td className="font-semibold">{p.name}</td>
                       <td>{p.assignedDoctorName || "—"}</td>
                       <td>

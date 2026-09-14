@@ -3,6 +3,7 @@
 import { RoleService } from "@/services/role.service";
 import { AvailableRolesType, SelectRoleProps } from "@/types/selectRole";
 import { useEffect, useState } from "react";
+import SearchableSelect from "@/components/SearchableSelect";
 
 export default function SelectRole({
   role,
@@ -27,32 +28,21 @@ export default function SelectRole({
     fetchAvailableRoles();
   }, []);
 
+  const options = [
+    ...(allRole ? [{ value: "allRole", label: "All Roles" }] : []),
+    ...availableRoles.map((r) => ({ value: r.name, label: r.name })),
+  ];
+
   return (
-    <select
-      name="role"
+    <SearchableSelect
       id="role"
+      name="role"
       value={role}
-      onChange={(e) => setRole(e.target.value)}
-      className={`w-full capitalize ${selectRole ? "h-12 px-4" : "h-10 px-3"}`}
+      onChange={setRole}
+      options={options}
+      placeholder={selectRole ? "Select Role" : undefined}
       required
-    >
-      {selectRole && (
-        <option value="" disabled>
-          Select Role
-        </option>
-      )}
-
-      {
-        allRole && (
-          <option value="allRole">All Roles</option>
-        )
-      }
-
-      {availableRoles.map((role) => (
-        <option key={role.roleId} value={role.name} className="capitalize">
-          {role.name}
-        </option>
-      ))}
-    </select>
+      className={`flex w-full items-center justify-between gap-1 rounded-xl border border-border bg-card capitalize text-foreground hover:bg-muted transition-colors ${selectRole ? "h-12 px-4" : "h-10 px-3"}`}
+    />
   );
 }

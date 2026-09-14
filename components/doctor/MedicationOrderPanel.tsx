@@ -6,13 +6,18 @@ import CatalogSearchInput from "./CatalogSearchInput";
 import DatePicker from "@/components/DatePicker";
 import { ConfigListService } from "@/services/configList.service";
 import { PharmacyService } from "@/services/pharmacy.service";
-import { MedicationPayload, TaperingStepPayload } from "@/types/emr.type";
+import { MedicationPayload, MedicationType, TaperingStepPayload } from "@/types/emr.type";
 import { ListItemType } from "@/types/configList.type";
 import { MedicineType } from "@/types/pharmacy.type";
 import { toDateInputValue } from "@/lib/date";
 
 interface MedicationOrderPanelProps {
   onSubmit: (payload: MedicationPayload) => Promise<boolean>;
+  // When set, the panel pre-fills from this order and the parent's onSubmit is expected to
+  // call the correction (soft-delete + reinsert) endpoint instead of adding a new one -
+  // mirrors how the doctor page's other add-forms double as their own edit form.
+  editingMedication?: MedicationType | null;
+  onCancelEdit?: () => void;
 }
 
 interface TaperingStepForm {
@@ -40,7 +45,7 @@ function buildInstructionsPreview(dosage: string, dosageUnit: string, route: str
 // Inline "Prescribe Medications" panel on the doctor workbench — always in flow next to
 // Order Investigation, not a popup. Replaced the old MedicationOrderModal for consistency
 // with how investigation ordering already worked.
-export default function MedicationOrderPanel({ onSubmit }: MedicationOrderPanelProps) {
+export default function MedicationOrderPanel({ onSubmit, editingMedication, onCancelEdit }: MedicationOrderPanelProps) {
   const [drugName, setDrugName] = useState("");
   const [medicineId, setMedicineId] = useState<string | undefined>(undefined);
   const [drugType, setDrugType] = useState("");
@@ -100,6 +105,41 @@ export default function MedicationOrderPanel({ onSubmit }: MedicationOrderPanelP
       setInstructions(buildInstructionsPreview(dosage, dosageUnit, route, frequency, durationDays));
     }
   }, [dosage, dosageUnit, route, frequency, durationDays, instructionsTouched]);
+
+  // Pre-fill the form when an order is opened for correction. Runs only when the identity
+  // of the medication being edited changes (medicationId), not on every re-render, since the
+  // parent's summary refetch after a save would otherwise re-run this and stomp on whatever
+  // the doctor is mid-typing.
+  useEffect(() => {
+    if (!editingMedication) return;
+    setDrugName(editingMedication.drugName);
+    setMedicineId(editingMedication.medicineId ?? undefined);
+    setDrugType(editingMedication.drugType ?? "");
+    setDosage(editingMedication.dosage ?? "");
+    setDosageUnit(editingMedication.dosageUnit ?? "");
+    setFrequency(editingMedication.frequency ?? "");
+    setMealTiming(editingMedication.mealTiming ?? "");
+    setOrderType(editingMedication.orderType ?? "");
+    setRoute(editingMedication.route ?? "");
+    setDurationDays(editingMedication.durationDays ? String(editingMedication.durationDays) : "");
+    setTotalQuantity(editingMedication.totalQuantity ? String(editingMedication.totalQuantity) : "");
+    setStartDate(toDateInputValue(new Date(editingMedication.startedAt)));
+    setPlannedEndDate(editingMedication.plannedEndDate ? toDateInputValue(new Date(editingMedication.plannedEndDate)) : "");
+    setInstructions(editingMedication.instructions ?? "");
+    setInstructionsTouched(true);
+    setRefillCount(String(editingMedication.refillCount ?? 0));
+    setPrnReason(editingMedication.prnReason ?? "");
+    setRequiresCounselling(editingMedication.requiresCounselling);
+    setTaperingSteps(
+      editingMedication.taperingSteps.map((s) => ({
+        dosage: s.dosage ?? "",
+        dosageUnit: s.dosageUnit ?? "",
+        frequency: s.frequency ?? "",
+        durationDays: s.durationDays ? String(s.durationDays) : "",
+      }))
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingMedication?.medicationId]);
 
   const resetForm = () => {
     setDrugName("");
@@ -165,6 +205,11 @@ export default function MedicationOrderPanel({ onSubmit }: MedicationOrderPanelP
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleCancelEdit = () => {
+    resetForm();
+    onCancelEdit?.();
   };
 
   return (
@@ -429,13 +474,20 @@ export default function MedicationOrderPanel({ onSubmit }: MedicationOrderPanelP
         ))}
       </div>
 
-      <button
-        onClick={handleSubmit}
-        disabled={isSubmitting || !drugName.trim()}
-        className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 mt-1"
-      >
-        <Plus size={15} /> {isSubmitting ? "Adding order..." : "Add Medicine"}
-      </button>
+      <div className="flex items-center gap-3 mt-1">
+        <button
+          onClick={handleSubmit}
+          disabled={isSubmitting || !drugName.trim()}
+          className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+        >
+          <Plus size={15} /> {isSubmitting ? (editingMedication ? "Saving correction..." : "Adding order...") : editingMedication ? "Save Correction" : "Add Medicine"}
+        </button>
+        {editingMedication && (
+          <button onClick={handleCancelEdit} className="text-sm font-semibold text-muted-foreground hover:underline">
+            Cancel
+          </button>
+        )}
+      </div>
     </div>
   );
 }

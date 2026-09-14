@@ -5,24 +5,71 @@ import SearchIcon from "@/public/icons/SearchIcon";
 import Link from "next/link";
 import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
-import { MdContacts, MdOutlinePersonAddAlt1, MdOutlineUploadFile, MdOutlineMailOutline } from "react-icons/md";
+import { MdContacts, MdOutlinePersonAddAlt1, MdOutlineUploadFile, MdOutlineMailOutline, MdOutlineEdit } from "react-icons/md";
 import { CalendarDays, Clock, Loader2, Stethoscope, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
+import SearchableSelect from "@/components/SearchableSelect";
 import { ReceptionService } from "@/services/reception.service";
-import { PatientGetAllType } from "@/types/reception.type";
+import { ConfigListService } from "@/services/configList.service";
+import { PatientFullDetailsType, PatientGetAllType, VisitListItemType } from "@/types/reception.type";
 import {
   AppointmentSlotType,
   DoctorDaySlotsType,
   DoctorGridType,
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
+import { ListItemType } from "@/types/configList.type";
 import { toDateInputValue } from "@/lib/date";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
+
+// Walk-in-only payment/insurance touch-up (see openWalkInModal) - a lighter version of
+// patient-entry's own Payment Details section, same field set minus the per-category Fee
+// Schedule grid (that's a negotiated-rate config, not something reception fills in per visit).
+const emptyInsuranceForm = {
+  paymentType: "Cash",
+  eligibilityMode: "",
+  eligibilityCheckedDate: "",
+  eligibilityID: "",
+  eligibilityVisitID: "",
+  insuranceProvider: "",
+  subInsurance: "",
+  networkType: "",
+  insuranceCardNo: "",
+  extraCardNo: "",
+  insuranceEffectiveFrom: "",
+  insuranceExpiryDate: "",
+  certificateNo: "",
+  dependentsNo: "",
+  insuranceClaimNo: "",
+  maxInsuranceLiability: "",
+  insuranceApprovalLimit: "",
+  maxInsuranceCopay: "",
+  coPayPatientPercent: "",
+};
+
+type PatientListMode = "register" | "visit";
+const PATIENTS_PAGE_SIZE = 50;
+
+// Shared by both list modes - VisitListItemType extends PatientGetAllType, so this one
+// predicate covers both without needing a second copy. "Mobile Number" = phone; "MRN" =
+// opNumber (opId itself stays internal - never shown to or searched by a user, see the app-
+// wide MRN convention this mirrors).
+const matchesPatientSearch = (p: PatientGetAllType, term: string) => {
+  const q = term.trim().toLowerCase();
+  if (!q) return true;
+  return !!(
+    p.name?.toLowerCase().includes(q) ||
+    p.opNumber?.toLowerCase().includes(q) ||
+    p.phone?.toLowerCase().includes(q) ||
+    p.nationalID?.toLowerCase().includes(q)
+  );
+};
 
 export default function PatientRecordsPage() {
   const [patients, setPatients] = useState<PatientGetAllType[]>([]);
@@ -30,22 +77,53 @@ export default function PatientRecordsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // ---------------- Register List / Visit List toggle ----------------
+  const [listMode, setListMode] = useState<PatientListMode>("register");
+  const [visits, setVisits] = useState<VisitListItemType[]>([]);
+  const [isLoadingVisits, setIsLoadingVisits] = useState(false);
+  const todayValue = toDateInputValue(new Date());
+  const [fromDate, setFromDate] = useState(todayValue);
+  const [toDate, setToDate] = useState(todayValue);
+  const [currentPage, setCurrentPage] = useState(1);
+
   const [uploadTarget, setUploadTarget] = useState<PatientGetAllType | null>(null);
   const [documentType, setDocumentType] = useState(DOCUMENT_TYPES[0]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   // ---------------- Walk-in visit modal state ----------------
+  // Also reused for "Edit Visit" (see openEditVisitModal) - both are the exact same
+  // department -> specialty -> doctor -> slot picker, just walkInPatient starts a brand new
+  // visit while editingVisit reassigns an existing one's doctor via ReassignVisit instead of
+  // WalkIn. Only one of the two is ever set at a time; modalPatient/modalTitle below read
+  // whichever it is without the rest of the modal needing to care which.
   const [walkInPatient, setWalkInPatient] = useState<PatientGetAllType | null>(null);
+  const [editingVisit, setEditingVisit] = useState<VisitListItemType | null>(null);
   const [specializations, setSpecializations] = useState<SpecializationDoctorsType[]>([]);
   const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
+  const [walkInDepartmentId, setWalkInDepartmentId] = useState("");
+  const [walkInSpecializationId, setWalkInSpecializationId] = useState("");
   const [doctorSearch, setDoctorSearch] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorGridType | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [daySlots, setDaySlots] = useState<DoctorDaySlotsType | null>(null);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<AppointmentSlotType | null>(null);
+  const [visitNotes, setVisitNotes] = useState("");
   const [isBookingWalkIn, setIsBookingWalkIn] = useState(false);
+
+  // Payment & Insurance touch-up - walk-in only (not Edit Visit), since the underlying data
+  // lives on the patient's own record, not a per-visit concept. walkInPatientDetails holds
+  // everything else about the patient (name/sex/etc.) untouched, fetched once so the
+  // eventual update call doesn't blank out fields this form never shows.
+  const [walkInPatientDetails, setWalkInPatientDetails] = useState<PatientFullDetailsType | null>(null);
+  const [isLoadingWalkInPatient, setIsLoadingWalkInPatient] = useState(false);
+  const [insuranceForm, setInsuranceForm] = useState(emptyInsuranceForm);
+  const [insuranceProviders, setInsuranceProviders] = useState<ListItemType[]>([]);
+  const [isLoadingInsuranceProviders, setIsLoadingInsuranceProviders] = useState(false);
+  const isInsuranceOrCorporate = insuranceForm.paymentType !== "Cash";
+
+  const modalPatient = walkInPatient ?? editingVisit;
 
   const fetchPatients = async () => {
     try {
@@ -59,11 +137,42 @@ export default function PatientRecordsPage() {
     }
   };
 
+  const fetchVisits = async (from: string, to: string) => {
+    try {
+      setIsLoadingVisits(true);
+      const data = await ReceptionService.getVisitList(from, to);
+      setVisits(data.visits || []);
+    } catch (error) {
+      console.error("Failed to fetch visit list", error);
+      toast.error("Failed to load visit list");
+    } finally {
+      setIsLoadingVisits(false);
+    }
+  };
+
+  // Register List is fetched eagerly (it's the default view, and other pages' patient-search
+  // widgets share the underlying data too via the same signalR-driven refresh below) - Visit
+  // List is fetched lazily, only once the toggle actually switches to it, and again whenever
+  // From/To changes while it's active. Both together satisfy "switching toggles/date filters
+  // immediately refreshes the displayed data."
   useEffect(() => {
     fetchPatients();
   }, []);
 
+  useEffect(() => {
+    if (listMode === "visit") fetchVisits(fromDate, toDate);
+  }, [listMode, fromDate, toDate]);
+
+  // Search/date/mode changes all invalidate whatever page the user was on - e.g. a filter
+  // that now only matches 10 records shouldn't leave them stranded on page 3.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listMode, searchTerm, fromDate, toDate]);
+
   useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
+  useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], () => {
+    if (listMode === "visit") fetchVisits(fromDate, toDate);
+  });
 
   const handleDelete = async (id: string) => {
     try {
@@ -75,13 +184,18 @@ export default function PatientRecordsPage() {
     }
   };
 
-  const openWalkInModal = async (patient: PatientGetAllType) => {
-    setWalkInPatient(patient);
+  // Shared setup for both openWalkInModal and openEditVisitModal - clears whichever picker
+  // state a previous open left behind and lazily loads the department/specialty/doctor
+  // catalog once, same as before.
+  const resetVisitModalPickers = async () => {
+    setWalkInDepartmentId("");
+    setWalkInSpecializationId("");
     setDoctorSearch("");
     setSelectedDoctor(null);
     setSelectedDate(new Date());
     setDaySlots(null);
     setSelectedSlot(null);
+    setVisitNotes("");
 
     if (specializations.length === 0) {
       try {
@@ -97,12 +211,81 @@ export default function PatientRecordsPage() {
     }
   };
 
+  const openWalkInModal = async (patient: PatientGetAllType) => {
+    setWalkInPatient(patient);
+    await resetVisitModalPickers();
+
+    setInsuranceForm(emptyInsuranceForm);
+    setIsLoadingWalkInPatient(true);
+    try {
+      const res = await ReceptionService.getPatientById(patient.opId);
+      const details: PatientFullDetailsType = res.data;
+      setWalkInPatientDetails(details);
+      setInsuranceForm({
+        paymentType: details.paymentType || "Cash",
+        eligibilityMode: details.eligibilityMode || "",
+        eligibilityCheckedDate: details.eligibilityCheckedDate || "",
+        eligibilityID: details.eligibilityID || "",
+        eligibilityVisitID: details.eligibilityVisitID || "",
+        insuranceProvider: details.insuranceProvider || "",
+        subInsurance: details.subInsurance || "",
+        networkType: details.networkType || "",
+        insuranceCardNo: details.insuranceCardNo || "",
+        extraCardNo: details.extraCardNo || "",
+        insuranceEffectiveFrom: details.insuranceEffectiveFrom || "",
+        insuranceExpiryDate: details.insuranceExpiryDate || "",
+        certificateNo: details.certificateNo || "",
+        dependentsNo: details.dependentsNo || "",
+        insuranceClaimNo: details.insuranceClaimNo || "",
+        maxInsuranceLiability: details.maxInsuranceLiability != null ? String(details.maxInsuranceLiability) : "",
+        insuranceApprovalLimit: details.insuranceApprovalLimit != null ? String(details.insuranceApprovalLimit) : "",
+        maxInsuranceCopay: details.maxInsuranceCopay != null ? String(details.maxInsuranceCopay) : "",
+        coPayPatientPercent: details.coPayPatientPercent != null ? String(details.coPayPatientPercent) : "",
+      });
+    } catch (error) {
+      console.error("Failed to fetch patient payment/insurance details:", error);
+      toast.error("Failed to load patient's payment/insurance details");
+    } finally {
+      setIsLoadingWalkInPatient(false);
+    }
+  };
+
+  // Reassigning a visit always starts the doctor/slot picker from scratch (see
+  // ReceptionController.ReassignVisit's own comment) - the point is picking a *different*
+  // doctor, so there's no need to look up and prefill whoever it's currently assigned to.
+  const openEditVisitModal = async (visit: VisitListItemType) => {
+    setEditingVisit(visit);
+    await resetVisitModalPickers();
+  };
+
   const closeWalkInModal = () => {
     setWalkInPatient(null);
+    setEditingVisit(null);
     setSelectedDoctor(null);
     setDaySlots(null);
     setSelectedSlot(null);
+    setWalkInPatientDetails(null);
+    setInsuranceForm(emptyInsuranceForm);
   };
+
+  // Lazily loaded on first actual need, like patient-entry's own copy of this - most walk-ins
+  // are Cash and never touch this list.
+  useEffect(() => {
+    if (!isInsuranceOrCorporate || insuranceProviders.length > 0) return;
+    (async () => {
+      try {
+        setIsLoadingInsuranceProviders(true);
+        const data = await ConfigListService.get("InsuranceProvider");
+        setInsuranceProviders(data.data ?? []);
+      } catch (error) {
+        console.error("Failed to fetch insurance providers:", error);
+        toast.error("Failed to load insurance providers");
+      } finally {
+        setIsLoadingInsuranceProviders(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInsuranceOrCorporate]);
 
   const fetchWalkInSlots = async (doctorId: string, date: Date) => {
     try {
@@ -120,56 +303,133 @@ export default function PatientRecordsPage() {
   };
 
   useEffect(() => {
-    if (selectedDoctor && walkInPatient) {
+    if (selectedDoctor && modalPatient) {
       fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoctor, selectedDate]);
 
   useSignalRRefetch(["appointmentCreated", "appointmentCancelled"], () => {
-    if (selectedDoctor && walkInPatient) fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
+    if (selectedDoctor && modalPatient) fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
   });
+
+  // Deduped from `specializations` itself rather than a separate department fetch - every
+  // specialization here already carries its own department, and this modal only ever needs
+  // departments that actually have an active, doctor-staffed specialization under them.
+  const walkInDepartments = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of specializations) {
+      if (s.departmentId && !seen.has(s.departmentId)) seen.set(s.departmentId, s.departmentName ?? s.departmentId);
+    }
+    return Array.from(seen, ([value, label]) => ({ value, label }));
+  }, [specializations]);
+
+  const walkInSpecializations = useMemo(
+    () => specializations.filter((s) => !walkInDepartmentId || s.departmentId === walkInDepartmentId),
+    [specializations, walkInDepartmentId]
+  );
+
+  // A previously-picked specialization may no longer be valid once the department changes.
+  useEffect(() => {
+    if (walkInSpecializationId && !walkInSpecializations.some((s) => s.specializationId === walkInSpecializationId)) {
+      setWalkInSpecializationId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walkInDepartmentId, specializations]);
 
   const flattenedDoctors = useMemo(() => {
     const term = doctorSearch.trim().toLowerCase();
-    return specializations.flatMap((s) =>
-      s.doctors
-        .filter(
-          (d) =>
-            term.length === 0 ||
-            d.name.toLowerCase().includes(term) ||
-            s.specializationName.toLowerCase().includes(term)
-        )
-        .map((d) => ({ ...d, specializationName: s.specializationName }))
-    );
-  }, [specializations, doctorSearch]);
+    return specializations
+      .filter((s) => !walkInDepartmentId || s.departmentId === walkInDepartmentId)
+      .filter((s) => !walkInSpecializationId || s.specializationId === walkInSpecializationId)
+      .flatMap((s) =>
+        s.doctors
+          .filter(
+            (d) =>
+              term.length === 0 ||
+              d.name.toLowerCase().includes(term) ||
+              s.specializationName.toLowerCase().includes(term)
+          )
+          .map((d) => ({ ...d, specializationName: s.specializationName }))
+      );
+  }, [specializations, doctorSearch, walkInDepartmentId, walkInSpecializationId]);
 
   const handleConfirmWalkIn = async () => {
-    if (!walkInPatient || !selectedDoctor || !selectedSlot) {
+    if (!modalPatient || !selectedDoctor || !selectedSlot) {
       toast.warning("Please select a doctor and an available time slot");
       return;
     }
 
+    if (!editingVisit && isInsuranceOrCorporate) {
+      if (!insuranceForm.insuranceProvider || !insuranceForm.insuranceCardNo || !insuranceForm.insuranceExpiryDate) {
+        toast.warning(`${insuranceForm.paymentType} Provider, Card No and Expiry Date are required`);
+        return;
+      }
+    }
+
     try {
       setIsBookingWalkIn(true);
-      const data = await ReceptionService.walkIn({
-        patientId: walkInPatient.opId,
-        doctorId: selectedDoctor.doctorId,
-        appointmentDate: selectedSlot.start,
-      });
+
+      // Payment/insurance lives on the patient's own record, not a per-visit concept - saved
+      // via the same UpdatePatient endpoint the full Edit Patient form uses, just scoped to
+      // this one section. Walk-in only (not Edit Visit) per how this form is entered.
+      if (!editingVisit && walkInPatientDetails) {
+        const toNumberOrUndefined = (value: string) => (value.trim() === "" ? undefined : Number(value));
+        const toDateOrUndefined = (value: string) => (value.trim() === "" ? undefined : value);
+        const registeredBy = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ?? "";
+
+        await ReceptionService.updatePatient(walkInPatientDetails.opId, {
+          ...walkInPatientDetails,
+          registeredBy,
+          paymentType: insuranceForm.paymentType,
+          eligibilityMode: insuranceForm.eligibilityMode || undefined,
+          eligibilityCheckedDate: toDateOrUndefined(insuranceForm.eligibilityCheckedDate),
+          eligibilityID: insuranceForm.eligibilityID || undefined,
+          eligibilityVisitID: insuranceForm.eligibilityVisitID || undefined,
+          insuranceProvider: insuranceForm.insuranceProvider || undefined,
+          subInsurance: insuranceForm.subInsurance || undefined,
+          networkType: insuranceForm.networkType || undefined,
+          insuranceCardNo: insuranceForm.insuranceCardNo || undefined,
+          extraCardNo: insuranceForm.extraCardNo || undefined,
+          insuranceEffectiveFrom: toDateOrUndefined(insuranceForm.insuranceEffectiveFrom),
+          insuranceExpiryDate: toDateOrUndefined(insuranceForm.insuranceExpiryDate),
+          certificateNo: insuranceForm.certificateNo || undefined,
+          dependentsNo: insuranceForm.dependentsNo || undefined,
+          insuranceClaimNo: insuranceForm.insuranceClaimNo || undefined,
+          maxInsuranceLiability: toNumberOrUndefined(insuranceForm.maxInsuranceLiability),
+          insuranceApprovalLimit: toNumberOrUndefined(insuranceForm.insuranceApprovalLimit),
+          maxInsuranceCopay: toNumberOrUndefined(insuranceForm.maxInsuranceCopay),
+          coPayPatientPercent: toNumberOrUndefined(insuranceForm.coPayPatientPercent),
+        });
+      }
+
+      const data = editingVisit
+        ? await ReceptionService.reassignVisit(editingVisit.visitId, {
+            doctorId: selectedDoctor.doctorId,
+            appointmentDate: selectedSlot.start,
+            notes: visitNotes || undefined,
+          })
+        : await ReceptionService.walkIn({
+            patientId: modalPatient.opId,
+            doctorId: selectedDoctor.doctorId,
+            appointmentDate: selectedSlot.start,
+            notes: visitNotes || undefined,
+          });
 
       if (data.status === false) {
         toast.error(data.message || "This slot has just been booked. Please choose another slot.");
         fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
       } else {
-        toast.success(data.message || "Walk-in visit registered");
+        toast.success(data.message || (editingVisit ? "Visit updated" : "Walk-in visit registered"));
         closeWalkInModal();
+        if (editingVisit) fetchVisits(fromDate, toDate);
       }
     } catch (error) {
+      const fallback = `Failed to ${editingVisit ? "update visit" : "register walk-in visit"}`;
       if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || "Failed to register walk-in visit");
+        toast.error(error.response?.data?.message || fallback);
       } else {
-        toast.error("Failed to register walk-in visit");
+        toast.error(fallback);
       }
     } finally {
       setIsBookingWalkIn(false);
@@ -228,25 +488,101 @@ export default function PatientRecordsPage() {
   };
 
   const confirmDelete = (id: string, name: string) => {
-    toast(
+    confirmDeleteToast(
       <span>
         Are you sure you want to delete {" "}
         <b className="text-red-500 ml-1">{name}</b>
       </span>,
-      {
-        action: {
-          label: "Delete",
-          onClick: () => handleDelete(id)
-        }
-      }
+      () => handleDelete(id)
     )
   }
 
-  const filteredPatients = patients.filter(
-    (p) =>
-      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.phone?.includes(searchTerm)
+  const filteredPatients = useMemo(
+    () => patients.filter((p) => matchesPatientSearch(p, searchTerm)),
+    [patients, searchTerm]
+  );
+  const filteredVisits = useMemo(
+    () => visits.filter((v) => matchesPatientSearch(v, searchTerm)),
+    [visits, searchTerm]
+  );
+
+  const activeFilteredCount = listMode === "register" ? filteredPatients.length : filteredVisits.length;
+  const totalPages = Math.max(1, Math.ceil(activeFilteredCount / PATIENTS_PAGE_SIZE));
+  // Clamped fallback for the one case the reset-to-1 effect above doesn't cover: the result
+  // set shrinking (e.g. a patient deleted, or a signalR-driven visit refetch) while the user
+  // sits on a page number that's no longer valid, with nothing else changing to re-trigger
+  // that effect.
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * PATIENTS_PAGE_SIZE;
+  const pagedPatients = useMemo(
+    () => filteredPatients.slice(pageStart, pageStart + PATIENTS_PAGE_SIZE),
+    [filteredPatients, pageStart]
+  );
+  const pagedVisits = useMemo(
+    () => filteredVisits.slice(pageStart, pageStart + PATIENTS_PAGE_SIZE),
+    [filteredVisits, pageStart]
+  );
+
+  // Shared by both list modes' rows - a VisitListItemType is structurally a
+  // PatientGetAllType (plus its own visit fields), so a Visit List row's patient identity
+  // works here unchanged for the actions that operate on the patient rather than the visit.
+  // Edit is the one exception: Register List edits the patient (Patient Entry's own form,
+  // reused in edit mode - see that page), Visit List edits *this* visit (department/
+  // specialty/doctor reassignment, see openEditVisitModal) - "visitId" in the row is what
+  // tells the two apart, since a plain PatientGetAllType never has one.
+  const renderActions = (patient: PatientGetAllType | VisitListItemType) => (
+    <div className="flex items-center justify-center gap-1">
+      {"visitId" in patient ? (
+        <button
+          onClick={() => openEditVisitModal(patient)}
+          className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
+          title="Edit Visit"
+        >
+          <MdOutlineEdit className="text-blue-600" size={18} />
+        </button>
+      ) : (
+        <Link
+          href={`/patient-entry?edit=${patient.opId}`}
+          className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer inline-flex"
+          title="Edit Patient"
+        >
+          <MdOutlineEdit className="text-blue-600" size={18} />
+        </Link>
+      )}
+      <button
+        onClick={() => openWalkInModal(patient)}
+        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
+        title="Register Walk-in Visit"
+      >
+        <MdOutlinePersonAddAlt1 className="text-blue-600" size={18} />
+      </button>
+      <button
+        onClick={() => setUploadTarget(patient)}
+        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
+        title="Upload External Document"
+      >
+        <MdOutlineUploadFile className="text-blue-600" size={18} />
+      </button>
+      <button
+        onClick={() => handleResendWelcomeEmail(patient.opId, patient.name)}
+        disabled={resendingEmailId === patient.opId}
+        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        title="Resend App Login Email"
+      >
+        {resendingEmailId === patient.opId ? (
+          <Loader2 className="text-blue-600 animate-spin" size={18} />
+        ) : (
+          <MdOutlineMailOutline className="text-blue-600" size={18} />
+        )}
+      </button>
+      <button
+        onClick={() => confirmDelete(patient.opId, patient.name)}
+        className="hover:bg-red-50 p-2 rounded transition-colors cursor-pointer"
+        title="Delete Patient"
+      >
+        <DeleteIcon color="red" />
+      </button>
+    </div>
   );
 
   return (
@@ -265,22 +601,81 @@ export default function PatientRecordsPage() {
       </div>
 
       <div className="card p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-semibold">Patient Directory</h2>
-          <div className="relative w-64">
-            {/* <MdSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} /> */}
-            <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
-              <SearchIcon color="#555" />
-            </span>
-            <input
-              type="text"
-              placeholder="Search patients..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
-            />
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          {/* Toggle - switching modes immediately swaps the data below (Visit List also
+              triggers its own fetch, see the effect keyed on listMode/fromDate/toDate). */}
+          <div role="tablist" aria-label="Patient list view" className="inline-flex rounded-lg border border-border bg-muted p-1">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={listMode === "register"}
+              onClick={() => setListMode("register")}
+              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors cursor-pointer ${
+                listMode === "register" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Patient Register List
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={listMode === "visit"}
+              onClick={() => setListMode("visit")}
+              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors cursor-pointer ${
+                listMode === "visit" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Patient Visit List
+            </button>
+          </div>
+
+          {/* From/To sit immediately left of the search bar (both pushed to the row's right
+              side by the justify-between above), not next to the toggle. */}
+          <div className="flex flex-wrap items-center gap-4">
+            {listMode === "visit" && (
+              <>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-foreground/80">From</label>
+                  {/* Typeable + calendar, same as Date of Birth on Patient Entry. */}
+                  <DatePicker
+                    value={fromDate}
+                    onChange={(v) => v && setFromDate(v)}
+                    max={toDate}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
+                    className="flex h-10 w-36 items-center justify-between gap-2 rounded-lg border border-border bg-(--color-highlight) px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-foreground/80">To</label>
+                  <DatePicker
+                    value={toDate}
+                    onChange={(v) => v && setToDate(v)}
+                    min={fromDate}
+                    max={todayValue}
+                    dateFormat="dd-MM-yyyy"
+                    placeholder="DD-MM-YYYY"
+                    className="flex h-10 w-36 items-center justify-between gap-2 rounded-lg border border-border bg-(--color-highlight) px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="relative w-72">
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                <SearchIcon color="#555" />
+              </span>
+              <input
+                type="text"
+                placeholder="Search by name, MRN, mobile number, or national ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
+              />
+            </div>
           </div>
         </div>
+
         <hr className="text-neutral-400/50 mb-4" />
 
         <div className="overflow-x-auto">
@@ -288,87 +683,111 @@ export default function PatientRecordsPage() {
             <thead>
               <tr>
                 <th>Full Name</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Address</th>
+                <th>MRN</th>
+                {listMode === "register" ? (
+                  <>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Address</th>
+                  </>
+                ) : (
+                  <>
+                    <th>Phone</th>
+                    <th>Visit Date</th>
+                    <th>Visit Type</th>
+                  </>
+                )}
                 <th className="text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {isLoading ? (
+              {(listMode === "register" ? isLoading : isLoadingVisits) ? (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center">
+                  <td colSpan={6} className="py-16 text-center">
                     <LoadingSpinner />
                   </td>
                 </tr>
-              ) : filteredPatients.length > 0 ? (
-                filteredPatients.map((patient) => (
-                  <tr key={patient.opId}>
-                    <td className="font-semibold">{patient.name}</td>
-                    <td>{patient.email}</td>
-                    <td>{patient.phone}</td>
-                    <td className="truncate max-w-xs">{patient.address || "N/A"}</td>
-                    <td className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => openWalkInModal(patient)}
-                          className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer"
-                          title="Register Walk-in Visit"
-                        >
-                          <MdOutlinePersonAddAlt1 className="text-blue-600" size={18} />
-                        </button>
-                        <button
-                          onClick={() => setUploadTarget(patient)}
-                          className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer"
-                          title="Upload External Document"
-                        >
-                          <MdOutlineUploadFile className="text-blue-600" size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleResendWelcomeEmail(patient.opId, patient.name)}
-                          disabled={resendingEmailId === patient.opId}
-                          className="hover:bg-blue-50 p-2 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Resend App Login Email"
-                        >
-                          {resendingEmailId === patient.opId ? (
-                            <Loader2 className="text-blue-600 animate-spin" size={18} />
-                          ) : (
-                            <MdOutlineMailOutline className="text-blue-600" size={18} />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => confirmDelete(patient.opId, patient.name)}
-                          className="hover:bg-red-50 p-2 rounded transition-colors cursor-pointer"
-                          title="Delete Patient"
-                        >
-                          <DeleteIcon color="red" />
-                        </button>
-                      </div>
+              ) : listMode === "register" ? (
+                pagedPatients.length > 0 ? (
+                  pagedPatients.map((patient) => (
+                    <tr key={patient.opId}>
+                      <td className="font-semibold">{patient.name}</td>
+                      <td className="font-mono text-xs">{patient.opNumber || patient.opId}</td>
+                      <td>{patient.email}</td>
+                      <td>{patient.phone}</td>
+                      <td className="truncate max-w-xs">{patient.address || "N/A"}</td>
+                      <td className="text-center">{renderActions(patient)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="py-16 text-center text-gray-500">
+                      No patients found.
                     </td>
+                  </tr>
+                )
+              ) : pagedVisits.length > 0 ? (
+                pagedVisits.map((visit) => (
+                  <tr key={visit.visitId}>
+                    <td className="font-semibold">{visit.name}</td>
+                    <td className="font-mono text-xs">{visit.opNumber || visit.opId}</td>
+                    <td>{visit.phone}</td>
+                    <td>{format(new Date(visit.checkedInAt), "dd MMM yyyy")}</td>
+                    <td>{visit.visitType === "WalkIn" ? "Walk-in" : "Appointment"}</td>
+                    <td className="text-center">{renderActions(visit)}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-gray-500">
-                    No patients found.
+                  <td colSpan={6} className="py-16 text-center text-gray-500">
+                    No visits found for the selected date range.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {activeFilteredCount > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-border">
+            <p className="text-xs text-muted-foreground">
+              Showing {pageStart + 1}-{Math.min(pageStart + PATIENTS_PAGE_SIZE, activeFilteredCount)} of {activeFilteredCount}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={safePage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg border border-border text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors cursor-pointer"
+              >
+                Previous
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Page {safePage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={safePage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="px-3 py-1.5 rounded-lg border border-border text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors cursor-pointer"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {walkInPatient && (
+      {modalPatient && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto border border-border">
             <div className="flex items-start justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-semibold text-foreground">
-                  Walk-in visit
+                  {editingVisit ? "Edit visit" : "Walk-in visit"}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {walkInPatient.name}
+                  {modalPatient.name}
                 </p>
               </div>
               <button
@@ -380,6 +799,41 @@ export default function PatientRecordsPage() {
             </div>
 
             <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-foreground/90 mb-2">
+                    Department
+                  </label>
+                  <SearchableSelect
+                    value={walkInDepartmentId}
+                    onChange={(value) => {
+                      setWalkInDepartmentId(value);
+                      setSelectedDoctor(null);
+                      setDaySlots(null);
+                    }}
+                    options={walkInDepartments}
+                    placeholder="All departments"
+                    className="flex h-10 w-full items-center justify-between gap-1 rounded-lg border border-border bg-muted px-4 text-left text-foreground hover:bg-muted/80 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-foreground/90 mb-2">
+                    Specialisation
+                  </label>
+                  <SearchableSelect
+                    value={walkInSpecializationId}
+                    onChange={(value) => {
+                      setWalkInSpecializationId(value);
+                      setSelectedDoctor(null);
+                      setDaySlots(null);
+                    }}
+                    options={walkInSpecializations.map((s) => ({ value: s.specializationId, label: s.specializationName }))}
+                    placeholder="All specialisations"
+                    className="flex h-10 w-full items-center justify-between gap-1 rounded-lg border border-border bg-muted px-4 text-left text-foreground hover:bg-muted/80 transition-colors"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-foreground/90 mb-2">
                   Doctor
@@ -401,7 +855,7 @@ export default function PatientRecordsPage() {
                     <LoadingSpinner />
                   </div>
                 ) : selectedDoctor ? (
-                  <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-900">
                     <div>
                       <p className="text-sm font-semibold text-foreground">
                         {selectedDoctor.name}
@@ -415,7 +869,7 @@ export default function PatientRecordsPage() {
                         setSelectedDoctor(null);
                         setDaySlots(null);
                       }}
-                      className="text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+                      className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                     >
                       Change
                     </button>
@@ -427,9 +881,9 @@ export default function PatientRecordsPage() {
                         <button
                           key={doctor.doctorId}
                           onClick={() => setSelectedDoctor(doctor)}
-                          className="w-full text-left px-4 py-2 hover:bg-blue-50 transition-colors cursor-pointer flex items-center gap-2"
+                          className="w-full text-left px-4 py-2 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer flex items-center gap-2"
                         >
-                          <Stethoscope size={14} className="text-blue-600 shrink-0" />
+                          <Stethoscope size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
                           <span>
                             <span className="font-medium text-foreground">{doctor.name}</span>
                             <span className="text-xs text-muted-foreground ml-2">
@@ -461,6 +915,8 @@ export default function PatientRecordsPage() {
                           setSelectedDate(new Date(`${v}T00:00:00`));
                         }
                       }}
+                      dateFormat="dd-MM-yyyy"
+                      placeholder="DD-MM-YYYY"
                       className="flex h-9 w-40 items-center justify-between gap-2 rounded-lg border border-border bg-muted px-2 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </div>
@@ -505,6 +961,207 @@ export default function PatientRecordsPage() {
                   )}
                 </div>
               )}
+
+              <div>
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">
+                  Notes
+                </label>
+                <textarea
+                  value={visitNotes}
+                  onChange={(e) => setVisitNotes(e.target.value)}
+                  placeholder={editingVisit ? "Reason for switching doctors..." : "Reason for visit..."}
+                  rows={2}
+                  className="w-full rounded-lg border border-border bg-transparent px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              {/* Payment & Insurance - walk-in only (see openWalkInModal's own comment on
+                  why this doesn't apply to Edit Visit). Saved via UpdatePatient, same as the
+                  full Edit Patient form - this is just a quicker way in for the common case
+                  of fixing/adding insurance right when the patient walks in. */}
+              {!editingVisit && (
+                <div className="rounded-lg border border-border p-4 flex flex-col gap-3">
+                  <p className="text-sm font-semibold text-foreground/90">Payment & Insurance</p>
+                  {isLoadingWalkInPatient ? (
+                    <LoadingSpinner />
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Payment Type</label>
+                        <select
+                          value={insuranceForm.paymentType}
+                          onChange={(e) => setInsuranceForm((p) => ({ ...p, paymentType: e.target.value }))}
+                          className="w-full h-10 text-sm"
+                        >
+                          <option value="Cash">Cash</option>
+                          <option value="Insurance">Insurance</option>
+                          <option value="Corporate">Corporate</option>
+                        </select>
+                      </div>
+
+                      {isInsuranceOrCorporate && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                              {insuranceForm.paymentType} Provider <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              value={insuranceForm.insuranceProvider}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, insuranceProvider: e.target.value }))}
+                              required
+                              className="w-full h-10 text-sm"
+                            >
+                              <option value="">{isLoadingInsuranceProviders ? "Loading..." : "Select Provider"}</option>
+                              {insuranceProviders.map((p) => (
+                                <option key={p.listItemId} value={p.name}>{p.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Sub Insurance</label>
+                            <input
+                              type="text"
+                              value={insuranceForm.subInsurance}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, subInsurance: e.target.value }))}
+                              placeholder="Plan / sub-category"
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Network Type</label>
+                            <select
+                              value={insuranceForm.networkType}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, networkType: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            >
+                              <option value="">Select Network Type</option>
+                              <option value="Open Network">Open Network</option>
+                              <option value="Restricted Network">Restricted Network</option>
+                              <option value="Copay Network">Copay Network</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                              {insuranceForm.paymentType} Card No <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={insuranceForm.insuranceCardNo}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, insuranceCardNo: e.target.value }))}
+                              required
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Extra Card No</label>
+                            <input
+                              type="text"
+                              value={insuranceForm.extraCardNo}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, extraCardNo: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{insuranceForm.paymentType} Effective From</label>
+                            <DatePicker
+                              value={insuranceForm.insuranceEffectiveFrom}
+                              onChange={(v) => setInsuranceForm((p) => ({ ...p, insuranceEffectiveFrom: v }))}
+                              dateFormat="dd-MM-yyyy"
+                              placeholder="DD-MM-YYYY"
+                              className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                              {insuranceForm.paymentType} Expiry Date <span className="text-red-500">*</span>
+                            </label>
+                            <DatePicker
+                              value={insuranceForm.insuranceExpiryDate}
+                              onChange={(v) => setInsuranceForm((p) => ({ ...p, insuranceExpiryDate: v }))}
+                              required
+                              dateFormat="dd-MM-yyyy"
+                              placeholder="DD-MM-YYYY"
+                              className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-transparent px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Certificate No.</label>
+                            <input
+                              type="text"
+                              value={insuranceForm.certificateNo}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, certificateNo: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Dependents No.</label>
+                            <input
+                              type="text"
+                              value={insuranceForm.dependentsNo}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, dependentsNo: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Insurance Claim No.</label>
+                            <input
+                              type="text"
+                              value={insuranceForm.insuranceClaimNo}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, insuranceClaimNo: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Max. Insurance Liability</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={insuranceForm.maxInsuranceLiability}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, maxInsuranceLiability: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Insurance Approval Limit</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={insuranceForm.insuranceApprovalLimit}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, insuranceApprovalLimit: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Max. Insurance Copay</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={insuranceForm.maxInsuranceCopay}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, maxInsuranceCopay: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Co-Pay Patient (%)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={insuranceForm.coPayPatientPercent}
+                              onChange={(e) => setInsuranceForm((p) => ({ ...p, coPayPatientPercent: e.target.value }))}
+                              className="w-full h-10 text-sm"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3 mt-8">
@@ -519,7 +1176,9 @@ export default function PatientRecordsPage() {
                 disabled={isBookingWalkIn || !selectedDoctor || !selectedSlot}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors cursor-pointer"
               >
-                {isBookingWalkIn ? "Registering..." : "Register walk-in visit"}
+                {isBookingWalkIn
+                  ? editingVisit ? "Saving..." : "Registering..."
+                  : editingVisit ? "Save changes" : "Register walk-in visit"}
               </button>
             </div>
           </div>

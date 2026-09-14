@@ -10,13 +10,14 @@ import pkg from "@/package.json";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "next-themes";
-import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight, Search } from "lucide-react";
+import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight, Search, MessageCircle } from "lucide-react";
 import { CurrentUserDetail } from "@/types/user.type";
 import { getInitials } from "@/lib/getInitials";
 import { useAlertCenter } from "@/hooks/useAlertCenter";
 import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
 import { useRolePermissionsSync } from "@/hooks/useRolePermissionsSync";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
+import { getSignalRConnection } from "@/lib/signalR";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { getAvatarColor } from "@/lib/avatarColor";
@@ -43,7 +44,8 @@ interface NavigableEntry {
   icon: React.ComponentType;
   // Which allowedModules entry governs this entry - undefined means "use navLink itself".
   // Sub-items share their parent's module key since SidebarSubItem doesn't carry its own
-  // (matches app/(pages)/layout.tsx's extraProtectedRoutes.moduleKey for /assign-doctor).
+  // (matches app/(pages)/layout.tsx's extraProtectedRoutes.moduleKey usage, e.g. the
+  // "Doctors Availability" subItem under "Departments & Staff").
   moduleKey?: string;
 }
 
@@ -81,7 +83,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   // positioned in viewport coordinates instead of being laid out as a DOM child of the tile.
   const expandedTriggerRef = useRef<HTMLDivElement | null>(null);
   const flyoutRef = useRef<HTMLDivElement | null>(null);
-  const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null);
+  const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const expandedItem = sidebarMenuItems.find((item) => item.id === expandedItemId) ?? null;
 
   // Admin-only: the "User Modules" group shows one tile per staff role instead of the
@@ -95,8 +97,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const [roleAllowedModulesCache, setRoleAllowedModulesCache] = useState<Record<string, string[]>>({});
   const roleTriggerRef = useRef<HTMLDivElement | null>(null);
   const roleFlyoutRef = useRef<HTMLDivElement | null>(null);
-  const [roleFlyoutPos, setRoleFlyoutPos] = useState<{ top: number; left: number } | null>(null);
+  const [roleFlyoutPos, setRoleFlyoutPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const expandedRole = roles.find((r) => r.roleId === expandedRoleId) ?? null;
+
+  // Bottom breathing room a portaled flyout keeps clear of the viewport edge - both flyouts
+  // below clamp their own height to this so a long module list scrolls internally instead of
+  // running off the bottom of the screen with no way to reach/select the items past the fold.
+  const FLYOUT_BOTTOM_MARGIN = 16;
 
   useEffect(() => {
     if (expandedRoleId === null) {
@@ -104,7 +111,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       return;
     }
     const rect = roleTriggerRef.current?.getBoundingClientRect();
-    if (rect) setRoleFlyoutPos({ top: rect.top, left: rect.right + 8 });
+    if (rect) {
+      setRoleFlyoutPos({
+        top: rect.top,
+        left: rect.right + 8,
+        maxHeight: window.innerHeight - rect.top - FLYOUT_BOTTOM_MARGIN,
+      });
+    }
   }, [expandedRoleId]);
 
   useEffect(() => {
@@ -144,7 +157,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       return;
     }
     const rect = expandedTriggerRef.current?.getBoundingClientRect();
-    if (rect) setFlyoutPos({ top: rect.top, left: rect.right + 8 });
+    if (rect) {
+      setFlyoutPos({
+        top: rect.top,
+        left: rect.right + 8,
+        maxHeight: window.innerHeight - rect.top - FLYOUT_BOTTOM_MARGIN,
+      });
+    }
   }, [expandedItemId]);
 
   // Closes the flyout on an outside click (matches NotificationBell's pattern) or on a
@@ -230,7 +249,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   ];
 
   const userRole = currentUser?.role || "";
-  const { canSeeAlerts, alerts, unreadCount, isRinging, clearUnread } =
+  const { canSeeAlerts, alerts, unreadCount, isRinging, markAlertRead, markAllRead } =
     useAlertCenter(userRole, currentUser?.userId);
   const { unreadCount: unreadChatCount, clearUnread: clearUnreadChat } = useUnreadChatCount(!!userRole);
   useRolePermissionsSync(userRole);
@@ -250,6 +269,45 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   // A role created/edited/deleted elsewhere (e.g. Role Management, in another tab) shows
   // up in this admin's role tiles immediately instead of needing a refresh.
   useRoleSignalR(setRoles);
+
+  // A role's allowed-modules list edited elsewhere (Role Management's "Manage modules"
+  // dialog) should update this admin's already-open role-preview flyout immediately too -
+  // without this, roleAllowedModulesCache only ever populates once per roleId (see
+  // toggleRoleFlyout below) and would otherwise stay stale until a full page reload.
+  // useRolePermissionsSync above handles the matching case for a signed-in end user's own
+  // sidebar; this is the admin-side equivalent, keyed by roleId in the local cache instead
+  // of the current user's own allowedModules.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let isMounted = true;
+
+    const handleUpdated = (payload: { roleName: string; allowedModules: string[] }) => {
+      setRoles((prevRoles) => {
+        const role = prevRoles.find((r) => r.name === payload.roleName);
+        if (role) {
+          setRoleAllowedModulesCache((prev) => ({ ...prev, [role.roleId]: payload.allowedModules }));
+        }
+        return prevRoles;
+      });
+    };
+
+    const connect = async () => {
+      const connection = await getSignalRConnection();
+      if (!isMounted) return;
+
+      connection.off("rolePermissionsUpdated", handleUpdated);
+      connection.on("rolePermissionsUpdated", handleUpdated);
+    };
+
+    connect();
+
+    return () => {
+      isMounted = false;
+      getSignalRConnection().then((connection) => {
+        connection.off("rolePermissionsUpdated", handleUpdated);
+      });
+    };
+  }, [isAdmin]);
 
   const toggleRoleFlyout = (roleId: string) => {
     setExpandedRoleId((prev) => (prev === roleId ? null : roleId));
@@ -304,7 +362,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   // can't be interpolated by the browser at all — it snaps the instant the row
   // has room for another tile — so the reflow has to happen while invisible.
   const tileClass = (active: boolean) =>
-    `relative flex h-[60px] w-[60px] items-center justify-center rounded-xl transition-all duration-300 ease-in-out group ${active
+    `relative flex h-[60px] w-[60px] cursor-pointer items-center justify-center rounded-xl transition-all duration-300 ease-in-out group ${active
       ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
     }`;
@@ -314,6 +372,22 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
 
   const tileIconClass = (active: boolean) =>
     `shrink-0 transition-transform duration-200 text-xl ${active ? "scale-110" : "group-hover:scale-110"}`;
+
+  // Admin-only: grouped sections (User Modules, Configuration) render as a vertical
+  // list of full-width rows - icon + capitalized name - instead of the icon-only
+  // tile grid above. Other roles keep the flat tile grid untouched.
+  const listContainerClass = "flex flex-col gap-1";
+
+  const rowClass = (active: boolean) =>
+    `flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors duration-200 ${active
+      ? "bg-primary text-primary-foreground font-semibold shadow-lg shadow-primary/20"
+      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+    }`;
+
+  // Native title-attribute tooltips aren't styled by CSS (the "capitalize" class on the
+  // visible row text has no effect on them), so role names - stored lowercase - need this
+  // applied to the actual string for the hover tooltip to read capitalized too.
+  const toTitleCase = (value: string) => value.replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <>
@@ -346,37 +420,65 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           <ChevronRight size={14} className={`transition-transform duration-300 ${isExpanded ? "rotate-180" : ""}`} />
         </button>
 
+        {/* Everything that can legitimately grow past one screen (logo header, the
+            collapsed-only Recent rail, the module nav) lives in this one scrollable
+            region, so on a short viewport it scrolls internally instead of pushing the
+            shell taller than lg:h-screen (which has no overflow-hidden of its own and
+            would otherwise leak into the page - see the nav div's own comment below).
+            The footer (theme/version/logout) deliberately sits outside it as its own
+            shrink-0 sibling so it's always reachable without scrolling, regardless of
+            how much is above it.
+            overflow-y-auto only applies once expanded - collapsed, the nav div below is
+            still fully mounted at its *expanded* height (just opacity-0 + inert, see its
+            own comment on why), which easily exceeds the collapsed rail's real content
+            (logo + a handful of Recent icons) and made this wheel-scrollable with nothing
+            visible to justify it. overflow-hidden while collapsed just clips that invisible
+            overflow instead of exposing it as real scroll. */}
+        {/* pt-1.5: the collapsed-only notification badge below sits at -top-1/-right-1 (a
+            small negative offset so it "peeks out" of the logo tile's corner) - with no
+            padding here, that offset pokes just past this div's own top edge and the
+            overflow-hidden set below (needed to hide the invisible nav-height overflow, see
+            the comment above) clips it into a flat-topped crescent instead of a full circle. */}
+        <div data-sidebar-scroll className={`flex min-h-0 flex-1 flex-col no-scrollbar scroll-smooth pt-1.5 ${isExpanded ? "overflow-y-auto" : "overflow-hidden"}`}>
         <div className={`flex items-center transition-all duration-300 ease-in-out ${isExpanded ? "mb-8 px-2" : "mb-4 flex-col gap-2 justify-center"}`}>
-          <div className="relative h-10 w-10 shrink-0">
+          <div className="relative h-12 w-12 shrink-0">
             {/* Collapsed: company logo (falls back to the bundled Yoton logo).
                 Expanded: the signed-in user's own photo, or their initials when
                 no photo has been uploaded. Collapsing reverts to the company
-                logo either way. */}
+                logo either way.
+                Company/bundled logos sit in a padded bg-card box with object-contain
+                (matches the login page's own logo treatment) so an uploaded logo's
+                real aspect ratio is never center-cropped to fit a square - only the
+                user's photo (a headshot, meant to fill the square) uses object-cover. */}
             {isExpanded ? (
               currentUser?.userImage ? (
                 // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path; not eligible for next/image's static optimization
                 <img
                   src={backendAssetUrl(currentUser.userImage) ?? undefined}
                   alt={currentUser?.name || "User"}
-                  className="h-10 w-10 rounded-lg object-cover shadow-sm"
+                  className="h-12 w-12 rounded-lg object-cover shadow-sm"
                 />
               ) : (
                 <div
-                  className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold text-white shadow-sm"
+                  className="flex h-12 w-12 items-center justify-center rounded-lg text-base font-bold text-white shadow-sm"
                   style={{ backgroundColor: getAvatarColor(currentUser?.userId || currentUser?.name) }}
                 >
-                  {currentUser?.name ? getInitials(currentUser.name) : <UserRound size={18} />}
+                  {currentUser?.name ? getInitials(currentUser.name) : <UserRound size={20} />}
                 </div>
               )
             ) : currentUser?.companyLogoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path; not eligible for next/image's static optimization
-              <img
-                src={backendAssetUrl(currentUser.companyLogoUrl) ?? undefined}
-                alt={currentUser?.companyName || "Company logo"}
-                className="h-10 w-10 rounded-lg object-cover shadow-sm"
-              />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-card shadow-sm">
+                {/* eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path; not eligible for next/image's static optimization */}
+                <img
+                  src={backendAssetUrl(currentUser.companyLogoUrl) ?? undefined}
+                  alt={currentUser?.companyName || "Company logo"}
+                  className="h-full w-full object-contain"
+                />
+              </div>
             ) : (
-              <Image src={logo} alt="logo" height={40} width={40} className="rounded-lg shadow-sm" loading="eager" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-card shadow-sm">
+                <Image src={logo} alt="logo" height={48} width={48} className="h-full w-full object-contain" loading="eager" />
+              </div>
             )}
 
             {!isExpanded && mounted && canSeeAlerts && unreadCount > 0 && (
@@ -403,7 +505,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                 alerts={alerts}
                 unreadCount={unreadCount}
                 isRinging={isRinging}
-                onOpen={clearUnread}
+                onMarkRead={markAlertRead}
+                onMarkAllRead={markAllRead}
               />
             </div>
           )}
@@ -452,16 +555,43 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             visibly jumping; fading out on leave has no delay, so it's already
             transparent before the rail starts narrowing back down. `inert` keeps
             it out of the tab order and unclickable while hidden, matching what's
-            visually true. */}
+            visually true. No scroll/flex sizing of its own - it's plain in-flow
+            content of the scrollable region opened above, which is what actually
+            grows/scrolls now. */}
         <div
           inert={!isExpanded}
-          data-sidebar-scroll
-          className={`flex-1 overflow-y-auto no-scrollbar scroll-smooth transition-opacity ${isExpanded ? "duration-200 delay-150 opacity-100" : "duration-100 opacity-0"
+          className={`transition-opacity ${isExpanded ? "duration-200 delay-150 opacity-100" : "duration-100 opacity-0"
             }`}
         >
           <nav className="flex flex-col gap-4">
             {isAdmin ? (
-              visibleGroups.map(({ group, items }) => (
+              <>
+                {/* Admin-only Chat shortcut, shown above the "User Modules" section below.
+                    Admin implicitly passes isModuleAllowed for every navLink (including
+                    "/messages"), but "User Modules" below is repurposed for admin into
+                    per-role preview tiles rather than admin's own module links (see that
+                    section's own comment) - so without this, admin has no sidebar entry
+                    point into chat at all despite always having access to it. */}
+                <div className={listContainerClass}>
+                  <Link
+                    href="/messages"
+                    title="Chat"
+                    aria-label="Chat"
+                    onClick={clearUnreadChat}
+                    className={rowClass(pathname === "/messages")}
+                  >
+                    <span className="shrink-0 text-lg">
+                      <MessageCircle />
+                    </span>
+                    <span className="truncate">Chat</span>
+                    {unreadChatCount > 0 && (
+                      <span className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white">
+                        {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                      </span>
+                    )}
+                  </Link>
+                </div>
+                {visibleGroups.map(({ group, items }) => (
                 <div key={group}>
                   <span
                     className={`sidebar-label block overflow-hidden whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 transition-all duration-300 ease-in-out ${isExpanded ? "max-h-4 mb-1.5 opacity-100" : "max-h-0 mb-0 opacity-0"
@@ -484,9 +614,9 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                       />
                     </div>
                   )}
-                  <div className={tileContainerClass}>
+                  <div className={listContainerClass}>
                     {group === "User Modules"
-                      ? // Admin sees one tile per staff role instead of the flat module
+                      ? // Admin sees one row per staff role instead of the flat module
                         // list - a preview into what each role's own sidebar looks like,
                         // not admin's own module shortcuts (admin already has every
                         // module reachable via the roles this drills into).
@@ -503,17 +633,18 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                                 <button
                                   type="button"
                                   onClick={() => toggleRoleFlyout(role.roleId)}
-                                  title={role.name}
-                                  aria-label={role.name}
+                                  title={toTitleCase(role.name)}
+                                  aria-label={toTitleCase(role.name)}
                                   aria-expanded={isRoleExpanded}
-                                  className={`${tileClass(false)} ${isRoleExpanded ? "ring-2 ring-primary/50 text-primary" : ""} capitalize`}
+                                  className={`${rowClass(false)} ${isRoleExpanded ? "ring-2 ring-inset ring-primary/50 text-primary" : ""}`}
                                 >
-                                  <span className={tileIconClass(isRoleExpanded)}>
+                                  <span className="shrink-0 text-lg">
                                     <FontAwesomeIcon icon={getRoleIcon(role.iconKey)} size="lg" />
                                   </span>
+                                  <span className="truncate capitalize">{role.name}</span>
                                   <ChevronRight
-                                    size={11}
-                                    className={`absolute top-1 right-1 transition-transform duration-200 ${isRoleExpanded ? "rotate-90" : ""} ${isRoleExpanded ? "opacity-70" : "opacity-40"
+                                    size={14}
+                                    className={`ml-auto shrink-0 transition-transform duration-200 ${isRoleExpanded ? "rotate-90 opacity-70" : "opacity-40"
                                       }`}
                                   />
                                 </button>
@@ -545,14 +676,15 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                               // Blue fill means "you're on this page right now" (isActive) - an
                               // open-but-not-active flyout gets a lighter ring instead, so the
                               // two states never look like the same thing selected twice.
-                              className={`${tileClass(isActive)} ${!isActive && isItemExpanded ? "ring-2 ring-primary/50 text-primary" : ""}`}
+                              className={`${rowClass(isActive)} ${!isActive && isItemExpanded ? "ring-2 ring-inset ring-primary/50 text-primary" : ""}`}
                             >
-                              <span className={tileIconClass(isActive || isItemExpanded)}>
+                              <span className="shrink-0 text-lg">
                                 <item.icon />
                               </span>
+                              <span className="truncate capitalize">{item.name}</span>
                               <ChevronRight
-                                size={11}
-                                className={`absolute top-1 right-1 transition-transform duration-200 ${isItemExpanded ? "rotate-90" : ""} ${isActive || isItemExpanded ? "opacity-70" : "opacity-40"
+                                size={14}
+                                className={`ml-auto shrink-0 transition-transform duration-200 ${isItemExpanded ? "rotate-90" : ""} ${isActive || isItemExpanded ? "opacity-70" : "opacity-40"
                                   }`}
                               />
                             </button>
@@ -567,13 +699,14 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                           title={item.name}
                           aria-label={item.name}
                           onClick={() => item.navLink === "/messages" && clearUnreadChat()}
-                          className={tileClass(isActive)}
+                          className={rowClass(isActive)}
                         >
-                          <span className={tileIconClass(isActive)}>
+                          <span className="shrink-0 text-lg">
                             <item.icon />
                           </span>
+                          <span className="truncate capitalize">{item.name}</span>
                           {item.navLink === "/messages" && unreadChatCount > 0 && (
-                            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white ring-2 ring-card">
+                            <span className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white">
                               {unreadChatCount > 9 ? "9+" : unreadChatCount}
                             </span>
                           )}
@@ -582,7 +715,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                     })}
                   </div>
                 </div>
-              ))
+                ))}
+              </>
             ) : (
               // End users (doctor, nurse, radiologist, etc.): direct modules +
               // Settings only, no grouping, no hierarchy.
@@ -613,17 +747,18 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             )}
           </nav>
         </div>
+        </div>
 
         {/* Portaled flyout: rendered once at document.body in viewport ("fixed")
             coordinates, positioned from expandedTriggerRef in the effect above -
-            keeps it out of the nav's overflow-y-auto scroll container, which
-            would otherwise clip it. */}
+            keeps it out of the scrollable region opened above (data-sidebar-scroll),
+            which would otherwise clip it. */}
         {mounted && expandedItem && flyoutPos &&
           createPortal(
             <div
               ref={flyoutRef}
-              style={{ position: "fixed", top: flyoutPos.top, left: flyoutPos.left }}
-              className="z-[100] w-56 rounded-xl border border-border bg-card p-1.5 shadow-lg shadow-black/10"
+              style={{ position: "fixed", top: flyoutPos.top, left: flyoutPos.left, maxHeight: flyoutPos.maxHeight }}
+              className="z-[100] w-56 overflow-y-auto rounded-xl border border-border bg-card p-1.5 shadow-lg shadow-black/10"
             >
               {expandedItem.subItems?.map((sub) => {
                 const subActive = pathname === sub.navLink;
@@ -656,8 +791,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           createPortal(
             <div
               ref={roleFlyoutRef}
-              style={{ position: "fixed", top: roleFlyoutPos.top, left: roleFlyoutPos.left }}
-              className="z-[100] w-56 rounded-xl border border-border bg-card p-1.5 shadow-lg shadow-black/10"
+              style={{ position: "fixed", top: roleFlyoutPos.top, left: roleFlyoutPos.left, maxHeight: roleFlyoutPos.maxHeight }}
+              className="z-[100] w-56 overflow-y-auto rounded-xl border border-border bg-card p-1.5 shadow-lg shadow-black/10"
             >
               <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 capitalize">
                 {expandedRole.name}
@@ -683,7 +818,9 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             document.body
           )}
 
-        <div className="mt-auto pt-4 flex flex-col gap-4 border-t border-border">
+        {/* Outside the scrollable region above on purpose - theme switcher, version
+            and logout stay reachable without scrolling no matter how much is above. */}
+        <div className="shrink-0 pt-4 flex flex-col gap-4 border-t border-border">
           <div className={`flex items-center gap-1 bg-muted p-1 rounded-lg ${!isExpanded && "flex-col"}`}>
             {themes.map((t) => (
               <button
