@@ -88,6 +88,7 @@ export const ENDPOINTS = {
         DELETE: (id: string) => `/api/user/delete/${id}`,
         RESTORE: (id: string) => `/api/user/${id}/restore`,
         REHIRE: (id: string) => `/api/user/${id}/rehire`,
+        UPDATE_STATUS: (id: string) => `/api/user/${id}/status`,
         GET_ASSIGNED_DOCTORS: `/api/user/assigned-doctors`,
         CREATE_ASSIGN_DOCTOR: `/api/user/assign-doctor`,
         GET_SCHEDULED_DOCTOR: (doctorId: string) => `/api/user/${doctorId}/schedule`,

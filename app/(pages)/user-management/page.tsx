@@ -89,6 +89,12 @@ export default function UserManagement() {
   // handleToggleUser below).
   const [rehireTarget, setRehireTarget] = useState<getAllResponse | null>(null);
 
+  // Set for the ordinary activate/deactivate toggle (any non-terminated user, including
+  // admins now that they're shown in this list) - always routed through a password-gated
+  // confirm so a stolen/unattended admin session can't silently flip another account's
+  // access, same reasoning as Restore/Rehire above.
+  const [statusToggleTarget, setStatusToggleTarget] = useState<getAllResponse | null>(null);
+
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!users) return [];
@@ -108,9 +114,7 @@ export default function UserManagement() {
         (activeStatus === "active" && user.isActive) ||
         (activeStatus === "inactive" && !user.isActive);
 
-      const notAdmin = user.role.toLowerCase() !== "admin";
-
-      return matchesSearch && matchesRole && matchesActiveStatus && notAdmin;
+      return matchesSearch && matchesRole && matchesActiveStatus;
     });
   }, [users, searchQuery, role, activeStatus]);
 
@@ -278,33 +282,32 @@ export default function UserManagement() {
   // toggle user - a terminated employee can't be reactivated by this plain flip (the
   // backend refuses it): they go through the Rehire confirm below instead, so
   // reactivating always opens a fresh employment stint rather than just flipping the flag.
-  const handleToggleUser = async (user: getAllResponse) => {
+  // Every other case (activating or deactivating any user, admins included) now requires
+  // the caller's own password too - see statusToggleTarget above.
+  const handleToggleUser = (user: getAllResponse) => {
     if (!user.isActive && user.isTerminated) {
       setRehireTarget(user);
       return;
     }
 
-    const payload = {
-      ...user,
-      isActive: !user.isActive,
-    };
+    setStatusToggleTarget(user);
+  };
 
-    try {
-      await UserService.update(user.id, payload)
-      toast.success(`Status changed to ${!user.isActive ? "active" : "inactive"}`)
+  // Confirmed from the status-toggle prompt below - same step-up pattern as
+  // handleRehireConfirm. Left throwing on failure so the prompt can show "incorrect
+  // password" and let the admin retry.
+  const handleStatusToggleConfirm = async (adminPassword: string) => {
+    if (!statusToggleTarget) return;
+    const nextIsActive = !statusToggleTarget.isActive;
+    await UserService.updateStatus(statusToggleTarget.id, nextIsActive, adminPassword);
+    toast.success(`Status changed to ${nextIsActive ? "active" : "inactive"}`);
 
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === user.id
-            ? { ...u, isActive: !user.isActive }
-            : u
-        )
-      );
-    } catch (error) {
-      toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update status" : "Failed to update status"
-      );
-    }
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === statusToggleTarget.id ? { ...u, isActive: nextIsActive } : u
+      )
+    );
+    setStatusToggleTarget(null);
   };
 
   // Confirmed from the Rehire prompt below - reactivates the account and opens a new
@@ -718,6 +721,23 @@ export default function UserManagement() {
           confirmingLabel="Rehiring..."
           onCancel={() => setRehireTarget(null)}
           onConfirm={handleRehireConfirm}
+        />
+      )}
+
+      {statusToggleTarget && (
+        <AdminPasswordConfirm
+          title={statusToggleTarget.isActive ? "Deactivate this user?" : "Activate this user?"}
+          description={
+            <>
+              Enter your admin password to {statusToggleTarget.isActive ? "deactivate" : "activate"}{" "}
+              <b className="text-foreground">{statusToggleTarget.name}</b>
+              {statusToggleTarget.role.toLowerCase() === "admin" ? " (admin account)" : ""}.
+            </>
+          }
+          confirmLabel={statusToggleTarget.isActive ? "Deactivate" : "Activate"}
+          confirmingLabel="Saving..."
+          onCancel={() => setStatusToggleTarget(null)}
+          onConfirm={handleStatusToggleConfirm}
         />
       )}
     </div>
