@@ -12,6 +12,7 @@ import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
+import { useSessionRevokedListener } from "@/hooks/useSessionRevokedListener";
 import { onUserDetailChange } from "@/lib/userDetail";
 
 // Pages that are reachable by URL (e.g. from a button on an admin page) but
@@ -98,6 +99,7 @@ export default function PageLayout({
 
   const { warningSecondsLeft, stayLoggedIn } = useIdleLogout();
   useProactiveTokenRefresh();
+  useSessionRevokedListener();
 
   // Mobile-only drawer state. On desktop the sidebar is always in flow (hover
   // rail), so this is inert there; on mobile the hamburger in the top bar opens

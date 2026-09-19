@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import axios from "axios";
 import {
   ArrowLeft,
   Building,
   Building2,
+  CheckCircle2,
   ChevronRight,
   Loader2,
   Settings as SettingsIcon,
@@ -21,6 +23,7 @@ import { backendAssetUrl } from "@/lib/backendAsset";
 import { getAvatarColor } from "@/lib/avatarColor";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { countryDetails } from "@/helpers/countyDetails";
+import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
 import RichTextEditor from "@/components/RichTextEditor";
@@ -52,12 +55,13 @@ interface MeResponse {
   patientEmailSimpleSubject: string;
   patientEmailSimpleBody: string;
   patientEmailSimpleIsCustom: boolean;
+  branchId: string | null;
 }
 
 // Each tile on the landing grid drills into one settings category. Adding a new
 // category later (e.g. Notifications, Security) is just another entry here plus a
 // matching case in the detail view below - the grid never needs manual layout work.
-type SettingsSection = "profile" | "company" | "branches";
+type SettingsSection = "profile" | "company";
 
 // Which patient-registration email variant is being viewed/edited in the template editor -
 // independent of the toggle above, which only controls which one actually gets sent.
@@ -70,12 +74,6 @@ export default function SettingsPage() {
 
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-
-  const [companyNameInput, setCompanyNameInput] = useState("");
-  const [savingCompanyName, setSavingCompanyName] = useState(false);
 
   const [maxDiscountInput, setMaxDiscountInput] = useState("");
   const [savingDiscountCap, setSavingDiscountCap] = useState(false);
@@ -121,11 +119,24 @@ export default function SettingsPage() {
   const [newBranchName, setNewBranchName] = useState("");
   const [creatingBranch, setCreatingBranch] = useState(false);
 
+  // Which non-main branch's own name/logo panel is currently open - only one at a time.
+  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
+  const [editBranchName, setEditBranchName] = useState("");
+  const [savingBranchName, setSavingBranchName] = useState(false);
+  const [editBranchLogoFile, setEditBranchLogoFile] = useState<File | null>(null);
+  const [uploadingBranchLogo, setUploadingBranchLogo] = useState(false);
+
+  // Set when Remove hits a branch with staff still assigned - offers the migrate flow
+  // instead of just failing (see attemptDeleteBranch's 409 handling below).
+  const [migrateModal, setMigrateModal] = useState<{ branch: BranchType; userCount: number } | null>(null);
+  const [migrateTargetId, setMigrateTargetId] = useState("");
+  const [migrating, setMigrating] = useState(false);
+  const [migrateSuccessMessage, setMigrateSuccessMessage] = useState<string | null>(null);
+
   useEffect(() => {
     AuthService.getMe()
       .then((data) => {
         setMe(data);
-        setCompanyNameInput(data.companyName || "");
         setMaxDiscountInput(data.maxDiscountPercent != null ? String(data.maxDiscountPercent) : "");
         setCountry(data.country || "");
         setCurrencyCode(data.currencyCode || "INR");
@@ -176,46 +187,6 @@ export default function SettingsPage() {
       toast.error("Failed to remove photo");
     } finally {
       setDeletingAvatar(false);
-    }
-  };
-
-  const handleLogoUpload = async () => {
-    if (!logoFile || !me) return;
-    setUploadingLogo(true);
-    try {
-      const data = await CompanyService.uploadLogo(logoFile);
-      setMe({ ...me, companyLogoUrl: data.logoPath });
-      patchUserDetail({ companyLogoUrl: data.logoPath });
-      setLogoFile(null);
-      toast.success("Company logo updated");
-    } catch {
-      toast.error("Failed to upload logo");
-    } finally {
-      setUploadingLogo(false);
-    }
-  };
-
-  const handleSaveCompanyName = async () => {
-    if (!me) return;
-    const trimmed = companyNameInput.trim();
-    if (!trimmed) {
-      toast.error("Company name cannot be empty");
-      return;
-    }
-
-    setSavingCompanyName(true);
-    try {
-      const data = await CompanyService.updateSettings({ name: trimmed });
-      setMe({ ...me, companyName: data.name });
-      setCompanyNameInput(data.name);
-      // Sidebar and header both read the company name from here - patch it so it
-      // updates immediately instead of waiting for a re-login.
-      patchUserDetail({ companyName: data.name });
-      toast.success("Company name updated");
-    } catch {
-      toast.error("Failed to update company name");
-    } finally {
-      setSavingCompanyName(false);
     }
   };
 
@@ -445,17 +416,25 @@ export default function SettingsPage() {
     }
   };
 
-  // Lazily loaded (only once the Branches tile is actually opened) rather than alongside
-  // getMe() above - GetAll is gated by the UserManagement module, so firing it unconditionally
-  // for every role on page load would 403 for anyone who isn't admin.
+  // Lazily loaded (only once the Company Profile section is actually opened) rather than
+  // alongside getMe() above - GetAll is gated by the UserManagement module, so firing it
+  // unconditionally for every role on page load would 403 for anyone who isn't admin.
   useEffect(() => {
-    if (activeSection !== "branches") return;
+    if (activeSection !== "company") return;
     setLoadingBranches(true);
     BranchService.getAll()
       .then((res) => setBranches(res.data ?? []))
       .catch(() => toast.error("Failed to load branches"))
       .finally(() => setLoadingBranches(false));
   }, [activeSection]);
+
+  const extractErrorMessage = (err: unknown, fallback: string) => {
+    const message =
+      err && typeof err === "object" && "response" in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined;
+    return message || fallback;
+  };
 
   const handleCreateBranch = async () => {
     const trimmed = newBranchName.trim();
@@ -471,13 +450,114 @@ export default function SettingsPage() {
       setNewBranchName("");
       toast.success("Branch created");
     } catch (err) {
-      const message =
-        err && typeof err === "object" && "response" in err
-          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-          : undefined;
-      toast.error(message || "Failed to create branch");
+      toast.error(extractErrorMessage(err, "Failed to create branch"));
     } finally {
       setCreatingBranch(false);
+    }
+  };
+
+  const openBranchEditor = (branch: BranchType) => {
+    setEditingBranchId(branch.branchId);
+    setEditBranchName(branch.name);
+    setEditBranchLogoFile(null);
+  };
+
+  // The main branch's name/logo IS the company's - editing it here goes through
+  // CompanyService (and patches the same localStorage the sidebar reads) instead of
+  // BranchService, which only ever touches the branches that are their own independent record.
+  const handleSaveBranchName = async () => {
+    if (!editingBranchId || !me) return;
+    const trimmed = editBranchName.trim();
+    if (!trimmed) {
+      toast.error("Branch name cannot be empty");
+      return;
+    }
+
+    const editingBranch = branches.find((b) => b.branchId === editingBranchId);
+    setSavingBranchName(true);
+    try {
+      if (editingBranch?.isMain) {
+        const data = await CompanyService.updateSettings({ name: trimmed });
+        setMe({ ...me, companyName: data.name });
+        patchUserDetail({ companyName: data.name });
+        setBranches((prev) => prev.map((b) => (b.branchId === editingBranchId ? { ...b, name: data.name } : b)));
+        toast.success("Company name updated");
+      } else {
+        const data = await BranchService.update(editingBranchId, { name: trimmed });
+        setBranches((prev) => prev.map((b) => (b.branchId === editingBranchId ? data.data : b)));
+        toast.success("Branch updated");
+      }
+    } catch (err) {
+      toast.error(extractErrorMessage(err, "Failed to update"));
+    } finally {
+      setSavingBranchName(false);
+    }
+  };
+
+  const handleUploadBranchLogo = async () => {
+    if (!editingBranchId || !editBranchLogoFile || !me) return;
+    const editingBranch = branches.find((b) => b.branchId === editingBranchId);
+    setUploadingBranchLogo(true);
+    try {
+      if (editingBranch?.isMain) {
+        const data = await CompanyService.uploadLogo(editBranchLogoFile);
+        setMe({ ...me, companyLogoUrl: data.logoPath });
+        patchUserDetail({ companyLogoUrl: data.logoPath });
+        setBranches((prev) => prev.map((b) => (b.branchId === editingBranchId ? { ...b, logoPath: data.logoPath } : b)));
+        toast.success("Company logo updated");
+      } else {
+        const data = await BranchService.uploadLogo(editingBranchId, editBranchLogoFile);
+        setBranches((prev) => prev.map((b) => (b.branchId === editingBranchId ? { ...b, logoPath: data.logoPath } : b)));
+        toast.success("Branch logo updated");
+      }
+      setEditBranchLogoFile(null);
+    } catch (err) {
+      toast.error(extractErrorMessage(err, "Failed to upload logo"));
+    } finally {
+      setUploadingBranchLogo(false);
+    }
+  };
+
+  const attemptDeleteBranch = async (branch: BranchType) => {
+    try {
+      await BranchService.delete(branch.branchId);
+      setBranches((prev) => prev.filter((b) => b.branchId !== branch.branchId));
+      if (editingBranchId === branch.branchId) setEditingBranchId(null);
+      toast.success("Branch removed");
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 409) {
+        const userCount = err.response.data?.userCount ?? 0;
+        setMigrateModal({ branch, userCount });
+        // Defaults to the main branch, but the admin can pick any other one instead.
+        setMigrateTargetId(branches.find((b) => b.isMain)?.branchId ?? "");
+      } else {
+        toast.error(extractErrorMessage(err, "Failed to remove branch"));
+      }
+    }
+  };
+
+  const handleRemoveBranch = (branch: BranchType) => {
+    confirmDeleteToast(
+      <span>
+        Remove branch <b className="text-red-500 ml-1">{branch.name}</b>?
+      </span>,
+      () => attemptDeleteBranch(branch)
+    );
+  };
+
+  const handleMigrateAndDelete = async () => {
+    if (!migrateModal || !migrateTargetId) return;
+    setMigrating(true);
+    try {
+      const data = await BranchService.migrateAndDelete(migrateModal.branch.branchId, migrateTargetId);
+      setBranches((prev) => prev.filter((b) => b.branchId !== migrateModal.branch.branchId));
+      if (editingBranchId === migrateModal.branch.branchId) setEditingBranchId(null);
+      setMigrateModal(null);
+      setMigrateSuccessMessage(data.message);
+    } catch (err) {
+      toast.error(extractErrorMessage(err, "Failed to migrate staff"));
+    } finally {
+      setMigrating(false);
     }
   };
 
@@ -499,14 +579,7 @@ export default function SettingsPage() {
 
   const isAdmin = me.role === "admin";
 
-  const sectionTitle =
-    activeSection === "profile"
-      ? "Your profile"
-      : activeSection === "company"
-        ? "Company profile"
-        : activeSection === "branches"
-          ? "Branches"
-          : null;
+  const sectionTitle = activeSection === "profile" ? "Your profile" : activeSection === "company" ? "Company profile" : null;
 
   return (
     <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
@@ -545,16 +618,8 @@ export default function SettingsPage() {
             <SettingsTile
               icon={<Building2 size={22} />}
               title="Company profile"
-              description="Branding, billing, currency, and age category ranges."
+              description="Branding, billing, currency, branches, and age category ranges."
               onClick={() => setActiveSection("company")}
-            />
-          )}
-          {isAdmin && (
-            <SettingsTile
-              icon={<Building size={22} />}
-              title="Branches"
-              description="Add and manage the hospital's branches/locations."
-              onClick={() => setActiveSection("branches")}
             />
           )}
         </div>
@@ -636,79 +701,6 @@ export default function SettingsPage() {
       {/* COMPANY PROFILE - admin only */}
       {activeSection === "company" && isAdmin && (
         <div className="grid max-w-6xl grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
-          {/* Branding */}
-          <div className="bg-card border border-border rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-foreground mb-1">Company branding</h2>
-            <p className="text-sm text-muted-foreground mb-5">
-              This logo replaces the default Yoton logo in the sidebar for every user at{" "}
-              {me.companyName ?? "your organization"} once the menu is collapsed.
-            </p>
-
-            <div className="flex items-center gap-5">
-              {me.companyLogoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path
-                <img
-                  src={logoFile ? URL.createObjectURL(logoFile) : (backendAssetUrl(me.companyLogoUrl) ?? undefined)}
-                  alt={me.companyName ?? "Company logo"}
-                  className="h-16 w-16 rounded-xl object-cover shadow-sm shrink-0"
-                />
-              ) : logoFile ? (
-                // eslint-disable-next-line @next/next/no-img-element -- local blob preview, not eligible for next/image
-                <img
-                  src={URL.createObjectURL(logoFile)}
-                  alt="Preview"
-                  className="h-16 w-16 rounded-xl object-cover shadow-sm shrink-0"
-                />
-              ) : (
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground shadow-sm">
-                  <Building2 size={24} />
-                </div>
-              )}
-
-              <div className="flex-1">
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Company name
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="text"
-                    value={companyNameInput}
-                    onChange={(e) => setCompanyNameInput(e.target.value)}
-                    placeholder="Your organization"
-                    className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveCompanyName}
-                    disabled={savingCompanyName || !companyNameInput.trim() || companyNameInput.trim() === (me.companyName ?? "")}
-                    className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {savingCompanyName && <Loader2 size={15} className="animate-spin" />}
-                    Save
-                  </button>
-                </div>
-
-                <div className="mt-3 flex items-center gap-3">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
-                    className="text-sm text-foreground max-w-[220px]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleLogoUpload}
-                    disabled={!logoFile || uploadingLogo}
-                    className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {uploadingLogo ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-                    Upload
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Maximum billing discount */}
           <div className="bg-card border border-border rounded-xl p-6">
             <h2 className="text-xl font-semibold text-foreground mb-1">Maximum billing discount</h2>
@@ -918,6 +910,180 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Branches */}
+          <div className="bg-card border border-border rounded-xl p-6 lg:col-span-2 xl:col-span-3">
+            <h2 className="text-xl font-semibold text-foreground mb-1 flex items-center gap-2">
+              <Building size={20} className="text-primary" />
+              Branches
+            </h2>
+            <p className="text-sm text-muted-foreground mb-5">
+              Every branch here becomes selectable when creating or editing a staff account —
+              with just the main branch below, that field stays optional; once there&apos;s
+              more than one, staff creation requires picking one. The main branch&apos;s name
+              and logo are the company&apos;s own — edit it right here. A new branch you add
+              starts with the same logo, then its name and logo can be changed independently
+              without affecting the main branch.
+            </p>
+
+            <div className="mb-5 flex items-center gap-3">
+              <input
+                type="text"
+                value={newBranchName}
+                onChange={(e) => setNewBranchName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreateBranch()}
+                placeholder="e.g. Downtown Branch"
+                className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+              />
+              <button
+                type="button"
+                onClick={handleCreateBranch}
+                disabled={creatingBranch || !newBranchName.trim()}
+                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creatingBranch && <Loader2 size={15} className="animate-spin" />}
+                Add branch
+              </button>
+            </div>
+
+            {loadingBranches ? (
+              <div className="flex items-center justify-center py-6 text-muted-foreground">
+                <Loader2 className="animate-spin" size={20} />
+              </div>
+            ) : branches.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No branches yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {branches.map((b) => {
+                  const isOwnBranch = !!me.branchId && b.branchId === me.branchId;
+                  return (
+                  <li
+                    key={b.branchId}
+                    className={`rounded-md border ${isOwnBranch ? "border-primary bg-primary/5" : "border-border"}`}
+                  >
+                    <div className="flex items-center justify-between gap-3 px-3 py-2">
+                      <div className="flex items-center gap-3">
+                        {b.logoPath ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path
+                          <img
+                            src={backendAssetUrl(b.logoPath) ?? undefined}
+                            alt={b.name}
+                            className="h-8 w-8 rounded-md object-cover shrink-0"
+                          />
+                        ) : (
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                            <Building size={14} />
+                          </div>
+                        )}
+                        <span className="text-sm text-foreground">{b.name}</span>
+                        {b.isMain && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                            Main
+                          </span>
+                        )}
+                        {isOwnBranch && (
+                          <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-white">
+                            Your branch
+                          </span>
+                        )}
+                        {!b.isActive && (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                            Inactive
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => (editingBranchId === b.branchId ? setEditingBranchId(null) : openBranchEditor(b))}
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          {editingBranchId === b.branchId ? "Close" : "Edit"}
+                        </button>
+                        {!b.isMain && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBranch(b)}
+                            className="text-xs font-medium text-destructive hover:underline"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {editingBranchId === b.branchId && (
+                      <div className="border-t border-border px-3 py-3">
+                        <div className="flex items-center gap-4">
+                          {editBranchLogoFile ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- local blob preview, not eligible for next/image
+                            <img
+                              src={URL.createObjectURL(editBranchLogoFile)}
+                              alt="Preview"
+                              className="h-12 w-12 rounded-md object-cover shrink-0"
+                            />
+                          ) : b.logoPath ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path
+                            <img
+                              src={backendAssetUrl(b.logoPath) ?? undefined}
+                              alt={b.name}
+                              className="h-12 w-12 rounded-md object-cover shrink-0"
+                            />
+                          ) : (
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                              <Building size={18} />
+                            </div>
+                          )}
+
+                          <div className="flex-1">
+                            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                              Branch name
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={editBranchName}
+                                onChange={(e) => setEditBranchName(e.target.value)}
+                                className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleSaveBranchName}
+                                disabled={savingBranchName || !editBranchName.trim() || editBranchName.trim() === b.name}
+                                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {savingBranchName && <Loader2 size={15} className="animate-spin" />}
+                                Save
+                              </button>
+                            </div>
+
+                            <div className="mt-3 flex items-center gap-3">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => setEditBranchLogoFile(e.target.files?.[0] ?? null)}
+                                className="max-w-[220px] text-sm text-foreground"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleUploadBranchLogo}
+                                disabled={!editBranchLogoFile || uploadingBranchLogo}
+                                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {uploadingBranchLogo ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                                Upload logo
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
           {/* Patient registration email */}
           <div className="bg-card border border-border rounded-xl p-6 lg:col-span-2 xl:col-span-3">
             <h2 className="text-xl font-semibold text-foreground mb-1">Patient registration email</h2>
@@ -1044,71 +1210,112 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* BRANCHES - admin only */}
-      {activeSection === "branches" && isAdmin && (
-        <div className="max-w-2xl">
-          <div className="bg-card border border-border rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-foreground mb-1">Add a branch</h2>
-            <p className="text-sm text-muted-foreground mb-5">
-              Every branch you add here becomes selectable when creating or editing a staff
-              account. With just the one main branch below, that field stays optional; once
-              there&apos;s more than one, staff creation requires picking one.
+      {/* Migrate staff before removing a branch */}
+      {migrateModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => !migrating && setMigrateModal(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-border bg-card p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="mb-2 text-lg font-semibold text-foreground">
+              Remove &quot;{migrateModal.branch.name}&quot;?
+            </h2>
+            <p className="mb-4 text-sm text-muted-foreground">
+              This branch has {migrateModal.userCount} staff member{migrateModal.userCount === 1 ? "" : "s"}{" "}
+              assigned. Move them to another branch first, then this branch will be removed.
             </p>
-            <div className="flex items-center gap-3">
-              <input
-                type="text"
-                value={newBranchName}
-                onChange={(e) => setNewBranchName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleCreateBranch()}
-                placeholder="e.g. Downtown Branch"
-                className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-              />
+
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Migrate staff to</label>
+            <select
+              value={migrateTargetId}
+              onChange={(e) => setMigrateTargetId(e.target.value)}
+              disabled={migrating}
+              className="mb-5 w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+            >
+              {branches
+                .filter((b) => b.branchId !== migrateModal.branch.branchId)
+                .map((b) => (
+                  <option key={b.branchId} value={b.branchId}>
+                    {b.name}
+                    {b.isMain ? " (Main)" : ""}
+                  </option>
+                ))}
+            </select>
+
+            {migrating && (
+              <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div className="h-full w-full animate-pulse rounded-full bg-primary" />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3">
               <button
                 type="button"
-                onClick={handleCreateBranch}
-                disabled={creatingBranch || !newBranchName.trim()}
+                onClick={() => setMigrateModal(null)}
+                disabled={migrating}
+                className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleMigrateAndDelete}
+                disabled={migrating || !migrateTargetId}
                 className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {creatingBranch && <Loader2 size={15} className="animate-spin" />}
-                Add branch
+                {migrating && <Loader2 size={15} className="animate-spin" />}
+                Migrate
               </button>
-            </div>
-
-            <div className="mt-6 border-t border-border pt-5">
-              {loadingBranches ? (
-                <div className="flex items-center justify-center py-6 text-muted-foreground">
-                  <Loader2 className="animate-spin" size={20} />
-                </div>
-              ) : branches.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No branches yet.</p>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {branches.map((b) => (
-                    <li
-                      key={b.branchId}
-                      className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
-                    >
-                      <span className="text-foreground">{b.name}</span>
-                      <span className="flex items-center gap-2">
-                        {b.isMain && (
-                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                            Main
-                          </span>
-                        )}
-                        {!b.isActive && (
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-                            Inactive
-                          </span>
-                        )}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </div>
           </div>
         </div>
       )}
+
+      {/* Migration success */}
+      {migrateSuccessMessage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setMigrateSuccessMessage(null)}
+        >
+          <div
+            className="flex w-full max-w-sm flex-col items-center gap-4 rounded-xl border border-border bg-card p-8 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SuccessCheckmark />
+            <p className="text-sm text-foreground">{migrateSuccessMessage}</p>
+            <button
+              type="button"
+              onClick={() => setMigrateSuccessMessage(null)}
+              className="rounded-md bg-primary px-4 py-1.5 text-sm text-white transition hover:opacity-90"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Pops in on mount (via a transition rather than a keyframe animation, so it needs no
+// globals.css changes) instead of just appearing - the "confirmation" the migrate flow asks for.
+function SuccessCheckmark() {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShown(true), 10);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <div
+      className={`flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 transition-all duration-300 ${
+        shown ? "scale-100 opacity-100" : "scale-50 opacity-0"
+      }`}
+    >
+      <CheckCircle2 size={36} className="text-primary" />
     </div>
   );
 }

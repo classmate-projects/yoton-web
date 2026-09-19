@@ -18,6 +18,7 @@ import { UserAssignedDoctorCreateType } from "@/types/user.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { DepartmentTypes } from "@/types/department.type";
 import { BranchType } from "@/types/branch.type";
+import { getUserDetail } from "@/lib/userDetail";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useEffect, Suspense } from "react";
 import { toast } from "sonner";
@@ -38,7 +39,9 @@ function UserRegistrationForm() {
   const [departmentId, setDepartmentId] = useState("");
   const [hireDate, setHireDate] = useState("");
   const [departments, setDepartments] = useState<DepartmentTypes[]>([]);
-  const [branchId, setBranchId] = useState("");
+  // Defaults to the signed-in admin's own branch (edit mode overwrites this from the loaded
+  // user a moment later anyway, so defaulting unconditionally here is harmless for that path).
+  const [branchId, setBranchId] = useState(() => getUserDetail()?.branchId || "");
   const [branches, setBranches] = useState<BranchType[]>([]);
 
 

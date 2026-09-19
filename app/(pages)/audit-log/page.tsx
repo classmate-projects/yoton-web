@@ -137,15 +137,27 @@ export default function AuditLogPage() {
   const [loadingVersions, setLoadingVersions] = useState(false);
 
   // Either modal being open covers the page but doesn't stop the table underneath from
-  // scrolling with it - lock the page's own scroll for as long as one is open.
+  // scrolling with it. This page's own wrapper div (h-full overflow-y-auto below) never
+  // actually establishes a scroll context here - its ancestors (see (pages)/layout.tsx) are
+  // sized with min-height/flex-1, not a fixed height, so the div's h-full collapses to
+  // "auto" and real scrolling happens at the document root instead. Which element the
+  // browser treats as that root scroller is inconsistent (some browsers use <body>, others
+  // <html>), so both are locked to be safe.
+  const isModalOpen = !!viewing || !!historyFor;
+
   useEffect(() => {
-    if (!viewing && !historyFor) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (!isModalOpen) return;
+    const { style: htmlStyle } = document.documentElement;
+    const { style: bodyStyle } = document.body;
+    const previousHtmlOverflow = htmlStyle.overflow;
+    const previousBodyOverflow = bodyStyle.overflow;
+    htmlStyle.overflow = "hidden";
+    bodyStyle.overflow = "hidden";
     return () => {
-      document.body.style.overflow = previousOverflow;
+      htmlStyle.overflow = previousHtmlOverflow;
+      bodyStyle.overflow = previousBodyOverflow;
     };
-  }, [viewing, historyFor]);
+  }, [isModalOpen]);
 
   const openHistory = async (log: AuditLogType) => {
     setHistoryFor(log);
@@ -198,7 +210,7 @@ export default function AuditLogPage() {
   };
 
   return (
-    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
+    <div className={`py-6 px-4 sm:py-8 sm:px-10 h-full ${isModalOpen ? "overflow-hidden" : "overflow-y-auto"}`}>
       <div className="flex flex-col gap-1 mb-6">
         <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
           <ScrollText className="text-primary" /> Audit Log

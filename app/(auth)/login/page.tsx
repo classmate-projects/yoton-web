@@ -67,6 +67,7 @@ export default function LoginPage() {
           currencyCode: data.body.currencyCode,
           currencySymbol: data.body.currencySymbol,
           idleTimeoutMinutes: data.body.idleTimeoutMinutes,
+          branchId: data.body.branchId,
         }),
       );
 

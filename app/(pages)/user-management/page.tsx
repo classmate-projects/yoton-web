@@ -14,6 +14,7 @@ interface getAllResponse {
   // from a plain manual deactivate. Drives both the row styling and whether reactivating
   // goes through the plain toggle or the password-gated Rehire flow below.
   isTerminated: boolean;
+  branchId: string | null;
 }
 
 import Link from "next/link";
@@ -37,6 +38,9 @@ import { StaffEmploymentEventType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { BranchService } from "@/services/branch.service";
+import { BranchType } from "@/types/branch.type";
+import { getUserDetail } from "@/lib/userDetail";
 
 const TERMINATION_REASONS = [
   { value: "Retired60Plus", label: "Retired (60+ years)" },
@@ -68,6 +72,12 @@ export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeStatus, setActiveStatus] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
+
+  const [branches, setBranches] = useState<BranchType[]>([]);
+  // Defaults to the signed-in staff member's own branch (not "All") - most admins managing
+  // day-to-day staff only care about their own location; "All" is one click away in the
+  // dropdown for whoever actually needs the cross-branch view.
+  const [branchFilter, setBranchFilter] = useState(() => getUserDetail()?.branchId || "allBranch");
 
   const [shiftsTarget, setShiftsTarget] = useState<getAllResponse | null>(null);
   const [shiftsWeek, setShiftsWeek] = useState<DayShiftRow[]>(emptyWeek());
@@ -114,14 +124,17 @@ export default function UserManagement() {
         (activeStatus === "active" && user.isActive) ||
         (activeStatus === "inactive" && !user.isActive);
 
-      return matchesSearch && matchesRole && matchesActiveStatus;
+      const matchesBranch = branchFilter === "allBranch" || user.branchId === branchFilter;
+
+      return matchesSearch && matchesRole && matchesActiveStatus && matchesBranch;
     });
-  }, [users, searchQuery, role, activeStatus]);
+  }, [users, searchQuery, role, activeStatus, branchFilter]);
 
   const clearFilters = () => {
     setSearchQuery("");
     setRole("allRole");
     setActiveStatus("all");
+    setBranchFilter("allBranch");
   };
 
   // fetch all users
@@ -136,6 +149,12 @@ export default function UserManagement() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    BranchService.getAll()
+      .then((res) => setBranches(res.data ?? []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchAllUsers();
@@ -383,6 +402,21 @@ export default function UserManagement() {
               <option value="all">All</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
+            </select>
+
+            <select
+              name="branch"
+              id="branch"
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="border border-neutral-500 px-4 py-2 rounded-md outline-0">
+              <option value="allBranch">All branches</option>
+              {branches.map((b) => (
+                <option key={b.branchId} value={b.branchId}>
+                  {b.name}
+                  {b.isMain ? " (Main)" : ""}
+                </option>
+              ))}
             </select>
 
             <button

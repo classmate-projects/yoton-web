@@ -12,6 +12,10 @@ export const ENDPOINTS = {
     BRANCH: {
         GET_ALL: `/api/branch/get-all`,
         CREATE: `/api/branch/create`,
+        UPDATE: (id: string) => `/api/branch/update/${id}`,
+        UPLOAD_LOGO: (id: string) => `/api/branch/${id}/upload-logo`,
+        DELETE: (id: string) => `/api/branch/${id}`,
+        MIGRATE_AND_DELETE: (id: string) => `/api/branch/${id}/migrate-and-delete`,
     },
     CHAT: {
         GET_CONTACTS: (tab: string) => `/api/chat/contacts${tab ? `?tab=${tab}` : ""}`,

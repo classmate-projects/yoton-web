@@ -51,6 +51,15 @@ export default function SearchableSelect({
   // onFocus otherwise can't tell "a real Tab into this button" (should open) apart from "we
   // just returned focus here ourselves" (shouldn't).
   const skipNextFocusOpen = useRef(false);
+  // Set for the duration of a mouse-initiated click (mousedown through the click a few
+  // milliseconds later) so onFocus can tell that apart from a real keyboard Tab into the
+  // button. Without this, clicking an unfocused trigger fires both events - onFocus opens
+  // it first, then onClick's own toggle (reading `open` as still false from before that
+  // update takes effect) opens it "again", which React resolves as toggling back off,
+  // making the very first click open the popup for a single frame and immediately close it.
+  // Cleared via a same-tick timeout rather than in onClick, so it also self-heals if the
+  // mouse is dragged off before releasing (no click ever fires to clear it).
+  const mouseDownRef = useRef(false);
 
   const selected = options.find((o) => o.value === value);
 
@@ -172,16 +181,24 @@ export default function SearchableSelect({
         ref={triggerRef}
         id={id}
         disabled={disabled}
+        onMouseDown={() => {
+          mouseDownRef.current = true;
+          setTimeout(() => {
+            mouseDownRef.current = false;
+          }, 0);
+        }}
         onClick={() => (open ? setOpen(false) : openPicker())}
         onFocus={() => {
           // A real Tab into this button should open the list, same as clicking it -
           // otherwise keyboard-only users just see the button's focus ring with no way to
           // tell a list exists at all. Suppressed once right after closeAndRefocus
-          // programmatically returns focus here, so that doesn't immediately reopen it.
+          // programmatically returns focus here, so that doesn't immediately reopen it, and
+          // suppressed for a mouse click's own focus (onClick's toggle already handles that).
           if (skipNextFocusOpen.current) {
             skipNextFocusOpen.current = false;
             return;
           }
+          if (mouseDownRef.current) return;
           openPicker();
         }}
         aria-haspopup="listbox"
