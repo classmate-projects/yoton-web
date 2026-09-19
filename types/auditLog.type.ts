@@ -7,6 +7,8 @@ export interface AuditLogType {
   path: string;
   module: string | null;
   action: string;
+  summary: string;
+  succeeded: boolean;
   changes: string | null;
   statusCode: number;
   ipAddress: string | null;

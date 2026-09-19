@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  Building,
   Building2,
   ChevronRight,
   Loader2,
@@ -21,6 +22,10 @@ import { getAvatarColor } from "@/lib/avatarColor";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { countryDetails } from "@/helpers/countyDetails";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import ToggleButton from "@/components/ToggleButton";
+import RichTextEditor from "@/components/RichTextEditor";
+import { BranchService } from "@/services/branch.service";
+import { BranchType } from "@/types/branch.type";
 
 interface MeResponse {
   userId: string;
@@ -40,12 +45,23 @@ interface MeResponse {
   pediatricMaxAgeYears: number;
   geriatricMinAgeYears: number;
   idleTimeoutMinutes: number;
+  includeLoginCredentialsInPatientEmail: boolean;
+  patientEmailCredentialsSubject: string;
+  patientEmailCredentialsBody: string;
+  patientEmailCredentialsIsCustom: boolean;
+  patientEmailSimpleSubject: string;
+  patientEmailSimpleBody: string;
+  patientEmailSimpleIsCustom: boolean;
 }
 
 // Each tile on the landing grid drills into one settings category. Adding a new
 // category later (e.g. Notifications, Security) is just another entry here plus a
 // matching case in the detail view below - the grid never needs manual layout work.
-type SettingsSection = "profile" | "company";
+type SettingsSection = "profile" | "company" | "branches";
+
+// Which patient-registration email variant is being viewed/edited in the template editor -
+// independent of the toggle above, which only controls which one actually gets sent.
+type PatientEmailVariant = "credentials" | "simple";
 
 export default function SettingsPage() {
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -78,6 +94,33 @@ export default function SettingsPage() {
   const [idleTimeoutInput, setIdleTimeoutInput] = useState("15");
   const [savingIdleTimeout, setSavingIdleTimeout] = useState(false);
 
+  const [includeLoginCredentials, setIncludeLoginCredentials] = useState(true);
+  const [savingPatientEmailMode, setSavingPatientEmailMode] = useState(false);
+
+  const [emailTab, setEmailTab] = useState<PatientEmailVariant>("credentials");
+
+  const [credentialsSubject, setCredentialsSubject] = useState("");
+  const [credentialsBody, setCredentialsBody] = useState("");
+  const [credentialsIsCustom, setCredentialsIsCustom] = useState(false);
+  const [credentialsEditorKey, setCredentialsEditorKey] = useState(0);
+
+  const [simpleSubject, setSimpleSubject] = useState("");
+  const [simpleBody, setSimpleBody] = useState("");
+  const [simpleIsCustom, setSimpleIsCustom] = useState(false);
+  const [simpleEditorKey, setSimpleEditorKey] = useState(0);
+
+  const [savingEmailTemplate, setSavingEmailTemplate] = useState(false);
+  const [resettingEmailTemplate, setResettingEmailTemplate] = useState(false);
+
+  const [previewSubject, setPreviewSubject] = useState("");
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  const [branches, setBranches] = useState<BranchType[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [newBranchName, setNewBranchName] = useState("");
+  const [creatingBranch, setCreatingBranch] = useState(false);
+
   useEffect(() => {
     AuthService.getMe()
       .then((data) => {
@@ -90,6 +133,13 @@ export default function SettingsPage() {
         setPediatricMaxAgeInput(String(data.pediatricMaxAgeYears ?? 18));
         setGeriatricMinAgeInput(String(data.geriatricMinAgeYears ?? 65));
         setIdleTimeoutInput(String(data.idleTimeoutMinutes ?? 15));
+        setIncludeLoginCredentials(data.includeLoginCredentialsInPatientEmail ?? true);
+        setCredentialsSubject(data.patientEmailCredentialsSubject || "");
+        setCredentialsBody(data.patientEmailCredentialsBody || "");
+        setCredentialsIsCustom(!!data.patientEmailCredentialsIsCustom);
+        setSimpleSubject(data.patientEmailSimpleSubject || "");
+        setSimpleBody(data.patientEmailSimpleBody || "");
+        setSimpleIsCustom(!!data.patientEmailSimpleIsCustom);
       })
       .catch(() => toast.error("Failed to load your profile"))
       .finally(() => setLoading(false));
@@ -287,6 +337,150 @@ export default function SettingsPage() {
     }
   };
 
+  const handleTogglePatientEmailMode = async (checked: boolean) => {
+    if (!me) return;
+    const previous = includeLoginCredentials;
+    setIncludeLoginCredentials(checked);
+    setSavingPatientEmailMode(true);
+    try {
+      const data = await CompanyService.updateSettings({ includeLoginCredentialsInPatientEmail: checked });
+      setMe({ ...me, includeLoginCredentialsInPatientEmail: data.includeLoginCredentialsInPatientEmail });
+      setIncludeLoginCredentials(data.includeLoginCredentialsInPatientEmail);
+      toast.success(
+        data.includeLoginCredentialsInPatientEmail
+          ? "Patient registration emails will include mobile app login details"
+          : "Patient registration emails will now be a simple registration notice"
+      );
+    } catch {
+      setIncludeLoginCredentials(previous);
+      toast.error("Failed to update patient registration email setting");
+    } finally {
+      setSavingPatientEmailMode(false);
+    }
+  };
+
+  // Live preview: re-renders (server-side, via the same code path that actually sends the
+  // email) a couple hundred ms after the admin stops typing in either field, so the preview
+  // never gets ahead of what's actually been typed.
+  useEffect(() => {
+    if (!me || activeSection !== "company") return;
+
+    const subject = emailTab === "credentials" ? credentialsSubject : simpleSubject;
+    const body = emailTab === "credentials" ? credentialsBody : simpleBody;
+    const includeLoginCredentials = emailTab === "credentials";
+
+    setLoadingPreview(true);
+    const timeout = setTimeout(() => {
+      CompanyService.previewPatientEmail({ includeLoginCredentials, subject, body })
+        .then((data) => {
+          setPreviewSubject(data.subject);
+          setPreviewHtml(data.html);
+        })
+        .catch(() => toast.error("Failed to render email preview"))
+        .finally(() => setLoadingPreview(false));
+    }, 400);
+
+    return () => clearTimeout(timeout);
+  }, [me, activeSection, emailTab, credentialsSubject, credentialsBody, simpleSubject, simpleBody]);
+
+  const handleSaveEmailTemplate = async () => {
+    if (!me) return;
+    setSavingEmailTemplate(true);
+    try {
+      const data =
+        emailTab === "credentials"
+          ? await CompanyService.updateSettings({
+              patientEmailCredentialsSubject: credentialsSubject,
+              patientEmailCredentialsBody: credentialsBody,
+            })
+          : await CompanyService.updateSettings({
+              patientEmailSimpleSubject: simpleSubject,
+              patientEmailSimpleBody: simpleBody,
+            });
+
+      if (emailTab === "credentials") {
+        setCredentialsSubject(data.patientEmailCredentialsSubject);
+        setCredentialsBody(data.patientEmailCredentialsBody);
+        setCredentialsIsCustom(data.patientEmailCredentialsIsCustom);
+        setCredentialsEditorKey((k) => k + 1);
+      } else {
+        setSimpleSubject(data.patientEmailSimpleSubject);
+        setSimpleBody(data.patientEmailSimpleBody);
+        setSimpleIsCustom(data.patientEmailSimpleIsCustom);
+        setSimpleEditorKey((k) => k + 1);
+      }
+      toast.success("Email template saved");
+    } catch {
+      toast.error("Failed to save email template");
+    } finally {
+      setSavingEmailTemplate(false);
+    }
+  };
+
+  const handleResetEmailTemplate = async () => {
+    if (!me) return;
+    setResettingEmailTemplate(true);
+    try {
+      const data =
+        emailTab === "credentials"
+          ? await CompanyService.updateSettings({ patientEmailCredentialsSubject: "", patientEmailCredentialsBody: "" })
+          : await CompanyService.updateSettings({ patientEmailSimpleSubject: "", patientEmailSimpleBody: "" });
+
+      if (emailTab === "credentials") {
+        setCredentialsSubject(data.patientEmailCredentialsSubject);
+        setCredentialsBody(data.patientEmailCredentialsBody);
+        setCredentialsIsCustom(data.patientEmailCredentialsIsCustom);
+        setCredentialsEditorKey((k) => k + 1);
+      } else {
+        setSimpleSubject(data.patientEmailSimpleSubject);
+        setSimpleBody(data.patientEmailSimpleBody);
+        setSimpleIsCustom(data.patientEmailSimpleIsCustom);
+        setSimpleEditorKey((k) => k + 1);
+      }
+      toast.success("Reset to the default email");
+    } catch {
+      toast.error("Failed to reset email template");
+    } finally {
+      setResettingEmailTemplate(false);
+    }
+  };
+
+  // Lazily loaded (only once the Branches tile is actually opened) rather than alongside
+  // getMe() above - GetAll is gated by the UserManagement module, so firing it unconditionally
+  // for every role on page load would 403 for anyone who isn't admin.
+  useEffect(() => {
+    if (activeSection !== "branches") return;
+    setLoadingBranches(true);
+    BranchService.getAll()
+      .then((res) => setBranches(res.data ?? []))
+      .catch(() => toast.error("Failed to load branches"))
+      .finally(() => setLoadingBranches(false));
+  }, [activeSection]);
+
+  const handleCreateBranch = async () => {
+    const trimmed = newBranchName.trim();
+    if (!trimmed) {
+      toast.error("Enter a branch name");
+      return;
+    }
+
+    setCreatingBranch(true);
+    try {
+      const data = await BranchService.create({ name: trimmed });
+      setBranches((prev) => [...prev, data.data]);
+      setNewBranchName("");
+      toast.success("Branch created");
+    } catch (err) {
+      const message =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(message || "Failed to create branch");
+    } finally {
+      setCreatingBranch(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -305,7 +499,14 @@ export default function SettingsPage() {
 
   const isAdmin = me.role === "admin";
 
-  const sectionTitle = activeSection === "profile" ? "Your profile" : activeSection === "company" ? "Company profile" : null;
+  const sectionTitle =
+    activeSection === "profile"
+      ? "Your profile"
+      : activeSection === "company"
+        ? "Company profile"
+        : activeSection === "branches"
+          ? "Branches"
+          : null;
 
   return (
     <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
@@ -346,6 +547,14 @@ export default function SettingsPage() {
               title="Company profile"
               description="Branding, billing, currency, and age category ranges."
               onClick={() => setActiveSection("company")}
+            />
+          )}
+          {isAdmin && (
+            <SettingsTile
+              icon={<Building size={22} />}
+              title="Branches"
+              description="Add and manage the hospital's branches/locations."
+              onClick={() => setActiveSection("branches")}
             />
           )}
         </div>
@@ -706,6 +915,196 @@ export default function SettingsPage() {
                 {savingIdleTimeout && <Loader2 size={15} className="animate-spin" />}
                 Save
               </button>
+            </div>
+          </div>
+
+          {/* Patient registration email */}
+          <div className="bg-card border border-border rounded-xl p-6 lg:col-span-2 xl:col-span-3">
+            <h2 className="text-xl font-semibold text-foreground mb-1">Patient registration email</h2>
+            <p className="text-sm text-muted-foreground mb-5">
+              Controls what a patient is emailed when their record is created at reception, and
+              lets you customize the wording of each version.
+            </p>
+
+            <div className="flex items-center gap-3 mb-6">
+              <ToggleButton
+                checked={includeLoginCredentials}
+                onChange={handleTogglePatientEmailMode}
+                disabled={savingPatientEmailMode}
+              />
+              <span className="text-sm font-medium text-foreground">
+                {includeLoginCredentials ? "Include mobile app login details" : "Simple registration notice only"}
+              </span>
+              {savingPatientEmailMode && <Loader2 size={15} className="animate-spin text-muted-foreground" />}
+            </div>
+
+            {/* Variant tabs */}
+            <div className="mb-4 flex items-center gap-2 border-b border-border">
+              {(["credentials", "simple"] as PatientEmailVariant[]).map((variant) => {
+                const isActiveVariant = variant === "credentials" ? includeLoginCredentials : !includeLoginCredentials;
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    onClick={() => setEmailTab(variant)}
+                    className={`relative -mb-px flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition ${
+                      emailTab === variant
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {variant === "credentials" ? "With login details" : "Simple notice"}
+                    {isActiveVariant && (
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                        Currently sent
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* Editor */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Subject</label>
+                <input
+                  type="text"
+                  value={emailTab === "credentials" ? credentialsSubject : simpleSubject}
+                  onChange={(e) =>
+                    emailTab === "credentials" ? setCredentialsSubject(e.target.value) : setSimpleSubject(e.target.value)
+                  }
+                  className="mb-4 w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                />
+
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Message</label>
+                <RichTextEditor
+                  key={`${emailTab}-${emailTab === "credentials" ? credentialsEditorKey : simpleEditorKey}`}
+                  value={emailTab === "credentials" ? credentialsBody : simpleBody}
+                  onChange={(html) => (emailTab === "credentials" ? setCredentialsBody(html) : setSimpleBody(html))}
+                  placeholder="Dear {PatientName}, ..."
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Placeholders: <code className="rounded bg-muted px-1 py-0.5">{"{PatientName}"}</code>{" "}
+                  <code className="rounded bg-muted px-1 py-0.5">{"{HospitalName}"}</code>
+                  {emailTab === "credentials" && (
+                    <>
+                      {" "}
+                      <code className="rounded bg-muted px-1 py-0.5">{"{Username}"}</code>{" "}
+                      <code className="rounded bg-muted px-1 py-0.5">{"{TemporaryPassword}"}</code>{" "}
+                      <code className="rounded bg-muted px-1 py-0.5">{"{LoginDetails}"}</code>
+                    </>
+                  )}
+                  <br />
+                  {emailTab === "credentials"
+                    ? "Everything here is editable, including the closing line and sign-off. {LoginDetails} marks where the username/password box appears — if you remove it, it's still added at the end automatically so credentials are never left out."
+                    : "Everything here is editable, including the closing line and sign-off."}
+                </p>
+
+                <div className="mt-4 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSaveEmailTemplate}
+                    disabled={savingEmailTemplate}
+                    className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingEmailTemplate && <Loader2 size={15} className="animate-spin" />}
+                    Save
+                  </button>
+                  {(emailTab === "credentials" ? credentialsIsCustom : simpleIsCustom) && (
+                    <button
+                      type="button"
+                      onClick={handleResetEmailTemplate}
+                      disabled={resettingEmailTemplate}
+                      className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {resettingEmailTemplate && <Loader2 size={15} className="animate-spin" />}
+                      Reset to default
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Live preview */}
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-medium text-muted-foreground">Preview</label>
+                  {loadingPreview && <Loader2 size={13} className="animate-spin text-muted-foreground" />}
+                </div>
+                <div className="mb-2 truncate rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Subject: </span>
+                  {previewSubject || "…"}
+                </div>
+                <div className="overflow-hidden rounded-md border border-border">
+                  <iframe title="Email preview" srcDoc={previewHtml} sandbox="" className="h-[420px] w-full bg-white" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BRANCHES - admin only */}
+      {activeSection === "branches" && isAdmin && (
+        <div className="max-w-2xl">
+          <div className="bg-card border border-border rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-foreground mb-1">Add a branch</h2>
+            <p className="text-sm text-muted-foreground mb-5">
+              Every branch you add here becomes selectable when creating or editing a staff
+              account. With just the one main branch below, that field stays optional; once
+              there&apos;s more than one, staff creation requires picking one.
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                value={newBranchName}
+                onChange={(e) => setNewBranchName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreateBranch()}
+                placeholder="e.g. Downtown Branch"
+                className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+              />
+              <button
+                type="button"
+                onClick={handleCreateBranch}
+                disabled={creatingBranch || !newBranchName.trim()}
+                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creatingBranch && <Loader2 size={15} className="animate-spin" />}
+                Add branch
+              </button>
+            </div>
+
+            <div className="mt-6 border-t border-border pt-5">
+              {loadingBranches ? (
+                <div className="flex items-center justify-center py-6 text-muted-foreground">
+                  <Loader2 className="animate-spin" size={20} />
+                </div>
+              ) : branches.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No branches yet.</p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {branches.map((b) => (
+                    <li
+                      key={b.branchId}
+                      className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                    >
+                      <span className="text-foreground">{b.name}</span>
+                      <span className="flex items-center gap-2">
+                        {b.isMain && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                            Main
+                          </span>
+                        )}
+                        {!b.isActive && (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                            Inactive
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>

@@ -19,8 +19,18 @@ export const CompanyService = {
         pediatricMaxAgeYears?: number;
         geriatricMinAgeYears?: number;
         idleTimeoutMinutes?: number;
+        includeLoginCredentialsInPatientEmail?: boolean;
+        patientEmailCredentialsSubject?: string;
+        patientEmailCredentialsBody?: string;
+        patientEmailSimpleSubject?: string;
+        patientEmailSimpleBody?: string;
     }) => {
         const { data } = await api.put(ENDPOINTS.COMPANY.UPDATE_SETTINGS, payload);
         return data;
+    },
+
+    previewPatientEmail: async (payload: { includeLoginCredentials: boolean; subject?: string; body?: string }) => {
+        const { data } = await api.post(ENDPOINTS.COMPANY.PREVIEW_PATIENT_EMAIL, payload);
+        return data as { subject: string; html: string };
     },
 }

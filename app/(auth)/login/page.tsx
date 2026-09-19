@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -26,8 +26,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // `loading` alone isn't enough to stop a duplicate submit: it only disables the button
+  // once React actually re-renders, and two submit events fired close together (a fast
+  // double-click, autofill's Enter plus a click, etc.) can both start handleLogin before that
+  // happens. A ref updates synchronously, so this guard works regardless of render timing -
+  // and regardless of what actually fired the second submit, since each one reaches the
+  // server as its own successful login and its own audit log entry.
+  const submittingRef = useRef(false);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
 
     try {
@@ -64,6 +74,7 @@ export default function LoginPage() {
       router.push("/");
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
+      submittingRef.current = false;
       setLoading(false)
     }
   };

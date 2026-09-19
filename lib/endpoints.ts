@@ -7,6 +7,11 @@ export const ENDPOINTS = {
     COMPANY: {
         UPLOAD_LOGO: `/api/company/upload-logo`,
         UPDATE_SETTINGS: `/api/company/settings`,
+        PREVIEW_PATIENT_EMAIL: `/api/company/preview-patient-email`,
+    },
+    BRANCH: {
+        GET_ALL: `/api/branch/get-all`,
+        CREATE: `/api/branch/create`,
     },
     CHAT: {
         GET_CONTACTS: (tab: string) => `/api/chat/contacts${tab ? `?tab=${tab}` : ""}`,

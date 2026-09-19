@@ -49,6 +49,9 @@ export interface UserCreateType {
     gender?: string;
     nationality?: string;
     departmentId?: string;
+    // Optional while the company has only its one main branch, required once a second
+    // branch exists - see UserController's branch validation.
+    branchId?: string;
     hireDate?: string;
 }
 
@@ -63,6 +66,7 @@ export interface UserUpdateType {
     gender?: string;
     nationality?: string;
     departmentId?: string;
+    branchId?: string;
     hireDate?: string;
     // Only rehashed/applied server-side when non-empty - leave unset to keep the current password.
     password?: string;

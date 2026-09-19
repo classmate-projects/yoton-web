@@ -12,10 +12,12 @@ import { countryDetails } from "@/helpers/countyDetails";
 import { SpecializationService } from "@/services/specialization.service";
 import { UserService } from "@/services/user.service";
 import { DepartmentSerivce } from "@/services/department.service";
+import { BranchService } from "@/services/branch.service";
 import { Specialization } from "@/types/Specializations.type";
 import { UserAssignedDoctorCreateType } from "@/types/user.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { DepartmentTypes } from "@/types/department.type";
+import { BranchType } from "@/types/branch.type";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useEffect, Suspense } from "react";
 import { toast } from "sonner";
@@ -36,6 +38,8 @@ function UserRegistrationForm() {
   const [departmentId, setDepartmentId] = useState("");
   const [hireDate, setHireDate] = useState("");
   const [departments, setDepartments] = useState<DepartmentTypes[]>([]);
+  const [branchId, setBranchId] = useState("");
+  const [branches, setBranches] = useState<BranchType[]>([]);
 
 
   // Set when Create comes back 409 "a deleted user already owns this identity" - offers
@@ -88,7 +92,14 @@ function UserRegistrationForm() {
   useEffect(() => {
     fetchAllSpecializations()
     DepartmentSerivce.getAll().then((data) => setDepartments(data || [])).catch(() => {});
+    BranchService.getAll().then((res) => setBranches(res.data || [])).catch(() => {});
   }, [])
+
+  // Optional while the company has only its one main branch, mandatory the moment a second
+  // branch exists - mirrors UserController.ValidateBranchAsync exactly (counts every branch,
+  // not just active ones) so this hint never disagrees with what the server will accept.
+  const branchIsRequired = branches.length > 1;
+  const activeBranches = branches.filter((b) => b.isActive);
 
 
   useEffect(() => {
@@ -144,6 +155,7 @@ function UserRegistrationForm() {
           setGender(user.gender || "");
           setNationality(user.nationality || "");
           setDepartmentId(user.departmentId || "");
+          setBranchId(user.branchId || "");
         }
       } catch (error) {
         console.error("Error loading user edit data from sessionStorage:", error);
@@ -229,6 +241,11 @@ function UserRegistrationForm() {
         return;
       }
 
+      if (branchIsRequired && !branchId) {
+        toast.warning("Select a branch - this company has more than one");
+        return;
+      }
+
       const payload = {
         name,
         username,
@@ -239,6 +256,7 @@ function UserRegistrationForm() {
         gender: gender || undefined,
         nationality: nationality || undefined,
         departmentId: departmentId || undefined,
+        branchId: branchId || undefined,
         hireDate: hireDate || undefined,
       }
 
@@ -293,6 +311,11 @@ function UserRegistrationForm() {
         return;
       }
 
+      if (branchIsRequired && !branchId) {
+        toast.warning("Select a branch - this company has more than one");
+        return;
+      }
+
       const payload = {
         name,
         username,
@@ -303,6 +326,7 @@ function UserRegistrationForm() {
         gender: gender || undefined,
         nationality: nationality || undefined,
         departmentId: departmentId || undefined,
+        branchId: branchId || undefined,
         hireDate: hireDate || undefined,
         password: password || undefined,
       }
@@ -518,6 +542,21 @@ function UserRegistrationForm() {
                 />
               </div>
 
+              {branches.length > 0 && (
+                <div className="w-full flex flex-col gap-2">
+                  <label htmlFor="branch" className={`font-bold text-sm ${branchIsRequired ? "required" : ""}`}>Branch</label>
+                  <SearchableSelect
+                    id="branch"
+                    name="branch"
+                    value={branchId}
+                    onChange={setBranchId}
+                    placeholder={branchIsRequired ? "Select a branch" : "Unspecified"}
+                    options={activeBranches.map((b) => ({ value: b.branchId, label: b.name }))}
+                    className="flex h-11 w-full items-center justify-between gap-1 rounded-xl border border-border bg-card px-4 text-left text-foreground hover:bg-muted transition-colors"
+                  />
+                </div>
+              )}
+
               <div className="w-full">
                 <label htmlFor="hireDate" className="font-bold text-sm">Hire Date</label>
                 <div className="mt-2">
@@ -719,6 +758,21 @@ function UserRegistrationForm() {
                   className="flex h-11 w-full items-center justify-between gap-1 rounded-xl border border-border bg-card px-4 text-left text-foreground hover:bg-muted transition-colors"
                 />
               </div>
+
+              {branches.length > 0 && (
+                <div className="w-full flex flex-col gap-2">
+                  <label htmlFor="branch" className={`font-bold text-sm ${branchIsRequired ? "required" : ""}`}>Branch</label>
+                  <SearchableSelect
+                    id="branch"
+                    name="branch"
+                    value={branchId}
+                    onChange={setBranchId}
+                    placeholder={branchIsRequired ? "Select a branch" : "Unspecified"}
+                    options={activeBranches.map((b) => ({ value: b.branchId, label: b.name }))}
+                    className="flex h-11 w-full items-center justify-between gap-1 rounded-xl border border-border bg-card px-4 text-left text-foreground hover:bg-muted transition-colors"
+                  />
+                </div>
+              )}
 
               <div className="w-full">
                 <label htmlFor="hireDate" className="font-bold text-sm">Hire Date</label>
