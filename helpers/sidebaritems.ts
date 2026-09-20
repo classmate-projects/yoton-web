@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, Hash, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -67,13 +67,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Configurable Lists",
         navLink: "/config-lists",
         icon: ListPlus,
-        group: "Configuration"
-    },
-    {
-        id: 21,
-        name: "ICD Codes",
-        navLink: "/icd-codes",
-        icon: Hash,
         group: "Configuration"
     },
     // ---------------- User Modules ----------------

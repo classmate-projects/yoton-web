@@ -15,6 +15,7 @@ interface getAllResponse {
   // goes through the plain toggle or the password-gated Rehire flow below.
   isTerminated: boolean;
   branchId: string | null;
+  userImage?: string | null;
 }
 
 import Link from "next/link";
@@ -41,6 +42,7 @@ import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { BranchService } from "@/services/branch.service";
 import { BranchType } from "@/types/branch.type";
 import { getUserDetail } from "@/lib/userDetail";
+import { backendAssetUrl } from "@/lib/backendAsset";
 
 const TERMINATION_REASONS = [
   { value: "Retired60Plus", label: "Retired (60+ years)" },
@@ -64,6 +66,31 @@ interface DayShiftRow {
 const emptyWeek = (): DayShiftRow[] =>
   DAY_NAMES.map(() => ({ active: false, startTime: "08:00", endTime: "16:00" }));
 
+// Shows the uploaded profile photo, falling back to initials when there isn't one or it
+// fails to load (e.g. the file was removed from the server).
+function UserAvatar({ name, image }: { name: string; image?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const src = backendAssetUrl(image);
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+
+  if (src && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path
+      <img
+        src={src}
+        alt={name}
+        onError={() => setFailed(true)}
+        className="h-11 w-11 shrink-0 rounded-full object-cover"
+      />
+    );
+  }
+  return (
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
+      {initials}
+    </div>
+  );
+}
+
 export default function UserManagement() {
 
   const router = useRouter();
@@ -72,6 +99,7 @@ export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeStatus, setActiveStatus] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
+
 
   const [branches, setBranches] = useState<BranchType[]>([]);
   // Defaults to the signed-in staff member's own branch (not "All") - most admins managing
@@ -340,6 +368,60 @@ export default function UserManagement() {
     fetchAllUsers();
   };
 
+  const renderActions = (user: getAllResponse) => (
+    <div className="flex flex-wrap items-center gap-1">
+      <button
+        onClick={() => openHistory(user)}
+        title="Employment History"
+        className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer text-blue-600"
+      >
+        <HistoryIcon size={18} />
+      </button>
+
+      {user.isActive && (
+        <button
+          onClick={() => openTerminate(user)}
+          title="Terminate Employment"
+          className="hover:bg-orange-100 p-2 rounded-full transition-colors cursor-pointer text-orange-600"
+        >
+          <UserX size={18} />
+        </button>
+      )}
+
+      <button
+        onClick={() => handleDelete(user.id, user.name)}
+        title="Delete User"
+        className="hover:bg-red-100 p-2 rounded-full transition-colors cursor-pointer"
+      >
+        <DeleteIcon color="red" size={18} />
+      </button>
+
+      {!user.isTerminated && (
+        <button
+          onClick={() => {
+            sessionStorage.setItem("editUser", JSON.stringify(user));
+            router.push("/user-registration?edit=true");
+          }}
+          title="Edit User"
+          className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer"
+        >
+          <EditIcon color="blue" size={18} />
+        </button>
+      )}
+
+      {user.role.toLowerCase() === "nurse" && (
+        <button
+          onClick={() => openShiftsManager(user)}
+          title="Manage Shifts"
+          className="hover:bg-purple-100 p-2 rounded-full transition-colors cursor-pointer text-purple-600"
+        >
+          <CalendarClock size={18} />
+        </button>
+      )}
+
+    </div>
+  );
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center">
@@ -434,129 +516,76 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <div className="card mt-8">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Username</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Phone</th>
-              <th>Last loggedin</th>
-              <th>Created at</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={8} className="text-center py-20">
-                  <LoadingSpinner />
-                </td>
-              </tr>
-            ) : filteredUsers
-              .length > 0 ? (
-              filteredUsers
-                .slice()
-                .map((user) => (
-                  <tr
-                    key={user.id}
-                    className={
-                      user.isTerminated
-                        ? "bg-red-100/80 dark:bg-red-950/30 text-muted-foreground line-through decoration-red-400"
-                        : !user.isActive
-                        ? "bg-red-50/50 opacity-80"
-                        : ""
-                    }
+      <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+        {isLoading ? (
+          <div className="card col-span-full flex justify-center py-20">
+            <LoadingSpinner />
+          </div>
+        ) : filteredUsers.length > 0 ? (
+          filteredUsers.map((user) => (
+            <div
+              key={user.id}
+              className={`card flex flex-col gap-3 p-4 ${
+                user.isTerminated
+                  ? "bg-red-100/80 dark:bg-red-950/30"
+                  : !user.isActive
+                  ? "bg-red-50/50 opacity-80"
+                  : ""
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <UserAvatar name={user.name} image={user.userImage} />
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`truncate font-semibold ${
+                      user.isTerminated ? "text-muted-foreground line-through decoration-red-400" : ""
+                    }`}
+                    title={user.name}
                   >
-                    <td className="font-semibold">
-                      <span className="inline-flex items-center gap-2">
-                        {user.name}
-                        {user.isTerminated && (
-                          <span className="no-underline rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                            Terminated
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    <td>{user.username}</td>
-                    <td>{user.email}</td>
-                    <td className="capitalize">{user.role}</td>
-                    <td>{user.phone}</td>
-                    <td>{getTime(user.lastLogin)}</td>
-                    <td>{getTime(user.createdAt)}</td>
-                    <td>
-                      <div className="flex items-center gap-4">
+                    {user.name}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground" title={user.username}>
+                    @{user.username}
+                  </p>
+                </div>
+                <ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} />
+              </div>
 
-                        <ToggleButton
-                          checked={user.isActive}
-                          onChange={() => handleToggleUser(user)}
-                        />
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold capitalize">
+                  {user.role}
+                </span>
+                {user.isTerminated && (
+                  <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                    Terminated
+                  </span>
+                )}
+                {!user.isActive && !user.isTerminated && (
+                  <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    Inactive
+                  </span>
+                )}
+              </div>
 
-                        <button
-                          onClick={() => openHistory(user)}
-                          title="Employment History"
-                          className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer text-blue-600"
-                        >
-                          <HistoryIcon size={18} />
-                        </button>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                <dt className="text-muted-foreground">Email</dt>
+                <dd className="truncate" title={user.email}>{user.email}</dd>
+                <dt className="text-muted-foreground">Phone</dt>
+                <dd className="truncate">{user.phone}</dd>
+                <dt className="text-muted-foreground">Last login</dt>
+                <dd className="truncate">{getTime(user.lastLogin)}</dd>
+                <dt className="text-muted-foreground">Created</dt>
+                <dd className="truncate">{getTime(user.createdAt)}</dd>
+              </dl>
 
-                        {user.isActive && (
-                          <button
-                            onClick={() => openTerminate(user)}
-                            title="Terminate Employment"
-                            className="hover:bg-orange-100 p-2 rounded-full transition-colors cursor-pointer text-orange-600"
-                          >
-                            <UserX size={18} />
-                          </button>
-                        )}
-
-                        <button
-                          onClick={() => handleDelete(user.id, user.name)}
-                          title="Delete User"
-                          className="hover:bg-red-100 p-2 rounded-full transition-colors cursor-pointer"
-                        >
-                          <DeleteIcon color="red" />
-                        </button>
-
-                        {!user.isTerminated && (
-                          <button
-                            onClick={() => {
-                              sessionStorage.setItem("editUser", JSON.stringify(user));
-                              router.push("/user-registration?edit=true");
-                            }}
-                            title="Edit User"
-                            className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer"
-                          >
-                            <EditIcon color="blue" />
-                          </button>
-                        )}
-
-                        {user.role.toLowerCase() === "nurse" && (
-                          <button
-                            onClick={() => openShiftsManager(user)}
-                            title="Manage Shifts"
-                            className="hover:bg-purple-100 p-2 rounded-full transition-colors cursor-pointer text-purple-600"
-                          >
-                            <CalendarClock size={18} />
-                          </button>
-                        )}
-
-                      </div>
-                    </td>
-                  </tr>
-                ))
-            ) : (
-              <tr>
-                <td colSpan={8} className="text-center py-20 text-gray-600">
-                  No users found
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              <div className="mt-auto border-t border-border pt-2">
+                {renderActions(user)}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="card col-span-full py-20 text-center text-gray-600">No users found</div>
+        )}
       </div>
 
       {shiftsTarget && (

@@ -29,8 +29,8 @@ interface ListItemManagerProps {
 }
 
 // Shared CRUD + bulk-upload widget behind every admin-managed code/picklist screen —
-// used both as the tab content on the generic Configurable Lists page and standalone
-// on single-purpose pages like ICD Codes. Callers own the page header/hint copy and,
+// used as the tab content on the Configurable Lists page. The caller owns the page
+// header/hint copy and,
 // if they let the admin switch listType (like a tab bar), should mount this with
 // key={listType} so each list gets a clean instance instead of carrying over another
 // list's in-progress form/bulk-upload state.

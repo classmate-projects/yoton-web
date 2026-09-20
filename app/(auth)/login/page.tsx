@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -11,12 +11,46 @@ import {
   LockKeyhole,
   ShieldCheck,
   UserRound,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import Image from "next/image";
 import logo from "@/public/yoton_logo.png";
 import pkg from "@/package.json";
+import { backendAssetUrl } from "@/lib/backendAsset";
+import {
+  forgetAccount,
+  getInitials,
+  getRecentAccounts,
+  maskIdentifier,
+  rememberAccount,
+  type RecentAccount,
+} from "@/lib/recentAccounts";
+
+// Photo when there is one, initials otherwise (or if the photo fails to load).
+function RecentAccountAvatar({ account, selected }: { account: RecentAccount; selected: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const src = backendAssetUrl(account.userImage);
+  const ring = selected ? "ring-2 ring-primary ring-offset-2 ring-offset-card" : "";
+
+  if (src && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path
+      <img
+        src={src}
+        alt=""
+        onError={() => setFailed(true)}
+        className={`h-14 w-14 rounded-full object-cover ${ring}`}
+      />
+    );
+  }
+  return (
+    <div className={`flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 text-base font-bold text-primary ${ring}`}>
+      {account.initials || <UserRound size={22} />}
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,6 +59,42 @@ export default function LoginPage() {
   const [emailOrUserName, setEmailOrUserName] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [recentAccounts, setRecentAccounts] = useState<RecentAccount[]>([]);
+  // Set while the username came from tapping a recent account - the field then shows the
+  // masked value and can't be edited, until "Use a different account" clears it.
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  // Browsers only offer to save (and autofill) a field that is type="password". Where the
+  // browser supports it, the password is a plain text input masked by CSS instead, so the
+  // browser's own password manager has nothing to save. Unsupported browsers keep a real
+  // password input rather than showing the password in the clear. Decided in an effect so
+  // the first render matches the server's.
+  const [maskWithCss, setMaskWithCss] = useState(false);
+
+  useEffect(() => {
+    setRecentAccounts(getRecentAccounts());
+    setMaskWithCss(typeof CSS !== "undefined" && CSS.supports("-webkit-text-security", "disc"));
+  }, []);
+
+  const selectAccount = (account: RecentAccount) => {
+    setEmailOrUserName(account.identifier);
+    setSelectedAccountId(account.userId);
+    setPassword("");
+    passwordRef.current?.focus();
+  };
+
+  const clearSelectedAccount = () => {
+    setEmailOrUserName("");
+    setSelectedAccountId(null);
+    setPassword("");
+  };
+
+  const removeAccount = (userId: string) => {
+    setRecentAccounts(forgetAccount(userId));
+    if (selectedAccountId === userId) clearSelectedAccount();
+  };
 
   // `loading` alone isn't enough to stop a duplicate submit: it only disables the button
   // once React actually re-renders, and two submit events fired close together (a fast
@@ -47,7 +117,7 @@ export default function LoginPage() {
         body: JSON.stringify({ emailOrUserName, password }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || "Login failed");
 
       localStorage.setItem("yoton_token", data.body.token);
@@ -70,6 +140,13 @@ export default function LoginPage() {
           branchId: data.body.branchId,
         }),
       );
+
+      rememberAccount({
+        userId: data.body.userId,
+        identifier: emailOrUserName.trim(),
+        initials: getInitials(data.body.name ?? ""),
+        userImage: data.body.userImage,
+      });
 
       toast.success(`Welcome back, ${data.body.name}!`);
       router.push("/");
@@ -171,7 +248,7 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <form onSubmit={handleLogin} className="space-y-5">
+              <form onSubmit={handleLogin} autoComplete="off" className="space-y-5">
                 <div className="space-y-2">
                   <label
                     htmlFor="login-username"
@@ -186,14 +263,24 @@ export default function LoginPage() {
                     <input
                       id="login-username"
                       type="text"
-                      value={emailOrUserName}
+                      value={selectedAccountId ? maskIdentifier(emailOrUserName) : emailOrUserName}
                       onChange={(e) => setEmailOrUserName(e.target.value)}
+                      readOnly={selectedAccountId !== null}
                       placeholder="Enter your username"
                       className="h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-4 text-base! text-foreground placeholder:text-muted-foreground! focus-visible:bg-card!  focus-visible:ring-transparent!"
-                      autoComplete="username"
+                      autoComplete="off"
                       required
                     />
                   </div>
+                  {selectedAccountId && (
+                    <button
+                      type="button"
+                      onClick={clearSelectedAccount}
+                      className="text-xs font-semibold text-primary transition-colors hover:text-primary/75"
+                    >
+                      Use a different account
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -211,12 +298,21 @@ export default function LoginPage() {
                     </span>
                     <input
                       id="login-password"
-                      type={showPassword ? "text" : "password"}
+                      ref={passwordRef}
+                      type={showPassword || maskWithCss ? "text" : "password"}
+                      style={maskWithCss && !showPassword ? ({ WebkitTextSecurity: "disc" } as React.CSSProperties) : undefined}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
                       className="h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-12! text-base! text-foreground! placeholder:text-muted-foreground! focus-visible:bg-card!  focus-visible:ring-transparent!"
-                      autoComplete="current-password"
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-bwignore="true"
+                      data-form-type="other"
                       required
                     />
                     <button
@@ -263,6 +359,43 @@ export default function LoginPage() {
                   </Link>
                 </div>
               </form>
+
+              {recentAccounts.length > 0 && (
+                <div className="mt-6 border-t border-border pt-5">
+                  <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Recent accounts
+                  </p>
+                  <p className="mt-1 text-center text-xs text-muted-foreground">
+                    Tap one to fill in the username. You&apos;ll still need your password.
+                  </p>
+                  <ul className="mt-4 flex flex-wrap justify-center gap-3">
+                    {recentAccounts.map((account) => (
+                      <li key={account.userId} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => selectAccount(account)}
+                          aria-label={`Sign in as ${maskIdentifier(account.identifier)}`}
+                          className="flex w-24 cursor-pointer flex-col items-center gap-1.5 rounded-xl p-2 transition-colors hover:bg-muted"
+                        >
+                          <RecentAccountAvatar account={account} selected={selectedAccountId === account.userId} />
+                          <span className="w-full truncate text-center text-xs text-muted-foreground">
+                            {maskIdentifier(account.identifier)}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeAccount(account.userId)}
+                          aria-label="Remove this account from this device"
+                          title="Remove from this device"
+                          className="absolute right-0 top-0 grid h-5 w-5 cursor-pointer place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
+                        >
+                          <X size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             <p className="mt-8 text-center text-xs text-muted-foreground lg:hidden">

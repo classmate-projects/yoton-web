@@ -232,6 +232,11 @@ function UserRegistrationForm() {
       await UserService.create_assign_doctor(payload)
     } catch (error) {
       console.error(error);
+      toast.error(
+        axios.isAxiosError(error)
+          ? error.response?.data?.message || "Failed to save the doctor profile"
+          : "Failed to save the doctor profile"
+      );
     }
   }
 
@@ -241,6 +246,16 @@ function UserRegistrationForm() {
     try {
       if (!name || !username || !password || !email || !role || !phone) {
         toast.warning("Please fill all the required fields");
+        return;
+      }
+
+      if (!departmentId) {
+        toast.warning("Select a department");
+        return;
+      }
+
+      if (role === "doctor" && !selectedSpecialization) {
+        toast.warning("Select a specialisation - it's required for doctors");
         return;
       }
 
@@ -258,7 +273,8 @@ function UserRegistrationForm() {
         phone: phoneCode + phone,
         gender: gender || undefined,
         nationality: nationality || undefined,
-        departmentId: departmentId || undefined,
+        departmentId,
+        specializationId: role === "doctor" ? selectedSpecialization : undefined,
         branchId: branchId || undefined,
         hireDate: hireDate || undefined,
       }
@@ -266,7 +282,7 @@ function UserRegistrationForm() {
       const data = await UserService.create(payload)
 
       if (data.data.role === "doctor") {
-        handleDoctorAssign(data.data.userId)
+        await handleDoctorAssign(data.data.userId)
       }
 
       resetdata()
@@ -311,6 +327,11 @@ function UserRegistrationForm() {
     try {
       if (!name || !username || !email || !role || !phone) {
         toast.warning("Please fill all the required fields");
+        return;
+      }
+
+      if (role === "doctor" && !selectedSpecialization) {
+        toast.warning("Select a specialisation - it's required for doctors");
         return;
       }
 
@@ -750,13 +771,13 @@ function UserRegistrationForm() {
               </div>
 
               <div className="w-full flex flex-col gap-2">
-                <label htmlFor="department" className="font-bold text-sm">Department</label>
+                <label htmlFor="department" className="font-bold text-sm required">Department</label>
                 <SearchableSelect
                   id="department"
                   name="department"
                   value={departmentId}
                   onChange={setDepartmentId}
-                  placeholder="Unspecified"
+                  placeholder="Select department"
                   options={activeDepartments.map((d) => ({ value: d.departmentId, label: d.name }))}
                   className="flex h-11 w-full items-center justify-between gap-1 rounded-xl border border-border bg-card px-4 text-left text-foreground hover:bg-muted transition-colors"
                 />
@@ -801,7 +822,7 @@ function UserRegistrationForm() {
           {showAssignDoctor && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
               <div className="flex flex-col gap-1 w-full">
-                <label htmlFor="specialization" className="font-bold text-sm">Specialisation</label>
+                <label htmlFor="specialization" className="font-bold text-sm required">Specialisation</label>
                 <SearchableSelect
                   id="specialization"
                   name="specialization"

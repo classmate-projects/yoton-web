@@ -52,7 +52,9 @@ export interface UserCreateType {
     phone: string
     gender?: string;
     nationality?: string;
-    departmentId?: string;
+    departmentId: string;
+    // Required only for doctors - see UserController.Create.
+    specializationId?: string;
     // Optional while the company has only its one main branch, required once a second
     // branch exists - see UserController's branch validation.
     branchId?: string;

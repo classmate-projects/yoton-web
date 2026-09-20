@@ -5,12 +5,10 @@ import { ListPlus } from "lucide-react";
 import ListItemManager from "@/components/configLists/ListItemManager";
 import { ConfigListType } from "@/types/configList.type";
 
-// ICD/diagnosis codes have their own dedicated page (see the "Codes" sidebar
-// group) since that list is large enough and important enough to warrant its
-// own screen — everything else still shares this generic tabbed manager.
 const LIST_TYPES: { value: ConfigListType; label: string; hint: string }[] = [
   { value: "Investigation", label: "Investigation", hint: "Searchable when ordering lab/radiology investigations" },
   { value: "Treatment", label: "Treatment", hint: "Searchable in the doctor workbench's Treatment section" },
+  { value: "Diagnosis", label: "ICD Code", hint: "The diagnosis code list doctors search when recording a diagnosis. Add codes one at a time, paste a batch, or upload a filled-in Excel template for large sets like ICD-10/ICD-11" },
   { value: "OrderType", label: "Order Type", hint: "Regular, Stat, PRN, IV Push, Oral, Vaginal, Rectal, etc." },
   { value: "Route", label: "Route of Administration", hint: "Oral, Dental, and other routes" },
   { value: "DosageUnit", label: "Dosage Unit", hint: "ml, mg, tablet, capsule, vial, bottle, puff, drops" },
@@ -32,9 +30,8 @@ export default function ConfigListsPage() {
           <ListPlus className="text-primary" /> Configurable Lists
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage the picklists used across the doctor workbench — investigations, treatments, medication order
-          types, routes, dosage units, and frequencies. Looking for ICD/diagnosis codes? That&apos;s under
-          Codes &rarr; ICD Codes.
+          Manage the picklists used across the doctor workbench — investigations, treatments, ICD diagnosis codes,
+          medication order types, routes, dosage units, and frequencies.
         </p>
       </div>
 
