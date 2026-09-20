@@ -13,6 +13,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
 import { ReceptionService } from "@/services/reception.service";
+import { AuthService } from "@/services/auth.service";
 import { ConfigListService } from "@/services/configList.service";
 import { PatientFullDetailsType, PatientGetAllType, VisitListItemType } from "@/types/reception.type";
 import {
@@ -74,6 +75,17 @@ const matchesPatientSearch = (p: PatientGetAllType, term: string) => {
 export default function PatientRecordsPage() {
   const [patients, setPatients] = useState<PatientGetAllType[]>([]);
   const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
+
+  // Company setting (Settings > Company settings > Patient registration email): whether
+  // patient emails carry mobile-app login details. When it's off there's nothing to send, so
+  // the "email login details" button is hidden rather than left to fail. Stays hidden until
+  // the setting has actually been read.
+  const [loginDetailsEmailEnabled, setLoginDetailsEmailEnabled] = useState(false);
+  useEffect(() => {
+    AuthService.getMe()
+      .then((me) => setLoginDetailsEmailEnabled(!!me?.includeLoginCredentialsInPatientEmail))
+      .catch(() => {});
+  }, []);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -563,18 +575,20 @@ export default function PatientRecordsPage() {
       >
         <MdOutlineUploadFile className="text-blue-600" size={18} />
       </button>
-      <button
-        onClick={() => handleResendWelcomeEmail(patient.opId, patient.name)}
-        disabled={resendingEmailId === patient.opId}
-        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        title="Resend App Login Email"
-      >
-        {resendingEmailId === patient.opId ? (
-          <Loader2 className="text-blue-600 animate-spin" size={18} />
-        ) : (
-          <MdOutlineMailOutline className="text-blue-600" size={18} />
-        )}
-      </button>
+      {loginDetailsEmailEnabled && (
+        <button
+          onClick={() => handleResendWelcomeEmail(patient.opId, patient.name)}
+          disabled={resendingEmailId === patient.opId}
+          className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Email login details to patient"
+        >
+          {resendingEmailId === patient.opId ? (
+            <Loader2 className="text-blue-600 animate-spin" size={18} />
+          ) : (
+            <MdOutlineMailOutline className="text-blue-600" size={18} />
+          )}
+        </button>
+      )}
       <button
         onClick={() => confirmDelete(patient.opId, patient.name)}
         className="hover:bg-red-50 p-2 rounded transition-colors cursor-pointer"

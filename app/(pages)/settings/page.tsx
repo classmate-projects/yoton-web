@@ -579,7 +579,7 @@ export default function SettingsPage() {
 
   const isAdmin = me.role === "admin";
 
-  const sectionTitle = activeSection === "profile" ? "Your profile" : activeSection === "company" ? "Company profile" : null;
+  const sectionTitle = activeSection === "profile" ? "Your profile" : activeSection === "company" ? "Company settings" : null;
 
   return (
     <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
@@ -617,7 +617,7 @@ export default function SettingsPage() {
           {isAdmin && (
             <SettingsTile
               icon={<Building2 size={22} />}
-              title="Company profile"
+              title="Company settings"
               description="Branding, billing, currency, branches, and age category ranges."
               onClick={() => setActiveSection("company")}
             />
@@ -1089,7 +1089,8 @@ export default function SettingsPage() {
             <h2 className="text-xl font-semibold text-foreground mb-1">Patient registration email</h2>
             <p className="text-sm text-muted-foreground mb-5">
               Controls what a patient is emailed when their record is created at reception, and
-              lets you customize the wording of each version.
+              lets you customize the wording of each version. Turning login details off also
+              removes the &quot;email login details&quot; button from Patient Records.
             </p>
 
             <div className="flex items-center gap-3 mb-6">
