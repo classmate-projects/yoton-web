@@ -163,26 +163,37 @@ export default function FormBuilderCanvas({
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap gap-2">
-          {FIELD_PALETTE.map(({ type, label, icon: Icon }) => (
-            <PaletteButton key={type} type={type} label={label} icon={Icon} onClick={() => addFieldFromPalette(type)} />
-          ))}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+        {/* Tool palette - grouped into its own raised panel (distinct surface + shadow) so it
+            reads as a toolbox rather than blending into the plain field cards on the canvas.
+            Left column, two per row, pinned in place (sticky) so it never scrolls out of
+            reach while the canvas on the right is being filled with fields. */}
+        <div className="shrink-0 rounded-xl border border-border bg-muted/40 p-3 shadow-lg shadow-black/10 sm:sticky sm:top-4 sm:w-56 sm:self-start">
+          <p className="mb-2.5 px-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Add a field</p>
+          <div className="grid grid-cols-2 gap-2">
+            {FIELD_PALETTE.map(({ type, label, icon: Icon }) => (
+              <PaletteButton key={type} type={type} label={label} icon={Icon} onClick={() => addFieldFromPalette(type)} />
+            ))}
+          </div>
         </div>
 
-        <div className="flex flex-col">
-          <RowGap index={0} />
-          {rows.length === 0 && (
-            <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-              Click a field above to add it, or drag it onto the canvas to place it precisely.
-            </p>
-          )}
-          {rows.map((row, rowIndex) => (
-            <Fragment key={row.id}>
-              <RowView row={row} selectedFieldId={selectedFieldId} onSelectField={setSelectedFieldId} onUpdateField={updateField} onDeleteField={deleteField} />
-              <RowGap index={rowIndex + 1} />
-            </Fragment>
-          ))}
+        {/* Canvas - right column, its own bounded, independently scrolling area so a long
+            form never balloons the whole page (and pushes the palette away with it). */}
+        <div className="min-w-0 flex-1 max-h-[70vh] overflow-y-auto rounded-lg border border-dashed border-border/60 p-3">
+          <div className="flex flex-col">
+            <RowGap index={0} />
+            {rows.length === 0 && (
+              <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                Click a field on the left to add it, or drag it onto the canvas to place it precisely.
+              </p>
+            )}
+            {rows.map((row, rowIndex) => (
+              <Fragment key={row.id}>
+                <RowView row={row} selectedFieldId={selectedFieldId} onSelectField={setSelectedFieldId} onUpdateField={updateField} onDeleteField={deleteField} />
+                <RowGap index={rowIndex + 1} />
+              </Fragment>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -202,9 +213,11 @@ function PaletteButton({ type, label, icon: Icon, onClick }: { type: MedicalForm
       {...attributes}
       type="button"
       onClick={onClick}
-      className="flex cursor-grab items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary active:cursor-grabbing"
+      title={label}
+      className="flex cursor-grab flex-col items-center gap-1 rounded-lg border border-border bg-card px-2 py-2.5 text-center text-[11px] font-semibold leading-tight text-muted-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:text-primary hover:shadow-md active:translate-y-0 active:cursor-grabbing active:shadow-sm"
     >
-      <Icon size={14} /> {label}
+      <Icon size={16} />
+      <span>{label}</span>
     </button>
   );
 }

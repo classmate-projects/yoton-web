@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { AlignCenter, AlignLeft, AlignRight, Bold, Italic, Underline, Upload } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Bold, Italic, Underline, Upload, X } from "lucide-react";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { FormTemplateService } from "@/services/medicalForm.service";
 import { MedicalFormField, MedicalFormFieldOption } from "@/types/medicalForm.type";
@@ -73,7 +73,12 @@ export default function FieldEditorPanel({
   };
 
   const toggleScoring = (enabled: boolean) => {
-    onChange({ ...field, scoring: { enabled, options: field.scoring?.options ?? [] } });
+    onChange({ ...field, scoring: { options: [], ...field.scoring, enabled } });
+  };
+
+  const setLimit = (key: "lowerLimit" | "upperLimit", raw: string) => {
+    if (!field.scoring) return;
+    onChange({ ...field, scoring: { ...field.scoring, [key]: raw === "" ? undefined : Number(raw) } });
   };
 
   return (
@@ -216,6 +221,38 @@ export default function FieldEditorPanel({
           {field.scoring?.enabled && !isChoiceType && (
             <p className="text-xs text-muted-foreground">The number entered here is added directly to the total score.</p>
           )}
+          {field.scoring?.enabled && (
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-3">
+              <p className="text-xs font-semibold text-muted-foreground">
+                Normal range <span className="font-normal">(optional - leave blank for no limit on that side)</span>
+              </p>
+              <div className="flex items-center gap-3">
+                <label className="flex flex-1 flex-col gap-1">
+                  <span className="text-[11px] text-muted-foreground">Lower limit</span>
+                  <input
+                    type="number"
+                    placeholder="No lower limit"
+                    value={field.scoring.lowerLimit ?? ""}
+                    onChange={(e) => setLimit("lowerLimit", e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </label>
+                <label className="flex flex-1 flex-col gap-1">
+                  <span className="text-[11px] text-muted-foreground">Upper limit</span>
+                  <input
+                    type="number"
+                    placeholder="No upper limit"
+                    value={field.scoring.upperLimit ?? ""}
+                    onChange={(e) => setLimit("upperLimit", e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </label>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                A value inside this range is normal. Outside it, the field is highlighted as abnormal wherever this form is filled or reviewed.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -272,12 +309,34 @@ export default function FieldEditorPanel({
               </option>
             ))}
           </select>
-          <input
-            type="color"
-            value={field.formatting.color}
-            onChange={(e) => onChange({ ...field, formatting: { ...field.formatting, color: e.target.value } })}
-            className="h-9 w-10 cursor-pointer rounded-md border border-border p-1"
-          />
+          <label className="flex items-center gap-1" title="Text color">
+            <span className="text-[11px] text-muted-foreground">Text</span>
+            <input
+              type="color"
+              value={field.formatting.color}
+              onChange={(e) => onChange({ ...field, formatting: { ...field.formatting, color: e.target.value } })}
+              className="h-9 w-10 cursor-pointer rounded-md border border-border p-1"
+            />
+          </label>
+          <label className="flex items-center gap-1" title="Cell background color">
+            <span className="text-[11px] text-muted-foreground">Cell</span>
+            <input
+              type="color"
+              value={field.formatting.backgroundColor === "transparent" ? "#ffffff" : field.formatting.backgroundColor}
+              onChange={(e) => onChange({ ...field, formatting: { ...field.formatting, backgroundColor: e.target.value } })}
+              className="h-9 w-10 cursor-pointer rounded-md border border-border p-1"
+            />
+          </label>
+          {field.formatting.backgroundColor !== "transparent" && (
+            <button
+              type="button"
+              onClick={() => onChange({ ...field, formatting: { ...field.formatting, backgroundColor: "transparent" } })}
+              title="Clear cell background"
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:border-red-300 hover:text-red-600"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(["marginTop", "marginBottom", "paddingX", "paddingY"] as const).map((key) => (

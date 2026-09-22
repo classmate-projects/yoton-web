@@ -32,6 +32,7 @@ export interface FieldFormatting {
   align: FieldAlign;
   fontSize: string; // Tailwind text-size token, e.g. "text-sm" | "text-base" | "text-lg" | "text-xl" | "text-2xl"
   color: string; // hex, e.g. "#1f2937"
+  backgroundColor: string; // hex, or "transparent" for no cell background
   bold: boolean;
   italic: boolean;
   underline: boolean;
@@ -45,6 +46,7 @@ export const DEFAULT_FORMATTING: FieldFormatting = {
   align: "left",
   fontSize: "text-base",
   color: "#1f2937",
+  backgroundColor: "transparent",
   bold: false,
   italic: false,
   underline: false,
@@ -65,6 +67,13 @@ export interface MedicalFormFieldScoring {
   // Populated for checkbox/radio/dropdown (one entry per option, mirrors `options` by value).
   // Left empty for a scored text/number field, where the entered value itself is the score.
   options: MedicalFormFieldOption[];
+  // The "normal" band for this field's own score contribution - below lowerLimit or above
+  // upperLimit is abnormal. Either end left unset means unbounded on that side. Compared
+  // against the same number a scored choice field's selected option carries, or the raw
+  // entered value for a scored text/number field - i.e. exactly what ComputeScore already
+  // sums per field, just checked per-field here instead of totaled.
+  lowerLimit?: number;
+  upperLimit?: number;
 }
 
 export interface MedicalFormField {
@@ -135,6 +144,45 @@ export interface ImageMarking {
 export type MedicalFormFieldValue = string | string[] | MedicalFormValues[] | ImageMarking[] | null;
 export type MedicalFormValues = Record<string, MedicalFormFieldValue>;
 
+// Mirrors the per-field half of SavedMedicalFormController.SumFieldScores on the frontend, so
+// a field can be highlighted as abnormal live while filling/viewing it - not just after a
+// save round-trips through the server. Returns null when the field isn't a scorable type/kind
+// of value at all (nothing to compare against a range), as opposed to 0.
+export function computeFieldContribution(field: MedicalFormField, value: MedicalFormFieldValue): number | null {
+  if (!field.scoring?.enabled) return null;
+  const options = field.scoring.options;
+
+  if (options.length > 0) {
+    const selected = Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : typeof value === "string" ? [value] : [];
+    if (selected.length === 0) return null;
+    let total = 0;
+    let matched = false;
+    for (const s of selected) {
+      const match = options.find((o) => o.value === s);
+      if (match?.score !== undefined) {
+        total += match.score;
+        matched = true;
+      }
+    }
+    return matched ? total : null;
+  }
+
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+// A field is only flagged once it actually has a contribution AND at least one limit is set -
+// an unfilled field, or a scored field with no lowerLimit/upperLimit configured at all, is
+// never treated as abnormal.
+export function isFieldAbnormal(field: MedicalFormField, value: MedicalFormFieldValue): boolean {
+  const { lowerLimit, upperLimit } = field.scoring ?? {};
+  if (lowerLimit === undefined && upperLimit === undefined) return false;
+  const contribution = computeFieldContribution(field, value);
+  if (contribution === null) return false;
+  return (lowerLimit !== undefined && contribution < lowerLimit) || (upperLimit !== undefined && contribution > upperLimit);
+}
+
 export interface FormTemplateType {
   formTemplateId: string;
   name: string;
@@ -161,6 +209,11 @@ export interface SavedMedicalFormType {
   fieldsJson: string; // JSON-serialized MedicalFormRow[] (a snapshot at save time)
   valuesJson: string;
   totalScore: number | null;
+  // Server-computed (never trust a client self-report): true if any scored field's value
+  // fell outside its own configured lower/upper limit at save time - lets the saved-forms
+  // list flag a "critical" entry without needing to re-parse and re-walk its whole field
+  // tree just to find out.
+  hasAbnormalValue: boolean;
   createdByUserId: string | null;
   createdByName: string | null;
   createdAt: string;

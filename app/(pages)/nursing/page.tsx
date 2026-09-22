@@ -444,6 +444,12 @@ function NurseWorkbenchInner() {
       setSummary(summaryRes.data);
       setChart(chartRes.data);
       setEncounterId(encounterRes.data?.patientEncounterId || null);
+      // The backend can now resolve/attach the patient's own active visit itself (see
+      // EnsureActiveEncounter) even when this open didn't already know which one to use -
+      // always trust whatever it actually ended up using, not just what was passed in above.
+      if (encounterRes.data?.visitId) {
+        setCurrentVisitId(encounterRes.data.visitId);
+      }
       if (!canStartEncounter) {
         toast("Select a nurse to start recording for this patient.", { icon: "ℹ️" });
       }
@@ -2494,7 +2500,12 @@ function NurseWorkbenchInner() {
               </div>
             </div>
 
-            <PatientMedicalFormsSection patientId={selectedPatientId} visitId={currentVisitId} />
+            <PatientMedicalFormsSection
+              patientId={selectedPatientId}
+              visitId={currentVisitId}
+              patientName={summary?.name}
+              patientNumber={summary?.opNumber || summary?.opId}
+            />
           </div>
         )}
 

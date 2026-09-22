@@ -196,7 +196,13 @@ export default function ElectronicMedicalRecordPage() {
               )}
             </div>
 
-            <PatientMedicalFormsSection patientId={selectedPatientId} visitId={null} readOnly />
+            <PatientMedicalFormsSection
+              patientId={selectedPatientId}
+              visitId={null}
+              readOnly
+              patientName={summary?.name}
+              patientNumber={summary?.opNumber || summary?.opId}
+            />
           </div>
         )}
       </div>

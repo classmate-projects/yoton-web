@@ -29,11 +29,16 @@ export default function DepartmentSpecialtyMapper({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    // Both endpoints return a bare array (Ok(departments)/Ok(specs)), not a { data } envelope
+    // - DepartmentSerivce.getAll()/SpecializationService.getAll() already unwrap axios's own
+    // response.data once, so the resolved value here IS the list. Reading `.data` off it again
+    // (the original bug) silently produced undefined -> `?? []` -> nothing ever showed up,
+    // even though the admin had created departments/specialties.
     DepartmentSerivce.getAll()
-      .then((res) => setDepartments((res.data ?? []).filter((d: DepartmentTypes) => d.isActive)))
+      .then((data) => setDepartments((data ?? []).filter((d: DepartmentTypes) => d.isActive)))
       .catch(() => toast.error("Failed to load departments"));
     SpecializationService.getAll()
-      .then((res) => setSpecializations((res.data ?? []).filter((s: SpecializationTypes) => s.isActive)))
+      .then((data) => setSpecializations((data ?? []).filter((s: SpecializationTypes) => s.isActive)))
       .catch(() => toast.error("Failed to load specialties"));
   }, []);
 

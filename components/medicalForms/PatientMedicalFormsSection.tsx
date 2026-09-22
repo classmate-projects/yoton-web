@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { ClipboardList, RefreshCw, Send, X } from "lucide-react";
+import { AlertTriangle, ClipboardList, Printer, RefreshCw, Search, Send, X } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { FormTemplateService, SavedMedicalFormService } from "@/services/medicalForm.service";
@@ -19,6 +19,7 @@ import {
 import { UserType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import MedicalFormRenderer from "./MedicalFormRenderer";
+import MedicalFormPrintout from "./MedicalFormPrintout";
 
 const currentUserId = (): string | undefined => {
   try {
@@ -57,15 +58,23 @@ export default function PatientMedicalFormsSection({
   patientId,
   visitId,
   readOnly = false,
+  patientName = "Patient",
+  patientNumber,
 }: {
   patientId: string | null;
   visitId: string | null;
   // The EMR case-sheet only ever shows what's already been saved, never a fill/edit surface.
   readOnly?: boolean;
+  // Printout header only - purely cosmetic, so callers that don't already have this in scope
+  // can safely leave it out rather than fetching it specially just for this section.
+  patientName?: string;
+  patientNumber?: string;
 }) {
   const [available, setAvailable] = useState<AvailableFormTemplatesType>({ mostUsed: [], allForms: [] });
   const [savedForms, setSavedForms] = useState<SavedMedicalFormType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [printingSaved, setPrintingSaved] = useState<SavedMedicalFormType | null>(null);
 
   const [fillingTemplate, setFillingTemplate] = useState<FormTemplateType | null>(null);
   const [fillingValues, setFillingValues] = useState<MedicalFormValues>({});
@@ -233,6 +242,18 @@ export default function PatientMedicalFormsSection({
     confirmDeleteToast(<span>Remove this saved form?</span>, () => attemptDelete(saved));
   };
 
+  // One search box covers both lists - which templates can still be filled, and what's
+  // already been saved for this patient - so a long history (or a large template catalog)
+  // stays easy to scan without needing two separate filter inputs.
+  const query = searchTerm.trim().toLowerCase();
+  const filteredMostUsed = query ? available.mostUsed.filter((t) => t.name.toLowerCase().includes(query)) : available.mostUsed;
+  const filteredAllForms = query ? available.allForms.filter((t) => t.name.toLowerCase().includes(query)) : available.allForms;
+  const filteredSavedForms = query
+    ? savedForms.filter(
+        (f) => f.formTemplateName.toLowerCase().includes(query) || (f.createdByName ?? "").toLowerCase().includes(query)
+      )
+    : savedForms;
+
   if (!patientId) return null;
 
   return (
@@ -251,17 +272,30 @@ export default function PatientMedicalFormsSection({
         </button>
       </div>
 
+      {(available.allForms.length > 0 || savedForms.length > 0) && (
+        <div className="relative">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search medical forms..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-10 w-full text-sm pl-9"
+          />
+        </div>
+      )}
+
       {isLoading ? (
         <LoadingSpinner />
       ) : (
         <>
-          {!readOnly && available.allForms.length > 0 && (
+          {!readOnly && (filteredMostUsed.length > 0 || filteredAllForms.length > 0) && (
             <div className="flex flex-col gap-2">
-              {available.mostUsed.length > 0 && (
+              {filteredMostUsed.length > 0 && (
                 <>
                   <p className="text-xs font-semibold uppercase text-muted-foreground">Most used</p>
                   <div className="flex flex-wrap gap-2">
-                    {available.mostUsed.map((t) => (
+                    {filteredMostUsed.map((t) => (
                       <button
                         key={t.formTemplateId}
                         onClick={() => openFill(t)}
@@ -273,44 +307,69 @@ export default function PatientMedicalFormsSection({
                   </div>
                 </>
               )}
-              <p className="mt-1 text-xs font-semibold uppercase text-muted-foreground">All forms</p>
-              <div className="flex flex-wrap gap-2">
-                {available.allForms.map((t) => (
-                  <button
-                    key={t.formTemplateId}
-                    onClick={() => openFill(t)}
-                    className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary"
-                  >
-                    {t.name}
-                  </button>
-                ))}
-              </div>
+              {filteredAllForms.length > 0 && (
+                <>
+                  <p className="mt-1 text-xs font-semibold uppercase text-muted-foreground">All forms</p>
+                  <div className="flex flex-wrap gap-2">
+                    {filteredAllForms.map((t) => (
+                      <button
+                        key={t.formTemplateId}
+                        onClick={() => openFill(t)}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary"
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
-          {savedForms.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No medical forms saved for this patient yet.</p>
+          {filteredSavedForms.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {savedForms.length === 0 ? "No medical forms saved for this patient yet." : "No saved forms match your search."}
+            </p>
           ) : (
             <div className="flex flex-col gap-2 border-t border-border pt-3">
-              {savedForms.map((f) => (
-                <button
+              {filteredSavedForms.map((f) => (
+                <div
                   key={f.savedMedicalFormId}
-                  onClick={() => openSaved(f)}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-left hover:bg-muted/50"
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 hover:bg-muted/50"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{f.formTemplateName}</p>
+                  <button onClick={() => openSaved(f)} className="min-w-0 flex-1 text-left">
+                    <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-foreground">
+                      {f.formTemplateName}
+                      {f.hasAbnormalValue && (
+                        <span
+                          title="This form has a value outside its normal range"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-600"
+                        >
+                          <AlertTriangle size={11} /> Abnormal
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {f.createdByName ?? "Unknown"} · {new Date(f.createdAt).toLocaleString()}
                       {f.totalScore !== null && ` · Score: ${f.totalScore}`}
                     </p>
+                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {!f.canEdit && (
+                      <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                        View only
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setPrintingSaved(f)}
+                      title="Print this form"
+                      aria-label="Print this form"
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                    >
+                      <Printer size={15} />
+                    </button>
                   </div>
-                  {!f.canEdit && (
-                    <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                      View only
-                    </span>
-                  )}
-                </button>
+                </div>
               ))}
             </div>
           )}
@@ -364,7 +423,17 @@ export default function PatientMedicalFormsSection({
           <div className="card flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-border shadow-2xl">
             <div className="flex items-center justify-between gap-4 p-6 pb-4">
               <div>
-                <h3 className="text-lg font-semibold text-foreground">{viewingSaved.formTemplateName}</h3>
+                <h3 className="flex items-center gap-1.5 text-lg font-semibold text-foreground">
+                  {viewingSaved.formTemplateName}
+                  {viewingSaved.hasAbnormalValue && (
+                    <span
+                      title="This form has a value outside its normal range"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-600"
+                    >
+                      <AlertTriangle size={11} /> Abnormal
+                    </span>
+                  )}
+                </h3>
                 <p className="text-xs text-muted-foreground">
                   {viewingSaved.createdByName ?? "Unknown"} · {new Date(viewingSaved.createdAt).toLocaleString()}
                   {viewingSaved.totalScore !== null && ` · Score: ${viewingSaved.totalScore}`}
@@ -375,9 +444,19 @@ export default function PatientMedicalFormsSection({
                   </p>
                 )}
               </div>
-              <button onClick={() => setViewingSaved(null)} className="text-muted-foreground hover:text-foreground">
-                <X size={18} />
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={() => setPrintingSaved(viewingSaved)}
+                  title="Print this form"
+                  aria-label="Print this form"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                >
+                  <Printer size={16} />
+                </button>
+                <button onClick={() => setViewingSaved(null)} className="text-muted-foreground hover:text-foreground">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6">
               <MedicalFormRenderer
@@ -504,6 +583,22 @@ export default function PatientMedicalFormsSection({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ---------------- Print a saved form ---------------- */}
+      {printingSaved && (
+        <MedicalFormPrintout
+          formTemplateName={printingSaved.formTemplateName}
+          patientName={patientName}
+          patientNumber={patientNumber || patientId}
+          createdByName={printingSaved.createdByName}
+          createdAt={printingSaved.createdAt}
+          totalScore={printingSaved.totalScore}
+          hasAbnormalValue={printingSaved.hasAbnormalValue}
+          rows={parseRows(printingSaved.fieldsJson)}
+          values={parseValues(printingSaved.valuesJson)}
+          onClose={() => setPrintingSaved(null)}
+        />
       )}
     </div>
   );

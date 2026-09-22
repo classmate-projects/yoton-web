@@ -1,9 +1,10 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 import {
   DEFAULT_FORMATTING,
   ImageMarking,
+  isFieldAbnormal,
   MedicalFormField,
   MedicalFormFieldValue,
   MedicalFormRow,
@@ -83,9 +84,11 @@ function formattingStyle(formatting: MedicalFormField["formatting"]): React.CSSP
     // override the theme-aware `text-foreground`/`text-muted-foreground` classes every case
     // below already carries, which is exactly what made heading/subheading/paragraph text
     // (styled directly on the element, not through a separately-colored child span like
-    // FieldLabel) unreadable in dark mode: the untouched default (#1f2937, a light-mode dark
-    // gray) was winning over the theme class on every render, customized or not.
+    // FieldLabel used to be) unreadable in dark mode: the untouched default (#1f2937, a
+    // light-mode dark gray) was winning over the theme class on every render, customized or not.
     color: formatting.color === DEFAULT_FORMATTING.color ? undefined : formatting.color,
+    backgroundColor: formatting.backgroundColor === "transparent" ? undefined : formatting.backgroundColor,
+    borderRadius: formatting.backgroundColor === "transparent" ? undefined : 8,
     fontWeight: formatting.bold ? 700 : undefined,
     fontStyle: formatting.italic ? "italic" : undefined,
     textDecoration: formatting.underline ? "underline" : undefined,
@@ -112,6 +115,15 @@ function FieldBlock({
   const style = formattingStyle(field.formatting);
   const className = `${field.formatting.fontSize} ${alignClass(field.formatting.align)}`;
   const disabled = mode === "view";
+  // Live in both modes on purpose - immediate feedback while filling, and just as visible
+  // when reviewing an already-saved form later (spec: "help in reviewing").
+  const abnormal = isFieldAbnormal(field, value);
+  // Always reserve the same border/padding box, whether or not the field is currently
+  // abnormal - only its color changes. Previously this box only existed once a typed value
+  // crossed into its abnormal range, which made that one field suddenly grow a 2px border +
+  // 8px padding mid-typing while its row-siblings didn't - visibly shifting/misaligning it
+  // relative to the rest of the row at exactly the moment someone was filling the form in.
+  const abnormalClass = `rounded-lg border-2 p-2 transition-colors ${abnormal ? "border-red-400 bg-red-500/10" : "border-transparent"}`;
 
   switch (field.type) {
     case "heading": {
@@ -142,8 +154,8 @@ function FieldBlock({
     case "datetime": {
       const inputType = field.type === "datetime" ? "datetime-local" : field.type;
       return (
-        <label style={style} className="flex flex-col gap-1.5">
-          <FieldLabel field={field} />
+        <label style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
+          <FieldLabel field={field} abnormal={abnormal} />
           <input
             type={inputType}
             disabled={disabled}
@@ -159,8 +171,8 @@ function FieldBlock({
 
     case "textarea":
       return (
-        <label style={style} className="flex flex-col gap-1.5">
-          <FieldLabel field={field} />
+        <label style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
+          <FieldLabel field={field} abnormal={abnormal} />
           <textarea
             disabled={disabled}
             required={field.required}
@@ -175,8 +187,8 @@ function FieldBlock({
 
     case "dropdown":
       return (
-        <label style={style} className="flex flex-col gap-1.5">
-          <FieldLabel field={field} />
+        <label style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
+          <FieldLabel field={field} abnormal={abnormal} />
           <select
             disabled={disabled}
             required={field.required}
@@ -196,8 +208,8 @@ function FieldBlock({
 
     case "radio":
       return (
-        <fieldset style={style} className="flex flex-col gap-1.5">
-          <FieldLabel field={field} />
+        <fieldset style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
+          <FieldLabel field={field} abnormal={abnormal} />
           <div className="flex flex-col gap-2">
             {(field.options ?? []).map((option) => (
               <label key={option} className="flex items-center gap-2 text-sm">
@@ -224,8 +236,8 @@ function FieldBlock({
         onChange(next);
       };
       return (
-        <fieldset style={style} className="flex flex-col gap-1.5">
-          <FieldLabel field={field} />
+        <fieldset style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
+          <FieldLabel field={field} abnormal={abnormal} />
           <div className="flex flex-col gap-2">
             {(field.options ?? []).map((option) => (
               <label key={option} className="flex items-center gap-2 text-sm">
@@ -324,11 +336,20 @@ function FieldBlock({
   }
 }
 
-function FieldLabel({ field }: { field: MedicalFormField }) {
+function FieldLabel({ field, abnormal = false }: { field: MedicalFormField; abnormal?: boolean }) {
+  // Only overrides the theme-aware default when the admin actually picked a color - same
+  // "don't fight dark mode" rule formattingStyle applies to the field's own text/background;
+  // this label used to hardcode its own color regardless of that setting.
+  const color = field.formatting.color === DEFAULT_FORMATTING.color ? undefined : field.formatting.color;
   return (
-    <span className="text-sm font-semibold text-foreground/90">
+    <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground/90" style={{ color }}>
       {field.label}
       {field.required && <span className="text-red-500"> *</span>}
+      {abnormal && (
+        <span title="Outside the normal range" className="flex items-center gap-1 text-xs font-semibold text-red-600">
+          <AlertTriangle size={13} /> Abnormal
+        </span>
+      )}
     </span>
   );
 }

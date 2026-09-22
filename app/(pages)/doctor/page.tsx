@@ -2638,6 +2638,8 @@ function DoctorWorkbenchInner() {
                 <PatientMedicalFormsSection
                   patientId={selectedPatientId}
                   visitId={summary?.latestEncounter?.visitId ?? visitIdParam ?? null}
+                  patientName={summary?.name}
+                  patientNumber={summary?.opNumber || summary?.opId}
                 />
               </div>
             </div>
