@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { AlertTriangle, ClipboardList, Printer, RefreshCw, Search, Send, X } from "lucide-react";
+import { AlertTriangle, ClipboardList, Pencil, Plus, Printer, RefreshCw, Search, Send, X } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { FormTemplateService, SavedMedicalFormService } from "@/services/medicalForm.service";
@@ -125,6 +125,15 @@ export default function PatientMedicalFormsSection({
     setFillingTemplate(template);
     setFillingValues({});
   };
+
+  // Looks up the CURRENT template definition for a saved form's own row - used to offer
+  // "Fill your own" straight from an already-saved entry someone else filled. Deliberately the
+  // live template (from `available`), not the saved row's own fieldsJson snapshot, so a new
+  // fill always starts from whatever the template looks like now, not whatever it looked like
+  // when that other person filled it. Returns undefined (hiding the button) if the template
+  // was deactivated since, or isn't visible to this viewer's own department/specialty.
+  const findAvailableTemplate = (formTemplateId: string): FormTemplateType | undefined =>
+    available.allForms.find((t) => t.formTemplateId === formTemplateId);
 
   const submitFill = async () => {
     if (!patientId || !visitId || !fillingTemplate) {
@@ -355,11 +364,36 @@ export default function PatientMedicalFormsSection({
                     </p>
                   </button>
                   <div className="flex shrink-0 items-center gap-2">
+                    {!readOnly && f.canEdit && (
+                      <button
+                        onClick={() => openSaved(f)}
+                        title="Edit this form"
+                        aria-label="Edit this form"
+                        className="flex items-center gap-1.5 rounded-full border border-primary/30 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
+                      >
+                        <Pencil size={13} /> Edit
+                      </button>
+                    )}
                     {!f.canEdit && (
                       <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
                         View only
                       </span>
                     )}
+                    {!readOnly &&
+                      !f.canEdit &&
+                      (() => {
+                        const template = findAvailableTemplate(f.formTemplateId);
+                        return template ? (
+                          <button
+                            onClick={() => openFill(template)}
+                            title="Fill your own copy of this form for this patient"
+                            aria-label="Fill your own copy of this form for this patient"
+                            className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary"
+                          >
+                            <Plus size={13} /> Fill your own
+                          </button>
+                        ) : null;
+                      })()}
                     <button
                       onClick={() => setPrintingSaved(f)}
                       title="Print this form"
@@ -598,6 +632,11 @@ export default function PatientMedicalFormsSection({
           rows={parseRows(printingSaved.fieldsJson)}
           values={parseValues(printingSaved.valuesJson)}
           onClose={() => setPrintingSaved(null)}
+          canEdit={!readOnly && printingSaved.canEdit}
+          onEdit={() => {
+            setPrintingSaved(null);
+            openSaved(printingSaved);
+          }}
         />
       )}
     </div>

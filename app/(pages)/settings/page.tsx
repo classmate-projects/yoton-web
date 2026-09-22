@@ -20,6 +20,7 @@ import { CompanyService } from "@/services/company.service";
 import { getInitials } from "@/lib/getInitials";
 import { patchUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import { resizeImageFile } from "@/lib/resizeImage";
 import { getAvatarColor } from "@/lib/avatarColor";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { countryDetails } from "@/helpers/countyDetails";
@@ -161,7 +162,8 @@ export default function SettingsPage() {
     if (!avatarFile || !me) return;
     setUploadingAvatar(true);
     try {
-      const data = await AuthService.uploadAvatar(avatarFile);
+      const resized = await resizeImageFile(avatarFile);
+      const data = await AuthService.uploadAvatar(resized);
       setMe({ ...me, userImage: data.userImage });
       patchUserDetail({ userImage: data.userImage });
       setAvatarFile(null);

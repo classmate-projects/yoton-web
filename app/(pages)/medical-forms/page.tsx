@@ -6,8 +6,9 @@ import { ArrowLeft, ClipboardList, Pencil, Plus } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
 import { FormTemplateService } from "@/services/medicalForm.service";
-import { FormTemplateType, MedicalFormRow, normalizeRows } from "@/types/medicalForm.type";
+import { FormTemplateType, MedicalFormField, MedicalFormRow, normalizeRows } from "@/types/medicalForm.type";
 import FormBuilderCanvas from "@/components/medicalForms/FormBuilderCanvas";
+import MedicalFormRenderer from "@/components/medicalForms/MedicalFormRenderer";
 import DepartmentSpecialtyMapper from "@/components/medicalForms/DepartmentSpecialtyMapper";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
@@ -87,6 +88,17 @@ export default function MedicalFormsPage() {
     }
   };
 
+  // From the live preview only (an image field's resize handle) - patches the field's own
+  // schema (e.g. imageWidth), not a per-fill value, so it's saved as part of the template.
+  const updateFieldConfig = (fieldId: string, patch: Partial<MedicalFormField>) => {
+    setRows((prev) =>
+      prev.map((row) => ({
+        ...row,
+        fields: row.fields.map((f) => (f.id === fieldId ? { ...f, ...patch } : f)),
+      }))
+    );
+  };
+
   const handleToggleActive = async (template: FormTemplateType) => {
     try {
       await FormTemplateService.setActive(template.formTemplateId, !template.isActive);
@@ -101,7 +113,7 @@ export default function MedicalFormsPage() {
   if (isEditorOpen) {
     return (
       <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
-        <div className="mx-auto flex max-w-4xl flex-col gap-6">
+        <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsEditorOpen(false)}
@@ -122,7 +134,7 @@ export default function MedicalFormsPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Wound Assessment"
-                className="h-11 text-base"
+                className="h-11 max-w-md text-base"
               />
             </label>
             <label className="flex items-center gap-2 text-sm">
@@ -136,9 +148,28 @@ export default function MedicalFormsPage() {
             </label>
           </div>
 
-          <div className="card p-5">
-            <h2 className="mb-4 text-lg font-semibold text-foreground">Fields</h2>
-            <FormBuilderCanvas rows={rows} onChange={setRows} />
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] xl:items-start">
+            <div className="card p-5">
+              <h2 className="mb-4 text-lg font-semibold text-foreground">Fields</h2>
+              <FormBuilderCanvas rows={rows} onChange={setRows} />
+            </div>
+
+            <div className="card p-5 xl:sticky xl:top-4">
+              <h2 className="mb-1 text-lg font-semibold text-foreground">Live preview</h2>
+              <p className="mb-4 text-sm text-muted-foreground">
+                How this form will look to the doctor or nurse filling it in - updates as you edit the fields on the
+                left. Drag an image field&apos;s bottom-right corner to resize it.
+              </p>
+              {rows.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                  Add fields on the left to see a preview here.
+                </p>
+              ) : (
+                <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-border p-4">
+                  <MedicalFormRenderer rows={rows} mode="view" values={{}} onFieldConfigChange={updateFieldConfig} />
+                </div>
+              )}
+            </div>
           </div>
 
           <button

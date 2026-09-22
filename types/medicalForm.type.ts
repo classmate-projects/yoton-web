@@ -89,6 +89,10 @@ export interface MedicalFormField {
   childFields?: MedicalFormField[]; // only meaningful for type "group" - the per-row field template (flat, no columns - a repeatable section's own row is small enough that up/down reordering is enough)
   maxDuplicates?: number; // only meaningful for type "group" - unlimited rows when unset
   imagePath?: string; // only meaningful for type "image" - the backend-relative uploaded path
+  // Only meaningful for type "image" - display width in px, dragged from the builder's live
+  // preview (see ImageAnnotationCanvas's resize handle). Unset means natural size (capped to
+  // its container's width).
+  imageWidth?: number;
 }
 
 // The top-level field tree is an ordered list of rows, each holding 1+ fields rendered side

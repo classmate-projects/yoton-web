@@ -53,6 +53,17 @@ export function forgetAccount(userId: string): RecentAccount[] {
   return remaining;
 }
 
+// The image is snapshotted into this list at login time (see rememberAccount), so
+// changing your photo from Settings later left the login page's tile showing the old one
+// until the next full login. Called from patchUserDetail so every place that updates the
+// signed-in user's own avatar keeps this list in sync too, without reordering it like
+// rememberAccount does.
+export function updateRecentAccountImage(userId: string, userImage: string | null | undefined) {
+  const accounts = getRecentAccounts();
+  if (!accounts.some((a) => a.userId === userId)) return;
+  save(accounts.map((a) => (a.userId === userId ? { ...a, userImage } : a)));
+}
+
 // Shows only the first 3 characters, followed by a fixed run of dots so the true length
 // isn't revealed either. Very short identifiers reveal less, so the mask never gives away
 // the whole thing.

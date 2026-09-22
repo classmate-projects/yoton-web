@@ -80,12 +80,12 @@ function UserAvatar({ name, image }: { name: string; image?: string | null }) {
         src={src}
         alt={name}
         onError={() => setFailed(true)}
-        className="h-11 w-11 shrink-0 rounded-full object-cover"
+        className="h-10 w-10 shrink-0 rounded-full object-cover"
       />
     );
   }
   return (
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-lg font-bold text-primary">
       {initials}
     </div>
   );
@@ -369,11 +369,11 @@ export default function UserManagement() {
   };
 
   const renderActions = (user: getAllResponse) => (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="flex items-center justify-evenly">
       <button
         onClick={() => openHistory(user)}
         title="Employment History"
-        className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer text-blue-600"
+        className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer text-blue-600"
       >
         <HistoryIcon size={18} />
       </button>
@@ -382,7 +382,7 @@ export default function UserManagement() {
         <button
           onClick={() => openTerminate(user)}
           title="Terminate Employment"
-          className="hover:bg-orange-100 p-2 rounded-full transition-colors cursor-pointer text-orange-600"
+          className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer text-orange-600"
         >
           <UserX size={18} />
         </button>
@@ -391,7 +391,7 @@ export default function UserManagement() {
       <button
         onClick={() => handleDelete(user.id, user.name)}
         title="Delete User"
-        className="hover:bg-red-100 p-2 rounded-full transition-colors cursor-pointer"
+        className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer"
       >
         <DeleteIcon color="red" size={18} />
       </button>
@@ -403,7 +403,7 @@ export default function UserManagement() {
             router.push("/user-registration?edit=true");
           }}
           title="Edit User"
-          className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer"
+          className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer"
         >
           <EditIcon color="blue" size={18} />
         </button>
@@ -413,7 +413,7 @@ export default function UserManagement() {
         <button
           onClick={() => openShiftsManager(user)}
           title="Manage Shifts"
-          className="hover:bg-purple-100 p-2 rounded-full transition-colors cursor-pointer text-purple-600"
+          className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer text-purple-600"
         >
           <CalendarClock size={18} />
         </button>
@@ -551,23 +551,22 @@ export default function UserManagement() {
                 <ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} />
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold capitalize">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold capitalize text-primary">
                   {user.role}
                 </span>
-                {user.isTerminated && (
+                {user.isTerminated ? (
                   <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                     Terminated
                   </span>
-                )}
-                {!user.isActive && !user.isTerminated && (
+                ) : !user.isActive ? (
                   <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                     Inactive
                   </span>
-                )}
+                ) : null}
               </div>
 
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
                 <dt className="text-muted-foreground">Email</dt>
                 <dd className="truncate" title={user.email}>{user.email}</dd>
                 <dt className="text-muted-foreground">Phone</dt>
@@ -578,7 +577,7 @@ export default function UserManagement() {
                 <dd className="truncate">{getTime(user.createdAt)}</dd>
               </dl>
 
-              <div className="mt-auto border-t border-border pt-2">
+              <div className="mt-auto border-t border-border pt-2.5">
                 {renderActions(user)}
               </div>
             </div>

@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import ApiLoadingBar from "@/components/ApiLoadingBar";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import MicrosoftClarity from "@/components/MicrosoftClarity";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,6 +43,7 @@ export default function RootLayout({
       className={`${geistSans.variable} h-full antialiased scroll-smooth`}
     >
       <body className="min-h-full">
+        <MicrosoftClarity />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

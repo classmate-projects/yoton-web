@@ -21,13 +21,17 @@ interface MedicalFormRendererProps {
   mode: "fill" | "view";
   values: MedicalFormValues;
   onChange?: (fieldId: string, value: MedicalFormFieldValue) => void;
+  // Present only for the builder's own live preview - lets an "image" field's diagram be
+  // dragged to a display size that's then saved as part of the template, rather than a
+  // per-fill value. Never passed for the end-user fill view or a saved form's read-only view.
+  onFieldConfigChange?: (fieldId: string, patch: Partial<MedicalFormField>) => void;
 }
 
 // Top-level render engine, reused by three places: the builder's live preview, the end-user
 // fill view, and the read-only saved-form view. Each row renders as its own CSS grid so its
 // fields sit side by side as columns - row/column position is just array position (no
 // separate `order` field to keep in sync after a drag-and-drop move, see FormBuilderCanvas).
-export default function MedicalFormRenderer({ rows, mode, values, onChange }: MedicalFormRendererProps) {
+export default function MedicalFormRenderer({ rows, mode, values, onChange, onFieldConfigChange }: MedicalFormRendererProps) {
   return (
     <div className="flex flex-col gap-4">
       {rows.map((row) => (
@@ -39,6 +43,7 @@ export default function MedicalFormRenderer({ rows, mode, values, onChange }: Me
               mode={mode}
               value={values[field.id] ?? null}
               onChange={(value) => onChange?.(field.id, value)}
+              onFieldConfigChange={onFieldConfigChange}
             />
           ))}
         </div>
@@ -54,11 +59,13 @@ export function MedicalFormFieldsRenderer({
   mode,
   values,
   onChange,
+  onFieldConfigChange,
 }: {
   fields: MedicalFormField[];
   mode: "fill" | "view";
   values: MedicalFormValues;
   onChange?: (fieldId: string, value: MedicalFormFieldValue) => void;
+  onFieldConfigChange?: (fieldId: string, patch: Partial<MedicalFormField>) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -69,6 +76,7 @@ export function MedicalFormFieldsRenderer({
           mode={mode}
           value={values[field.id] ?? null}
           onChange={(value) => onChange?.(field.id, value)}
+          onFieldConfigChange={onFieldConfigChange}
         />
       ))}
     </div>
@@ -106,11 +114,13 @@ function FieldBlock({
   mode,
   value,
   onChange,
+  onFieldConfigChange,
 }: {
   field: MedicalFormField;
   mode: "fill" | "view";
   value: MedicalFormFieldValue;
   onChange: (value: MedicalFormFieldValue) => void;
+  onFieldConfigChange?: (fieldId: string, patch: Partial<MedicalFormField>) => void;
 }) {
   const style = formattingStyle(field.formatting);
   const className = `${field.formatting.fontSize} ${alignClass(field.formatting.align)}`;
@@ -318,7 +328,16 @@ function FieldBlock({
       return (
         <div style={style} className="flex flex-col gap-1.5">
           <FieldLabel field={field} />
-          <ImageAnnotationCanvas imagePath={field.imagePath} value={markings} mode={mode} onChange={(next) => onChange(next)} />
+          <ImageAnnotationCanvas
+            imagePath={field.imagePath}
+            value={markings}
+            mode={mode}
+            onChange={(next) => onChange(next)}
+            width={field.imageWidth}
+            onResizeWidth={
+              onFieldConfigChange ? (imageWidth) => onFieldConfigChange(field.id, { imageWidth }) : undefined
+            }
+          />
         </div>
       );
     }

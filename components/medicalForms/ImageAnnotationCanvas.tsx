@@ -45,11 +45,20 @@ export default function ImageAnnotationCanvas({
   value,
   mode,
   onChange,
+  width,
+  onResizeWidth,
 }: {
   imagePath: string | undefined;
   value: ImageMarking[];
   mode: "fill" | "view";
   onChange: (markings: ImageMarking[]) => void;
+  // Persisted display width in px (unset = natural size, capped to the container). Only ever
+  // read/written from the builder's live preview - see onResizeWidth below.
+  width?: number;
+  // Present only when this render is the builder's own live preview (never on the end-user
+  // fill view or a saved form's read-only view, where resizing the template's image would be
+  // meaningless) - its presence is what turns the resize handle on.
+  onResizeWidth?: (width: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -59,8 +68,30 @@ export default function ImageAnnotationCanvas({
   const [drawing, setDrawing] = useState<{ startX: number; startY: number; x: number; y: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [textDraft, setTextDraft] = useState<{ x: number; y: number; value: string } | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
 
   const disabled = mode === "view";
+
+  const handleResizePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!onResizeWidth) return;
+
+    const startX = e.clientX;
+    const startWidth = imgRef.current?.clientWidth ?? width ?? 200;
+    setIsResizing(true);
+
+    const handleMove = (ev: PointerEvent) => {
+      onResizeWidth(Math.max(80, Math.round(startWidth + (ev.clientX - startX))));
+    };
+    const handleUp = () => {
+      setIsResizing(false);
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  };
 
   useEffect(() => {
     const img = imgRef.current;
@@ -245,6 +276,7 @@ export default function ImageAnnotationCanvas({
           ref={imgRef}
           src={backendAssetUrl(imagePath) ?? ""}
           alt=""
+          style={width ? { width, height: "auto" } : undefined}
           className="max-w-full rounded-lg border border-border"
           onLoad={() => imgRef.current && setSize({ width: imgRef.current.clientWidth, height: imgRef.current.clientHeight })}
         />
@@ -255,6 +287,13 @@ export default function ImageAnnotationCanvas({
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
         />
+        {onResizeWidth && (
+          <div
+            onPointerDown={handleResizePointerDown}
+            title="Drag to resize"
+            className={`absolute -bottom-1.5 -right-1.5 h-4 w-4 cursor-nwse-resize rounded-sm border-2 border-card bg-primary shadow transition-transform ${isResizing ? "scale-125" : "hover:scale-110"}`}
+          />
+        )}
         {textDraft && (
           <input
             autoFocus
