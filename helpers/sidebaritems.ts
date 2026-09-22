@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -244,6 +244,19 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Audit Log",
         navLink: "/audit-log",
         icon: ScrollText,
+        group: "Configuration"
+    },
+
+    // Admin-authored medical form templates (see Yoton-API/Helpers/ModuleKeys.cs's
+    // FormBuilder, AdminOnly like Departments/ConfigLists/Reports - master reference data
+    // that shapes what other roles see). Building/mapping templates lives here; filling one
+    // out happens in Doctor/Nurse Workbench's own "Medical Forms" section, ungated by this
+    // module.
+    {
+        id: 32,
+        name: "Medical Forms",
+        navLink: "/medical-forms",
+        icon: ClipboardList,
         group: "Configuration"
     },
 

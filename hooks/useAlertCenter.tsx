@@ -6,6 +6,7 @@ import { getSignalRConnection } from "@/lib/signalR";
 import { ReceptionService } from "@/services/reception.service";
 import { EmrService } from "@/services/emr.service";
 import { PharmacyService } from "@/services/pharmacy.service";
+import { SavedMedicalFormService } from "@/services/medicalForm.service";
 import { ensureNotificationPermission, showAlertNotification } from "@/lib/notifications";
 
 export interface AlertItem {
@@ -302,6 +303,75 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       }).catch(() => {});
     };
   }, [isAdmin, userId]);
+
+  // ---------------- Medical form handed over to me (any role that can fill one) ----------------
+  // Same "broadcast + client-side targetUserId filter" shape as encounter corrections above -
+  // gated on userId being present rather than one specific role, since a form can be handed
+  // to whichever doctor/nurse/other clinical role the sender picked.
+  useEffect(() => {
+    if (!userId) return;
+    let isMounted = true;
+    SavedMedicalFormService.getMyPendingHandovers()
+      .then((res) => {
+        if (!isMounted) return;
+        const existing: AlertItem[] = (res.data ?? []).map(
+          (h: { savedMedicalFormId: string; formTemplateName: string; patientName: string | null; fromUserName: string | null }) => ({
+            id: `handover-${h.savedMedicalFormId}`,
+            navLink: "/doctor",
+            title: "Medical form awaiting your response",
+            message: `${h.fromUserName ?? "A colleague"} handed you "${h.formTemplateName}" for ${h.patientName ?? "a patient"}`,
+            timestamp: Date.now(),
+            read: false,
+          })
+        );
+        setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let isMounted = true;
+
+    const handleRequested = (event: { savedMedicalFormId: string; targetUserId: string; formTemplateName: string; patientName: string | null }) => {
+      if (!isMounted || event.targetUserId !== userId) return;
+      pushAlert(
+        {
+          id: `handover-${event.savedMedicalFormId}`,
+          navLink: "/doctor",
+          title: "Medical form awaiting your response",
+          message: `A colleague handed you "${event.formTemplateName}" for ${event.patientName ?? "a patient"}`,
+          timestamp: Date.now(),
+        },
+        <span>A medical form was handed to you for <b>{event.patientName ?? "a patient"}</b></span>
+      );
+    };
+    const handleResolved = (event: { savedMedicalFormId: string }) => {
+      if (!isMounted) return;
+      dropAlert(`handover-${event.savedMedicalFormId}`);
+    };
+
+    const connect = async () => {
+      const connection = await getSignalRConnection();
+      if (!isMounted) return;
+      connection.off("savedMedicalFormHandoverRequested", handleRequested);
+      connection.off("savedMedicalFormHandoverResolved", handleResolved);
+      connection.on("savedMedicalFormHandoverRequested", handleRequested);
+      connection.on("savedMedicalFormHandoverResolved", handleResolved);
+    };
+    connect().catch(() => {});
+
+    return () => {
+      isMounted = false;
+      getSignalRConnection().then((connection) => {
+        connection.off("savedMedicalFormHandoverRequested", handleRequested);
+        connection.off("savedMedicalFormHandoverResolved", handleResolved);
+      }).catch(() => {});
+    };
+  }, [userId]);
 
   // ---------------- New patient documents (admin, reception) ----------------
   useEffect(() => {

@@ -39,6 +39,7 @@ import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
+import PatientMedicalFormsSection from "@/components/medicalForms/PatientMedicalFormsSection";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
@@ -2492,6 +2493,8 @@ function NurseWorkbenchInner() {
                 )}
               </div>
             </div>
+
+            <PatientMedicalFormsSection patientId={selectedPatientId} visitId={currentVisitId} />
           </div>
         )}
 

@@ -37,6 +37,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
+import PatientMedicalFormsSection from "@/components/medicalForms/PatientMedicalFormsSection";
 import ReviewOfSystemsPanel, { ReviewOfSystemsValue } from "@/components/doctor/ReviewOfSystemsPanel";
 import PrescriptionPrintout from "@/components/prescription/PrescriptionPrintout";
 import FloatingSaveRevertBar from "@/components/FloatingSaveRevertBar";
@@ -2633,6 +2634,11 @@ function DoctorWorkbenchInner() {
                     )}
                   </div>
                 </div>
+
+                <PatientMedicalFormsSection
+                  patientId={selectedPatientId}
+                  visitId={summary?.latestEncounter?.visitId ?? visitIdParam ?? null}
+                />
               </div>
             </div>
           </div>

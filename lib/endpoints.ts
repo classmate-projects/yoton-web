@@ -372,4 +372,23 @@ export const ENDPOINTS = {
         CHECK_OUT: `/api/attendance/check-out`,
         GET_HISTORY: (days?: number) => `/api/attendance/history${days ? `?days=${days}` : ""}`,
     },
+    FORM_TEMPLATE: {
+        GET_ALL: `/api/form-templates`,
+        CREATE: `/api/form-templates`,
+        UPDATE: (id: string) => `/api/form-templates/${id}`,
+        SET_ACTIVE: (id: string, isActive: boolean) => `/api/form-templates/${id}/active?isActive=${isActive}`,
+        SET_DEPARTMENTS: (id: string) => `/api/form-templates/${id}/departments`,
+        SET_SPECIALTIES: (id: string) => `/api/form-templates/${id}/specialties`,
+        GET_AVAILABLE: (doctorId?: string) => `/api/form-templates/available${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPLOAD_IMAGE: `/api/form-templates/upload-image`,
+    },
+    SAVED_MEDICAL_FORM: {
+        CREATE: `/api/saved-medical-forms`,
+        UPDATE: (id: string) => `/api/saved-medical-forms/${id}`,
+        DELETE: (id: string, password?: string) => `/api/saved-medical-forms/${id}${password ? `?password=${encodeURIComponent(password)}` : ""}`,
+        GET_BY_PATIENT: (patientId: string) => `/api/saved-medical-forms/patient/${patientId}`,
+        HANDOVER: (id: string) => `/api/saved-medical-forms/${id}/handover`,
+        GET_MY_PENDING_HANDOVERS: `/api/saved-medical-forms/my-pending-handovers`,
+        ACKNOWLEDGE_HANDOVER: (id: string) => `/api/saved-medical-forms/${id}/handover/acknowledge`,
+    },
 }
