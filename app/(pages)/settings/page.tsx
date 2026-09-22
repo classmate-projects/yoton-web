@@ -29,6 +29,7 @@ import ToggleButton from "@/components/ToggleButton";
 import RichTextEditor from "@/components/RichTextEditor";
 import { BranchService } from "@/services/branch.service";
 import { BranchType } from "@/types/branch.type";
+import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 interface MeResponse {
   userId: string;
@@ -419,14 +420,21 @@ export default function SettingsPage() {
   // Lazily loaded (only once the Company Profile section is actually opened) rather than
   // alongside getMe() above - GetAll is gated by the UserManagement module, so firing it
   // unconditionally for every role on page load would 403 for anyone who isn't admin.
-  useEffect(() => {
+  const fetchBranches = () => {
     if (activeSection !== "company") return;
     setLoadingBranches(true);
     BranchService.getAll()
       .then((res) => setBranches(res.data ?? []))
       .catch(() => toast.error("Failed to load branches"))
       .finally(() => setLoadingBranches(false));
-  }, [activeSection]);
+  };
+
+  useEffect(fetchBranches, [activeSection]);
+
+  // Picks up another open admin session's branch changes (create/rename/logo/remove) -
+  // this page already patches its own local `branches` state optimistically on every
+  // mutation it performs itself, so this only ever matters for a *second* session.
+  useSignalRRefetch(["branchCreated", "branchUpdated", "branchDeleted"], fetchBranches);
 
   const extractErrorMessage = (err: unknown, fallback: string) => {
     const message =

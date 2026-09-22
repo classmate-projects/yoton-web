@@ -1,6 +1,9 @@
 export interface DoctorGridType {
   doctorId: string;
   name: string;
+  // Only ever populated on the reception-facing endpoint (GetSpecializationsWithDoctors) -
+  // the patient-facing one that shares this same DTO shape never sets it.
+  userId?: string | null;
   specializationId: string;
   specializationName: string;
   experienceYears: number;

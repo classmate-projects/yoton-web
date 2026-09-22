@@ -13,7 +13,7 @@ export interface RecentAccount {
 }
 
 const STORAGE_KEY = "yoton_recent_accounts";
-const MAX_ACCOUNTS = 5;
+const MAX_ACCOUNTS = 6;
 
 function isRecentAccount(value: unknown): value is RecentAccount {
   const v = value as RecentAccount;

@@ -291,7 +291,7 @@ export default function PharmacyPage() {
   }, [checkedAuth, prescriptionFilter]);
 
   useSignalRRefetch(
-    ["prescriptionCreated", "prescriptionDispensed", "medicineAdded", "medicineStockUpdated"],
+    ["prescriptionCreated", "prescriptionDispensed", "medicineAdded", "medicineUpdated", "medicineStockUpdated"],
     fetchAll
   );
 

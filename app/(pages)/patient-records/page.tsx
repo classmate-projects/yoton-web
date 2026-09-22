@@ -366,6 +366,17 @@ export default function PatientRecordsPage() {
       );
   }, [specializations, doctorSearch, walkInDepartmentId, walkInSpecializationId]);
 
+  // Picking a doctor straight from the search results (without narrowing via the Department/
+  // Specialisation dropdowns first) should still leave those dropdowns showing the doctor's own
+  // department and specialisation, not "All departments" / "All specialisations".
+  const selectDoctor = (doctor: DoctorGridType) => {
+    const group = specializations.find((s) => s.doctors.some((d) => d.doctorId === doctor.doctorId));
+    setWalkInDepartmentId(group?.departmentId ?? "");
+    setWalkInSpecializationId(doctor.specializationId);
+    setSelectedDoctor(doctor);
+    setDaySlots(null);
+  };
+
   const handleConfirmWalkIn = async () => {
     if (!modalPatient || !selectedDoctor || !selectedSlot) {
       toast.warning("Please select a doctor and an available time slot");
@@ -894,7 +905,7 @@ export default function PatientRecordsPage() {
                       flattenedDoctors.map((doctor) => (
                         <button
                           key={doctor.doctorId}
-                          onClick={() => setSelectedDoctor(doctor)}
+                          onClick={() => selectDoctor(doctor)}
                           className="w-full text-left px-4 py-2 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer flex items-center gap-2"
                         >
                           <Stethoscope size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
