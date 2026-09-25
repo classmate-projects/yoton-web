@@ -24,6 +24,15 @@ export const CompanyService = {
         patientEmailCredentialsBody?: string;
         patientEmailSimpleSubject?: string;
         patientEmailSimpleBody?: string;
+        displayName?: string;
+        address?: string;
+        contactEmail?: string;
+        contactPhone?: string;
+        website?: string;
+        faxNumber?: string;
+        facilityId?: string;
+        eclaimlinkUsername?: string;
+        eclaimlinkPassword?: string;
     }) => {
         const { data } = await api.put(ENDPOINTS.COMPANY.UPDATE_SETTINGS, payload);
         return data;

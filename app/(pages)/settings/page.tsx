@@ -57,6 +57,15 @@ interface MeResponse {
   patientEmailSimpleSubject: string;
   patientEmailSimpleBody: string;
   patientEmailSimpleIsCustom: boolean;
+  companyDisplayName: string | null;
+  companyAddress: string | null;
+  companyContactEmail: string | null;
+  companyContactPhone: string | null;
+  companyWebsite: string | null;
+  companyFaxNumber: string | null;
+  companyFacilityId: string | null;
+  companyEclaimlinkUsername: string | null;
+  companyEclaimlinkPasswordSet: boolean;
   branchId: string | null;
 }
 
@@ -76,6 +85,21 @@ export default function SettingsPage() {
 
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  // Facility profile - matches the client's data-collection sheet field-for-field. Every
+  // field here (except the eClaimLink password) round-trips in full and simply saves
+  // whatever's currently typed; the password is write-only, see its own input below.
+  const [displayNameInput, setDisplayNameInput] = useState("");
+  const [addressInput, setAddressInput] = useState("");
+  const [contactEmailInput, setContactEmailInput] = useState("");
+  const [contactPhoneInput, setContactPhoneInput] = useState("");
+  const [websiteInput, setWebsiteInput] = useState("");
+  const [faxNumberInput, setFaxNumberInput] = useState("");
+  const [facilityIdInput, setFacilityIdInput] = useState("");
+  const [eclaimlinkUsernameInput, setEclaimlinkUsernameInput] = useState("");
+  const [eclaimlinkPasswordInput, setEclaimlinkPasswordInput] = useState("");
+  const [eclaimlinkPasswordSet, setEclaimlinkPasswordSet] = useState(false);
+  const [savingFacilityProfile, setSavingFacilityProfile] = useState(false);
 
   const [maxDiscountInput, setMaxDiscountInput] = useState("");
   const [savingDiscountCap, setSavingDiscountCap] = useState(false);
@@ -139,6 +163,15 @@ export default function SettingsPage() {
     AuthService.getMe()
       .then((data) => {
         setMe(data);
+        setDisplayNameInput(data.companyDisplayName || "");
+        setAddressInput(data.companyAddress || "");
+        setContactEmailInput(data.companyContactEmail || "");
+        setContactPhoneInput(data.companyContactPhone || "");
+        setWebsiteInput(data.companyWebsite || "");
+        setFaxNumberInput(data.companyFaxNumber || "");
+        setFacilityIdInput(data.companyFacilityId || "");
+        setEclaimlinkUsernameInput(data.companyEclaimlinkUsername || "");
+        setEclaimlinkPasswordSet(!!data.companyEclaimlinkPasswordSet);
         setMaxDiscountInput(data.maxDiscountPercent != null ? String(data.maxDiscountPercent) : "");
         setCountry(data.country || "");
         setCurrencyCode(data.currencyCode || "INR");
@@ -190,6 +223,46 @@ export default function SettingsPage() {
       toast.error("Failed to remove photo");
     } finally {
       setDeletingAvatar(false);
+    }
+  };
+
+  const handleSaveFacilityProfile = async () => {
+    if (!me) return;
+    if (!contactEmailInput.trim()) {
+      toast.error("Contact email is required");
+      return;
+    }
+
+    setSavingFacilityProfile(true);
+    try {
+      const data = await CompanyService.updateSettings({
+        displayName: displayNameInput.trim(),
+        address: addressInput.trim(),
+        contactEmail: contactEmailInput.trim(),
+        contactPhone: contactPhoneInput.trim(),
+        website: websiteInput.trim(),
+        faxNumber: faxNumberInput.trim(),
+        facilityId: facilityIdInput.trim(),
+        eclaimlinkUsername: eclaimlinkUsernameInput.trim(),
+        // Blank means "leave the saved password alone" (see CompanyController.UpdateSettings) -
+        // only send it when the admin actually typed a new one.
+        ...(eclaimlinkPasswordInput.trim() ? { eclaimlinkPassword: eclaimlinkPasswordInput.trim() } : {}),
+      });
+      setDisplayNameInput(data.displayName || "");
+      setAddressInput(data.address || "");
+      setContactEmailInput(data.contactEmail || "");
+      setContactPhoneInput(data.contactPhone || "");
+      setWebsiteInput(data.website || "");
+      setFaxNumberInput(data.faxNumber || "");
+      setFacilityIdInput(data.facilityId || "");
+      setEclaimlinkUsernameInput(data.eclaimlinkUsername || "");
+      setEclaimlinkPasswordSet(!!data.eclaimlinkPasswordSet);
+      setEclaimlinkPasswordInput("");
+      toast.success("Facility profile updated");
+    } catch (err) {
+      toast.error(extractErrorMessage(err, "Failed to update facility profile"));
+    } finally {
+      setSavingFacilityProfile(false);
     }
   };
 
@@ -711,6 +784,114 @@ export default function SettingsPage() {
       {/* COMPANY PROFILE - admin only */}
       {activeSection === "company" && isAdmin && (
         <div className="grid max-w-6xl grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
+          {/* Facility profile */}
+          <div className="bg-card border border-border rounded-xl p-6 lg:col-span-2 xl:col-span-3">
+            <h2 className="text-xl font-semibold text-foreground mb-1">Facility profile</h2>
+            <p className="text-sm text-muted-foreground mb-5">
+              Contact details, regulatory identifiers, and the eClaimLink portal login for this
+              facility. Company name itself is edited under Branches below (the main branch IS
+              the company).
+            </p>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Display name</label>
+                <input
+                  type="text"
+                  value={displayNameInput}
+                  onChange={(e) => setDisplayNameInput(e.target.value)}
+                  placeholder={me.companyName ?? "Same as company name"}
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Contact email</label>
+                <input
+                  type="email"
+                  value={contactEmailInput}
+                  onChange={(e) => setContactEmailInput(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Phone number</label>
+                <input
+                  type="text"
+                  value={contactPhoneInput}
+                  onChange={(e) => setContactPhoneInput(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Fax number</label>
+                <input
+                  type="text"
+                  value={faxNumberInput}
+                  onChange={(e) => setFaxNumberInput(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Website</label>
+                <input
+                  type="text"
+                  value={websiteInput}
+                  onChange={(e) => setWebsiteInput(e.target.value)}
+                  placeholder="https://"
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility ID (DHA/MOH/HAAD)</label>
+                <input
+                  type="text"
+                  value={facilityIdInput}
+                  onChange={(e) => setFacilityIdInput(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                />
+              </div>
+              <div className="sm:col-span-2 lg:col-span-3">
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Address</label>
+                <input
+                  type="text"
+                  value={addressInput}
+                  onChange={(e) => setAddressInput(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility username (eclaimlink)</label>
+                <input
+                  type="text"
+                  value={eclaimlinkUsernameInput}
+                  onChange={(e) => setEclaimlinkUsernameInput(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility password (eclaimlink)</label>
+                <input
+                  type="password"
+                  value={eclaimlinkPasswordInput}
+                  onChange={(e) => setEclaimlinkPasswordInput(e.target.value)}
+                  placeholder={eclaimlinkPasswordSet ? "•••••••• (saved — leave blank to keep)" : "Not set"}
+                  autoComplete="new-password"
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveFacilityProfile}
+              disabled={savingFacilityProfile}
+              className="mt-5 flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {savingFacilityProfile && <Loader2 size={15} className="animate-spin" />}
+              Save facility profile
+            </button>
+          </div>
+
           {/* Maximum billing discount */}
           <div className="bg-card border border-border rounded-xl p-6">
             <h2 className="text-xl font-semibold text-foreground mb-1">Maximum billing discount</h2>
