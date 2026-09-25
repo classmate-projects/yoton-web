@@ -40,6 +40,11 @@ export interface LabRequestType {
   resultValues: LabResultValueType[];
   correctedFromId: string | null;
   correctedFrom: LabRequestType | null;
+  // Whether the doctor can still edit this order right now - see OrderLockHelper on the
+  // backend. lockedBy is "Lab" (sample already collected/being processed) or "Visit" (the
+  // encounter's already finalized); null while still editable.
+  locked: boolean;
+  lockedBy: string | null;
 }
 
 export interface LabSummaryType {

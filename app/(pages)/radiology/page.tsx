@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
-import { Pencil, ScanLine, Trash2, X } from "lucide-react";
+import { Pencil, ScanLine, Settings, Trash2, Undo2, X } from "lucide-react";
 import { MdAdd, MdOutlineFileUpload, MdOutlineImage } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
+import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { RadiologyService } from "@/services/radiology.service";
 import { ReceptionService } from "@/services/reception.service";
@@ -73,6 +74,12 @@ export default function RadiologyPage() {
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadingImagesId, setUploadingImagesId] = useState<string | null>(null);
   const [galleryFor, setGalleryFor] = useState<RadiologyRequestType | null>(null);
+
+  // Read-only configuration view (gear icon) and the Revert action that undoes a started
+  // request back to Requested, handing editing control back to the doctor - see
+  // OrderLockHelper on the backend.
+  const [viewingRadiologyConfig, setViewingRadiologyConfig] = useState<RadiologyRequestType | null>(null);
+  const [revertingId, setRevertingId] = useState<string | null>(null);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -243,6 +250,19 @@ export default function RadiologyPage() {
       fetchAll();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to update status"));
+    }
+  };
+
+  const revertRadiologyRequest = async (radiologyRequestId: string) => {
+    try {
+      setRevertingId(radiologyRequestId);
+      await RadiologyService.revert(radiologyRequestId);
+      toast.success("Reverted to Requested — the doctor can edit it again");
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to revert request"));
+    } finally {
+      setRevertingId(null);
     }
   };
 
@@ -652,6 +672,23 @@ export default function RadiologyPage() {
                               </button>
                             </>
                           )}
+                          {!isNurse && r.status !== "Requested" && r.status !== "Completed" && r.status !== "Delivered" && (
+                            <button
+                              onClick={() => revertRadiologyRequest(r.radiologyRequestId)}
+                              disabled={revertingId === r.radiologyRequestId}
+                              title="Revert to Requested — hand editing back to the doctor"
+                              className="p-1.5 hover:bg-muted rounded-full text-muted-foreground cursor-pointer disabled:opacity-50"
+                            >
+                              <Undo2 size={14} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setViewingRadiologyConfig(r)}
+                            title="Configuration"
+                            className="p-1.5 hover:bg-primary/10 rounded-full text-muted-foreground hover:text-primary cursor-pointer"
+                          >
+                            <Settings size={14} />
+                          </button>
                         </div>
                         {r.correctedFrom && (
                           <CorrectedFromNote>
@@ -708,6 +745,33 @@ export default function RadiologyPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Read-only configuration view - the doctor's own fields, gear icon on each row.
+          Radiology's own actions (Mark Status, Upload, Attach images, Revert, ...) stay
+          fully functional above; only these config fields are view-only here. */}
+      {viewingRadiologyConfig && (
+        <LabRadiologyConfigModal
+          category="Radiology"
+          itemName={viewingRadiologyConfig.scanType || "Scan"}
+          values={{
+            quantity: String(viewingRadiologyConfig.quantity),
+            priority: viewingRadiologyConfig.priority,
+            source: viewingRadiologyConfig.source,
+            remarks: viewingRadiologyConfig.notes || "",
+            bodyParts: viewingRadiologyConfig.bodyParts || "",
+            price: viewingRadiologyConfig.price != null ? String(viewingRadiologyConfig.price) : "",
+            uccCode: viewingRadiologyConfig.uccCode || "",
+            covered: viewingRadiologyConfig.covered === true ? "Yes" : viewingRadiologyConfig.covered === false ? "No" : "",
+            preAuthStatus: viewingRadiologyConfig.preAuthStatus || "Not Required",
+            patientShareAmount: viewingRadiologyConfig.patientShareAmount != null ? String(viewingRadiologyConfig.patientShareAmount) : "",
+            coInsurancePercent: viewingRadiologyConfig.coInsurancePercent != null ? String(viewingRadiologyConfig.coInsurancePercent) : "",
+          }}
+          readOnly
+          submitLabel="Save changes"
+          onSave={() => {}}
+          onClose={() => setViewingRadiologyConfig(null)}
+        />
       )}
     </div>
   );

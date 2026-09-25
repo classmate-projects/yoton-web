@@ -6,8 +6,13 @@ import ListItemManager from "@/components/configLists/ListItemManager";
 import { ConfigListType } from "@/types/configList.type";
 
 const LIST_TYPES: { value: ConfigListType; label: string; hint: string }[] = [
-  { value: "Investigation", label: "Investigation", hint: "Searchable when ordering lab/radiology investigations" },
-  { value: "Treatment", label: "Treatment", hint: "Searchable in the doctor workbench's Treatment section" },
+  {
+    value: "Procedure",
+    label: "Procedure (CPT Codes)",
+    hint: "The unified catalog behind Lab, Radiology, and Treatment ordering on the Doctor Workbench - each entry's Department decides which of those three it becomes (\"Pathology and Laboratory\" → Lab, \"Radiology\" → Radiology, anything else → Treatment). Add entries one at a time, or upload a filled-in Excel with Department/CPT Code/Service Description/Cash Price columns for large sets like a full CPT price list.",
+  },
+  { value: "Investigation", label: "Investigation", hint: "Searchable when ordering lab/radiology investigations (legacy - new investigations should use Procedure above instead)" },
+  { value: "Treatment", label: "Treatment", hint: "Searchable in the doctor workbench's Treatment section (legacy - new treatments should use Procedure above instead)" },
   { value: "Diagnosis", label: "ICD Code", hint: "The diagnosis code list doctors search when recording a diagnosis. Add codes one at a time, paste a batch, or upload a filled-in Excel template for large sets like ICD-10/ICD-11" },
   { value: "OrderType", label: "Order Type", hint: "Regular, Stat, PRN, IV Push, Oral, Vaginal, Rectal, etc." },
   { value: "Route", label: "Route of Administration", hint: "Oral, Dental, and other routes" },

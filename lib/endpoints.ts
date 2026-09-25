@@ -140,7 +140,7 @@ export const ENDPOINTS = {
         REMOVE_QUICK_NOTE: (consultationNoteId: string, doctorId?: string) => `/api/emr/quick-note/${consultationNoteId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_DOCUMENTS: (patientId: string) => `/api/emr/patient/${patientId}/documents`,
         MARK_DOCUMENT_VIEWED: (patientId: string, id: string) => `/api/emr/patient/${patientId}/documents/${id}/mark-viewed`,
-        ADD_TREATMENT: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/treatment${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        // ADD_TREATMENT moved to ENDPOINTS.TREATMENTS.CREATE.
         ADD_CONFIDENTIAL_NOTE: (patientId: string) => `/api/emr/patient/${patientId}/confidential-note`,
         UPDATE_CONFIDENTIAL_NOTE: (doctorConfidentialNoteId: string) => `/api/emr/confidential-note/${doctorConfidentialNoteId}`,
         REMOVE_CONFIDENTIAL_NOTE: (doctorConfidentialNoteId: string) => `/api/emr/confidential-note/${doctorConfidentialNoteId}`,
@@ -252,6 +252,7 @@ export const ENDPOINTS = {
         COLLECT_SAMPLE: `/api/Lab/collect-sample`,
         SAVE_RESULT_VALUES: `/api/Lab/result-values`,
         RECORD_PRINT: (id: string) => `/api/Lab/${id}/record-print`,
+        REVERT: (id: string) => `/api/Lab/${id}/revert`,
     },
     RADIOLOGY: {
         GET_ALL: `/api/Radiology`,
@@ -263,6 +264,15 @@ export const ENDPOINTS = {
         UPDATE_STATUS: `/api/Radiology/status`,
         UPLOAD_RESULT: `/api/Radiology/upload-result`,
         UPLOAD_IMAGES: `/api/Radiology/upload-images`,
+        REVERT: (id: string) => `/api/Radiology/${id}/revert`,
+    },
+    TREATMENTS: {
+        CREATE: (doctorId?: string) => `/api/treatments${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE: (id: string) => `/api/treatments/${id}`,
+        REMOVE: (id: string) => `/api/treatments/${id}`,
+        START: (id: string) => `/api/treatments/${id}/start`,
+        REVERT: (id: string) => `/api/treatments/${id}/revert`,
+        MARK_DONE: (id: string) => `/api/treatments/${id}/mark-done`,
     },
     TEST_PARAMETERS: {
         GET: (listItemId: string) => `/api/test-parameters?listItemId=${encodeURIComponent(listItemId)}`,
@@ -353,7 +363,7 @@ export const ENDPOINTS = {
         REMOVE_CONFIDENTIAL_NOTE: (confidentialNoteId: string) => `/api/nursing/confidential-note/${confidentialNoteId}`,
         GET_CONFIDENTIAL_NOTES: (patientId?: string) => `/api/nursing/confidential-notes${patientId ? `?patientId=${patientId}` : ""}`,
         ADD_EXAMINATION_NOTE: (patientId: string) => `/api/nursing/patient/${patientId}/examination-note`,
-        MARK_TREATMENT_DONE: (treatmentId: string) => `/api/nursing/treatment/${treatmentId}/mark-done`,
+        // MARK_TREATMENT_DONE moved to ENDPOINTS.TREATMENTS.MARK_DONE.
         ADMINISTER_MEDICATION: (medicationId: string) => `/api/nursing/medication/${medicationId}/administer`,
         GET_WORK_QUEUE: `/api/nursing/work-queue`,
         GET_UNTOUCHED_PATIENTS: `/api/nursing/untouched-patients`,

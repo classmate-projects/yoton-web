@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
-import { FlaskConical, Pencil, Trash2 } from "lucide-react";
+import { FlaskConical, Pencil, Settings, Trash2, Undo2 } from "lucide-react";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
+import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { LabService } from "@/services/lab.service";
@@ -89,6 +90,12 @@ export default function LaboratoryPage() {
   const [selectedNurseId, setSelectedNurseId] = useState("");
   const [collectingId, setCollectingId] = useState<string | null>(null);
   const [barcodeLabId, setBarcodeLabId] = useState<string | null>(null);
+
+  // Read-only configuration view (gear icon) and the Revert action that undoes a started
+  // request back to Requested, handing editing control back to the doctor - see
+  // OrderLockHelper on the backend.
+  const [viewingLabConfig, setViewingLabConfig] = useState<LabRequestType | null>(null);
+  const [revertingId, setRevertingId] = useState<string | null>(null);
 
   // Structured per-parameter result entry (admin-configured under the Investigation catalog
   // — see ListItemManager's "Parameters" action). Only offered when the request's TestType
@@ -278,6 +285,19 @@ export default function LaboratoryPage() {
       toast.error(errorMessage(error, "Failed to collect sample"));
     } finally {
       setCollectingId(null);
+    }
+  };
+
+  const revertLabRequest = async (labRequestId: string) => {
+    try {
+      setRevertingId(labRequestId);
+      await LabService.revert(labRequestId);
+      toast.success("Reverted to Requested — the doctor can edit it again");
+      await fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to revert request"));
+    } finally {
+      setRevertingId(null);
     }
   };
 
@@ -771,6 +791,23 @@ export default function LaboratoryPage() {
                               </button>
                             </>
                           )}
+                          {!isNurse && r.status !== "Requested" && r.status !== "Completed" && r.status !== "Delivered" && (
+                            <button
+                              onClick={() => revertLabRequest(r.labRequestId)}
+                              disabled={revertingId === r.labRequestId}
+                              title="Revert to Requested — hand editing back to the doctor"
+                              className="p-1.5 hover:bg-muted rounded-full text-muted-foreground cursor-pointer disabled:opacity-50"
+                            >
+                              <Undo2 size={14} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setViewingLabConfig(r)}
+                            title="Configuration"
+                            className="p-1.5 hover:bg-primary/10 rounded-full text-muted-foreground hover:text-primary cursor-pointer"
+                          >
+                            <Settings size={14} />
+                          </button>
                         </div>
                         {r.correctedFrom && (
                           <CorrectedFromNote>
@@ -857,6 +894,33 @@ export default function LaboratoryPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Read-only configuration view - the doctor's own fields, gear icon on each row.
+          Lab's own actions (Collect Sample, Mark Status, Enter Results, Revert, ...) stay
+          fully functional above; only these config fields are view-only here. */}
+      {viewingLabConfig && (
+        <LabRadiologyConfigModal
+          category="Lab"
+          itemName={viewingLabConfig.testType || "Lab test"}
+          values={{
+            quantity: String(viewingLabConfig.quantity),
+            priority: viewingLabConfig.priority,
+            source: viewingLabConfig.source,
+            remarks: viewingLabConfig.remarks || "",
+            bodyParts: "",
+            price: viewingLabConfig.price != null ? String(viewingLabConfig.price) : "",
+            uccCode: viewingLabConfig.uccCode || "",
+            covered: viewingLabConfig.covered === true ? "Yes" : viewingLabConfig.covered === false ? "No" : "",
+            preAuthStatus: viewingLabConfig.preAuthStatus || "Not Required",
+            patientShareAmount: viewingLabConfig.patientShareAmount != null ? String(viewingLabConfig.patientShareAmount) : "",
+            coInsurancePercent: viewingLabConfig.coInsurancePercent != null ? String(viewingLabConfig.coInsurancePercent) : "",
+          }}
+          readOnly
+          submitLabel="Save changes"
+          onSave={() => {}}
+          onClose={() => setViewingLabConfig(null)}
+        />
       )}
     </div>
   );

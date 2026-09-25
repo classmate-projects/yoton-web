@@ -1,4 +1,6 @@
 import { MedicationAdministrationType, NurseNoteType, TreatmentType } from "./nursing.type";
+import { LabRequestType } from "./lab.type";
+import { RadiologyRequestType } from "./radiology.type";
 
 export interface EmrPatientListItem {
   opId: string;
@@ -219,6 +221,10 @@ export interface PatientSummaryType {
   specialRemarks: SpecialRemarkType[];
   nurseNotes: NurseNoteType[];
   treatments: TreatmentType[];
+  // Previously never returned here at all - the unified ordering list needs Lab/Radiology
+  // items shown alongside Treatments.
+  labRequests: LabRequestType[];
+  radiologyRequests: RadiologyRequestType[];
   diagnoses: EncounterDiagnosisType[];
   followUps: FollowUpType[];
   documents: PatientDocumentType[];
@@ -427,15 +433,8 @@ export interface DentalVisitExtraPayload {
   comprehensiveDentalPlanProvided?: boolean;
 }
 
-export interface TreatmentPayload {
-  encounterId?: string;
-  listItemId?: string;
-  description: string;
-  instructions?: string;
-  quantity?: number;
-  isPackage?: boolean;
-  isBillingPending?: boolean;
-}
+// TreatmentPayload moved to types/treatment.type.ts as CreateTreatmentPayload, alongside
+// the rest of Treatment ordering (see services/treatment.service.ts).
 
 export interface DoctorConfidentialNotePayload {
   contentHtml: string;

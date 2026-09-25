@@ -53,4 +53,10 @@ export const RadiologyService = {
     });
     return data;
   },
+  // Undoes Scheduled (or any later status) back to Requested, handing editing control back
+  // to the doctor - see OrderLockHelper on the backend.
+  revert: async (id: string) => {
+    const { data } = await api.put(ENDPOINTS.RADIOLOGY.REVERT(id));
+    return data;
+  },
 };

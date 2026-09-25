@@ -55,4 +55,10 @@ export const LabService = {
     const { data } = await api.put(ENDPOINTS.LAB.RECORD_PRINT(id));
     return data;
   },
+  // Undoes CollectSample (or any later status) back to Requested, handing editing control
+  // back to the doctor - see OrderLockHelper on the backend.
+  revert: async (id: string) => {
+    const { data } = await api.put(ENDPOINTS.LAB.REVERT(id));
+    return data;
+  },
 };
