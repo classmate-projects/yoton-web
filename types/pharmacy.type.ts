@@ -7,9 +7,45 @@ export interface MedicineType {
   category: string | null;
   stock: number;
   price: number;
-  expiryDate: string;
+  expiryDate: string | null;
   isActive: boolean;
   isHighRisk: boolean;
+  code: string | null;
+  source: "DDC" | "Riayati" | null;
+  manufacturer: string | null;
+  route: string | null;
+  isControlled: boolean;
+  isDiscontinued: boolean;
+  discontinuedDate: string | null;
+}
+
+export interface MedicinePagedResult {
+  data: MedicineType[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+// One row of a bulk medication-catalog import — parsed client-side from the DDC or Riayati
+// Excel file, mirroring ConfigListController's ListItemBulkUploadRequest shape.
+export interface MedicineBulkRow {
+  code?: string;
+  name: string;
+  genericName?: string;
+  ingredient?: string;
+  dosageForm?: string;
+  route?: string;
+  manufacturer?: string;
+  price?: number;
+  isControlled?: boolean;
+  isDiscontinued?: boolean;
+  discontinuedDate?: string;
+}
+
+export interface MedicineBulkUploadPayload {
+  source: "DDC" | "Riayati";
+  items: MedicineBulkRow[];
 }
 
 export interface PrescriptionItemType {
@@ -53,8 +89,12 @@ export interface AddMedicinePayload {
   category?: string;
   stock: number;
   price: number;
-  expiryDate: string;
+  expiryDate?: string | null;
   isHighRisk?: boolean;
+  code?: string;
+  manufacturer?: string;
+  route?: string;
+  isControlled?: boolean;
 }
 
 export interface CreatePrescriptionPayload {

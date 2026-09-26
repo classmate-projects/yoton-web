@@ -73,6 +73,8 @@ export interface MedicationType {
   prnReason: string | null;
   requiresCounselling: boolean;
   isHighRisk: boolean;
+  isDiscontinued: boolean;
+  discontinuedDate: string | null;
   status: string;
   startedAt: string;
   endedAt: string | null;

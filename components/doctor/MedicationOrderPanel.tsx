@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Pill, Plus, X } from "lucide-react";
 import CatalogSearchInput from "./CatalogSearchInput";
 import DatePicker from "@/components/DatePicker";
@@ -67,24 +68,26 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
   const [taperingSteps, setTaperingSteps] = useState<TaperingStepForm[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [medicines, setMedicines] = useState<MedicineType[]>([]);
   const [dosageUnits, setDosageUnits] = useState<ListItemType[]>([]);
   const [frequencies, setFrequencies] = useState<ListItemType[]>([]);
   const [orderTypes, setOrderTypes] = useState<ListItemType[]>([]);
   const [routes, setRoutes] = useState<ListItemType[]>([]);
   const [drugTypes, setDrugTypes] = useState<ListItemType[]>([]);
 
+  // Populated on every drug-name search so onSelect can look up the just-picked medicine's
+  // discontinued flag synchronously, regardless of React state-update timing - same pattern
+  // used for the unified CPT/Procedure search on this same page.
+  const medicineResultsRef = useRef<Map<string, MedicineType>>(new Map());
+
   useEffect(() => {
     (async () => {
-      const [medsRes, dosageRes, freqRes, orderRes, routeRes, drugTypeRes] = await Promise.all([
-        PharmacyService.getMedicines().catch(() => ({ data: [] })),
+      const [dosageRes, freqRes, orderRes, routeRes, drugTypeRes] = await Promise.all([
         ConfigListService.get("DosageUnit").catch(() => ({ data: [] })),
         ConfigListService.get("Frequency").catch(() => ({ data: [] })),
         ConfigListService.get("OrderType").catch(() => ({ data: [] })),
         ConfigListService.get("Route").catch(() => ({ data: [] })),
         ConfigListService.get("DrugType").catch(() => ({ data: [] })),
       ]);
-      setMedicines(medsRes.data || []);
       setDosageUnits(dosageRes.data || []);
       setFrequencies(freqRes.data || []);
       setOrderTypes(orderRes.data || []);
@@ -233,31 +236,34 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
           </div>
         ) : (
           <CatalogSearchInput
-            placeholder="Search medication (trade name, generic name)..."
+            placeholder="Search medication (trade name, generic name, or code)..."
             fetchOptions={async (search) => {
-              const term = search.trim().toLowerCase();
-              return medicines
-                .filter(
-                  (m) =>
-                    !term ||
-                    m.name.toLowerCase().includes(term) ||
-                    (m.genericName || "").toLowerCase().includes(term)
-                )
-                .slice(0, 20)
-                .map((m) => ({
-                  id: m.medicineId,
-                  name: m.name,
-                  meta: [
-                    m.genericName ? `Generic: ${m.genericName}` : null,
-                    m.ingredient,
-                    m.dosageForm,
-                    m.stock > 0 ? `Stock: ${m.stock}` : "No stock",
-                  ]
-                    .filter(Boolean)
-                    .join(" · "),
-                }));
+              if (!search.trim()) return [];
+              const res = await PharmacyService.getMedicines({ search: search.trim(), pageSize: 20 });
+              const results: MedicineType[] = res.data || [];
+              medicineResultsRef.current = new Map(results.map((m) => [m.medicineId, m]));
+              return results.map((m) => ({
+                id: m.medicineId,
+                name: m.name,
+                code: m.code,
+                meta: [
+                  m.genericName ? `Generic: ${m.genericName}` : null,
+                  m.manufacturer,
+                  m.route,
+                  m.isDiscontinued ? "⚠ Discontinued" : m.stock > 0 ? `Stock: ${m.stock}` : "No stock",
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+              }));
             }}
-            onSelect={(opt) => { setDrugName(opt.name); setMedicineId(opt.id); }}
+            onSelect={(opt) => {
+              setDrugName(opt.name);
+              setMedicineId(opt.id);
+              const medicine = medicineResultsRef.current.get(opt.id);
+              if (medicine?.isDiscontinued) {
+                toast.warning("This medication was discontinued by the health authority — confirm before prescribing.");
+              }
+            }}
           />
         )}
       </div>

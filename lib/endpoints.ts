@@ -284,6 +284,7 @@ export const ENDPOINTS = {
         GET_MEDICINES: `/api/Pharmacy/medicine`,
         GET_LOW_STOCK: `/api/Pharmacy/medicine/low-stock`,
         ADD_MEDICINE: `/api/Pharmacy/medicine`,
+        BULK_UPLOAD_MEDICINES: `/api/Pharmacy/medicine/bulk`,
         UPDATE_MEDICINE: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}`,
         REMOVE_MEDICINE: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}`,
         UPDATE_STOCK: `/api/Pharmacy/medicine/stock`,

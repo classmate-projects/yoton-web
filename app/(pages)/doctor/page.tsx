@@ -1942,7 +1942,17 @@ function DoctorWorkbenchInner() {
                           <tbody>
                             {summary.currentMedications.map((m) => (
                               <tr key={m.medicationId}>
-                                <td className="font-semibold">{m.drugName}</td>
+                                <td className="font-semibold">
+                                  {m.drugName}
+                                  {m.isDiscontinued && (
+                                    <span
+                                      className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 align-middle"
+                                      title={m.discontinuedDate ? `Discontinued by health authority on ${new Date(m.discontinuedDate).toLocaleDateString()}` : "Discontinued by health authority"}
+                                    >
+                                      Discontinued
+                                    </span>
+                                  )}
+                                </td>
                                 <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
                                 <td>{m.route || "—"}</td>
                                 <td>{m.frequency || "—"}</td>
