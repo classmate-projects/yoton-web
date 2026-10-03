@@ -1,10 +1,20 @@
 import api from "@/lib/axios";
 import { ENDPOINTS } from "@/lib/endpoints";
-import { AddMedicinePayload, CreatePrescriptionPayload, DispenseMedicationPayload, IssueMedicinePayload } from "@/types/pharmacy.type";
+import {
+  AddMedicinePayload,
+  CreatePrescriptionPayload,
+  DispenseMedicationPayload,
+  IssueMedicinePayload,
+  MedicineBulkUploadPayload,
+} from "@/types/pharmacy.type";
 
 export const PharmacyService = {
-  getMedicines: async () => {
-    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_MEDICINES);
+  getMedicines: async (params?: { search?: string; source?: string; page?: number; pageSize?: number }) => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_MEDICINES, { params });
+    return data;
+  },
+  bulkUploadMedicines: async (payload: MedicineBulkUploadPayload) => {
+    const { data } = await api.post(ENDPOINTS.PHARMACY.BULK_UPLOAD_MEDICINES, payload);
     return data;
   },
   getLowStock: async () => {

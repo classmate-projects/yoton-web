@@ -28,6 +28,9 @@ export interface RadiologyRequestType {
   imageUrls: string[];
   correctedFromId: string | null;
   correctedFrom: RadiologyRequestType | null;
+  // See LabRequestType.locked/lockedBy - same meaning, "Radiology" instead of "Lab".
+  locked: boolean;
+  lockedBy: string | null;
 }
 
 export interface RadiologySummaryType {

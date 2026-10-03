@@ -10,11 +10,29 @@ import { AuditLogType } from "@/types/auditLog.type";
 import { UserType } from "@/types/user.type";
 import { toDateInputValue } from "@/lib/date";
 
-const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
+// Value sent to the backend's "method" filter param - Updated matches both PUT and PATCH
+// server-side (see AuditLogController.GetAll), so the dropdown only needs to speak in terms
+// an admin actually thinks in (what happened), never the underlying HTTP verb.
+const TYPES = [
+  { label: "Created", value: "POST" },
+  { label: "Updated", value: "PUT" },
+  { label: "Deleted", value: "DELETE" },
+];
 const PAGE_SIZE = 50;
 
 function formatDateTime(value: string): string {
   return new Date(value).toLocaleString();
+}
+
+// "patientName" / "PatientName" -> "Patient Name" - used wherever a raw JSON field name from
+// Changes would otherwise be shown straight to a non-technical admin.
+function humanizeFieldName(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^./, (c) => c.toUpperCase());
 }
 
 interface FieldDiff {
@@ -49,7 +67,50 @@ function diffChanges(previous: string | null, current: string | null): FieldDiff
 function formatValue(value: unknown): string {
   if (value === undefined) return "—";
   if (value === null) return "null";
+  if (value === "[REDACTED]") return "Hidden for security";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
   return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+// Renders a log entry's redacted request-body JSON as a plain key/value list instead of raw
+// JSON, so a non-technical admin can read what was actually submitted.
+function ChangesDetails({ changes }: { changes: string }) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(changes);
+  } catch {
+    return <pre className="max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs text-foreground">{changes}</pre>;
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return (
+      <pre className="max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs text-foreground">
+        {JSON.stringify(parsed, null, 2)}
+      </pre>
+    );
+  }
+
+  const entries = Object.entries(parsed as Record<string, unknown>);
+  if (entries.length === 0) {
+    return <p className="text-xs text-muted-foreground">No details were recorded for this action.</p>;
+  }
+
+  return (
+    <div className="max-h-64 overflow-auto rounded-md border border-border">
+      <table className="w-full text-xs">
+        <tbody>
+          {entries.map(([key, value]) => (
+            <tr key={key} className="border-b border-border/50 last:border-0">
+              <td className="w-1/3 py-1.5 pl-3 pr-2 align-top font-medium text-muted-foreground">
+                {humanizeFieldName(key)}
+              </td>
+              <td className="break-all py-1.5 pr-3 align-top text-foreground">{formatValue(value)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function AuditLogPage() {
@@ -69,10 +130,34 @@ export default function AuditLogPage() {
   const [to, setTo] = useState("");
 
   const [viewing, setViewing] = useState<AuditLogType | null>(null);
+  const [showTechnical, setShowTechnical] = useState(false);
 
   const [historyFor, setHistoryFor] = useState<AuditLogType | null>(null);
   const [versions, setVersions] = useState<AuditLogType[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
+
+  // Either modal being open covers the page but doesn't stop the table underneath from
+  // scrolling with it. This page's own wrapper div (h-full overflow-y-auto below) never
+  // actually establishes a scroll context here - its ancestors (see (pages)/layout.tsx) are
+  // sized with min-height/flex-1, not a fixed height, so the div's h-full collapses to
+  // "auto" and real scrolling happens at the document root instead. Which element the
+  // browser treats as that root scroller is inconsistent (some browsers use <body>, others
+  // <html>), so both are locked to be safe.
+  const isModalOpen = !!viewing || !!historyFor;
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const { style: htmlStyle } = document.documentElement;
+    const { style: bodyStyle } = document.body;
+    const previousHtmlOverflow = htmlStyle.overflow;
+    const previousBodyOverflow = bodyStyle.overflow;
+    htmlStyle.overflow = "hidden";
+    bodyStyle.overflow = "hidden";
+    return () => {
+      htmlStyle.overflow = previousHtmlOverflow;
+      bodyStyle.overflow = previousBodyOverflow;
+    };
+  }, [isModalOpen]);
 
   const openHistory = async (log: AuditLogType) => {
     setHistoryFor(log);
@@ -125,13 +210,13 @@ export default function AuditLogPage() {
   };
 
   return (
-    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
+    <div className={`py-6 px-4 sm:py-8 sm:px-10 h-full ${isModalOpen ? "overflow-hidden" : "overflow-y-auto"}`}>
       <div className="flex flex-col gap-1 mb-6">
         <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
           <ScrollText className="text-primary" /> Audit Log
         </h1>
         <p className="text-sm text-muted-foreground">
-          Every user action, login to logout — {totalCount} entries recorded.
+          A record of everything created, updated, deleted, or uploaded — {totalCount} entries recorded.
         </p>
       </div>
 
@@ -175,16 +260,16 @@ export default function AuditLogPage() {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-muted-foreground">Method</label>
+          <label className="text-xs font-semibold text-muted-foreground">Type</label>
           <select
             value={method}
             onChange={(e) => resetToFirstPage(setMethod)(e.target.value)}
             className="h-9 rounded-md border border-border bg-background px-2 text-sm"
           >
-            <option value="">All methods</option>
-            {METHODS.map((m) => (
-              <option key={m} value={m}>
-                {m}
+            <option value="">All types</option>
+            {TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
               </option>
             ))}
           </select>
@@ -222,8 +307,7 @@ export default function AuditLogPage() {
                   <th className="py-2 pr-4">User</th>
                   <th className="py-2 pr-4">Role</th>
                   <th className="py-2 pr-4">Module</th>
-                  <th className="py-2 pr-4">Action</th>
-                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">What happened</th>
                   <th className="py-2 pr-4"></th>
                 </tr>
               </thead>
@@ -236,22 +320,25 @@ export default function AuditLogPage() {
                     </td>
                     <td className="py-2 pr-4 capitalize text-muted-foreground">{log.role ?? "—"}</td>
                     <td className="py-2 pr-4 capitalize text-muted-foreground">{log.module ?? "—"}</td>
-                    <td className="py-2 pr-4 max-w-md truncate text-foreground" title={log.action}>
-                      {log.action}
-                    </td>
-                    <td className="py-2 pr-4">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          log.statusCode < 400 ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
-                        }`}
-                      >
-                        {log.statusCode}
-                      </span>
+                    <td className="py-2 pr-4 max-w-md text-foreground">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate" title={log.summary}>
+                          {log.summary}
+                        </span>
+                        {!log.succeeded && (
+                          <span className="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
+                            Failed
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2 pr-4">
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => setViewing(log)}
+                          onClick={() => {
+                            setViewing(log);
+                            setShowTechnical(false);
+                          }}
                           title="View"
                           className="flex items-center justify-center rounded-full p-1.5 text-primary hover:bg-primary/10"
                         >
@@ -324,38 +411,51 @@ export default function AuditLogPage() {
                 </dd>
               </div>
               <div>
-                <dt className="text-xs font-semibold uppercase text-muted-foreground">Action</dt>
-                <dd className="text-foreground">{viewing.action}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase text-muted-foreground">Path</dt>
-                <dd className="break-all font-mono text-xs text-foreground">
-                  {viewing.httpMethod} {viewing.path}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase text-muted-foreground">Status / IP</dt>
+                <dt className="text-xs font-semibold uppercase text-muted-foreground">What happened</dt>
                 <dd className="text-foreground">
-                  {viewing.statusCode} · {viewing.ipAddress ?? "—"}
+                  {viewing.summary}
+                  {!viewing.succeeded && (
+                    <span className="ml-2 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
+                      Didn&apos;t go through
+                    </span>
+                  )}
                 </dd>
               </div>
               {viewing.changes && (
                 <div>
-                  <dt className="text-xs font-semibold uppercase text-muted-foreground">Changes</dt>
-                  <dd>
-                    <pre className="mt-1 max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs text-foreground">
-                      {(() => {
-                        try {
-                          return JSON.stringify(JSON.parse(viewing.changes), null, 2);
-                        } catch {
-                          return viewing.changes;
-                        }
-                      })()}
-                    </pre>
+                  <dt className="text-xs font-semibold uppercase text-muted-foreground">Details</dt>
+                  <dd className="mt-1">
+                    <ChangesDetails changes={viewing.changes} />
                   </dd>
                 </div>
               )}
             </dl>
+
+            <div className="mt-4 border-t border-border pt-3">
+              <button
+                type="button"
+                onClick={() => setShowTechnical((v) => !v)}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                {showTechnical ? "Hide" : "Show"} technical details
+              </button>
+              {showTechnical && (
+                <dl className="mt-3 flex flex-col gap-2 text-xs">
+                  <div>
+                    <dt className="font-semibold uppercase text-muted-foreground">Request</dt>
+                    <dd className="break-all font-mono text-foreground">
+                      {viewing.httpMethod} {viewing.path}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold uppercase text-muted-foreground">Status / IP</dt>
+                    <dd className="text-foreground">
+                      {viewing.statusCode} · {viewing.ipAddress ?? "—"}
+                    </dd>
+                  </div>
+                </dl>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -372,7 +472,7 @@ export default function AuditLogPage() {
                 <X size={18} />
               </button>
             </div>
-            <p className="mb-4 break-all font-mono text-xs text-muted-foreground">{historyFor.path}</p>
+            <p className="mb-4 text-xs text-muted-foreground">{historyFor.summary}</p>
 
             {loadingVersions ? (
               <div className="flex items-center justify-center py-10 text-muted-foreground">
@@ -415,7 +515,7 @@ export default function AuditLogPage() {
                           <tbody>
                             {diffs.map((d) => (
                               <tr key={d.field}>
-                                <td className="pr-3 py-0.5 font-medium text-foreground">{d.field}</td>
+                                <td className="pr-3 py-0.5 font-medium text-foreground">{humanizeFieldName(d.field)}</td>
                                 <td className="pr-3 py-0.5 text-destructive">{formatValue(d.from)}</td>
                                 <td className="py-0.5 text-primary">{formatValue(d.to)}</td>
                               </tr>

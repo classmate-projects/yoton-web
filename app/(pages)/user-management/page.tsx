@@ -14,6 +14,8 @@ interface getAllResponse {
   // from a plain manual deactivate. Drives both the row styling and whether reactivating
   // goes through the plain toggle or the password-gated Rehire flow below.
   isTerminated: boolean;
+  branchId: string | null;
+  userImage?: string | null;
 }
 
 import Link from "next/link";
@@ -37,6 +39,10 @@ import { StaffEmploymentEventType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { BranchService } from "@/services/branch.service";
+import { BranchType } from "@/types/branch.type";
+import { getUserDetail } from "@/lib/userDetail";
+import { backendAssetUrl } from "@/lib/backendAsset";
 
 const TERMINATION_REASONS = [
   { value: "Retired60Plus", label: "Retired (60+ years)" },
@@ -60,6 +66,31 @@ interface DayShiftRow {
 const emptyWeek = (): DayShiftRow[] =>
   DAY_NAMES.map(() => ({ active: false, startTime: "08:00", endTime: "16:00" }));
 
+// Shows the uploaded profile photo, falling back to initials when there isn't one or it
+// fails to load (e.g. the file was removed from the server).
+function UserAvatar({ name, image }: { name: string; image?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const src = backendAssetUrl(image);
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+
+  if (src && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path
+      <img
+        src={src}
+        alt={name}
+        onError={() => setFailed(true)}
+        className="h-10 w-10 shrink-0 rounded-full object-cover"
+      />
+    );
+  }
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-lg font-bold text-primary">
+      {initials}
+    </div>
+  );
+}
+
 export default function UserManagement() {
 
   const router = useRouter();
@@ -68,6 +99,13 @@ export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeStatus, setActiveStatus] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
+
+
+  const [branches, setBranches] = useState<BranchType[]>([]);
+  // Defaults to the signed-in staff member's own branch (not "All") - most admins managing
+  // day-to-day staff only care about their own location; "All" is one click away in the
+  // dropdown for whoever actually needs the cross-branch view.
+  const [branchFilter, setBranchFilter] = useState(() => getUserDetail()?.branchId || "allBranch");
 
   const [shiftsTarget, setShiftsTarget] = useState<getAllResponse | null>(null);
   const [shiftsWeek, setShiftsWeek] = useState<DayShiftRow[]>(emptyWeek());
@@ -89,6 +127,12 @@ export default function UserManagement() {
   // handleToggleUser below).
   const [rehireTarget, setRehireTarget] = useState<getAllResponse | null>(null);
 
+  // Set for the ordinary activate/deactivate toggle (any non-terminated user, including
+  // admins now that they're shown in this list) - always routed through a password-gated
+  // confirm so a stolen/unattended admin session can't silently flip another account's
+  // access, same reasoning as Restore/Rehire above.
+  const [statusToggleTarget, setStatusToggleTarget] = useState<getAllResponse | null>(null);
+
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!users) return [];
@@ -108,16 +152,17 @@ export default function UserManagement() {
         (activeStatus === "active" && user.isActive) ||
         (activeStatus === "inactive" && !user.isActive);
 
-      const notAdmin = user.role.toLowerCase() !== "admin";
+      const matchesBranch = branchFilter === "allBranch" || user.branchId === branchFilter;
 
-      return matchesSearch && matchesRole && matchesActiveStatus && notAdmin;
+      return matchesSearch && matchesRole && matchesActiveStatus && matchesBranch;
     });
-  }, [users, searchQuery, role, activeStatus]);
+  }, [users, searchQuery, role, activeStatus, branchFilter]);
 
   const clearFilters = () => {
     setSearchQuery("");
     setRole("allRole");
     setActiveStatus("all");
+    setBranchFilter("allBranch");
   };
 
   // fetch all users
@@ -132,6 +177,12 @@ export default function UserManagement() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    BranchService.getAll()
+      .then((res) => setBranches(res.data ?? []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchAllUsers();
@@ -278,33 +329,32 @@ export default function UserManagement() {
   // toggle user - a terminated employee can't be reactivated by this plain flip (the
   // backend refuses it): they go through the Rehire confirm below instead, so
   // reactivating always opens a fresh employment stint rather than just flipping the flag.
-  const handleToggleUser = async (user: getAllResponse) => {
+  // Every other case (activating or deactivating any user, admins included) now requires
+  // the caller's own password too - see statusToggleTarget above.
+  const handleToggleUser = (user: getAllResponse) => {
     if (!user.isActive && user.isTerminated) {
       setRehireTarget(user);
       return;
     }
 
-    const payload = {
-      ...user,
-      isActive: !user.isActive,
-    };
+    setStatusToggleTarget(user);
+  };
 
-    try {
-      await UserService.update(user.id, payload)
-      toast.success(`Status changed to ${!user.isActive ? "active" : "inactive"}`)
+  // Confirmed from the status-toggle prompt below - same step-up pattern as
+  // handleRehireConfirm. Left throwing on failure so the prompt can show "incorrect
+  // password" and let the admin retry.
+  const handleStatusToggleConfirm = async (adminPassword: string) => {
+    if (!statusToggleTarget) return;
+    const nextIsActive = !statusToggleTarget.isActive;
+    await UserService.updateStatus(statusToggleTarget.id, nextIsActive, adminPassword);
+    toast.success(`Status changed to ${nextIsActive ? "active" : "inactive"}`);
 
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === user.id
-            ? { ...u, isActive: !user.isActive }
-            : u
-        )
-      );
-    } catch (error) {
-      toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update status" : "Failed to update status"
-      );
-    }
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === statusToggleTarget.id ? { ...u, isActive: nextIsActive } : u
+      )
+    );
+    setStatusToggleTarget(null);
   };
 
   // Confirmed from the Rehire prompt below - reactivates the account and opens a new
@@ -317,6 +367,60 @@ export default function UserManagement() {
     setRehireTarget(null);
     fetchAllUsers();
   };
+
+  const renderActions = (user: getAllResponse) => (
+    <div className="flex items-center justify-evenly">
+      <button
+        onClick={() => openHistory(user)}
+        title="Employment History"
+        className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer text-blue-600"
+      >
+        <HistoryIcon size={18} />
+      </button>
+
+      {user.isActive && (
+        <button
+          onClick={() => openTerminate(user)}
+          title="Terminate Employment"
+          className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer text-orange-600"
+        >
+          <UserX size={18} />
+        </button>
+      )}
+
+      <button
+        onClick={() => handleDelete(user.id, user.name)}
+        title="Delete User"
+        className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer"
+      >
+        <DeleteIcon color="red" size={18} />
+      </button>
+
+      {!user.isTerminated && (
+        <button
+          onClick={() => {
+            sessionStorage.setItem("editUser", JSON.stringify(user));
+            router.push("/user-registration?edit=true");
+          }}
+          title="Edit User"
+          className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer"
+        >
+          <EditIcon color="blue" size={18} />
+        </button>
+      )}
+
+      {user.role.toLowerCase() === "nurse" && (
+        <button
+          onClick={() => openShiftsManager(user)}
+          title="Manage Shifts"
+          className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer text-purple-600"
+        >
+          <CalendarClock size={18} />
+        </button>
+      )}
+
+    </div>
+  );
 
   return (
     <div className="p-6">
@@ -382,6 +486,21 @@ export default function UserManagement() {
               <option value="inactive">Inactive</option>
             </select>
 
+            <select
+              name="branch"
+              id="branch"
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="border border-neutral-500 px-4 py-2 rounded-md outline-0">
+              <option value="allBranch">All branches</option>
+              {branches.map((b) => (
+                <option key={b.branchId} value={b.branchId}>
+                  {b.name}
+                  {b.isMain ? " (Main)" : ""}
+                </option>
+              ))}
+            </select>
+
             <button
               type="button"
               onClick={clearFilters}
@@ -397,129 +516,75 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <div className="card mt-8">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Username</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Phone</th>
-              <th>Last loggedin</th>
-              <th>Created at</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={8} className="text-center py-20">
-                  <LoadingSpinner />
-                </td>
-              </tr>
-            ) : filteredUsers
-              .length > 0 ? (
-              filteredUsers
-                .slice()
-                .map((user) => (
-                  <tr
-                    key={user.id}
-                    className={
-                      user.isTerminated
-                        ? "bg-red-100/80 dark:bg-red-950/30 text-muted-foreground line-through decoration-red-400"
-                        : !user.isActive
-                        ? "bg-red-50/50 opacity-80"
-                        : ""
-                    }
+      <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+        {isLoading ? (
+          <div className="card col-span-full flex justify-center py-20">
+            <LoadingSpinner />
+          </div>
+        ) : filteredUsers.length > 0 ? (
+          filteredUsers.map((user) => (
+            <div
+              key={user.id}
+              className={`card flex flex-col gap-3 p-4 ${
+                user.isTerminated
+                  ? "bg-red-100/80 dark:bg-red-950/30"
+                  : !user.isActive
+                  ? "bg-red-50/50 opacity-80"
+                  : ""
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <UserAvatar name={user.name} image={user.userImage} />
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`truncate font-semibold ${
+                      user.isTerminated ? "text-muted-foreground line-through decoration-red-400" : ""
+                    }`}
+                    title={user.name}
                   >
-                    <td className="font-semibold">
-                      <span className="inline-flex items-center gap-2">
-                        {user.name}
-                        {user.isTerminated && (
-                          <span className="no-underline rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                            Terminated
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    <td>{user.username}</td>
-                    <td>{user.email}</td>
-                    <td className="capitalize">{user.role}</td>
-                    <td>{user.phone}</td>
-                    <td>{getTime(user.lastLogin)}</td>
-                    <td>{getTime(user.createdAt)}</td>
-                    <td>
-                      <div className="flex items-center gap-4">
+                    {user.name}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground" title={user.username}>
+                    @{user.username}
+                  </p>
+                </div>
+                <ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} />
+              </div>
 
-                        <ToggleButton
-                          checked={user.isActive}
-                          onChange={() => handleToggleUser(user)}
-                        />
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold capitalize text-primary">
+                  {user.role}
+                </span>
+                {user.isTerminated ? (
+                  <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                    Terminated
+                  </span>
+                ) : !user.isActive ? (
+                  <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    Inactive
+                  </span>
+                ) : null}
+              </div>
 
-                        <button
-                          onClick={() => openHistory(user)}
-                          title="Employment History"
-                          className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer text-blue-600"
-                        >
-                          <HistoryIcon size={18} />
-                        </button>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+                <dt className="text-muted-foreground">Email</dt>
+                <dd className="truncate" title={user.email}>{user.email}</dd>
+                <dt className="text-muted-foreground">Phone</dt>
+                <dd className="truncate">{user.phone}</dd>
+                <dt className="text-muted-foreground">Last login</dt>
+                <dd className="truncate">{getTime(user.lastLogin)}</dd>
+                <dt className="text-muted-foreground">Created</dt>
+                <dd className="truncate">{getTime(user.createdAt)}</dd>
+              </dl>
 
-                        {user.isActive && (
-                          <button
-                            onClick={() => openTerminate(user)}
-                            title="Terminate Employment"
-                            className="hover:bg-orange-100 p-2 rounded-full transition-colors cursor-pointer text-orange-600"
-                          >
-                            <UserX size={18} />
-                          </button>
-                        )}
-
-                        <button
-                          onClick={() => handleDelete(user.id, user.name)}
-                          title="Delete User"
-                          className="hover:bg-red-100 p-2 rounded-full transition-colors cursor-pointer"
-                        >
-                          <DeleteIcon color="red" />
-                        </button>
-
-                        {!user.isTerminated && (
-                          <button
-                            onClick={() => {
-                              sessionStorage.setItem("editUser", JSON.stringify(user));
-                              router.push("/user-registration?edit=true");
-                            }}
-                            title="Edit User"
-                            className="hover:bg-blue-100 p-2 rounded-full transition-colors cursor-pointer"
-                          >
-                            <EditIcon color="blue" />
-                          </button>
-                        )}
-
-                        {user.role.toLowerCase() === "nurse" && (
-                          <button
-                            onClick={() => openShiftsManager(user)}
-                            title="Manage Shifts"
-                            className="hover:bg-purple-100 p-2 rounded-full transition-colors cursor-pointer text-purple-600"
-                          >
-                            <CalendarClock size={18} />
-                          </button>
-                        )}
-
-                      </div>
-                    </td>
-                  </tr>
-                ))
-            ) : (
-              <tr>
-                <td colSpan={8} className="text-center py-20 text-gray-600">
-                  No users found
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              <div className="mt-auto border-t border-border pt-2.5">
+                {renderActions(user)}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="card col-span-full py-20 text-center text-gray-600">No users found</div>
+        )}
       </div>
 
       {shiftsTarget && (
@@ -718,6 +783,23 @@ export default function UserManagement() {
           confirmingLabel="Rehiring..."
           onCancel={() => setRehireTarget(null)}
           onConfirm={handleRehireConfirm}
+        />
+      )}
+
+      {statusToggleTarget && (
+        <AdminPasswordConfirm
+          title={statusToggleTarget.isActive ? "Deactivate this user?" : "Activate this user?"}
+          description={
+            <>
+              Enter your admin password to {statusToggleTarget.isActive ? "deactivate" : "activate"}{" "}
+              <b className="text-foreground">{statusToggleTarget.name}</b>
+              {statusToggleTarget.role.toLowerCase() === "admin" ? " (admin account)" : ""}.
+            </>
+          }
+          confirmLabel={statusToggleTarget.isActive ? "Deactivate" : "Activate"}
+          confirmingLabel="Saving..."
+          onCancel={() => setStatusToggleTarget(null)}
+          onConfirm={handleStatusToggleConfirm}
         />
       )}
     </div>

@@ -24,6 +24,7 @@ interface Department {
   name: string;
   description: string;
   isActive: boolean;
+  isMedical: boolean;
 }
 
 export default function DepartmentsPage() {
@@ -41,6 +42,7 @@ export default function DepartmentsPage() {
   );
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [isMedical, setIsMedical] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [loading, setloading] = useState(false)
 
@@ -50,6 +52,7 @@ export default function DepartmentsPage() {
     setEditingDepartment(null);
     setName("");
     setDescription("");
+    setIsMedical(true);
     setIsModalOpen(true);
   };
 
@@ -57,6 +60,7 @@ export default function DepartmentsPage() {
     setEditingDepartment(department);
     setName(department.name);
     setDescription(department.description ?? "");
+    setIsMedical(department.isMedical);
     setIsModalOpen(true);
   };
 
@@ -65,6 +69,7 @@ export default function DepartmentsPage() {
     setEditingDepartment(null);
     setName("");
     setDescription("");
+    setIsMedical(true);
   };
 
   const openSpecModal = (departmentId: string) => {
@@ -121,7 +126,7 @@ export default function DepartmentsPage() {
     if (!name.trim()) return;
 
     try {
-      const payload = { name, description }
+      const payload = { name, description, isMedical }
       const data = await DepartmentSerivce.create(payload)
       setIsModalOpen(false)
       fetchDepartments();
@@ -142,7 +147,8 @@ export default function DepartmentsPage() {
       const payload = {
         name,
         description,
-        isActive: editingDepartment?.isActive
+        isActive: editingDepartment?.isActive,
+        isMedical
       }
 
       const data = await DepartmentSerivce.update(editingDepartment.departmentId, payload)
@@ -164,7 +170,8 @@ export default function DepartmentsPage() {
       const payload = {
         name: department.name,
         description: department.description,
-        isActive: nextIsActive
+        isActive: nextIsActive,
+        isMedical: department.isMedical
       }
       const data = await DepartmentSerivce.update(department.departmentId, payload)
       toast.success(data.message)
@@ -339,6 +346,18 @@ export default function DepartmentsPage() {
                 />
               </div>
 
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 p-3">
+                <div>
+                  <p className="text-sm font-bold text-foreground/90">Medical department</p>
+                  <p className="text-xs text-muted-foreground">
+                    Clinical departments (e.g. Cardiology) show up for reception, nursing, and doctors, and can
+                    have specializations. Non-medical departments (e.g. IT, Quality) are administrative only —
+                    they&apos;re hidden from those pickers and can&apos;t have specializations created under them.
+                  </p>
+                </div>
+                <ToggleButton checked={isMedical} onChange={setIsMedical} />
+              </div>
+
               <div className="flex items-center justify-end gap-3 mt-2 w-full">
                 <button
                   type="button"
@@ -411,7 +430,14 @@ export default function DepartmentsPage() {
                           )}
                         </td>
                         <td className="font-semibold capitalize text-foreground">
-                          {department.name}
+                          <span className="inline-flex items-center gap-2">
+                            {department.name}
+                            {!department.isMedical && (
+                              <span className="normal-case rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground border border-border">
+                                Non-medical
+                              </span>
+                            )}
+                          </span>
                         </td>
                         <td className="text-foreground/80">
                           {department.description || "No description provided."}
@@ -419,9 +445,18 @@ export default function DepartmentsPage() {
                         <td onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-center items-center gap-2">
                             <button
-                              onClick={() => openSpecModal(department.departmentId)}
-                              title="Add Specialization"
-                              className="p-1.5 hover:bg-emerald-500/10 rounded-full transition-all duration-200 cursor-pointer text-emerald-500"
+                              onClick={() => department.isMedical && openSpecModal(department.departmentId)}
+                              disabled={!department.isMedical}
+                              title={
+                                department.isMedical
+                                  ? "Add Specialization"
+                                  : "Specialties can't be created because this is a non-medical department"
+                              }
+                              className={`p-1.5 rounded-full transition-all duration-200 ${
+                                department.isMedical
+                                  ? "hover:bg-emerald-500/10 cursor-pointer text-emerald-500"
+                                  : "cursor-not-allowed text-muted-foreground/40"
+                              }`}
                             >
                               <MdAdd size={18} />
                             </button>

@@ -19,6 +19,7 @@ import {
   Droplets,
   FileText,
   Flag,
+  FlaskConical,
   HeartPulse,
   Lock,
   LogOut,
@@ -27,25 +28,36 @@ import {
   PlayCircle,
   Save,
   Search,
+  Settings,
   ShieldAlert,
   Stethoscope,
   Syringe,
   Thermometer,
   Trash2,
+  Undo2,
   Users,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import PasswordInput from "@/components/PasswordInput";
 import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
+import PatientMedicalFormsSection from "@/components/medicalForms/PatientMedicalFormsSection";
+import OrderedItemsList from "@/components/orders/OrderedItemsList";
+import TreatmentConfigModal from "@/components/orders/TreatmentConfigModal";
+import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
+import { TreatmentService } from "@/services/treatment.service";
 import { UserService } from "@/services/user.service";
 import { UserType } from "@/types/user.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { AllergyType, EmrPatientListItem, PatientSummaryType, SpecialRemarkType } from "@/types/emr.type";
+import { TreatmentType } from "@/types/treatment.type";
+import { LabRequestType } from "@/types/lab.type";
+import { RadiologyRequestType } from "@/types/radiology.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import {
   CartesianGrid,
@@ -443,6 +455,12 @@ function NurseWorkbenchInner() {
       setSummary(summaryRes.data);
       setChart(chartRes.data);
       setEncounterId(encounterRes.data?.patientEncounterId || null);
+      // The backend can now resolve/attach the patient's own active visit itself (see
+      // EnsureActiveEncounter) even when this open didn't already know which one to use -
+      // always trust whatever it actually ended up using, not just what was passed in above.
+      if (encounterRes.data?.visitId) {
+        setCurrentVisitId(encounterRes.data.visitId);
+      }
       if (!canStartEncounter) {
         toast("Select a nurse to start recording for this patient.", { icon: "ℹ️" });
       }
@@ -1333,14 +1351,47 @@ function NurseWorkbenchInner() {
     });
   };
 
-  // ---------------- TREATMENTS (doctor-ordered, mark done only) ----------------
+  // ---------------- TREATMENTS (doctor-ordered; nurse Starts, Marks Done, or Reverts a
+  // start to hand editing back to the doctor - see Controllers/TreatmentController.cs) ----------------
   const [markingTreatmentId, setMarkingTreatmentId] = useState<string | null>(null);
+  const [viewingTreatment, setViewingTreatment] = useState<TreatmentType | null>(null);
+  // Read-only investigation config views (see the Investigations card below) - sample
+  // collection itself happens on the Lab workbench, not here.
+  const [viewingLabRequest, setViewingLabRequest] = useState<LabRequestType | null>(null);
+  const [viewingRadiologyRequest, setViewingRadiologyRequest] = useState<RadiologyRequestType | null>(null);
+
+  const startTreatment = async (treatmentId: string) => {
+    if (!requireNurseSelected()) return;
+    try {
+      setMarkingTreatmentId(treatmentId);
+      await TreatmentService.start(treatmentId, isAdmin ? selectedNurseId : undefined);
+      toast.success("Treatment started");
+      await refreshChart();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to start treatment"));
+    } finally {
+      setMarkingTreatmentId(null);
+    }
+  };
+
+  const revertTreatment = async (treatmentId: string) => {
+    try {
+      setMarkingTreatmentId(treatmentId);
+      await TreatmentService.revert(treatmentId);
+      toast.success("Treatment reverted to Pending — the doctor can edit it again");
+      await refreshChart();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to revert treatment"));
+    } finally {
+      setMarkingTreatmentId(null);
+    }
+  };
 
   const markTreatmentDone = async (treatmentId: string) => {
     if (!requireNurseSelected()) return;
     try {
       setMarkingTreatmentId(treatmentId);
-      await NursingService.markTreatmentDone(treatmentId, isAdmin ? selectedNurseId : undefined);
+      await TreatmentService.markDone(treatmentId, isAdmin ? selectedNurseId : undefined);
       toast.success("Treatment marked done");
       await refreshChart();
     } catch (error) {
@@ -2351,7 +2402,10 @@ function NurseWorkbenchInner() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Treatments ordered by the doctor — nurse may only mark them Done */}
+              {/* Treatments ordered by the doctor — nurse Starts it (locks the doctor out of
+                  editing), Marks it Done, or Reverts a start back to Pending to hand editing
+                  back to the doctor. Gear icon opens the same config popup the doctor uses,
+                  read-only here. */}
               <div className="card p-6 flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <ClipboardCheck size={18} className="text-primary" /> Doctor&apos;s Treatments
@@ -2365,22 +2419,58 @@ function NurseWorkbenchInner() {
                             <p className="font-semibold text-foreground">{t.description}</p>
                             {t.instructions && <p className="text-xs text-muted-foreground">{t.instructions}</p>}
                           </div>
-                          {t.status === "Pending" ? (
-                            canEdit ? (
-                              <button
-                                onClick={() => markTreatmentDone(t.treatmentId)}
-                                disabled={markingTreatmentId === t.treatmentId}
-                                className="shrink-0 flex items-center gap-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold py-1 px-2 rounded-lg text-xs transition-colors"
-                              >
-                                <CheckCircle2 size={13} /> Mark Done
-                              </button>
-                            ) : (
-                              <span className="shrink-0 rounded-full bg-amber-100 text-amber-700 text-xs px-2 py-0.5 font-semibold">Pending</span>
-                            )
-                          ) : (
-                            <span className="shrink-0 rounded-full bg-green-100 text-green-700 text-xs px-2 py-0.5 font-semibold">Done</span>
-                          )}
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {t.status === "Pending" &&
+                              (canEdit ? (
+                                <button
+                                  onClick={() => startTreatment(t.treatmentId)}
+                                  disabled={markingTreatmentId === t.treatmentId}
+                                  className="flex items-center gap-1 bg-primary/10 hover:bg-primary/20 disabled:opacity-50 text-primary font-semibold py-1 px-2 rounded-lg text-xs transition-colors"
+                                >
+                                  <PlayCircle size={13} /> Start
+                                </button>
+                              ) : (
+                                <span className="rounded-full bg-amber-100 text-amber-700 text-xs px-2 py-0.5 font-semibold">Pending</span>
+                              ))}
+                            {t.status === "InProgress" &&
+                              (canEdit ? (
+                                <>
+                                  <button
+                                    onClick={() => markTreatmentDone(t.treatmentId)}
+                                    disabled={markingTreatmentId === t.treatmentId}
+                                    className="flex items-center gap-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold py-1 px-2 rounded-lg text-xs transition-colors"
+                                  >
+                                    <CheckCircle2 size={13} /> Mark Done
+                                  </button>
+                                  <button
+                                    onClick={() => revertTreatment(t.treatmentId)}
+                                    disabled={markingTreatmentId === t.treatmentId}
+                                    title="Undo start — hand editing back to the doctor"
+                                    className="flex items-center justify-center rounded-lg p-1 text-muted-foreground hover:bg-muted disabled:opacity-50"
+                                  >
+                                    <Undo2 size={13} />
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="rounded-full bg-blue-100 text-blue-700 text-xs px-2 py-0.5 font-semibold">In progress</span>
+                              ))}
+                            {t.status === "Done" && (
+                              <span className="rounded-full bg-green-100 text-green-700 text-xs px-2 py-0.5 font-semibold">Done</span>
+                            )}
+                            <button
+                              onClick={() => setViewingTreatment(t)}
+                              title="Configuration"
+                              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                            >
+                              <Settings size={13} />
+                            </button>
+                          </div>
                         </div>
+                        {t.status === "InProgress" && t.startedByName && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            started by {t.startedByName} · {formatDateTime(t.startedAt)}
+                          </p>
+                        )}
                         {t.status === "Done" && (
                           <p className="text-xs text-muted-foreground mt-1">
                             by {t.doneByName || "nurse"} · {formatDateTime(t.doneAt)}
@@ -2391,6 +2481,29 @@ function NurseWorkbenchInner() {
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">No treatments ordered.</p>
+                )}
+              </div>
+
+              {/* Lab/Radiology orders — read-only here (sample collection happens on the Lab
+                  workbench itself); shows the doctor's configuration for reviewing. */}
+              <div className="card p-6 flex flex-col gap-4">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <FlaskConical size={18} className="text-primary" /> Investigations
+                </h2>
+                {summary ? (
+                  <div className="max-h-64 overflow-y-auto">
+                    <OrderedItemsList
+                      labRequests={summary.labRequests}
+                      radiologyRequests={summary.radiologyRequests}
+                      treatments={[]}
+                      onOpenLab={(item) => setViewingLabRequest(item)}
+                      onOpenRadiology={(item) => setViewingRadiologyRequest(item)}
+                      onOpenTreatment={() => {}}
+                      emptyMessage="No investigations ordered."
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No investigations ordered.</p>
                 )}
               </div>
 
@@ -2454,12 +2567,11 @@ function NurseWorkbenchInner() {
                                     <option key={n.id} value={n.id}>{n.name}</option>
                                   ))}
                                 </select>
-                                <input
-                                  type="password"
+                                <PasswordInput
                                   placeholder="Witness's password"
                                   value={administerForm.witnessPassword}
                                   onChange={(ev) => setAdministerForm((p) => ({ ...p, witnessPassword: ev.target.value }))}
-                                  className="h-9 text-sm"
+                                  className="h-9 text-sm w-full"
                                 />
                               </div>
                             )}
@@ -2492,6 +2604,13 @@ function NurseWorkbenchInner() {
                 )}
               </div>
             </div>
+
+            <PatientMedicalFormsSection
+              patientId={selectedPatientId}
+              visitId={currentVisitId}
+              patientName={summary?.name}
+              patientNumber={summary?.opNumber || summary?.opId}
+            />
           </div>
         )}
 
@@ -2502,14 +2621,13 @@ function NurseWorkbenchInner() {
               <p className="text-sm text-muted-foreground mt-1 mb-4">
                 This encounter has already been sent to the doctor. Enter your password to continue editing it.
               </p>
-              <input
-                type="password"
+              <PasswordInput
                 autoFocus
+                autoComplete="new-password"
                 value={encounterLockPassword}
                 onChange={(e) => setEncounterLockPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && confirmEncounterLockPassword()}
                 placeholder="Your password"
-                className="h-10 text-sm w-full"
               />
               <div className="flex gap-3 mt-6">
                 <button
@@ -2786,6 +2904,72 @@ function NurseWorkbenchInner() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Read-only configuration views - Lab/Radiology/Treatment fields as the doctor set
+          them, opened from the gear icon on each item above. Nursing's own actions
+          (Start/Revert/Mark Done, Collect Sample on the Lab workbench) stay fully
+          functional regardless; only these config fields are view-only here. */}
+      {viewingTreatment && (
+        <TreatmentConfigModal
+          itemName={viewingTreatment.description}
+          values={{
+            quantity: String(viewingTreatment.quantity),
+            instructions: viewingTreatment.instructions || "",
+            isPackage: viewingTreatment.isPackage,
+            isBillingPending: viewingTreatment.isBillingPending,
+          }}
+          readOnly
+          submitLabel="Save changes"
+          onSave={() => {}}
+          onClose={() => setViewingTreatment(null)}
+        />
+      )}
+      {viewingLabRequest && (
+        <LabRadiologyConfigModal
+          category="Lab"
+          itemName={viewingLabRequest.testType || "Lab test"}
+          values={{
+            quantity: String(viewingLabRequest.quantity),
+            priority: viewingLabRequest.priority,
+            source: viewingLabRequest.source,
+            remarks: viewingLabRequest.remarks || "",
+            bodyParts: "",
+            price: viewingLabRequest.price != null ? String(viewingLabRequest.price) : "",
+            uccCode: viewingLabRequest.uccCode || "",
+            covered: viewingLabRequest.covered === true ? "Yes" : viewingLabRequest.covered === false ? "No" : "",
+            preAuthStatus: viewingLabRequest.preAuthStatus || "Not Required",
+            patientShareAmount: viewingLabRequest.patientShareAmount != null ? String(viewingLabRequest.patientShareAmount) : "",
+            coInsurancePercent: viewingLabRequest.coInsurancePercent != null ? String(viewingLabRequest.coInsurancePercent) : "",
+          }}
+          readOnly
+          submitLabel="Save changes"
+          onSave={() => {}}
+          onClose={() => setViewingLabRequest(null)}
+        />
+      )}
+      {viewingRadiologyRequest && (
+        <LabRadiologyConfigModal
+          category="Radiology"
+          itemName={viewingRadiologyRequest.scanType || "Scan"}
+          values={{
+            quantity: String(viewingRadiologyRequest.quantity),
+            priority: viewingRadiologyRequest.priority,
+            source: viewingRadiologyRequest.source,
+            remarks: viewingRadiologyRequest.notes || "",
+            bodyParts: viewingRadiologyRequest.bodyParts || "",
+            price: viewingRadiologyRequest.price != null ? String(viewingRadiologyRequest.price) : "",
+            uccCode: viewingRadiologyRequest.uccCode || "",
+            covered: viewingRadiologyRequest.covered === true ? "Yes" : viewingRadiologyRequest.covered === false ? "No" : "",
+            preAuthStatus: viewingRadiologyRequest.preAuthStatus || "Not Required",
+            patientShareAmount: viewingRadiologyRequest.patientShareAmount != null ? String(viewingRadiologyRequest.patientShareAmount) : "",
+            coInsurancePercent: viewingRadiologyRequest.coInsurancePercent != null ? String(viewingRadiologyRequest.coInsurancePercent) : "",
+          }}
+          readOnly
+          submitLabel="Save changes"
+          onSave={() => {}}
+          onClose={() => setViewingRadiologyRequest(null)}
+        />
       )}
     </div>
   );

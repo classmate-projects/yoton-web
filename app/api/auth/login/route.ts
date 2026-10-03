@@ -41,9 +41,9 @@ export async function POST(request: Request) {
         return res;
 
     } catch (error: unknown) {
-        const err = error as ApiError;
-        return Response.json(err.body, {
-            status: err.status,
+        const err = error as Partial<ApiError>;
+        return Response.json(err.body ?? { message: "Login failed" }, {
+            status: err.status ?? 500,
         })
     }
 }

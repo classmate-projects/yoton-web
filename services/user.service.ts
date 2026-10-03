@@ -32,6 +32,10 @@ export const UserService = {
         const { data } = await api.put(ENDPOINTS.USER.REHIRE(id), { adminPassword })
         return data;
     },
+    updateStatus: async (id: string, isActive: boolean, adminPassword: string) => {
+        const { data } = await api.put(ENDPOINTS.USER.UPDATE_STATUS(id), { isActive, adminPassword })
+        return data;
+    },
     get_assigned_doctors : async () => {
         const { data } = await api.get(ENDPOINTS.USER.GET_ASSIGNED_DOCTORS)
         return data;

@@ -47,6 +47,19 @@ export default function PharmacyPage() {
   const [medicationQueue, setMedicationQueue] = useState<PharmacyMedicationType[]>([]);
   const [medicines, setMedicines] = useState<MedicineType[]>([]);
   const [lowStock, setLowStock] = useState<MedicineType[]>([]);
+
+  // Inventory tab's own browsable/searchable catalog table — decoupled from `medicines`
+  // above (which stays a flat picker list for the walk-in-sale/alternatives dropdowns)
+  // since the catalog can now hold tens of thousands of bulk-imported rows.
+  const [invMedicines, setInvMedicines] = useState<MedicineType[]>([]);
+  const [invSearch, setInvSearch] = useState("");
+  const [invDebouncedSearch, setInvDebouncedSearch] = useState("");
+  const [invSource, setInvSource] = useState<"" | "DDC" | "Riayati" | "none">("");
+  const [invPage, setInvPage] = useState(1);
+  const [invTotalCount, setInvTotalCount] = useState(0);
+  const [invLoading, setInvLoading] = useState(false);
+  const INV_PAGE_SIZE = 100;
+  const invTotalPages = Math.max(1, Math.ceil(invTotalCount / INV_PAGE_SIZE));
   const [prescriptionFilter, setPrescriptionFilter] = useState<"pending" | "all">("pending");
   const [prescriptionView, setPrescriptionView] = useState<"doctorOrders" | "walkIn">("doctorOrders");
   const [isLoading, setIsLoading] = useState(true);
@@ -113,6 +126,10 @@ export default function PharmacyPage() {
   const [medPrice, setMedPrice] = useState<number>(0);
   const [medExpiry, setMedExpiry] = useState("");
   const [medIsHighRisk, setMedIsHighRisk] = useState(false);
+  const [medCode, setMedCode] = useState("");
+  const [medManufacturer, setMedManufacturer] = useState("");
+  const [medRoute, setMedRoute] = useState("");
+  const [medIsControlled, setMedIsControlled] = useState(false);
   const [editingMedicineId, setEditingMedicineId] = useState<string | null>(null);
 
   // ---------------- ROLE GUARD ----------------
@@ -136,7 +153,11 @@ export default function PharmacyPage() {
         prescriptionFilter === "pending"
           ? PharmacyService.getPendingPrescriptions()
           : PharmacyService.getPrescriptions(),
-        PharmacyService.getMedicines(),
+        // Flat picker list for the walk-in-sale/alternatives <select> dropdowns below -
+        // capped at the max page size rather than left unbounded now that the catalog can
+        // hold tens of thousands of bulk-imported rows. The searchable/paginated Inventory
+        // tab table is fetched separately, see fetchInventory().
+        PharmacyService.getMedicines({ pageSize: 500 }),
         PharmacyService.getLowStock(),
         PharmacyService.getMedicationQueue(prescriptionFilter),
       ]);
@@ -151,6 +172,42 @@ export default function PharmacyPage() {
       setIsLoading(false);
     }
   };
+
+  // Debounced so the Inventory tab's search box doesn't fire a request per keystroke.
+  useEffect(() => {
+    const handle = setTimeout(() => setInvDebouncedSearch(invSearch.trim()), 350);
+    return () => clearTimeout(handle);
+  }, [invSearch]);
+
+  useEffect(() => {
+    setInvPage(1);
+  }, [invDebouncedSearch, invSource]);
+
+  const fetchInventory = async () => {
+    try {
+      setInvLoading(true);
+      const res = await PharmacyService.getMedicines({
+        search: invDebouncedSearch || undefined,
+        source: invSource || undefined,
+        page: invPage,
+        pageSize: INV_PAGE_SIZE,
+      });
+      setInvMedicines(res.data ?? []);
+      setInvTotalCount(res.totalCount ?? 0);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to load medicine catalog"));
+      setInvMedicines([]);
+      setInvTotalCount(0);
+    } finally {
+      setInvLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab !== "inventory" || !checkedAuth) return;
+    fetchInventory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, checkedAuth, invDebouncedSearch, invSource, invPage]);
 
   // Pharmacy's queue is a flat list of Medication rows across every patient — grouped here
   // so it reads as one prescription per patient (matching how a doctor actually orders and
@@ -291,7 +348,7 @@ export default function PharmacyPage() {
   }, [checkedAuth, prescriptionFilter]);
 
   useSignalRRefetch(
-    ["prescriptionCreated", "prescriptionDispensed", "medicineAdded", "medicineStockUpdated"],
+    ["prescriptionCreated", "prescriptionDispensed", "medicineAdded", "medicineUpdated", "medicineStockUpdated"],
     fetchAll
   );
 
@@ -461,6 +518,14 @@ export default function PharmacyPage() {
   };
 
   // ---------------- MEDICINE FORM ----------------
+  // Refreshes both the flat picker list (fetchAll) and, if it's the visible one, the
+  // Inventory tab's own searchable/paginated table - a mutation there wouldn't otherwise
+  // show up since that table no longer reads from fetchAll's `medicines` state.
+  const refreshMedicines = () => {
+    fetchAll();
+    if (tab === "inventory") fetchInventory();
+  };
+
   const resetMedForm = () => {
     setMedName("");
     setMedGenericName("");
@@ -471,6 +536,10 @@ export default function PharmacyPage() {
     setMedPrice(0);
     setMedExpiry("");
     setMedIsHighRisk(false);
+    setMedCode("");
+    setMedManufacturer("");
+    setMedRoute("");
+    setMedIsControlled(false);
   };
 
   const openEditMedModal = (medicine: MedicineType) => {
@@ -484,6 +553,10 @@ export default function PharmacyPage() {
     setMedPrice(medicine.price);
     setMedExpiry(medicine.expiryDate ? medicine.expiryDate.slice(0, 10) : "");
     setMedIsHighRisk(medicine.isHighRisk);
+    setMedCode(medicine.code || "");
+    setMedManufacturer(medicine.manufacturer || "");
+    setMedRoute(medicine.route || "");
+    setMedIsControlled(medicine.isControlled);
     setIsMedModalOpen(true);
   };
 
@@ -495,7 +568,7 @@ export default function PharmacyPage() {
 
   const handleAddMedicine = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!medName.trim() || !medExpiry) {
+    if (!medName.trim()) {
       toast.warning("Please fill in the required fields");
       return;
     }
@@ -510,15 +583,19 @@ export default function PharmacyPage() {
         category: medCategory || undefined,
         stock: medStock,
         price: medPrice,
-        expiryDate: medExpiry,
+        expiryDate: medExpiry || undefined,
         isHighRisk: medIsHighRisk,
+        code: medCode || undefined,
+        manufacturer: medManufacturer || undefined,
+        route: medRoute || undefined,
+        isControlled: medIsControlled,
       };
       const data = editingMedicineId
         ? await PharmacyService.updateMedicine(editingMedicineId, payload)
         : await PharmacyService.addMedicine(payload);
       toast.success(data.message || (editingMedicineId ? "Medicine updated" : "Medicine added"));
       closeMedModal();
-      fetchAll();
+      refreshMedicines();
     } catch (error) {
       toast.error(errorMessage(error, editingMedicineId ? "Failed to update medicine" : "Failed to add medicine"));
     } finally {
@@ -533,7 +610,7 @@ export default function PharmacyPage() {
         try {
           await PharmacyService.removeMedicine(medicine.medicineId);
           toast.success("Medicine removed");
-          fetchAll();
+          refreshMedicines();
         } catch (error) {
           toast.error(errorMessage(error, "Failed to remove medicine"));
         }
@@ -545,7 +622,7 @@ export default function PharmacyPage() {
     try {
       const data = await PharmacyService.updateStock(medicine.medicineId, delta);
       toast.success(data.message || "Stock updated");
-      fetchAll();
+      refreshMedicines();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to update stock"));
     }
@@ -555,7 +632,7 @@ export default function PharmacyPage() {
     try {
       await PharmacyService.setHighRisk(medicine.medicineId, !medicine.isHighRisk);
       toast.success(medicine.isHighRisk ? "Unflagged as high-risk" : "Flagged as high-risk");
-      fetchAll();
+      refreshMedicines();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to update medicine"));
     }
@@ -917,27 +994,51 @@ export default function PharmacyPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 card">
+            <p className="text-xs text-muted-foreground px-4 pt-4">
+              Bulk-importing the DDC/Riayati medication registries is managed by admin under Configurable Lists →
+              Medication. This table is for day-to-day stock, pricing, and dispensing management.
+            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-border">
+              <input
+                type="text"
+                placeholder="Search by name, generic name, or code..."
+                value={invSearch}
+                onChange={(e) => setInvSearch(e.target.value)}
+                className="flex-1 min-w-52 h-10 text-sm"
+              />
+              <select
+                value={invSource}
+                onChange={(e) => setInvSource(e.target.value as "" | "DDC" | "Riayati" | "none")}
+                className="h-10 text-sm"
+              >
+                <option value="">All sources</option>
+                <option value="DDC">DDC</option>
+                <option value="Riayati">Riayati</option>
+                <option value="none">Manually added</option>
+              </select>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr>
                     <th className="text-foreground/90">Name</th>
-                    <th className="text-foreground/90">Category</th>
+                    <th className="text-foreground/90">Code</th>
+                    <th className="text-foreground/90">Manufacturer</th>
+                    <th className="text-foreground/90">Route</th>
                     <th className="text-foreground/90">Stock</th>
                     <th className="text-foreground/90">Price</th>
-                    <th className="text-foreground/90">Expiry</th>
                     <th className="text-center text-foreground/90">Adjust</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {isLoading ? (
+                  {invLoading ? (
                     <tr>
-                      <td colSpan={6} className="py-16 text-center">
+                      <td colSpan={7} className="py-16 text-center">
                         <LoadingSpinner />
                       </td>
                     </tr>
-                  ) : medicines.length > 0 ? (
-                    medicines.map((med) => (
+                  ) : invMedicines.length > 0 ? (
+                    invMedicines.map((med) => (
                       <tr
                         key={med.medicineId}
                         className={`hover:bg-muted/30 transition-colors ${
@@ -946,18 +1047,36 @@ export default function PharmacyPage() {
                       >
                         <td className="font-semibold text-foreground">
                           {med.name}
-                          {med.isHighRisk && (
-                            <span className="ml-2 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive align-middle">
-                              High-risk
-                            </span>
-                          )}
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {med.source && (
+                              <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                                {med.source}
+                              </span>
+                            )}
+                            {med.isHighRisk && (
+                              <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive">
+                                High-risk
+                              </span>
+                            )}
+                            {med.isControlled && (
+                              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                Controlled
+                              </span>
+                            )}
+                            {med.isDiscontinued && (
+                              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+                                Discontinued
+                              </span>
+                            )}
+                          </div>
                         </td>
-                        <td className="text-foreground/80">{med.category || "—"}</td>
+                        <td className="text-foreground/80">{med.code || "—"}</td>
+                        <td className="text-foreground/80">{med.manufacturer || "—"}</td>
+                        <td className="text-foreground/80">{med.route || "—"}</td>
                         <td className={med.stock < 10 ? "text-destructive font-semibold" : "text-foreground/80"}>
                           {med.stock}
                         </td>
                         <td className="text-foreground/80">{currency(med.price)}</td>
-                        <td className="text-foreground/70 text-sm">{formatDate(med.expiryDate)}</td>
                         <td>
                           <div className="flex justify-center items-center gap-1">
                             <button
@@ -1010,13 +1129,39 @@ export default function PharmacyPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="py-16 text-center text-muted-foreground">
-                        No medicines found.
+                      <td colSpan={7} className="py-16 text-center text-muted-foreground">
+                        {invDebouncedSearch ? `No medicines match "${invDebouncedSearch}".` : "No medicines found."}
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-border text-xs text-muted-foreground">
+              <span>
+                {invTotalCount === 0
+                  ? "0 results"
+                  : `Showing ${(invPage - 1) * INV_PAGE_SIZE + 1}–${Math.min(invPage * INV_PAGE_SIZE, invTotalCount)} of ${invTotalCount}`}
+              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setInvPage((p) => Math.max(1, p - 1))}
+                  disabled={invPage <= 1 || invLoading}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {invPage} of {invTotalPages}
+                </span>
+                <button
+                  onClick={() => setInvPage((p) => Math.min(invTotalPages, p + 1))}
+                  disabled={invPage >= invTotalPages || invLoading}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1249,6 +1394,37 @@ export default function PharmacyPage() {
               </div>
               <div className="flex gap-4">
                 <div className="w-full">
+                  <label className="text-sm font-bold text-foreground/90">Code</label>
+                  <input
+                    type="text"
+                    placeholder="Catalog code"
+                    value={medCode}
+                    onChange={(e) => setMedCode(e.target.value)}
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+                <div className="w-full">
+                  <label className="text-sm font-bold text-foreground/90">Route</label>
+                  <input
+                    type="text"
+                    placeholder="Oral, IV, Topical..."
+                    value={medRoute}
+                    onChange={(e) => setMedRoute(e.target.value)}
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-bold text-foreground/90">Manufacturer</label>
+                <input
+                  type="text"
+                  value={medManufacturer}
+                  onChange={(e) => setMedManufacturer(e.target.value)}
+                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                />
+              </div>
+              <div className="flex gap-4">
+                <div className="w-full">
                   <label className="text-sm font-bold text-foreground/90">Stock</label>
                   <input
                     type="number"
@@ -1273,18 +1449,22 @@ export default function PharmacyPage() {
                 </div>
               </div>
               <div>
-                <label className="text-sm font-bold text-foreground/90 required">Expiry Date</label>
+                <label className="text-sm font-bold text-foreground/90">Expiry Date</label>
                 <DatePicker
-                  required
                   value={medExpiry}
                   onChange={(v) => setMedExpiry(v)}
                   className="flex w-full items-center justify-between gap-2 mt-1 p-3 rounded-lg border border-border bg-muted text-left text-foreground outline-none transition-all focus-visible:border-primary"
                 />
+                <p className="text-xs text-muted-foreground mt-1">Leave blank until a real batch has been stocked.</p>
               </div>
 
               <label className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground">
                 <input type="checkbox" checked={medIsHighRisk} onChange={(e) => setMedIsHighRisk(e.target.checked)} />
                 High-risk medication — requires a second nurse to witness administration
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-foreground">
+                <input type="checkbox" checked={medIsControlled} onChange={(e) => setMedIsControlled(e.target.checked)} />
+                Controlled substance
               </label>
 
               <div className="flex items-center justify-end gap-3 mt-2 w-full">

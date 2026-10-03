@@ -25,6 +25,10 @@ export interface CurrentUserDetail {
     // Minutes of inactivity before an auto-logout - same value for every signed-in user,
     // no per-user override. See hooks/useIdleLogout.ts.
     idleTimeoutMinutes?: number;
+    // This staff member's own branch, if assigned one - null/absent for a patient, an admin
+    // never assigned a branch, or a company with no non-main branches. Used to default the
+    // Branch filter on User Management to "my branch" and to highlight it in Settings.
+    branchId?: string | null;
 }
 
 export interface UserType {
@@ -48,7 +52,12 @@ export interface UserCreateType {
     phone: string
     gender?: string;
     nationality?: string;
-    departmentId?: string;
+    departmentId: string;
+    // Required only for doctors - see UserController.Create.
+    specializationId?: string;
+    // Optional while the company has only its one main branch, required once a second
+    // branch exists - see UserController's branch validation.
+    branchId?: string;
     hireDate?: string;
 }
 
@@ -63,6 +72,7 @@ export interface UserUpdateType {
     gender?: string;
     nationality?: string;
     departmentId?: string;
+    branchId?: string;
     hireDate?: string;
     // Only rehashed/applied server-side when non-empty - leave unset to keep the current password.
     password?: string;

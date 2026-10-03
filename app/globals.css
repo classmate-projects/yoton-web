@@ -205,6 +205,16 @@
   }
 }
 
+/* Same tighter cells as the phone override above, but opt-in via a class instead of a
+   viewport check - for tables embedded in a fixed-width container (e.g. a modal) where the
+   default 1rem/1.25rem padding times many columns pushes the table's minimum width past its
+   container regardless of screen size, forcing an avoidable horizontal scrollbar. */
+.table-compact th,
+.table-compact td {
+  padding: 0.625rem 0.75rem !important;
+  font-size: 0.8125rem !important;
+}
+
 input[type="password"]::-ms-reveal {
   display: none;
 }

@@ -34,6 +34,15 @@ export default function SpecializationModal({
 
   const isEditing = !!editingSpecialization;
 
+  // Only medical departments can hold specializations (see SpecializationController.Create,
+  // which rejects non-medical ones server-side) - filtered here too so the picker itself
+  // never offers a department that would just be rejected on submit. The currently-selected
+  // department stays selectable even if it's since been flipped non-medical, so editing an
+  // older specialization doesn't silently blank out its department.
+  const selectableDepartments = allDepartments.filter(
+    (d) => d.isMedical || d.departmentId === selectedDepartment
+  );
+
   const fetchDepartments = async () => {
     try {
       const data = await DepartmentSerivce.getAll()
@@ -73,15 +82,17 @@ export default function SpecializationModal({
       };
       const data = await SpecializationService.create(payload)
       toast.success(data.message)
-    } catch (error) {
-      if(axios.isAxiosError(error)){
-        console.log("Error: ", error.response?.data)
-      }
-      console.log("error: ", error)
-    } finally {
-      setLoading(false)
       onSuccess();
       onClose();
+    } catch (error) {
+      // Left open on failure (e.g. the department was flipped non-medical by someone else
+      // between opening this modal and submitting) so the admin actually sees why, instead
+      // of the modal just closing as if it had worked.
+      toast.error(
+        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to create specialization" : "Failed to create specialization"
+      );
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -101,12 +112,14 @@ export default function SpecializationModal({
       };
       const data = await SpecializationService.update(editingSpecialization.specializationId, payload)
       toast.success(data.message)
-    } catch (error) {
-      console.log("error: ", error)
-    } finally {
-      setLoading(false)
       onSuccess();
       onClose();
+    } catch (error) {
+      toast.error(
+        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update specialization" : "Failed to update specialization"
+      );
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -168,12 +181,16 @@ export default function SpecializationModal({
               <option value="" disabled>
                 Select department
               </option>
-              {allDepartments.map((dept) => (
+              {selectableDepartments.map((dept) => (
                 <option key={dept.departmentId} value={dept.departmentId}>
                   {dept.name}
                 </option>
               ))}
             </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Only medical departments are listed — specialties can&apos;t be created under a non-medical
+              department (e.g. IT, Quality).
+            </p>
           </div>
 
           <div className="flex items-center justify-between gap-3">

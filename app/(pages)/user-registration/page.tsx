@@ -4,6 +4,7 @@ import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
+import PasswordInput from "@/components/PasswordInput";
 import { toDateInputValue } from "@/lib/date";
 import CountryCodeSelect from "@/components/CountryCodeSelect";
 import CountrySearchSelect from "@/components/CountrySearchSelect";
@@ -12,10 +13,13 @@ import { countryDetails } from "@/helpers/countyDetails";
 import { SpecializationService } from "@/services/specialization.service";
 import { UserService } from "@/services/user.service";
 import { DepartmentSerivce } from "@/services/department.service";
+import { BranchService } from "@/services/branch.service";
 import { Specialization } from "@/types/Specializations.type";
 import { UserAssignedDoctorCreateType } from "@/types/user.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { DepartmentTypes } from "@/types/department.type";
+import { BranchType } from "@/types/branch.type";
+import { getUserDetail } from "@/lib/userDetail";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useEffect, Suspense } from "react";
 import { toast } from "sonner";
@@ -36,6 +40,10 @@ function UserRegistrationForm() {
   const [departmentId, setDepartmentId] = useState("");
   const [hireDate, setHireDate] = useState("");
   const [departments, setDepartments] = useState<DepartmentTypes[]>([]);
+  // Defaults to the signed-in admin's own branch (edit mode overwrites this from the loaded
+  // user a moment later anyway, so defaulting unconditionally here is harmless for that path).
+  const [branchId, setBranchId] = useState(() => getUserDetail()?.branchId || "");
+  const [branches, setBranches] = useState<BranchType[]>([]);
 
 
   // Set when Create comes back 409 "a deleted user already owns this identity" - offers
@@ -88,7 +96,14 @@ function UserRegistrationForm() {
   useEffect(() => {
     fetchAllSpecializations()
     DepartmentSerivce.getAll().then((data) => setDepartments(data || [])).catch(() => {});
+    BranchService.getAll().then((res) => setBranches(res.data || [])).catch(() => {});
   }, [])
+
+  // Optional while the company has only its one main branch, mandatory the moment a second
+  // branch exists - mirrors UserController.ValidateBranchAsync exactly (counts every branch,
+  // not just active ones) so this hint never disagrees with what the server will accept.
+  const branchIsRequired = branches.length > 1;
+  const activeBranches = branches.filter((b) => b.isActive);
 
 
   useEffect(() => {
@@ -144,6 +159,7 @@ function UserRegistrationForm() {
           setGender(user.gender || "");
           setNationality(user.nationality || "");
           setDepartmentId(user.departmentId || "");
+          setBranchId(user.branchId || "");
         }
       } catch (error) {
         console.error("Error loading user edit data from sessionStorage:", error);
@@ -217,6 +233,11 @@ function UserRegistrationForm() {
       await UserService.create_assign_doctor(payload)
     } catch (error) {
       console.error(error);
+      toast.error(
+        axios.isAxiosError(error)
+          ? error.response?.data?.message || "Failed to save the doctor profile"
+          : "Failed to save the doctor profile"
+      );
     }
   }
 
@@ -229,6 +250,21 @@ function UserRegistrationForm() {
         return;
       }
 
+      if (!departmentId) {
+        toast.warning("Select a department");
+        return;
+      }
+
+      if (role === "doctor" && !selectedSpecialization) {
+        toast.warning("Select a specialisation - it's required for doctors");
+        return;
+      }
+
+      if (branchIsRequired && !branchId) {
+        toast.warning("Select a branch - this company has more than one");
+        return;
+      }
+
       const payload = {
         name,
         username,
@@ -238,14 +274,16 @@ function UserRegistrationForm() {
         phone: phoneCode + phone,
         gender: gender || undefined,
         nationality: nationality || undefined,
-        departmentId: departmentId || undefined,
+        departmentId,
+        specializationId: role === "doctor" ? selectedSpecialization : undefined,
+        branchId: branchId || undefined,
         hireDate: hireDate || undefined,
       }
 
       const data = await UserService.create(payload)
 
       if (data.data.role === "doctor") {
-        handleDoctorAssign(data.data.userId)
+        await handleDoctorAssign(data.data.userId)
       }
 
       resetdata()
@@ -293,6 +331,16 @@ function UserRegistrationForm() {
         return;
       }
 
+      if (role === "doctor" && !selectedSpecialization) {
+        toast.warning("Select a specialisation - it's required for doctors");
+        return;
+      }
+
+      if (branchIsRequired && !branchId) {
+        toast.warning("Select a branch - this company has more than one");
+        return;
+      }
+
       const payload = {
         name,
         username,
@@ -303,6 +351,7 @@ function UserRegistrationForm() {
         gender: gender || undefined,
         nationality: nationality || undefined,
         departmentId: departmentId || undefined,
+        branchId: branchId || undefined,
         hireDate: hireDate || undefined,
         password: password || undefined,
       }
@@ -457,15 +506,15 @@ function UserRegistrationForm() {
                 <label htmlFor="new-password" className="font-bold">
                   New Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   id="new-password"
                   name="newPassword"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Leave blank to keep current password"
                   autoComplete="new-password"
-                  className="outline-0 p-4 rounded-xl w-full mt-2"
+                  containerClassName="mt-2"
+                  className="outline-0 p-4 rounded-xl w-full"
                   style={{
                     backgroundColor: "var(--color-highlight)",
                     border: "1px solid var(--color-border)",
@@ -517,6 +566,21 @@ function UserRegistrationForm() {
                   className="flex h-11 w-full items-center justify-between gap-1 rounded-xl border border-border bg-card px-4 text-left text-foreground hover:bg-muted transition-colors"
                 />
               </div>
+
+              {branches.length > 0 && (
+                <div className="w-full flex flex-col gap-2">
+                  <label htmlFor="branch" className={`font-bold text-sm ${branchIsRequired ? "required" : ""}`}>Branch</label>
+                  <SearchableSelect
+                    id="branch"
+                    name="branch"
+                    value={branchId}
+                    onChange={setBranchId}
+                    placeholder={branchIsRequired ? "Select a branch" : "Unspecified"}
+                    options={activeBranches.map((b) => ({ value: b.branchId, label: b.name }))}
+                    className="flex h-11 w-full items-center justify-between gap-1 rounded-xl border border-border bg-card px-4 text-left text-foreground hover:bg-muted transition-colors"
+                  />
+                </div>
+              )}
 
               <div className="w-full">
                 <label htmlFor="hireDate" className="font-bold text-sm">Hire Date</label>
@@ -658,8 +722,7 @@ function UserRegistrationForm() {
                 <label htmlFor="temporary-password" className="font-bold required">
                   Temporary Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   id="temporary-password"
                   name="temporaryPassword"
                   required
@@ -667,7 +730,8 @@ function UserRegistrationForm() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter temporary password"
                   autoComplete="new-password"
-                  className="outline-0 p-4 rounded-xl w-full mt-2"
+                  containerClassName="mt-2"
+                  className="outline-0 p-4 rounded-xl w-full"
                   style={{
                     backgroundColor: "var(--color-highlight)",
                     border: "1px solid var(--color-border)",
@@ -708,17 +772,32 @@ function UserRegistrationForm() {
               </div>
 
               <div className="w-full flex flex-col gap-2">
-                <label htmlFor="department" className="font-bold text-sm">Department</label>
+                <label htmlFor="department" className="font-bold text-sm required">Department</label>
                 <SearchableSelect
                   id="department"
                   name="department"
                   value={departmentId}
                   onChange={setDepartmentId}
-                  placeholder="Unspecified"
+                  placeholder="Select department"
                   options={activeDepartments.map((d) => ({ value: d.departmentId, label: d.name }))}
                   className="flex h-11 w-full items-center justify-between gap-1 rounded-xl border border-border bg-card px-4 text-left text-foreground hover:bg-muted transition-colors"
                 />
               </div>
+
+              {branches.length > 0 && (
+                <div className="w-full flex flex-col gap-2">
+                  <label htmlFor="branch" className={`font-bold text-sm ${branchIsRequired ? "required" : ""}`}>Branch</label>
+                  <SearchableSelect
+                    id="branch"
+                    name="branch"
+                    value={branchId}
+                    onChange={setBranchId}
+                    placeholder={branchIsRequired ? "Select a branch" : "Unspecified"}
+                    options={activeBranches.map((b) => ({ value: b.branchId, label: b.name }))}
+                    className="flex h-11 w-full items-center justify-between gap-1 rounded-xl border border-border bg-card px-4 text-left text-foreground hover:bg-muted transition-colors"
+                  />
+                </div>
+              )}
 
               <div className="w-full">
                 <label htmlFor="hireDate" className="font-bold text-sm">Hire Date</label>
@@ -744,7 +823,7 @@ function UserRegistrationForm() {
           {showAssignDoctor && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
               <div className="flex flex-col gap-1 w-full">
-                <label htmlFor="specialization" className="font-bold text-sm">Specialisation</label>
+                <label htmlFor="specialization" className="font-bold text-sm required">Specialisation</label>
                 <SearchableSelect
                   id="specialization"
                   name="specialization"

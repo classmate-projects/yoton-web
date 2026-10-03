@@ -9,7 +9,7 @@ import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "wheel"] as const;
 const WARNING_SECONDS = 30;
 
-// Company-wide, admin-configured (Settings > Company profile) - one value for every
+// Company-wide, admin-configured (Settings > Company settings) - one value for every
 // signed-in user, no per-user override. Mirrors the mobile app's own idle timeout
 // (Yoton-Mobile's App.xaml.cs OnSleep/OnResume), so a session times out consistently
 // whether it's the web app left open or the phone app left backgrounded.

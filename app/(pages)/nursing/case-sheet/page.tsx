@@ -7,6 +7,7 @@ import { ArrowLeft, FileText, Search, Stethoscope } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { EmrService } from "@/services/emr.service";
 import { EmrPatientListItem, PatientSummaryType } from "@/types/emr.type";
+import PatientMedicalFormsSection from "@/components/medicalForms/PatientMedicalFormsSection";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -194,6 +195,14 @@ export default function ElectronicMedicalRecordPage() {
                 <p className="text-sm text-muted-foreground">No nurse notes recorded.</p>
               )}
             </div>
+
+            <PatientMedicalFormsSection
+              patientId={selectedPatientId}
+              visitId={null}
+              readOnly
+              patientName={summary?.name}
+              patientNumber={summary?.opNumber || summary?.opId}
+            />
           </div>
         )}
       </div>

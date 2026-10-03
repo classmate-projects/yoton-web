@@ -8,7 +8,6 @@ import {
   ReferralPayload,
   ReferralOutcomePayload,
   DentalVisitExtraPayload,
-  TreatmentPayload,
   DoctorConfidentialNotePayload,
   AddDiagnosisPayload,
   FollowUpPayload,
@@ -128,10 +127,8 @@ export const EmrService = {
     const { data } = await api.post(ENDPOINTS.EMR.SAVE_DENTAL_EXTRAS(patientId, doctorId), payload);
     return data;
   },
-  addTreatment: async (patientId: string, payload: TreatmentPayload, doctorId?: string) => {
-    const { data } = await api.post(ENDPOINTS.EMR.ADD_TREATMENT(patientId, doctorId), payload);
-    return data;
-  },
+  // addTreatment moved to services/treatment.service.ts::TreatmentService.create (treatments
+  // now have a real Update/Start/Revert workflow, see Controllers/TreatmentController.cs).
   getQuickNotes: async (doctorId?: string, patientId?: string) => {
     const { data } = await api.get(ENDPOINTS.EMR.GET_QUICK_NOTES(doctorId, patientId));
     return data;

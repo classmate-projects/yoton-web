@@ -1,4 +1,5 @@
 import { SpecialRemarkType } from "./emr.type";
+import type { TreatmentType } from "./treatment.type";
 
 export interface NurseDashboardSummaryType {
   patientsUnderCare: number;
@@ -93,19 +94,10 @@ export interface ExaminationNoteType {
   createdAt: string;
 }
 
-export interface TreatmentType {
-  treatmentId: string;
-  listItemId: string | null;
-  description: string;
-  instructions: string | null;
-  quantity: number;
-  isPackage: boolean;
-  isBillingPending: boolean;
-  status: string; // Pending, Done
-  createdAt: string;
-  doneAt: string | null;
-  doneByName: string | null;
-}
+// Moved to types/treatment.type.ts alongside the rest of Treatment ordering (see
+// services/treatment.service.ts) - re-exported here so nothing importing it from this file
+// needs to change (it's also imported at the top of this file for local use below).
+export type { TreatmentType } from "./treatment.type";
 
 export interface MedicationAdministrationType {
   medicationAdministrationId: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -12,7 +12,6 @@ import {
   CalendarClock,
   CalendarPlus,
   Check,
-  ClipboardCheck,
   ClipboardList,
   FileText,
   FlaskConical,
@@ -37,12 +36,23 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
+import OrderedItemsList from "@/components/orders/OrderedItemsList";
+import LabRadiologyConfigModal, {
+  DEFAULT_LAB_RADIOLOGY_VALUES,
+  LabRadiologyConfigValues,
+} from "@/components/orders/LabRadiologyConfigModal";
+import TreatmentConfigModal, {
+  DEFAULT_TREATMENT_VALUES,
+  TreatmentConfigValues,
+} from "@/components/orders/TreatmentConfigModal";
+import PatientMedicalFormsSection from "@/components/medicalForms/PatientMedicalFormsSection";
 import ReviewOfSystemsPanel, { ReviewOfSystemsValue } from "@/components/doctor/ReviewOfSystemsPanel";
 import PrescriptionPrintout from "@/components/prescription/PrescriptionPrintout";
 import FloatingSaveRevertBar from "@/components/FloatingSaveRevertBar";
 import ToggleButton from "@/components/ToggleButton";
 import VitalsHistoryModal from "@/components/VitalsHistoryModal";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
+import DentalChartSection from "@/components/dental/DentalChartSection";
 import { getUserDetail } from "@/lib/userDetail";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { EmrService } from "@/services/emr.service";
@@ -50,6 +60,7 @@ import { UserService } from "@/services/user.service";
 import { SpecializationService } from "@/services/specialization.service";
 import { LabService } from "@/services/lab.service";
 import { RadiologyService } from "@/services/radiology.service";
+import { TreatmentService } from "@/services/treatment.service";
 import { ConfigListService } from "@/services/configList.service";
 import { NursingService } from "@/services/nursing.service";
 import {
@@ -74,6 +85,10 @@ import { VitalsHistoryEntryType, NurseNoteType, ExaminationNoteType } from "@/ty
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { SpecializationTypes } from "@/types/specialization.type";
 import { UserType } from "@/types/user.type";
+import { LabRequestType } from "@/types/lab.type";
+import { RadiologyRequestType } from "@/types/radiology.type";
+import { TreatmentType } from "@/types/treatment.type";
+import { ListItemType } from "@/types/configList.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -700,63 +715,12 @@ function DoctorWorkbenchInner() {
     );
   };
 
-  // ---------------- TREATMENTS (non-drug orders; nurse can only mark Done) ----------------
-  const [treatmentForm, setTreatmentForm] = useState({
-    listItemId: undefined as string | undefined,
-    description: "",
-    instructions: "",
-    quantity: "1",
-    isPackage: false,
-    isBillingPending: false,
-  });
-
-  const addTreatment = async () => {
-    if (!selectedPatientId || !treatmentForm.description.trim()) {
-      toast.error("Select a treatment first");
-      return;
-    }
-    if (!requireDoctorSelected()) return;
-    try {
-      await EmrService.addTreatment(
-        selectedPatientId,
-        {
-          encounterId: summary?.latestEncounter?.encounterId,
-          listItemId: treatmentForm.listItemId,
-          description: treatmentForm.description.trim(),
-          instructions: treatmentForm.instructions.trim() || undefined,
-          quantity: treatmentForm.quantity ? Number(treatmentForm.quantity) : 1,
-          isPackage: treatmentForm.isPackage,
-          isBillingPending: treatmentForm.isBillingPending,
-        },
-        doctorIdParam
-      );
-      toast.success("Treatment ordered");
-      setTreatmentForm({ listItemId: undefined, description: "", instructions: "", quantity: "1", isPackage: false, isBillingPending: false });
-      await fetchSummary(selectedPatientId);
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to add treatment"));
-    }
-  };
-
-  // ---------------- INVESTIGATION ORDERING (LAB / RADIOLOGY) ----------------
-  const [orderForm, setOrderForm] = useState({
-    category: "Lab" as "Lab" | "Radiology",
-    testType: "",
-    listItemId: undefined as string | undefined,
-    quantity: "1",
-    remarks: "",
-    priority: "Normal",
-    source: "InHouse",
-    price: "",
-    uccCode: "",
-    covered: "" as "" | "Yes" | "No",
-    patientShareAmount: "",
-    coInsurancePercent: "",
-    preAuthStatus: "Not Required",
-    bodyParts: "",
-  });
-  const [isOrdering, setIsOrdering] = useState(false);
-
+  // ---------------- UNIFIED ORDERING (Lab / Radiology / Treatment via one CPT/procedure
+  // search - see components/orders/. Replaces the old separate "Order Investigation" and
+  // "Treatments" cards: one search against the ListType=Procedure catalog, its
+  // OrderCategory decides which config popup opens and which backend entity gets created.
+  // The same popup, pre-filled, reopens from the gear icon on an already-ordered item to
+  // edit it - subject to OrderLockHelper's lock rules enforced server-side.) ----------------
   const [insuranceCoverage, setInsuranceCoverage] = useState<PatientInsuranceCoverageType | null>(null);
   useEffect(() => {
     if (!selectedPatientId) { setInsuranceCoverage(null); return; }
@@ -769,65 +733,124 @@ function DoctorWorkbenchInner() {
   // Reference info only — matched from the patient's insurance coverage (set during
   // registration) by service category. Covered/Patient Share/Co-Insurance stay
   // doctor-editable rather than being silently auto-filled.
-  const matchedCoverage = useMemo(
-    () => insuranceCoverage?.coverages.find((c) => c.serviceCategory === orderForm.category) || null,
-    [insuranceCoverage, orderForm.category]
-  );
+  const coverageHintText = (category: "Lab" | "Radiology") => {
+    if (!insuranceCoverage || insuranceCoverage.paymentType === "Cash") return null;
+    const match = insuranceCoverage.coverages.find((c) => c.serviceCategory === category);
+    return match
+      ? `${insuranceCoverage.paymentType} on file for ${category}: Co-Insurance ${match.coPayPercent ?? "—"}%, Deductible ${match.deductible ?? "—"} AED (${match.deductibleAppliesTo || "—"})`
+      : `${insuranceCoverage.paymentType} patient — no ${category} coverage on file`;
+  };
 
-  const orderInvestigation = async () => {
-    if (!selectedPatientId || !orderForm.testType.trim()) {
-      toast.error("Select an investigation first");
-      return;
-    }
+  type OrderingModalState =
+    | { mode: "create"; item: ListItemType }
+    | { mode: "edit-lab"; item: LabRequestType }
+    | { mode: "edit-radiology"; item: RadiologyRequestType }
+    | { mode: "edit-treatment"; item: TreatmentType }
+    | null;
+  const [orderingModal, setOrderingModal] = useState<OrderingModalState>(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  // CatalogSearchInput's onSelect only hands back {id, name, code, meta} - keyed lookup of
+  // every ListItemType a search has returned so far, so the full row (particularly
+  // orderCategory/cashPrice) can be recovered by id once one's picked. A ref, not state:
+  // CatalogSearchInput clears its own query box and closes its dropdown unconditionally the
+  // instant a result is clicked, regardless of what onSelect below does - so this lookup
+  // must be synchronously current the moment that click happens, not merely "current as of
+  // the last completed render". State updated via setState only becomes visible on the next
+  // render, and a fast click right after typing could land inside that gap, silently
+  // clearing the search box with nothing added and no error (the very bug this replaces).
+  const procedureResultsRef = useRef<Map<string, ListItemType>>(new Map());
+
+  const submitLabRadiology = async (values: LabRadiologyConfigValues) => {
+    if (!selectedPatientId || !orderingModal) return;
+    if (!requireDoctorSelected()) return;
+    setIsSavingOrder(true);
     try {
-      setIsOrdering(true);
-      const quantity = orderForm.quantity ? Number(orderForm.quantity) : 1;
       const shared = {
         patientId: selectedPatientId,
         doctorId: doctorIdParam,
         visitId: visitIdParam,
-        listItemId: orderForm.listItemId,
-        quantity,
-        remarks: orderForm.remarks.trim() || undefined,
-        priority: orderForm.priority,
-        source: orderForm.source,
-        price: orderForm.price ? Number(orderForm.price) : undefined,
-        uccCode: orderForm.uccCode.trim() || undefined,
-        covered: orderForm.covered ? orderForm.covered === "Yes" : undefined,
-        patientShareAmount: orderForm.patientShareAmount ? Number(orderForm.patientShareAmount) : undefined,
-        coInsurancePercent: orderForm.coInsurancePercent ? Number(orderForm.coInsurancePercent) : undefined,
-        preAuthStatus: orderForm.preAuthStatus || undefined,
+        quantity: values.quantity ? Number(values.quantity) : 1,
+        remarks: values.remarks.trim() || undefined,
+        priority: values.priority,
+        source: values.source,
+        price: values.price ? Number(values.price) : undefined,
+        uccCode: values.uccCode.trim() || undefined,
+        covered: values.covered ? values.covered === "Yes" : undefined,
+        patientShareAmount: values.patientShareAmount ? Number(values.patientShareAmount) : undefined,
+        coInsurancePercent: values.coInsurancePercent ? Number(values.coInsurancePercent) : undefined,
+        preAuthStatus: values.preAuthStatus || undefined,
       };
-      if (orderForm.category === "Lab") {
-        await LabService.create({ ...shared, testType: orderForm.testType.trim() });
-      } else {
+
+      if (orderingModal.mode === "create" && orderingModal.item.orderCategory === "Lab") {
+        await LabService.create({ ...shared, testType: orderingModal.item.name, listItemId: orderingModal.item.listItemId });
+        toast.success("Lab order placed");
+      } else if (orderingModal.mode === "create" && orderingModal.item.orderCategory === "Radiology") {
         await RadiologyService.create({
           ...shared,
-          scanType: orderForm.testType.trim(),
-          bodyParts: orderForm.bodyParts.trim() || undefined,
+          scanType: orderingModal.item.name,
+          listItemId: orderingModal.item.listItemId,
+          bodyParts: values.bodyParts.trim() || undefined,
         });
+        toast.success("Radiology order placed");
+      } else if (orderingModal.mode === "edit-lab") {
+        await LabService.update(orderingModal.item.labRequestId, {
+          ...shared,
+          testType: orderingModal.item.testType || "",
+          listItemId: orderingModal.item.listItemId || undefined,
+        });
+        toast.success("Lab order updated");
+      } else if (orderingModal.mode === "edit-radiology") {
+        await RadiologyService.update(orderingModal.item.radiologyRequestId, {
+          ...shared,
+          scanType: orderingModal.item.scanType || "",
+          listItemId: orderingModal.item.listItemId || undefined,
+          bodyParts: values.bodyParts.trim() || undefined,
+        });
+        toast.success("Radiology order updated");
       }
-      toast.success(`${orderForm.category} order placed`);
-      setOrderForm({
-        category: orderForm.category,
-        testType: "",
-        listItemId: undefined,
-        quantity: "1",
-        remarks: "",
-        priority: "Normal",
-        source: "InHouse",
-        price: "",
-        uccCode: "",
-        covered: "",
-        patientShareAmount: "",
-        coInsurancePercent: "",
-        preAuthStatus: "Not Required",
-        bodyParts: "",
-      });
+      setOrderingModal(null);
+      await fetchSummary(selectedPatientId);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to place order"));
+      toast.error(errorMessage(error, "Failed to save order"));
     } finally {
-      setIsOrdering(false);
+      setIsSavingOrder(false);
+    }
+  };
+
+  const submitTreatment = async (values: TreatmentConfigValues) => {
+    if (!selectedPatientId || !orderingModal) return;
+    if (!requireDoctorSelected()) return;
+    setIsSavingOrder(true);
+    try {
+      const shared = {
+        patientId: selectedPatientId,
+        encounterId: summary?.latestEncounter?.encounterId,
+        quantity: values.quantity ? Number(values.quantity) : 1,
+        instructions: values.instructions.trim() || undefined,
+        isPackage: values.isPackage,
+        isBillingPending: values.isBillingPending,
+      };
+
+      if (orderingModal.mode === "create") {
+        await TreatmentService.create(
+          { ...shared, description: orderingModal.item.name, listItemId: orderingModal.item.listItemId },
+          doctorIdParam
+        );
+        toast.success("Treatment ordered");
+      } else if (orderingModal.mode === "edit-treatment") {
+        await TreatmentService.update(orderingModal.item.treatmentId, {
+          ...shared,
+          description: orderingModal.item.description,
+          listItemId: orderingModal.item.listItemId || undefined,
+        });
+        toast.success("Treatment updated");
+      }
+      setOrderingModal(null);
+      await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save treatment"));
+    } finally {
+      setIsSavingOrder(false);
     }
   };
 
@@ -1920,7 +1943,17 @@ function DoctorWorkbenchInner() {
                           <tbody>
                             {summary.currentMedications.map((m) => (
                               <tr key={m.medicationId}>
-                                <td className="font-semibold">{m.drugName}</td>
+                                <td className="font-semibold">
+                                  {m.drugName}
+                                  {m.isDiscontinued && (
+                                    <span
+                                      className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 align-middle"
+                                      title={m.discontinuedDate ? `Discontinued by health authority on ${new Date(m.discontinuedDate).toLocaleDateString()}` : "Discontinued by health authority"}
+                                    >
+                                      Discontinued
+                                    </span>
+                                  )}
+                                </td>
                                 <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
                                 <td>{m.route || "—"}</td>
                                 <td>{m.frequency || "—"}</td>
@@ -1996,108 +2029,6 @@ function DoctorWorkbenchInner() {
 
                 </div>
 
-                {/* Treatments — non-drug orders (dressing changes, physio, etc.); nurse
-                    may only flip Status to Done, never edit the order itself. */}
-                <div className="card p-6 flex flex-col gap-4">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <ClipboardCheck size={18} className="text-primary" /> Treatments
-                  </h2>
-                  {summary.treatments.length > 0 ? (
-                    <div className="flex flex-col gap-1.5">
-                      {summary.treatments.map((t) => (
-                        <div key={t.treatmentId} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
-                          <div>
-                            <span className="font-medium">
-                              {t.description} {t.quantity > 1 && <span className="text-xs text-muted-foreground">×{t.quantity}</span>}
-                            </span>
-                            {t.instructions && <span className="text-xs text-muted-foreground ml-2">{t.instructions}</span>}
-                            <div className="flex gap-1 mt-1">
-                              {t.isPackage && (
-                                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-700">Package</span>
-                              )}
-                              {t.isBillingPending && (
-                                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-purple-100 text-purple-700">Billing pending</span>
-                              )}
-                            </div>
-                          </div>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${t.status === "Done" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-                            {t.status}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No treatments ordered.</p>
-                  )}
-
-                  <div className="border-t border-border pt-4 flex flex-col gap-2">
-                    <p className="text-sm font-semibold text-foreground/90">New Treatment</p>
-                    {treatmentForm.description ? (
-                      <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-                        <span className="font-medium">{treatmentForm.description}</span>
-                        <button
-                          type="button"
-                          onClick={() => setTreatmentForm((p) => ({ ...p, listItemId: undefined, description: "" }))}
-                          className="text-xs font-semibold text-primary hover:underline"
-                        >
-                          Change
-                        </button>
-                      </div>
-                    ) : (
-                      <CatalogSearchInput
-                        placeholder="Search treatment..."
-                        fetchOptions={async (search) => {
-                          const res = await ConfigListService.get("Treatment", search);
-                          return (res.data || []).map((i: { listItemId: string; name: string; code: string | null }) => ({
-                            id: i.listItemId,
-                            name: i.name,
-                            code: i.code,
-                          }));
-                        }}
-                        onSelect={(opt) => setTreatmentForm((p) => ({ ...p, listItemId: opt.id, description: opt.name }))}
-                      />
-                    )}
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="number"
-                        min={1}
-                        placeholder="Quantity"
-                        value={treatmentForm.quantity}
-                        onChange={(e) => setTreatmentForm((p) => ({ ...p, quantity: e.target.value }))}
-                        className="h-10 text-sm"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Instructions (optional)"
-                        value={treatmentForm.instructions}
-                        onChange={(e) => setTreatmentForm((p) => ({ ...p, instructions: e.target.value }))}
-                        className="h-10 text-sm"
-                      />
-                    </div>
-                    <div className="flex gap-4">
-                      <div className="flex items-center gap-2 text-sm">
-                        <ToggleButton
-                          checked={treatmentForm.isPackage}
-                          onChange={(checked) => setTreatmentForm((p) => ({ ...p, isPackage: checked }))}
-                        />
-                        <span>Package</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <ToggleButton
-                          checked={treatmentForm.isBillingPending}
-                          onChange={(checked) => setTreatmentForm((p) => ({ ...p, isBillingPending: checked }))}
-                        />
-                        <span>Pending (don&apos;t bill now — carry to next visit)</span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={addTreatment}
-                      className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-                    >
-                      <Plus size={15} /> Order Treatment
-                    </button>
-                  </div>
-                </div>
               </div>
 
               <div className="flex flex-col gap-6">
@@ -2107,190 +2038,45 @@ function DoctorWorkbenchInner() {
                   onCancelEdit={() => setEditingMedication(null)}
                 />
 
-                {/* Investigation ordering */}
+                {/* Unified ordering - Lab, Radiology and Treatment all placed from one CPT-
+                    code/procedure-name search, shown together in one grouped list below it.
+                    Each item's gear icon reopens the same per-type config popup used to
+                    create it (see components/orders/) - locked once the owning team has
+                    started processing it, or the visit's finalized. */}
                 <div className="card p-6 flex flex-col gap-3">
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <FlaskConical size={18} className="text-primary" /> Order Investigation
+                    <FlaskConical size={18} className="text-primary" /> Investigations &amp; Treatments
                   </h2>
-                  <div className="flex gap-3">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        checked={orderForm.category === "Lab"}
-                        onChange={() => setOrderForm((p) => ({ ...p, category: "Lab" }))}
-                      />
-                      Lab
-                    </label>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        checked={orderForm.category === "Radiology"}
-                        onChange={() => setOrderForm((p) => ({ ...p, category: "Radiology" }))}
-                      />
-                      Radiology
-                    </label>
-                  </div>
-                  {orderForm.testType ? (
-                    <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-                      <span className="font-medium">{orderForm.testType}</span>
-                      <button
-                        type="button"
-                        onClick={() => setOrderForm((p) => ({ ...p, listItemId: undefined, testType: "" }))}
-                        className="text-xs font-semibold text-primary hover:underline"
-                      >
-                        Change
-                      </button>
-                    </div>
-                  ) : (
-                    <CatalogSearchInput
-                      placeholder="Search investigation..."
-                      fetchOptions={async (search) => {
-                        const res = await ConfigListService.get("Investigation", search);
-                        return (res.data || []).map((i: { listItemId: string; name: string; code: string | null }) => ({
-                          id: i.listItemId,
-                          name: i.name,
-                          code: i.code,
-                        }));
-                      }}
-                      onSelect={(opt) => setOrderForm((p) => ({ ...p, listItemId: opt.id, testType: opt.name }))}
-                    />
-                  )}
-                  <div className="grid grid-cols-2 gap-3">
-                    <input
-                      type="number"
-                      min={1}
-                      placeholder="Quantity"
-                      value={orderForm.quantity}
-                      onChange={(e) => setOrderForm((p) => ({ ...p, quantity: e.target.value }))}
-                      className="h-10 text-sm"
-                    />
-                    <select
-                      value={orderForm.priority}
-                      onChange={(e) => setOrderForm((p) => ({ ...p, priority: e.target.value }))}
-                      className="h-10 text-sm"
-                    >
-                      <option value="Normal">Normal</option>
-                      <option value="Urgent">Urgent</option>
-                    </select>
-                  </div>
-                  <select
-                    value={orderForm.source}
-                    onChange={(e) => setOrderForm((p) => ({ ...p, source: e.target.value }))}
-                    className="h-10 text-sm"
-                  >
-                    <option value="InHouse">In-house</option>
-                    <option value="External">External</option>
-                  </select>
-                  <textarea
-                    placeholder="Remarks for the lab (optional)"
-                    value={orderForm.remarks}
-                    onChange={(e) => setOrderForm((p) => ({ ...p, remarks: e.target.value }))}
-                    className="w-full min-h-12 text-sm"
+                  <CatalogSearchInput
+                    placeholder="Search by CPT code or procedure name..."
+                    fetchOptions={async (search) => {
+                      const res = await ConfigListService.get("Procedure", search);
+                      const items: ListItemType[] = res.data || [];
+                      items.forEach((i) => procedureResultsRef.current.set(i.listItemId, i));
+                      return items.map((i) => ({
+                        id: i.listItemId,
+                        name: i.name,
+                        code: i.code,
+                        meta: [i.department, i.orderCategory].filter(Boolean).join(" · ") || undefined,
+                      }));
+                    }}
+                    onSelect={(opt) => {
+                      const item = procedureResultsRef.current.get(opt.id);
+                      if (item) {
+                        setOrderingModal({ mode: "create", item });
+                      } else {
+                        toast.error("Couldn't load that item — please search again");
+                      }
+                    }}
                   />
-
-                  {orderForm.category === "Radiology" && (
-                    <input
-                      type="text"
-                      placeholder="Body parts (e.g. Chest, Left knee)"
-                      value={orderForm.bodyParts}
-                      onChange={(e) => setOrderForm((p) => ({ ...p, bodyParts: e.target.value }))}
-                      className="h-10 text-sm"
-                    />
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Price (AED)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        value={orderForm.price}
-                        onChange={(e) => setOrderForm((p) => ({ ...p, price: e.target.value }))}
-                        className="h-10 text-sm"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-muted-foreground">UCC code</label>
-                      <input
-                        type="text"
-                        value={orderForm.uccCode}
-                        onChange={(e) => setOrderForm((p) => ({ ...p, uccCode: e.target.value }))}
-                        className="h-10 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Insurance snapshot — reference-only hint pulled from the patient's
-                      coverage on file (set at registration); fields below stay editable. */}
-                  {insuranceCoverage && insuranceCoverage.paymentType !== "Cash" && (
-                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5">
-                      {matchedCoverage
-                        ? `${insuranceCoverage.paymentType} on file for ${orderForm.category}: Co-Insurance ${matchedCoverage.coPayPercent ?? "—"}%, Deductible ${matchedCoverage.deductible ?? "—"} AED (${matchedCoverage.deductibleAppliesTo || "—"})`
-                        : `${insuranceCoverage.paymentType} patient — no ${orderForm.category} coverage on file`}
-                    </p>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Covered</label>
-                      <div className="flex items-center gap-3 h-10 text-sm">
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                          <input type="radio" checked={orderForm.covered === "Yes"} onChange={() => setOrderForm((p) => ({ ...p, covered: "Yes" }))} /> Yes
-                        </label>
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                          <input type="radio" checked={orderForm.covered === "No"} onChange={() => setOrderForm((p) => ({ ...p, covered: "No" }))} /> No
-                        </label>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Pre-authorization</label>
-                      <select
-                        value={orderForm.preAuthStatus}
-                        onChange={(e) => setOrderForm((p) => ({ ...p, preAuthStatus: e.target.value }))}
-                        className="h-10 text-sm"
-                      >
-                        <option value="Not Required">Not Required</option>
-                        <option value="Required">Required</option>
-                        <option value="Pending">Pending</option>
-                        <option value="Approved">Approved</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Patient share (AED)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        value={orderForm.patientShareAmount}
-                        onChange={(e) => setOrderForm((p) => ({ ...p, patientShareAmount: e.target.value }))}
-                        className="h-10 text-sm"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Co-Insurance (%)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.01}
-                        value={orderForm.coInsurancePercent}
-                        onChange={(e) => setOrderForm((p) => ({ ...p, coInsurancePercent: e.target.value }))}
-                        className="h-10 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={orderInvestigation}
-                    disabled={isOrdering}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                  >
-                    <Plus size={15} /> Place Order
-                  </button>
+                  <OrderedItemsList
+                    labRequests={summary.labRequests}
+                    radiologyRequests={summary.radiologyRequests}
+                    treatments={summary.treatments}
+                    onOpenLab={(item) => setOrderingModal({ mode: "edit-lab", item })}
+                    onOpenRadiology={(item) => setOrderingModal({ mode: "edit-radiology", item })}
+                    onOpenTreatment={(item) => setOrderingModal({ mode: "edit-treatment", item })}
+                  />
                 </div>
 
                 {/* Referral */}
@@ -2633,9 +2419,167 @@ function DoctorWorkbenchInner() {
                     )}
                   </div>
                 </div>
+
+                <PatientMedicalFormsSection
+                  patientId={selectedPatientId}
+                  visitId={summary?.latestEncounter?.visitId ?? visitIdParam ?? null}
+                  patientName={summary?.name}
+                  patientNumber={summary?.opNumber || summary?.opId}
+                />
               </div>
             </div>
+
+            {/* Dental Chart — full-width below the 3-col grid, dental dept only */}
+            {dashboard?.isDentalSpecialty && selectedPatientId && (
+              <div className="card p-4 flex flex-col gap-3">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Stethoscope size={18} className="text-primary" /> Dental Chart
+                </h2>
+                {summary?.latestEncounter?.encounterId ? (
+                  <DentalChartSection
+                    encounterId={summary.latestEncounter.encounterId}
+                    patientId={selectedPatientId}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    No active encounter — start a visit to access the dental chart.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
+        )}
+
+        {showPrescriptionPrint && summary && (
+          <PrescriptionPrintout
+            patientName={summary.name}
+            patientNumber={summary.opNumber || summary.opId}
+            patientAge={patientAgeForPrint}
+            patientSex={summary.sex}
+            doctorName={getUserDetail()?.name || "Attending Physician"}
+            visitDate={new Date().toLocaleDateString()}
+            medicines={summary.currentMedications.map((m) => ({
+              drugName: m.drugName,
+              drugType: m.drugType,
+              dosage: m.dosage,
+              dosageUnit: m.dosageUnit,
+              frequency: m.frequency,
+              route: m.route,
+              orderType: m.orderType,
+              durationDays: m.durationDays,
+              instructions: m.instructions,
+              totalQuantity: m.totalQuantity,
+            }))}
+            showPricing={false}
+            onClose={() => setShowPrescriptionPrint(false)}
+          />
+        )}
+
+        {showVitalsHistory && (
+          <VitalsHistoryModal entries={vitalsHistory} onClose={() => setShowVitalsHistory(false)} />
+        )}
+
+        {/* Unified ordering config popups - one open at a time, driven by orderingModal's
+            mode. "create" branches on the picked catalog item's own OrderCategory; "edit-*"
+            reopens the same popup pre-filled from the already-placed order, locked per
+            OrderLockHelper. Previously rendered from the WRONG return branch (the workbench
+            patient-list view, which a selected patient never reaches - selectedPatientId
+            takes the early return above) - that's why clicking a search result appeared to
+            do nothing: the state was being set correctly, just nothing was ever mounted to
+            read it. */}
+        {orderingModal?.mode === "create" && orderingModal.item.orderCategory === "Treatment" && (
+          <TreatmentConfigModal
+            itemName={orderingModal.item.name}
+            values={DEFAULT_TREATMENT_VALUES}
+            saving={isSavingOrder}
+            submitLabel="Order Treatment"
+            onSave={submitTreatment}
+            onClose={() => setOrderingModal(null)}
+          />
+        )}
+        {orderingModal?.mode === "create" && orderingModal.item.orderCategory !== "Treatment" && (
+          <LabRadiologyConfigModal
+            category={orderingModal.item.orderCategory === "Radiology" ? "Radiology" : "Lab"}
+            itemName={orderingModal.item.name}
+            values={{
+              ...DEFAULT_LAB_RADIOLOGY_VALUES,
+              price: orderingModal.item.cashPrice != null ? String(orderingModal.item.cashPrice) : "",
+            }}
+            coverageHint={coverageHintText(orderingModal.item.orderCategory === "Radiology" ? "Radiology" : "Lab")}
+            saving={isSavingOrder}
+            submitLabel="Place Order"
+            onSave={submitLabRadiology}
+            onClose={() => setOrderingModal(null)}
+          />
+        )}
+        {orderingModal?.mode === "edit-lab" && (
+          <LabRadiologyConfigModal
+            category="Lab"
+            itemName={orderingModal.item.testType || "Lab test"}
+            values={{
+              quantity: String(orderingModal.item.quantity),
+              priority: orderingModal.item.priority,
+              source: orderingModal.item.source,
+              remarks: orderingModal.item.remarks || "",
+              bodyParts: "",
+              price: orderingModal.item.price != null ? String(orderingModal.item.price) : "",
+              uccCode: orderingModal.item.uccCode || "",
+              covered: orderingModal.item.covered === true ? "Yes" : orderingModal.item.covered === false ? "No" : "",
+              preAuthStatus: orderingModal.item.preAuthStatus || "Not Required",
+              patientShareAmount: orderingModal.item.patientShareAmount != null ? String(orderingModal.item.patientShareAmount) : "",
+              coInsurancePercent: orderingModal.item.coInsurancePercent != null ? String(orderingModal.item.coInsurancePercent) : "",
+            }}
+            coverageHint={coverageHintText("Lab")}
+            locked={orderingModal.item.locked}
+            lockedBy={orderingModal.item.lockedBy}
+            saving={isSavingOrder}
+            submitLabel="Save changes"
+            onSave={submitLabRadiology}
+            onClose={() => setOrderingModal(null)}
+          />
+        )}
+        {orderingModal?.mode === "edit-radiology" && (
+          <LabRadiologyConfigModal
+            category="Radiology"
+            itemName={orderingModal.item.scanType || "Scan"}
+            values={{
+              quantity: String(orderingModal.item.quantity),
+              priority: orderingModal.item.priority,
+              source: orderingModal.item.source,
+              remarks: orderingModal.item.notes || "",
+              bodyParts: orderingModal.item.bodyParts || "",
+              price: orderingModal.item.price != null ? String(orderingModal.item.price) : "",
+              uccCode: orderingModal.item.uccCode || "",
+              covered: orderingModal.item.covered === true ? "Yes" : orderingModal.item.covered === false ? "No" : "",
+              preAuthStatus: orderingModal.item.preAuthStatus || "Not Required",
+              patientShareAmount: orderingModal.item.patientShareAmount != null ? String(orderingModal.item.patientShareAmount) : "",
+              coInsurancePercent: orderingModal.item.coInsurancePercent != null ? String(orderingModal.item.coInsurancePercent) : "",
+            }}
+            coverageHint={coverageHintText("Radiology")}
+            locked={orderingModal.item.locked}
+            lockedBy={orderingModal.item.lockedBy}
+            saving={isSavingOrder}
+            submitLabel="Save changes"
+            onSave={submitLabRadiology}
+            onClose={() => setOrderingModal(null)}
+          />
+        )}
+        {orderingModal?.mode === "edit-treatment" && (
+          <TreatmentConfigModal
+            itemName={orderingModal.item.description}
+            values={{
+              quantity: String(orderingModal.item.quantity),
+              instructions: orderingModal.item.instructions || "",
+              isPackage: orderingModal.item.isPackage,
+              isBillingPending: orderingModal.item.isBillingPending,
+            }}
+            locked={orderingModal.item.locked}
+            lockedBy={orderingModal.item.lockedBy}
+            saving={isSavingOrder}
+            submitLabel="Save changes"
+            onSave={submitTreatment}
+            onClose={() => setOrderingModal(null)}
+          />
         )}
       </div>
     );
@@ -2858,34 +2802,6 @@ function DoctorWorkbenchInner() {
         </div>
       )}
 
-      {showPrescriptionPrint && summary && (
-        <PrescriptionPrintout
-          patientName={summary.name}
-          patientNumber={summary.opNumber || summary.opId}
-          patientAge={patientAgeForPrint}
-          patientSex={summary.sex}
-          doctorName={getUserDetail()?.name || "Attending Physician"}
-          visitDate={new Date().toLocaleDateString()}
-          medicines={summary.currentMedications.map((m) => ({
-            drugName: m.drugName,
-            drugType: m.drugType,
-            dosage: m.dosage,
-            dosageUnit: m.dosageUnit,
-            frequency: m.frequency,
-            route: m.route,
-            orderType: m.orderType,
-            durationDays: m.durationDays,
-            instructions: m.instructions,
-            totalQuantity: m.totalQuantity,
-          }))}
-          showPricing={false}
-          onClose={() => setShowPrescriptionPrint(false)}
-        />
-      )}
-
-      {showVitalsHistory && (
-        <VitalsHistoryModal entries={vitalsHistory} onClose={() => setShowVitalsHistory(false)} />
-      )}
     </div>
   );
 }

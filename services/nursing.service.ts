@@ -152,10 +152,8 @@ export const NursingService = {
     const { data } = await api.post(ENDPOINTS.NURSING.ADD_EXAMINATION_NOTE(patientId), payload);
     return data;
   },
-  markTreatmentDone: async (treatmentId: string, nurseId?: string) => {
-    const { data } = await api.put(ENDPOINTS.NURSING.MARK_TREATMENT_DONE(treatmentId), { nurseId });
-    return data;
-  },
+  // markTreatmentDone moved to services/treatment.service.ts::TreatmentService.markDone
+  // (treatments now have a real Update/Start/Revert workflow, see Controllers/TreatmentController.cs).
   administerMedication: async (medicationId: string, payload: AdministerMedicationPayload) => {
     const { data } = await api.post(ENDPOINTS.NURSING.ADMINISTER_MEDICATION(medicationId), payload);
     return data;

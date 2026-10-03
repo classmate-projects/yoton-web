@@ -3,14 +3,29 @@
 import { useState } from "react";
 import { ListPlus } from "lucide-react";
 import ListItemManager from "@/components/configLists/ListItemManager";
+import MedicineCatalogManager from "@/components/configLists/MedicineCatalogManager";
 import { ConfigListType } from "@/types/configList.type";
 
-// ICD/diagnosis codes have their own dedicated page (see the "Codes" sidebar
-// group) since that list is large enough and important enough to warrant its
-// own screen — everything else still shares this generic tabbed manager.
-const LIST_TYPES: { value: ConfigListType; label: string; hint: string }[] = [
-  { value: "Investigation", label: "Investigation", hint: "Searchable when ordering lab/radiology investigations" },
-  { value: "Treatment", label: "Treatment", hint: "Searchable in the doctor workbench's Treatment section" },
+// "Medication" isn't a real ConfigListType/ListItem-backed list like the others below - the
+// Medicine catalog is its own dedicated model (see PharmacyController) - but it's curated
+// here, admin-only, for the same reason Procedure's bulk upload lives here: catalog curation
+// is an admin/IT job, distinct from Pharmacy's day-to-day stock/dispensing work.
+type TabValue = ConfigListType | "Medication";
+
+const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
+  {
+    value: "Procedure",
+    label: "Procedure (CPT Codes)",
+    hint: "The unified catalog behind Lab, Radiology, and Treatment ordering on the Doctor Workbench - each entry's Department decides which of those three it becomes (\"Pathology and Laboratory\" → Lab, \"Radiology\" → Radiology, anything else → Treatment). Add entries one at a time, or upload a filled-in Excel with Department/CPT Code/Service Description/Cash Price columns for large sets like a full CPT price list.",
+  },
+  {
+    value: "Medication",
+    label: "Medication",
+    hint: "The medication catalog doctors search when prescribing. Upload the DDC or Riayati medication registry export as-is - columns are matched automatically. Day-to-day stock, pricing overrides, high-risk flagging, and alternatives are managed separately on the Pharmacy page.",
+  },
+  { value: "Investigation", label: "Investigation", hint: "Searchable when ordering lab/radiology investigations (legacy - new investigations should use Procedure above instead)" },
+  { value: "Treatment", label: "Treatment", hint: "Searchable in the doctor workbench's Treatment section (legacy - new treatments should use Procedure above instead)" },
+  { value: "Diagnosis", label: "ICD Code", hint: "The diagnosis code list doctors search when recording a diagnosis. Add codes one at a time, paste a batch, or upload a filled-in Excel template for large sets like ICD-10/ICD-11" },
   { value: "OrderType", label: "Order Type", hint: "Regular, Stat, PRN, IV Push, Oral, Vaginal, Rectal, etc." },
   { value: "Route", label: "Route of Administration", hint: "Oral, Dental, and other routes" },
   { value: "DosageUnit", label: "Dosage Unit", hint: "ml, mg, tablet, capsule, vial, bottle, puff, drops" },
@@ -21,7 +36,7 @@ const LIST_TYPES: { value: ConfigListType; label: string; hint: string }[] = [
 ];
 
 export default function ConfigListsPage() {
-  const [listType, setListType] = useState<ConfigListType>("Investigation");
+  const [listType, setListType] = useState<TabValue>("Procedure");
 
   const activeType = LIST_TYPES.find((t) => t.value === listType)!;
 
@@ -32,9 +47,8 @@ export default function ConfigListsPage() {
           <ListPlus className="text-primary" /> Configurable Lists
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage the picklists used across the doctor workbench — investigations, treatments, medication order
-          types, routes, dosage units, and frequencies. Looking for ICD/diagnosis codes? That&apos;s under
-          Codes &rarr; ICD Codes.
+          Manage the picklists used across the doctor workbench — investigations, treatments, ICD diagnosis codes,
+          medication order types, routes, dosage units, and frequencies.
         </p>
       </div>
 
@@ -56,7 +70,11 @@ export default function ConfigListsPage() {
 
       <p className="text-xs text-muted-foreground mb-4">{activeType.hint}</p>
 
-      <ListItemManager key={listType} listType={listType} itemLabel={activeType.label} />
+      {listType === "Medication" ? (
+        <MedicineCatalogManager key={listType} />
+      ) : (
+        <ListItemManager key={listType} listType={listType} itemLabel={activeType.label} />
+      )}
     </div>
   );
 }

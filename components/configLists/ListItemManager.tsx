@@ -29,8 +29,8 @@ interface ListItemManagerProps {
 }
 
 // Shared CRUD + bulk-upload widget behind every admin-managed code/picklist screen —
-// used both as the tab content on the generic Configurable Lists page and standalone
-// on single-purpose pages like ICD Codes. Callers own the page header/hint copy and,
+// used as the tab content on the Configurable Lists page. The caller owns the page
+// header/hint copy and,
 // if they let the admin switch listType (like a tab bar), should mount this with
 // key={listType} so each list gets a clean instance instead of carrying over another
 // list's in-progress form/bulk-upload state.
@@ -38,11 +38,16 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   const [items, setItems] = useState<ListItemType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [form, setForm] = useState({ name: "", code: "", sortOrder: "0" });
+  // Department/cashPrice only ever matter for listType="Procedure" - harmlessly unused
+  // (and never sent) for every other list type, same as the backend's own
+  // ConfigListController.ApplyProcedureFields no-op.
+  const [form, setForm] = useState({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isProcedure = listType === "Procedure";
+  const columnCount = isProcedure ? 8 : 5;
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", code: "", sortOrder: "0" });
+  const [editForm, setEditForm] = useState({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
 
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [bulkMode, setBulkMode] = useState<"paste" | "excel">("paste");
@@ -50,7 +55,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   const [isBulkUploading, setIsBulkUploading] = useState(false);
 
   const [excelFile, setExcelFile] = useState<File | null>(null);
-  const [excelRows, setExcelRows] = useState<{ name: string; code?: string }[]>([]);
+  const [excelRows, setExcelRows] = useState<{ name: string; code?: string; department?: string; cashPrice?: number }[]>([]);
   const [excelSkipped, setExcelSkipped] = useState(0);
   const [isParsingExcel, setIsParsingExcel] = useState(false);
 
@@ -92,6 +97,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setItems(res.data || []);
       setTotalCount(res.totalCount ?? 0);
     } catch (error) {
+      console.log("error from here: ", error);
       toast.error(errorMessage(error, "Failed to load list"));
       setItems([]);
       setTotalCount(0);
@@ -116,9 +122,11 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
         name: form.name.trim(),
         code: form.code.trim() || undefined,
         sortOrder: form.sortOrder ? Number(form.sortOrder) : 0,
+        department: isProcedure ? form.department.trim() || undefined : undefined,
+        cashPrice: isProcedure && form.cashPrice ? Number(form.cashPrice) : undefined,
       });
       toast.success("Item added");
-      setForm({ name: "", code: "", sortOrder: "0" });
+      setForm({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
       await fetchItems();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to add item"));
@@ -129,7 +137,13 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
 
   const startEdit = (item: ListItemType) => {
     setEditingId(item.listItemId);
-    setEditForm({ name: item.name, code: item.code || "", sortOrder: String(item.sortOrder) });
+    setEditForm({
+      name: item.name,
+      code: item.code || "",
+      sortOrder: String(item.sortOrder),
+      department: item.department || "",
+      cashPrice: item.cashPrice != null ? String(item.cashPrice) : "",
+    });
   };
 
   const saveEdit = async (id: string) => {
@@ -142,6 +156,8 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
         name: editForm.name.trim(),
         code: editForm.code.trim() || undefined,
         sortOrder: editForm.sortOrder ? Number(editForm.sortOrder) : 0,
+        department: isProcedure ? editForm.department.trim() || undefined : undefined,
+        cashPrice: isProcedure && editForm.cashPrice ? Number(editForm.cashPrice) : undefined,
       });
       toast.success("Item updated");
       setEditingId(null);
@@ -208,8 +224,12 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   };
 
   const downloadTemplate = () => {
-    const ws = XLSX.utils.aoa_to_sheet([["Code", "Description"]]);
-    ws["!cols"] = [{ wch: 16 }, { wch: 60 }];
+    const ws = isProcedure
+      ? XLSX.utils.aoa_to_sheet([["Department", "CPT Code", "Service Description", "Cash Price"]])
+      : XLSX.utils.aoa_to_sheet([["Code", "Description"]]);
+    ws["!cols"] = isProcedure
+      ? [{ wch: 26 }, { wch: 14 }, { wch: 60 }, { wch: 14 }]
+      : [{ wch: 16 }, { wch: 60 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Template");
     XLSX.writeFile(wb, `${itemLabel.replace(/\s+/g, "_")}_Upload_Template.xlsx`);
@@ -223,20 +243,36 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
 
+      // Header matching is deliberately loose/case-insensitive so the exact same client-
+      // supplied file (e.g. "DEPARTMENT" / "CPT CODE" / "SERVICE DESCRIPTION (UNIQUE)" /
+      // "CASH PRICE") works here unmodified, alongside the simpler generic "Code"/
+      // "Description" template every other list type downloads. Department/Cash Price are
+      // only ever read for listType="Procedure" - parsed but silently unused otherwise.
       const parsed = raw
         .map((row) => {
           const entries = Object.entries(row);
-          const codeEntry = entries.find(([k]) => k.trim().toLowerCase() === "code");
-          const descEntry = entries.find(([k]) => ["description", "name"].includes(k.trim().toLowerCase()));
+          const find = (...keys: string[]) =>
+            entries.find(([k]) => keys.includes(k.trim().toLowerCase().replace(/\s*\(.*\)\s*/g, "").trim()));
+          const codeEntry = find("code", "cpt code", "cpt");
+          const descEntry = find("description", "name", "service description");
+          const deptEntry = find("department");
+          const priceEntry = find("cash price", "cashprice", "price");
+          const priceRaw = priceEntry ? Number(priceEntry[1]) : NaN;
           return {
             name: String(descEntry?.[1] ?? "").trim(),
             code: String(codeEntry?.[1] ?? "").trim() || undefined,
+            department: isProcedure ? String(deptEntry?.[1] ?? "").trim() || undefined : undefined,
+            cashPrice: isProcedure && !Number.isNaN(priceRaw) ? priceRaw : undefined,
           };
         })
         .filter((row) => row.name);
 
       if (parsed.length === 0) {
-        toast.error('No usable rows found — the file needs "Code" and "Description" columns');
+        toast.error(
+          isProcedure
+            ? 'No usable rows found — the file needs a "Service Description" (or "Description"/"Name") column'
+            : 'No usable rows found — the file needs "Code" and "Description" columns'
+        );
         setExcelFile(null);
         setExcelRows([]);
         setExcelSkipped(0);
@@ -268,7 +304,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   // this promise chain happens to be running, chunk by chunk, regardless of
   // whether this component instance is still mounted by the time it finishes —
   // the closing fetchItems() call just becomes a harmless no-op if it isn't.
-  const uploadExcelInBackground = async (rows: { name: string; code?: string }[]) => {
+  const uploadExcelInBackground = async (rows: { name: string; code?: string; department?: string; cashPrice?: number }[]) => {
     const CHUNK_SIZE = 1000;
     const toastId = `excel-upload-${listType}`;
     const total = rows.length;
@@ -383,7 +419,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
           />
           <input
             type="text"
-            placeholder="Code (optional)"
+            placeholder={isProcedure ? "CPT code (optional)" : "Code (optional)"}
             value={form.code}
             onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
             className="h-10 text-sm"
@@ -395,7 +431,33 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
             onChange={(e) => setForm((p) => ({ ...p, sortOrder: e.target.value }))}
             className="h-10 text-sm"
           />
+          {isProcedure && (
+            <>
+              <input
+                type="text"
+                placeholder='Department (e.g. "Radiology")'
+                value={form.department}
+                onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
+                className="h-10 text-sm sm:col-span-2"
+              />
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                placeholder="Cash price (optional)"
+                value={form.cashPrice}
+                onChange={(e) => setForm((p) => ({ ...p, cashPrice: e.target.value }))}
+                className="h-10 text-sm sm:col-span-2"
+              />
+            </>
+          )}
         </div>
+        {isProcedure && (
+          <p className="text-xs text-muted-foreground -mt-1">
+            Department decides the order category automatically: &quot;Pathology and Laboratory&quot; → Lab,
+            &quot;Radiology&quot; → Radiology, anything else (including blank) → Treatment.
+          </p>
+        )}
         <div className="flex gap-3">
           <button
             onClick={addItem}
@@ -490,6 +552,12 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                       {excelSkipped > 0 && (
                         <span className="text-muted-foreground"> ({excelSkipped} skipped, missing Description)</span>
                       )}
+                      {isProcedure && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          ({excelRows.filter((r) => r.department).length} with a Department, auto-classified into Lab/Radiology/Treatment)
+                        </span>
+                      )}
                     </div>
                     <button onClick={clearExcelFile} title="Remove file" className="text-muted-foreground hover:text-red-500">
                       <X size={16} />
@@ -531,6 +599,9 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
             <tr>
               <th>Name</th>
               <th>Code</th>
+              {isProcedure && <th>Department</th>}
+              {isProcedure && <th>Category</th>}
+              {isProcedure && <th>Cash Price</th>}
               <th>Sort Order</th>
               <th className="text-center">Active</th>
               <th className="text-center">Action</th>
@@ -539,13 +610,13 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="py-16 text-center">
+                <td colSpan={columnCount} className="py-16 text-center">
                   <LoadingSpinner />
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-16 text-center text-muted-foreground">
+                <td colSpan={columnCount} className="py-16 text-center text-muted-foreground">
                   {debouncedSearch ? `No ${itemLabel} matches "${debouncedSearch}".` : `No items in ${itemLabel} yet.`}
                 </td>
               </tr>
@@ -569,6 +640,31 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                         className="h-9 text-sm w-24"
                       />
                     </td>
+                    {isProcedure && (
+                      <td>
+                        <input
+                          type="text"
+                          value={editForm.department}
+                          onChange={(e) => setEditForm((p) => ({ ...p, department: e.target.value }))}
+                          className="h-9 text-sm w-36"
+                        />
+                      </td>
+                    )}
+                    {isProcedure && (
+                      <td className="text-xs text-muted-foreground">{item.orderCategory || "Treatment"}</td>
+                    )}
+                    {isProcedure && (
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={editForm.cashPrice}
+                          onChange={(e) => setEditForm((p) => ({ ...p, cashPrice: e.target.value }))}
+                          className="h-9 text-sm w-24"
+                        />
+                      </td>
+                    )}
                     <td>
                       <input
                         type="number"
@@ -599,6 +695,23 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                   <tr key={item.listItemId}>
                     <td className="font-semibold">{item.name}</td>
                     <td>{item.code || "—"}</td>
+                    {isProcedure && <td className="text-foreground/80">{item.department || "—"}</td>}
+                    {isProcedure && (
+                      <td>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            item.orderCategory === "Lab"
+                              ? "bg-blue-100 text-blue-700"
+                              : item.orderCategory === "Radiology"
+                                ? "bg-purple-100 text-purple-700"
+                                : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {item.orderCategory || "Treatment"}
+                        </span>
+                      </td>
+                    )}
+                    {isProcedure && <td>{item.cashPrice != null ? item.cashPrice : "—"}</td>}
                     <td>{item.sortOrder}</td>
                     <td className="text-center">
                       <div className="flex justify-center">

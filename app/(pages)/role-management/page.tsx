@@ -39,7 +39,7 @@ const allToggleableModules = sidebarMenuItems.filter(
 // any of these outright even if this were bypassed (see ModuleKeys.AdminOnly's comment);
 // force-assigning one anyway is a separate, deliberately harder, password-confirmed path
 // (see handleForceAssignConfirm below and RoleController.ForceModule).
-const ADMIN_ONLY_MODULES = new Set(["/user-management", "/departments", "/config-lists", "/icd-codes", "/reports/kpi"]);
+const ADMIN_ONLY_MODULES = new Set(["/user-management", "/departments", "/config-lists", "/reports/kpi"]);
 
 export default function RoleManagementPage() {
   const [roles, setRoles] = useState<FetchedRoles[]>([]);
@@ -289,6 +289,12 @@ export default function RoleManagementPage() {
     }
   };
 
+  // The admin role never reads its saved permission rows - the API (ModuleAccessChecker) and
+  // this app's own route guard both give it every module unconditionally - so its saved list
+  // is always empty. Showing that empty list would read as "admin has nothing", which is false;
+  // the modal shows every module ticked and read-only for admin instead.
+  const isAdminRole = permissionsRole?.name.trim().toLowerCase() === "admin";
+
   const grantableModules = allToggleableModules.filter((item) => !ADMIN_ONLY_MODULES.has(item.navLink));
   const allModulesSelected =
     grantableModules.length > 0 &&
@@ -491,13 +497,20 @@ export default function RoleManagementPage() {
                 <MdClose size={20} />
               </button>
             </div>
-            <p className="text-sm text-muted-foreground mb-6">
-              Check a module to grant this role access to it. Every module starts unchecked
-              for a role until you configure it; Settings is always available to every role.
-              The locked (<MdLock className="inline align-text-top" size={13} />) modules are
-              admin-only - click one to force-assign it after confirming your password, or
-              click a force-assigned one to revoke it.
-            </p>
+            {isAdminRole ? (
+              <p className="text-sm text-muted-foreground mb-6">
+                The Admin role always has access to every module, including the admin-only ones.
+                This can&apos;t be changed, so the list below is read-only.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground mb-6">
+                Check a module to grant this role access to it. Every module starts unchecked
+                for a role until you configure it; Settings is always available to every role.
+                The locked (<MdLock className="inline align-text-top" size={13} />) modules are
+                admin-only - click one to force-assign it after confirming your password, or
+                click a force-assigned one to revoke it.
+              </p>
+            )}
 
             {loadingPermissions ? (
               <div className="h-60 flex justify-center items-center">
@@ -505,20 +518,39 @@ export default function RoleManagementPage() {
               </div>
             ) : (
               <>
-                <label className="flex items-center gap-2 p-2.5 mb-2 w-fit rounded-lg border border-border hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer">
+                <label className={`flex items-center gap-2 p-2.5 mb-2 w-fit rounded-lg border border-border ${isAdminRole ? "opacity-60" : "hover:bg-neutral-100 dark:hover:bg-gray-800 cursor-pointer"}`}>
                   <input
                     type="checkbox"
-                    checked={allModulesSelected}
+                    checked={isAdminRole || allModulesSelected}
+                    disabled={isAdminRole}
                     ref={(el) => {
-                      if (el) el.indeterminate = someModulesSelected && !allModulesSelected;
+                      if (el) el.indeterminate = !isAdminRole && someModulesSelected && !allModulesSelected;
                     }}
                     onChange={handleToggleAllModules}
-                    className="h-4 w-4 shrink-0 accent-purple-600 cursor-pointer"
+                    className="h-4 w-4 shrink-0 accent-purple-600 cursor-pointer disabled:cursor-not-allowed"
                   />
                   <span className="text-sm font-semibold">Select All</span>
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 max-h-[50dvh] overflow-y-auto pr-1">
                 {allToggleableModules.map((item) => {
+                  if (isAdminRole) {
+                    return (
+                      <label
+                        key={item.navLink}
+                        className="flex items-center gap-2 p-2.5 rounded-lg opacity-70 cursor-default"
+                      >
+                        <input
+                          type="checkbox"
+                          checked
+                          readOnly
+                          className="h-4 w-4 shrink-0 accent-purple-600 pointer-events-none"
+                        />
+                        <item.icon />
+                        <span className="text-sm font-medium whitespace-nowrap">{item.name}</span>
+                      </label>
+                    );
+                  }
+
                   const isAdminOnly = ADMIN_ONLY_MODULES.has(item.navLink);
                   const isForceGranted = isAdminOnly && visibleModules.has(item.navLink);
 
@@ -581,18 +613,20 @@ export default function RoleManagementPage() {
               <button
                 type="button"
                 onClick={handleClosePermissions}
-                className="w-1/3 border border-neutral-400 text-gray-700 font-semibold py-3 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
+                className={`${isAdminRole ? "w-full" : "w-1/3"} border border-neutral-400 text-gray-700 font-semibold py-3 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer`}
               >
-                Cancel
+                {isAdminRole ? "Close" : "Cancel"}
               </button>
-              <button
-                type="button"
-                onClick={handleSavePermissions}
-                disabled={loadingPermissions || savingPermissions}
-                className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer"
-              >
-                {savingPermissions ? "Saving..." : "Save Permissions"}
-              </button>
+              {!isAdminRole && (
+                <button
+                  type="button"
+                  onClick={handleSavePermissions}
+                  disabled={loadingPermissions || savingPermissions}
+                  className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer"
+                >
+                  {savingPermissions ? "Saving..." : "Save Permissions"}
+                </button>
+              )}
             </div>
           </div>
         </div>

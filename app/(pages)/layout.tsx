@@ -12,6 +12,7 @@ import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
+import { useSessionRevokedListener } from "@/hooks/useSessionRevokedListener";
 import { onUserDetailChange } from "@/lib/userDetail";
 
 // Pages that are reachable by URL (e.g. from a button on an admin page) but
@@ -39,7 +40,7 @@ const extraProtectedRoutes: ProtectedRoute[] = [
 // helpers/sidebaritems.ts's comments on each) - Settings is always reachable, and
 // Confidential Notes has its own hardcoded nurse-only rule instead. Check-in is a normal
 // admin-grantable module like any other (see Role Management). User Management, Departments
-// & Staff, Configurable Lists, ICD Codes and Reports are admin-only *by default* (backend's
+// & Staff, Configurable Lists and Reports are admin-only *by default* (backend's
 // ModuleKeys.AdminOnly - excluded from the Role Management checklist, see its comment) but
 // deliberately NOT hardcoded here the way /role-management and /user-registration above
 // are: RoleController.ForceModule can still grant one of them to a specific non-admin role,
@@ -98,6 +99,7 @@ export default function PageLayout({
 
   const { warningSecondsLeft, stayLoggedIn } = useIdleLogout();
   useProactiveTokenRefresh();
+  useSessionRevokedListener();
 
   // Mobile-only drawer state. On desktop the sidebar is always in flow (hover
   // rail), so this is inert there; on mobile the hamburger in the top bar opens

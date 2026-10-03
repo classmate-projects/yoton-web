@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import Link from "next/link";
 import {
   ArrowLeft,
-  BadgeIndianRupee,
   Bell,
   CalendarCheck2,
   CalendarDays,
@@ -19,10 +17,11 @@ import {
   GraduationCap,
   ListChecks,
   LogIn,
+  Pencil,
   RefreshCw,
+  RotateCcw,
   Search,
   Stethoscope,
-  UserRoundCheck,
   Users,
   X,
   XCircle,
@@ -30,6 +29,8 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import { ReceptionService } from "@/services/reception.service";
+import { ChatService } from "@/services/chat.service";
+import { getChatConnection } from "@/lib/chatSignalR";
 import {
   AppointmentRequestType,
   AppointmentSlotType,
@@ -40,6 +41,7 @@ import {
 } from "@/types/appointment.type";
 import { PendingFollowUpType } from "@/types/emr.type";
 import { VisitType } from "@/types/visit.type";
+import { SpecializationAvailabilityType } from "@/types/doctorAvailability.type";
 import { useAppointmentRequestSignalR } from "@/hooks/useAppointmentRequestSignalR";
 import { getInitials } from "@/lib/getInitials";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
@@ -52,11 +54,63 @@ const toDateInputValue = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+// A doctor's status dot, shown on their own card (and, for a whole specialty's heading,
+// whether *any* doctor in it clears "scheduled"):
+//  - "online"      - has a working day inside the selected range, that range includes today,
+//                     and they're currently connected to the app (the same live chat presence
+//                     used on the Messages page).
+//  - "idle"        - has a working day inside the selected range, just not both of the above
+//                     (e.g. the range is a past/future date, or they're on shift but not
+//                     currently connected - there's no live signal to show either way).
+//  - "unavailable" - no working day at all falls inside the selected range.
+type DoctorStatus = "online" | "idle" | "unavailable";
+
+const STATUS_DOT_CLASS: Record<DoctorStatus, string> = {
+  online: "bg-emerald-500",
+  idle: "bg-amber-500",
+  unavailable: "bg-gray-400",
+};
+
+const STATUS_LABEL: Record<DoctorStatus, string> = {
+  online: "Online",
+  idle: "Idle",
+  unavailable: "Not available",
+};
+
+const isDateWithinRange = (isoDate: string | null | undefined, from: string, to: string) => {
+  if (!isoDate) return false;
+  const day = toDateInputValue(new Date(isoDate));
+  return day >= from && day <= to;
+};
+
+// Every day-of-week (0=Sunday..6=Saturday) that occurs at least once between `from` and `to`
+// (inclusive). Schedules repeat weekly, so once every day-of-week has shown up once, a longer
+// range can't add anything new - capped at 7 iterations either way.
+const daysOfWeekInRange = (from: Date, to: Date): Set<number> => {
+  const days = new Set<number>();
+  const spanDays = Math.max(0, Math.round((to.getTime() - from.getTime()) / 86_400_000));
+  const iterations = Math.min(spanDays + 1, 7);
+  for (let i = 0; i < iterations; i++) {
+    days.add(new Date(from.getTime() + i * 86_400_000).getDay());
+  }
+  return days;
+};
+
 export default function Appointments() {
   const [isLoadingGrid, setIsLoadingGrid] = useState(true);
   const [specializations, setSpecializations] = useState<
     SpecializationDoctorsType[]
   >([]);
+
+  // ---------------- Date range filter (doctor availability + the lists below it) ----------------
+  const todayValue = useMemo(() => toDateInputValue(new Date()), []);
+  const [fromDate, setFromDate] = useState(todayValue);
+  const [toDate, setToDate] = useState(todayValue);
+
+  // ---------------- Doctor status dots (schedule + live chat presence) ----------------
+  const [doctorAvailability, setDoctorAvailability] = useState<SpecializationAvailabilityType[]>([]);
+  const [presence, setPresence] = useState<Record<string, boolean>>({});
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSpecializationId, setSelectedSpecializationId] =
     useState("all");
@@ -88,6 +142,24 @@ export default function Appointments() {
   const [isLoadingQueue, setIsLoadingQueue] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
   const QUEUE_PAGE_SIZE = 5;
+
+  // ---------------- Edit visit (Visit queue "Edit") ----------------
+  // Nurses already see checked-in patients waiting for them on their own Nursing dashboard
+  // (Patient Monitoring's "untouched" list), so a "Start Nursing" shortcut here was a
+  // redundant second door into the same queue. Reception's actual day-to-day need on this
+  // table is fixing a visit that's wrong - moved to the wrong doctor, booked for the wrong
+  // time - so this reuses the same PUT /api/reception/visit/{id} reassignment the Patient
+  // Records "Edit Visit" button already calls, just in a lighter modal (this page already
+  // has every doctor loaded for its own booking grid above, so no extra fetch is needed).
+  const [editingQueueVisit, setEditingQueueVisit] = useState<VisitType | null>(null);
+  const [editVisitDoctorSearch, setEditVisitDoctorSearch] = useState("");
+  const [editVisitSelectedDoctor, setEditVisitSelectedDoctor] = useState<DoctorGridType | null>(null);
+  const [editVisitDate, setEditVisitDate] = useState<Date>(new Date());
+  const [editVisitDaySlots, setEditVisitDaySlots] = useState<DoctorDaySlotsType | null>(null);
+  const [isLoadingEditVisitSlots, setIsLoadingEditVisitSlots] = useState(false);
+  const [editVisitSelectedSlot, setEditVisitSelectedSlot] = useState<AppointmentSlotType | null>(null);
+  const [editVisitNotes, setEditVisitNotes] = useState("");
+  const [isSavingEditVisit, setIsSavingEditVisit] = useState(false);
 
   const [appointmentRequests, setAppointmentRequests] = useState<
     AppointmentRequestType[]
@@ -131,6 +203,100 @@ export default function Appointments() {
 
   useSignalRRefetch(["doctorScheduleUpdated"], fetchGrid);
 
+  // ---------------- Fetch doctor weekly schedules (for the status dots) ----------------
+  // Reuses the same catalog the Doctor Availability page edits - one full weekly schedule per
+  // doctor, fetched once, so checking "does this doctor work on day X" for the selected range
+  // is a client-side lookup instead of a per-doctor request.
+  const fetchDoctorAvailability = async () => {
+    try {
+      const data = await ReceptionService.getDoctorAvailability();
+      setDoctorAvailability(data.data ?? []);
+    } catch (error) {
+      console.error("Failed to fetch doctor availability:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchDoctorAvailability();
+  }, []);
+
+  useSignalRRefetch(["doctorScheduleUpdated", "doctorAssigned"], fetchDoctorAvailability);
+
+  // ---------------- Live presence for the status dots ("online" tier) ----------------
+  // Same mechanism as the Messages page: an initial REST snapshot for whichever doctors are
+  // actually on this page, kept current afterwards by the shared /chat-hub connection's
+  // "presenceChanged" event rather than polling.
+  const doctorUserIds = useMemo(() => {
+    const ids = specializations.flatMap((s) => s.doctors.map((d) => d.userId).filter((id): id is string => !!id));
+    return Array.from(new Set(ids)).sort();
+  }, [specializations]);
+  const doctorUserIdsKey = doctorUserIds.join(",");
+
+  useEffect(() => {
+    if (!doctorUserIdsKey) return;
+    ChatService.getPresence(doctorUserIds)
+      .then((res) => {
+        const map: Record<string, boolean> = {};
+        (res.data || []).forEach((entry: { userId: string; isOnline: boolean }) => {
+          map[entry.userId] = entry.isOnline;
+        });
+        setPresence((prev) => ({ ...prev, ...map }));
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctorUserIdsKey]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const handlePresenceChanged = (payload: { userId: string; isOnline: boolean }) => {
+      if (!isMounted) return;
+      setPresence((prev) => ({ ...prev, [payload.userId]: payload.isOnline }));
+    };
+
+    getChatConnection()
+      .then((connection) => {
+        if (!isMounted) return;
+        connection.off("presenceChanged", handlePresenceChanged);
+        connection.on("presenceChanged", handlePresenceChanged);
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+      getChatConnection()
+        .then((connection) => connection.off("presenceChanged", handlePresenceChanged))
+        .catch(() => {});
+    };
+  }, []);
+
+  // Doctors with at least one working day inside [fromDate, toDate] - the specialty-level dot
+  // is just "does this specialty have any doctor in this set".
+  const scheduledDoctorIds = useMemo(() => {
+    const from = new Date(`${fromDate}T00:00:00`);
+    const to = new Date(`${toDate}T00:00:00`);
+    const days = daysOfWeekInRange(from, to);
+    const ids = new Set<string>();
+    doctorAvailability.forEach((spec) => {
+      spec.doctors.forEach((doc) => {
+        if (doc.schedules.some((sch) => days.has(sch.day))) ids.add(doc.doctorId);
+      });
+    });
+    return ids;
+  }, [doctorAvailability, fromDate, toDate]);
+
+  // "Online" only ever applies to *today* - a doctor can't be live-connected on a date that
+  // hasn't happened yet or has already passed.
+  const rangeIncludesToday = fromDate <= todayValue && todayValue <= toDate;
+
+  const getDoctorStatus = (doctor: DoctorGridType): DoctorStatus => {
+    if (!scheduledDoctorIds.has(doctor.doctorId)) return "unavailable";
+    if (rangeIncludesToday && doctor.userId && presence[doctor.userId]) return "online";
+    return "idle";
+  };
+
+  const isSpecialtyAvailable = (spec: SpecializationDoctorsType) =>
+    spec.doctors.some((d) => scheduledDoctorIds.has(d.doctorId));
+
   // ---------------- Fetch patients (for booking search) ----------------
   const fetchPatients = async () => {
     try {
@@ -172,6 +338,87 @@ export default function Appointments() {
   }, []);
 
   useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], fetchVisitQueue);
+
+  const openEditQueueVisit = (visit: VisitType) => {
+    setEditingQueueVisit(visit);
+    setEditVisitDoctorSearch("");
+    setEditVisitSelectedDoctor(null);
+    setEditVisitDate(visit.appointmentDate ? new Date(visit.appointmentDate) : new Date());
+    setEditVisitDaySlots(null);
+    setEditVisitSelectedSlot(null);
+    setEditVisitNotes(visit.notes ?? "");
+  };
+
+  const closeEditQueueVisit = () => {
+    setEditingQueueVisit(null);
+    setEditVisitSelectedDoctor(null);
+    setEditVisitDaySlots(null);
+    setEditVisitSelectedSlot(null);
+  };
+
+  // Flattened once from the same `specializations` catalog the main booking grid above
+  // already loads - an 11-doctor clinic doesn't need its own department/specialty dropdowns
+  // on top of a search box, just something to narrow the list by name or specialty.
+  const editVisitDoctorOptions = useMemo(
+    () => specializations.flatMap((s) => s.doctors.map((d) => ({ ...d, specializationName: s.specializationName }))),
+    [specializations]
+  );
+
+  const editVisitDoctorResults = useMemo(() => {
+    const term = editVisitDoctorSearch.trim().toLowerCase();
+    if (term.length === 0) return editVisitDoctorOptions;
+    return editVisitDoctorOptions.filter(
+      (d) => d.name.toLowerCase().includes(term) || d.specializationName.toLowerCase().includes(term)
+    );
+  }, [editVisitDoctorOptions, editVisitDoctorSearch]);
+
+  const fetchEditVisitSlots = async (doctorId: string, date: Date) => {
+    try {
+      setIsLoadingEditVisitSlots(true);
+      setEditVisitSelectedSlot(null);
+      const data = await ReceptionService.getDoctorSlots(doctorId, toDateInputValue(date));
+      setEditVisitDaySlots(data.data ?? null);
+    } catch (error) {
+      console.error("Failed to fetch doctor slots:", error);
+      toast.error("Failed to load slots for this doctor");
+      setEditVisitDaySlots(null);
+    } finally {
+      setIsLoadingEditVisitSlots(false);
+    }
+  };
+
+  useEffect(() => {
+    if (editVisitSelectedDoctor) fetchEditVisitSlots(editVisitSelectedDoctor.doctorId, editVisitDate);
+  }, [editVisitSelectedDoctor, editVisitDate]);
+
+  const handleSaveEditVisit = async () => {
+    if (!editingQueueVisit || !editVisitSelectedDoctor || !editVisitSelectedSlot) {
+      toast.warning("Please select a doctor and an available time slot");
+      return;
+    }
+    try {
+      setIsSavingEditVisit(true);
+      const data = await ReceptionService.reassignVisit(editingQueueVisit.visitId, {
+        doctorId: editVisitSelectedDoctor.doctorId,
+        appointmentDate: editVisitSelectedSlot.start,
+        notes: editVisitNotes || undefined,
+      });
+      if (data.status === false) {
+        toast.error(data.message || "This slot has just been booked. Please choose another slot.");
+        fetchEditVisitSlots(editVisitSelectedDoctor.doctorId, editVisitDate);
+        return;
+      }
+      toast.success(data.message || "Visit updated");
+      closeEditQueueVisit();
+      fetchVisitQueue();
+    } catch (error) {
+      toast.error(
+        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update visit" : "Failed to update visit"
+      );
+    } finally {
+      setIsSavingEditVisit(false);
+    }
+  };
 
   // ---------------- Fetch pending appointment requests (from mobile self-booking) ----------------
   const fetchAppointmentRequests = async () => {
@@ -339,13 +586,20 @@ export default function Appointments() {
     }
   };
 
+  // Walk-ins have no appointmentDate, so they fall back to when they were actually checked in -
+  // both are "when this visit happened/is happening", just from whichever source the visit has.
+  const dateFilteredVisitQueue = useMemo(
+    () => visitQueue.filter((v) => isDateWithinRange(v.appointmentDate ?? v.checkedInAt, fromDate, toDate)),
+    [visitQueue, fromDate, toDate]
+  );
+
   const sortedVisitQueue = useMemo(() => {
-    return [...visitQueue].sort((a, b) => {
+    return [...dateFilteredVisitQueue].sort((a, b) => {
       const aTime = new Date(a.appointmentDate ?? a.checkedInAt).getTime();
       const bTime = new Date(b.appointmentDate ?? b.checkedInAt).getTime();
       return aTime - bTime;
     });
-  }, [visitQueue]);
+  }, [dateFilteredVisitQueue]);
 
   const queueTotalPages = Math.max(
     1,
@@ -419,21 +673,20 @@ export default function Appointments() {
       .filter((s) => normalizedSearch.length === 0 || s.doctors.length > 0);
   }, [specializations, searchTerm, selectedSpecializationId]);
 
-  const totalDoctors = specializations.reduce(
-    (total, s) => total + s.doctors.length,
-    0
+  // The doctor grid is search-driven, not shown by default - with every specialty and
+  // every one of its doctors rendered at once, an empty search would otherwise dump the
+  // entire staff directory onto the page before the user has asked to find anyone.
+  const hasActiveDoctorFilter = searchTerm.trim().length > 0 || selectedSpecializationId !== "all";
+
+  const filteredPendingFollowUps = useMemo(
+    () => pendingFollowUps.filter((f) => isDateWithinRange(f.followUpDate, fromDate, toDate)),
+    [pendingFollowUps, fromDate, toDate]
   );
 
-  const averageFee = totalDoctors
-    ? Math.round(
-        specializations.reduce(
-          (total, s) =>
-            total + s.doctors.reduce((sum, d) => sum + d.consultationFee, 0),
-          0
-        ) / totalDoctors
-      )
-    : 0;
-
+  const filteredAppointmentRequests = useMemo(
+    () => appointmentRequests.filter((r) => isDateWithinRange(r.appointmentDate, fromDate, toDate)),
+    [appointmentRequests, fromDate, toDate]
+  );
 
   const handleSelectSlot = (slot: DoctorDaySlotsType["slots"][number]) => {
     if (slot.isPast) return;
@@ -590,8 +843,8 @@ export default function Appointments() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <label className="relative block w-full sm:w-80">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <label className="relative block w-full sm:w-72">
               <Search
                 size={18}
                 className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -609,7 +862,7 @@ export default function Appointments() {
               onChange={(event) =>
                 setSelectedSpecializationId(event.target.value)
               }
-              className="h-11 w-full text-base sm:w-60"
+              className="h-11 w-full text-base sm:w-52"
             >
               <option value="all">All specializations</option>
               {specializationOptions.map((spec) => (
@@ -618,60 +871,58 @@ export default function Appointments() {
                 </option>
               ))}
             </select>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="card p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  Available doctors
-                </p>
-                <p className="mt-1 text-3xl font-semibold">{totalDoctors}</p>
+            <div className="flex items-end gap-2">
+              <div className="w-full sm:w-36">
+                <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                  From
+                </label>
+                <DatePicker
+                  value={fromDate}
+                  onChange={(value) => {
+                    setFromDate(value);
+                    if (value > toDate) setToDate(value);
+                  }}
+                  dateFormat="dd-MM-yyyy"
+                  placeholder="DD-MM-YYYY"
+                />
               </div>
-              <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <UserRoundCheck size={22} />
-              </span>
-            </div>
-          </div>
-          <div className="card p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  Specializations
-                </p>
-                <p className="mt-1 text-3xl font-semibold">
-                  {specializations.length}
-                </p>
+              <div className="w-full sm:w-36">
+                <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                  To
+                </label>
+                <DatePicker
+                  value={toDate}
+                  min={fromDate}
+                  onChange={(value) => setToDate(value)}
+                  dateFormat="dd-MM-yyyy"
+                  placeholder="DD-MM-YYYY"
+                />
               </div>
-              <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Stethoscope size={22} />
-              </span>
-            </div>
-          </div>
-          <div className="card p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Average fee</p>
-                <p className="mt-1 text-3xl font-semibold">
-                  {getCurrencySymbol()} {averageFee}
-                </p>
-              </div>
-              <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <BadgeIndianRupee size={22} />
-              </span>
+              {(fromDate !== todayValue || toDate !== todayValue) && (
+                <button
+                  onClick={() => {
+                    setFromDate(todayValue);
+                    setToDate(todayValue);
+                  }}
+                  title="Reset to today"
+                  aria-label="Reset to today"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-input text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <RotateCcw size={16} />
+                </button>
+              )}
             </div>
           </div>
         </div>
 
+        <div className="grid gap-4 lg:grid-cols-2">
         <section className="card p-5">
           <div className="flex items-center justify-between gap-4 mb-4">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
               <CalendarPlus className="text-primary" size={20} /> Pending follow-ups
-              {pendingFollowUps.length > 0 && (
+              {filteredPendingFollowUps.length > 0 && (
                 <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
-                  {pendingFollowUps.length}
+                  {filteredPendingFollowUps.length}
                 </span>
               )}
             </h2>
@@ -686,9 +937,11 @@ export default function Appointments() {
           </div>
           {isLoadingFollowUps ? (
             <LoadingSpinner />
-          ) : pendingFollowUps.length === 0 ? (
+          ) : filteredPendingFollowUps.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No follow-ups awaiting confirmation.
+              {pendingFollowUps.length === 0
+                ? "No follow-ups awaiting confirmation."
+                : "No follow-ups in the selected date range."}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -703,7 +956,7 @@ export default function Appointments() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingFollowUps.map((followUp) => (
+                  {filteredPendingFollowUps.map((followUp) => (
                     <tr key={followUp.followUpId} className="border-b border-border last:border-0">
                       <td className="py-2 pr-4 font-medium text-foreground">
                         {followUp.patientName ?? "Unknown"}
@@ -747,9 +1000,9 @@ export default function Appointments() {
           <div className="flex items-center justify-between gap-4 mb-4">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
               <Bell className="text-primary" size={20} /> Pending appointment requests
-              {appointmentRequests.length > 0 && (
+              {filteredAppointmentRequests.length > 0 && (
                 <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
-                  {appointmentRequests.length}
+                  {filteredAppointmentRequests.length}
                 </span>
               )}
             </h2>
@@ -764,9 +1017,11 @@ export default function Appointments() {
           </div>
           {isLoadingRequests ? (
             <LoadingSpinner />
-          ) : appointmentRequests.length === 0 ? (
+          ) : filteredAppointmentRequests.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No pending requests from the mobile app.
+              {appointmentRequests.length === 0
+                ? "No pending requests from the mobile app."
+                : "No requests in the selected date range."}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -781,7 +1036,7 @@ export default function Appointments() {
                   </tr>
                 </thead>
                 <tbody>
-                  {appointmentRequests.map((request) => (
+                  {filteredAppointmentRequests.map((request) => (
                     <tr key={request.appointmentId} className="border-b border-border last:border-0">
                       <td className="py-2 pr-4 font-medium text-foreground">
                         {request.patientName ?? "Unknown"}
@@ -820,6 +1075,7 @@ export default function Appointments() {
             </div>
           )}
         </section>
+        </div>
 
         <section className="card p-5">
           <div className="flex items-center justify-between gap-4 mb-4">
@@ -878,14 +1134,13 @@ export default function Appointments() {
                           {format(new Date(visit.checkedInAt), "h:mm a")}
                         </td>
                         <td className="py-2 pr-4">
-                          {(visit.status === "CheckedIn" || visit.status === "WithNurse") && visit.patientId && (
-                            <Link
-                              href={`/nursing?patientId=${visit.patientId}&visitId=${visit.visitId}`}
-                              className="text-xs font-semibold text-primary hover:underline"
-                            >
-                              Start Nursing
-                            </Link>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => openEditQueueVisit(visit)}
+                            className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline cursor-pointer"
+                          >
+                            <Pencil size={12} /> Edit
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -1098,33 +1353,56 @@ export default function Appointments() {
           </section>
         )}
 
-        {!selectedDoctor && (
+        {!selectedDoctor && hasActiveDoctorFilter && (
           <>
             {isLoadingGrid ? (
               <LoadingSpinner />
             ) : filteredSpecializations.length > 0 ? (
-              <div className="flex flex-col gap-8">
-                {filteredSpecializations.map((spec) => (
-                  <div key={spec.specializationId} className="flex flex-col gap-4">
-                    <div className="flex items-center gap-3">
+              // One flat grid for every doctor, not a grid-per-specialty - with only a handful
+              // of specialties having more than one doctor, a per-specialty grid would mostly
+              // just be a very wide single-column list. Each specialty's heading spans every
+              // column (col-span-full) so it still reads as a group break, while the doctor
+              // cards packed under it flow into whatever columns are free instead of each
+              // specialty forcing its own full-width row.
+              <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                {filteredSpecializations.map((spec, specIndex) => (
+                  <Fragment key={spec.specializationId}>
+                    <div
+                      className={`col-span-full flex items-center gap-3 ${specIndex === 0 ? "" : "mt-4"}`}
+                    >
                       <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
                         <Stethoscope size={18} />
                       </span>
                       <h2 className="text-xl font-semibold text-foreground">
                         {spec.specializationName}
                       </h2>
+                      <span
+                        title={isSpecialtyAvailable(spec) ? "Available" : "Not available"}
+                        aria-label={isSpecialtyAvailable(spec) ? "Available" : "Not available"}
+                        className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                          isSpecialtyAvailable(spec) ? "bg-emerald-500" : "bg-gray-400"
+                        }`}
+                      />
                       <span className="rounded-lg border border-border bg-muted/40 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
                         {spec.doctors.length} doctor
                         {spec.doctors.length === 1 ? "" : "s"}
                       </span>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-                      {spec.doctors.map((doctor) => (
+                    {spec.doctors.map((doctor) => (
                         <article key={doctor.doctorId} className="card p-5">
                           <div className="flex items-start gap-4">
-                            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-primary text-xl font-semibold text-primary-foreground shadow-sm">
-                              {getInitials(doctor.name)}
+                            <div className="relative shrink-0">
+                              <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-primary text-xl font-semibold text-primary-foreground shadow-sm">
+                                {getInitials(doctor.name)}
+                              </div>
+                              <span
+                                title={STATUS_LABEL[getDoctorStatus(doctor)]}
+                                aria-label={STATUS_LABEL[getDoctorStatus(doctor)]}
+                                className={`absolute -right-1 -top-1 h-4 w-4 rounded-full border-2 border-card ${
+                                  STATUS_DOT_CLASS[getDoctorStatus(doctor)]
+                                }`}
+                              />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -1169,9 +1447,8 @@ export default function Appointments() {
                             </div>
                           </div>
                         </article>
-                      ))}
-                    </div>
-                  </div>
+                    ))}
+                  </Fragment>
                 ))}
               </div>
             ) : (
@@ -1536,6 +1813,149 @@ export default function Appointments() {
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 {isConfirmingFollowUp ? "Booking..." : "Confirm & book"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingQueueVisit && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-border">
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-semibold text-foreground">Edit visit</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {editingQueueVisit.patientName ?? "Unknown"}
+                </p>
+              </div>
+              <button
+                onClick={closeEditQueueVisit}
+                className="text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">Doctor</label>
+                <input
+                  type="text"
+                  value={editVisitDoctorSearch}
+                  onChange={(event) => {
+                    setEditVisitDoctorSearch(event.target.value);
+                    setEditVisitSelectedDoctor(null);
+                  }}
+                  placeholder="Search by doctor name or specialization..."
+                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-blue-500 text-foreground"
+                />
+
+                {editVisitSelectedDoctor ? (
+                  <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-900">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{editVisitSelectedDoctor.name}</p>
+                      <p className="text-xs text-muted-foreground">{editVisitSelectedDoctor.specializationName}</p>
+                    </div>
+                    <button
+                      onClick={() => setEditVisitSelectedDoctor(null)}
+                      className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                    {editVisitDoctorResults.length > 0 ? (
+                      editVisitDoctorResults.map((doctor) => (
+                        <button
+                          key={doctor.doctorId}
+                          onClick={() => setEditVisitSelectedDoctor(doctor)}
+                          className="w-full text-left px-4 py-2 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer flex items-center gap-2"
+                        >
+                          <Stethoscope size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                          <span>
+                            <span className="font-medium text-foreground">{doctor.name}</span>
+                            <span className="text-xs text-muted-foreground ml-2">{doctor.specializationName}</span>
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-4 py-3 text-sm text-muted-foreground">No doctors found.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {editVisitSelectedDoctor && (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground/90 mb-2">Date</label>
+                    <DatePicker
+                      value={toDateInputValue(editVisitDate)}
+                      min={toDateInputValue(new Date())}
+                      onChange={(v) => v && setEditVisitDate(new Date(`${v}T00:00:00`))}
+                      dateFormat="dd-MM-yyyy"
+                      placeholder="DD-MM-YYYY"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground/90 mb-2">Available slots</label>
+                    {isLoadingEditVisitSlots ? (
+                      <LoadingSpinner />
+                    ) : (editVisitDaySlots?.slots.filter((s) => s.isAvailable).length ?? 0) === 0 ? (
+                      <p className="text-sm text-muted-foreground">No open slots for this doctor on this day.</p>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2 max-h-56 overflow-y-auto">
+                        {editVisitDaySlots!.slots
+                          .filter((s) => s.isAvailable)
+                          .map((slot) => (
+                            <button
+                              key={slot.start}
+                              type="button"
+                              onClick={() => setEditVisitSelectedSlot(slot)}
+                              className={`rounded-lg border px-2 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                                editVisitSelectedSlot?.start === slot.start
+                                  ? "border-primary bg-primary text-white"
+                                  : "border-emerald-600/30 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400"
+                              }`}
+                            >
+                              <Clock size={13} className="inline mr-1" />
+                              {format(new Date(slot.start), "h:mm a")}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground/90 mb-2">Notes</label>
+                    <textarea
+                      value={editVisitNotes}
+                      onChange={(event) => setEditVisitNotes(event.target.value)}
+                      rows={2}
+                      placeholder="Reason for visit (optional)"
+                      className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-blue-500 text-foreground resize-none"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={closeEditQueueVisit}
+                className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEditVisit}
+                disabled={isSavingEditVisit || !editVisitSelectedDoctor || !editVisitSelectedSlot}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                {isSavingEditVisit ? "Saving..." : "Save changes"}
               </button>
             </div>
           </div>

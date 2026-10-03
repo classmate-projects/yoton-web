@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import PasswordInput from "@/components/PasswordInput";
 import { ReceptionService } from "@/services/reception.service";
 import {
   ScheduleConflict,
@@ -163,9 +164,10 @@ function DoctorAvailabilityInner() {
   const [expandedSpecializations, setExpandedSpecializations] = useState<
     Set<string>
   >(new Set());
-  const [expandedDoctors, setExpandedDoctors] = useState<Set<string>>(
-    new Set()
-  );
+  // Which doctor's schedule editor is open, as a popup - null means none. A single id
+  // (not a Set, unlike expandedSpecializations) since only one doctor's configuration
+  // can sensibly be edited at a time in a popup.
+  const [configDoctorId, setConfigDoctorId] = useState<string | null>(null);
   const [confirmRemoveDay, setConfirmRemoveDay] = useState<{
     doctorId: string;
     day: number;
@@ -223,18 +225,6 @@ function DoctorAvailabilityInner() {
         next.delete(specializationId);
       } else {
         next.add(specializationId);
-      }
-      return next;
-    });
-  };
-
-  const toggleDoctor = (doctorId: string) => {
-    setExpandedDoctors((previous) => {
-      const next = new Set(previous);
-      if (next.has(doctorId)) {
-        next.delete(doctorId);
-      } else {
-        next.add(doctorId);
       }
       return next;
     });
@@ -507,6 +497,14 @@ function DoctorAvailabilityInner() {
     setOverrideError(null);
   };
 
+  // Looked up fresh from `availability` on every render (rather than storing the doctor
+  // object itself in state) so the popup keeps reflecting live edits instead of a stale
+  // snapshot taken at the moment it was opened.
+  const configDoctor = configDoctorId
+    ? availability.flatMap((spec) => spec.doctors).find((d) => d.doctorId === configDoctorId) ?? null
+    : null;
+  const configUsedDays = new Set(configDoctor?.schedules.map((s) => s.day) ?? []);
+
   return (
     <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
       <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -539,32 +537,32 @@ function DoctorAvailabilityInner() {
           </h2>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {availability.map((specialization) => {
             const isSpecializationExpanded = expandedSpecializations.has(
               specialization.specializationId
             );
 
             return (
-              <section key={specialization.specializationId} className="card">
+              <section key={specialization.specializationId} className="card flex flex-col">
                 <button
                   onClick={() =>
                     toggleSpecialization(specialization.specializationId)
                   }
-                  className="flex w-full items-center justify-between p-6 text-left transition-colors hover:bg-muted/30"
+                  className="flex w-full items-center justify-between p-5 text-left transition-colors hover:bg-muted/30 rounded-xl"
                 >
-                  <div>
-                    <h2 className="text-2xl font-semibold text-foreground">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold text-foreground truncate">
                       {specialization.specializationName}
                     </h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {specialization.doctors.length} doctors configured
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {specialization.doctors.length} doctor{specialization.doctors.length !== 1 ? "s" : ""} configured
                     </p>
                   </div>
                   {isSpecializationExpanded ? (
-                    <ChevronUp size={26} className="text-muted-foreground" />
+                    <ChevronUp size={20} className="text-muted-foreground shrink-0 ml-2" />
                   ) : (
-                    <ChevronDown size={26} className="text-muted-foreground" />
+                    <ChevronDown size={20} className="text-muted-foreground shrink-0 ml-2" />
                   )}
                 </button>
 
@@ -577,385 +575,71 @@ function DoctorAvailabilityInner() {
                 >
                   <div className="overflow-hidden">
                     <div className="border-t border-border p-6">
-                      <div className="overflow-x-auto rounded-lg border border-border">
-                        <table className="table-no-row-hover min-w-[1040px]">
-                          <thead>
-                            <tr>
-                              <th>Doctor</th>
-                              <th>Working Days</th>
-                              <th>Configured Days</th>
-                              <th>Breaks</th>
-                              <th>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {specialization.doctors.map((doctor) => {
-                              const usedDays = new Set(
-                                doctor.schedules.map((s) => s.day)
-                              );
-                              const isDoctorExpanded = expandedDoctors.has(
-                                doctor.doctorId
-                              );
-                              const breakCount = doctor.schedules.reduce(
-                                (total, s) => total + s.breaks.length,
-                                0
-                              );
-                              const isSaving =
-                                savingDoctorId === doctor.doctorId;
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+                        {specialization.doctors.map((doctor) => {
+                          const breakCount = doctor.schedules.reduce(
+                            (total, s) => total + s.breaks.length,
+                            0
+                          );
 
-                              return (
-                                <Fragment key={doctor.doctorId}>
-                                  <tr>
-                                    <td>
-                                      <div>
-                                        <p className="font-semibold text-foreground">
-                                          {doctor.doctorName}
-                                        </p>
-                                        <p className="text-sm font-semibold text-primary">
-                                          {doctor.specialization}
-                                        </p>
-                                      </div>
-                                    </td>
-                                    <td>
-                                      <div className="flex flex-wrap gap-2">
-                                        {doctor.schedules.length > 0 ? (
-                                          doctor.schedules.map((schedule) => (
-                                            <span
-                                              key={schedule.day}
-                                              className="rounded-lg border border-border bg-muted/50 px-3 py-1 text-xs font-semibold text-foreground"
-                                            >
-                                              {DAYS[schedule.day]}
-                                            </span>
-                                          ))
-                                        ) : (
-                                          <span className="text-sm text-muted-foreground">
-                                            No days configured
-                                          </span>
-                                        )}
-                                      </div>
-                                    </td>
-                                    <td className="font-semibold">
-                                      {doctor.schedules.length}
-                                    </td>
-                                    <td className="font-semibold">{breakCount}</td>
-                                    <td>
-                                      <button
-                                        onClick={() =>
-                                          toggleDoctor(doctor.doctorId)
-                                        }
-                                        aria-label={
-                                          isDoctorExpanded
-                                            ? "Hide configuration"
-                                            : "Configure availability"
-                                        }
-                                        title={
-                                          isDoctorExpanded
-                                            ? "Hide configuration"
-                                            : "Configure availability"
-                                        }
-                                        className={`flex p-2 items-center justify-center rounded-full outline-none cursor-pointer border transition-colors ${
-                                          isDoctorExpanded
-                                            ? "border-primary bg-primary/10 text-primary"
-                                            : "border-border text-foreground hover:border-primary/40 hover:text-primary"
-                                        }`}
-                                      >
-                                        <Settings size={18} />
-                                      </button>
-                                    </td>
-                                  </tr>
+                          return (
+                            <div
+                              key={doctor.doctorId}
+                              className="card flex flex-col gap-3 p-4"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate font-semibold text-foreground">
+                                    {doctor.doctorName}
+                                  </p>
+                                  <p className="truncate text-sm font-semibold text-primary">
+                                    {doctor.specialization}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => setConfigDoctorId(doctor.doctorId)}
+                                  aria-label={canEdit ? "Configure availability" : "View availability"}
+                                  title={canEdit ? "Configure availability" : "View availability"}
+                                  className="flex shrink-0 p-2 items-center justify-center rounded-full outline-none cursor-pointer border border-border text-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                                >
+                                  <Settings size={18} />
+                                </button>
+                              </div>
 
-                                  <tr>
-                                    <td
-                                      colSpan={5}
-                                      className="bg-muted/20 [padding:0!important]"
+                              <div className="flex flex-wrap gap-2">
+                                {doctor.schedules.length > 0 ? (
+                                  doctor.schedules.map((schedule) => (
+                                    <span
+                                      key={schedule.day}
+                                      className="rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-xs font-semibold text-foreground"
                                     >
-                                      <div
-                                        className={`grid transition-all duration-300 ease-in-out ${
-                                          isDoctorExpanded
-                                            ? "grid-rows-[1fr] opacity-100"
-                                            : "grid-rows-[0fr] opacity-0"
-                                        }`}
-                                      >
-                                        <div className="overflow-hidden">
-                                          <div className="flex flex-col gap-4 p-4">
-                                            <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-                                              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                                <div>
-                                                  <p className="text-lg font-semibold text-foreground">
-                                                    {doctor.doctorName} {canEdit ? "configuration" : "availability"}
-                                                  </p>
-                                                  <p className="text-sm text-muted-foreground">
-                                                    {canEdit
-                                                      ? "Tap a day to add it, tap an added day to remove it, then tune slot timing and breaks."
-                                                      : "Working days, slot timing, and breaks for this doctor."}
-                                                  </p>
-                                                </div>
-                                                {canEdit && (
-                                                  <button
-                                                    onClick={() => saveDoctorSchedule(doctor)}
-                                                    disabled={isSaving}
-                                                    className="flex h-10 w-fit items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                                                  >
-                                                    <Save size={15} />{" "}
-                                                    {isSaving ? "Saving..." : "Save"}
-                                                  </button>
-                                                )}
-                                              </div>
-                                              <div className="flex flex-wrap gap-2">
-                                                {canEdit
-                                                  ? DAYS.map((name, index) => {
-                                                      const isConfigured = usedDays.has(index);
-                                                      return (
-                                                        <button
-                                                          key={name}
-                                                          type="button"
-                                                          onClick={() =>
-                                                            handleDayPillClick(
-                                                              doctor.doctorId,
-                                                              index,
-                                                              isConfigured
-                                                            )
-                                                          }
-                                                          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                                            isConfigured
-                                                              ? "border-primary bg-primary text-primary-foreground"
-                                                              : "border-border text-foreground hover:border-primary/40"
-                                                          }`}
-                                                        >
-                                                          {name}
-                                                        </button>
-                                                      );
-                                                    })
-                                                  : DAYS.map((name, index) =>
-                                                      usedDays.has(index) ? (
-                                                        <span
-                                                          key={name}
-                                                          className="rounded-lg border border-primary bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
-                                                        >
-                                                          {name}
-                                                        </span>
-                                                      ) : null
-                                                    )}
-                                              </div>
-                                            </div>
+                                      {DAYS[schedule.day]}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">
+                                    No days configured
+                                  </span>
+                                )}
+                              </div>
 
-                                            <div className="overflow-x-auto rounded-lg border border-border bg-card">
-                                              <table className="table-no-row-hover min-w-[900px]">
-                                                <thead>
-                                                  <tr>
-                                                    <th>Day</th>
-                                                    <th>Start</th>
-                                                    <th>End</th>
-                                                    <th>Interval</th>
-                                                    <th>Max/slot</th>
-                                                    <th>Break Times</th>
-                                                    {canEdit && <th>Action</th>}
-                                                  </tr>
-                                                </thead>
-                                                <tbody>
-                                                  {doctor.schedules.length > 0 ? (
-                                                    doctor.schedules.map((schedule) => (
-                                                      <tr
-                                                        key={`${doctor.doctorId}-${schedule.day}`}
-                                                      >
-                                                        <td className="font-semibold">
-                                                          {DAYS[schedule.day]}
-                                                        </td>
-                                                        <td>
-                                                          {canEdit ? (
-                                                            <div className="relative min-w-32">
-                                                              <input
-                                                                type="time"
-                                                                value={schedule.startTime}
-                                                                onChange={(event) =>
-                                                                  updateSchedule(
-                                                                    doctor.doctorId,
-                                                                    schedule.day,
-                                                                    "startTime",
-                                                                    event.target.value
-                                                                  )
-                                                                }
-                                                                className="h-10 min-w-32 pr-9 text-sm"
-                                                              />
-                                                              <Clock
-                                                                size={15}
-                                                                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                                                              />
-                                                            </div>
-                                                          ) : (
-                                                            <span className="text-sm text-foreground">{schedule.startTime}</span>
-                                                          )}
-                                                        </td>
-                                                        <td>
-                                                          {canEdit ? (
-                                                            <div className="relative min-w-32">
-                                                              <input
-                                                                type="time"
-                                                                value={schedule.endTime}
-                                                                onChange={(event) =>
-                                                                  updateSchedule(
-                                                                    doctor.doctorId,
-                                                                    schedule.day,
-                                                                    "endTime",
-                                                                    event.target.value
-                                                                  )
-                                                                }
-                                                                className="h-10 min-w-32 pr-9 text-sm"
-                                                              />
-                                                              <Clock
-                                                                size={15}
-                                                                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                                                              />
-                                                            </div>
-                                                          ) : (
-                                                            <span className="text-sm text-foreground">{schedule.endTime}</span>
-                                                          )}
-                                                        </td>
-                                                        <td>
-                                                          {canEdit ? (
-                                                            <select
-                                                              value={schedule.slotDurationMinutes}
-                                                              onChange={(event) =>
-                                                                updateSchedule(
-                                                                  doctor.doctorId,
-                                                                  schedule.day,
-                                                                  "slotDurationMinutes",
-                                                                  Number(event.target.value)
-                                                                )
-                                                              }
-                                                              className="h-10 min-w-28 text-sm"
-                                                            >
-                                                              <option value={10}>10 min</option>
-                                                              <option value={15}>15 min</option>
-                                                              <option value={20}>20 min</option>
-                                                              <option value={30}>30 min</option>
-                                                              <option value={45}>45 min</option>
-                                                              <option value={60}>60 min</option>
-                                                            </select>
-                                                          ) : (
-                                                            <span className="text-sm text-foreground">{schedule.slotDurationMinutes} min</span>
-                                                          )}
-                                                        </td>
-                                                        <td>
-                                                          {canEdit ? (
-                                                            <select
-                                                              value={schedule.maxConcurrentBookings}
-                                                              onChange={(event) =>
-                                                                updateSchedule(
-                                                                  doctor.doctorId,
-                                                                  schedule.day,
-                                                                  "maxConcurrentBookings",
-                                                                  Number(event.target.value)
-                                                                )
-                                                              }
-                                                              title="How many patients can be booked into the same slot"
-                                                              className="h-10 min-w-24 text-sm"
-                                                            >
-                                                              <option value={1}>1 patient</option>
-                                                              <option value={2}>2 patients</option>
-                                                              <option value={3}>3 patients</option>
-                                                            </select>
-                                                          ) : (
-                                                            <span className="text-sm text-foreground">
-                                                              {schedule.maxConcurrentBookings} patient{schedule.maxConcurrentBookings === 1 ? "" : "s"}
-                                                            </span>
-                                                          )}
-                                                        </td>
-                                                        <td className="min-w-[220px]">
-                                                          <div className="flex flex-col gap-2">
-                                                            {canEdit && (
-                                                              <button
-                                                                onClick={() =>
-                                                                  openBreakModal(
-                                                                    doctor.doctorId,
-                                                                    schedule.day
-                                                                  )
-                                                                }
-                                                                className="flex w-fit items-center gap-2 rounded-lg border border-primary/30 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
-                                                              >
-                                                                <Coffee size={15} /> Add break
-                                                                time
-                                                              </button>
-                                                            )}
-
-                                                            {schedule.breaks.length > 0 ? (
-                                                              <div className="flex flex-col gap-1.5">
-                                                                {schedule.breaks.map((brk) => (
-                                                                  <div
-                                                                    key={brk.id}
-                                                                    className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5"
-                                                                  >
-                                                                    <span className="text-sm font-medium text-foreground">
-                                                                      {brk.startTime} - {brk.endTime}
-                                                                    </span>
-                                                                    <span className="truncate text-xs text-muted-foreground">
-                                                                      {brk.reason}
-                                                                    </span>
-                                                                    {canEdit && (
-                                                                      <button
-                                                                        onClick={() =>
-                                                                          removeBreak(
-                                                                            doctor.doctorId,
-                                                                            schedule.day,
-                                                                            brk.id
-                                                                          )
-                                                                        }
-                                                                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                                                                        aria-label="Remove break"
-                                                                      >
-                                                                        <Trash2 size={14} />
-                                                                      </button>
-                                                                    )}
-                                                                  </div>
-                                                                ))}
-                                                              </div>
-                                                            ) : (
-                                                              <p className="text-sm text-muted-foreground">
-                                                                No breaks
-                                                              </p>
-                                                            )}
-                                                          </div>
-                                                        </td>
-                                                        {canEdit && (
-                                                          <td>
-                                                            <button
-                                                              onClick={() =>
-                                                                removeScheduleDay(
-                                                                  doctor.doctorId,
-                                                                  schedule.day
-                                                                )
-                                                              }
-                                                              className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-red-300 hover:text-red-600"
-                                                            >
-                                                              Remove
-                                                            </button>
-                                                          </td>
-                                                        )}
-                                                      </tr>
-                                                    ))
-                                                  ) : (
-                                                    <tr>
-                                                      <td
-                                                        colSpan={canEdit ? 7 : 6}
-                                                        className="text-center text-muted-foreground"
-                                                      >
-                                                        No days configured for this doctor.
-                                                      </td>
-                                                    </tr>
-                                                  )}
-                                                </tbody>
-                                              </table>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                </Fragment>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                              <div className="mt-auto flex items-center gap-4 border-t border-border pt-2 text-xs text-muted-foreground">
+                                <span>
+                                  <strong className="font-semibold text-foreground">
+                                    {doctor.schedules.length}
+                                  </strong>{" "}
+                                  days configured
+                                </span>
+                                <span>
+                                  <strong className="font-semibold text-foreground">
+                                    {breakCount}
+                                  </strong>{" "}
+                                  breaks
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -963,6 +647,267 @@ function DoctorAvailabilityInner() {
               </section>
             );
           })}
+        </div>
+      )}
+
+      {/* Doctor schedule configuration popup */}
+      {configDoctor && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto p-6 border border-border">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">
+                  {configDoctor.doctorName} {canEdit ? "configuration" : "availability"}
+                </h2>
+                <p className="text-sm font-semibold text-primary">{configDoctor.specialization}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {canEdit
+                    ? "Tap a day to add it, tap an added day to remove it, then tune slot timing and breaks."
+                    : "Working days, slot timing, and breaks for this doctor."}
+                </p>
+              </div>
+              <button
+                onClick={() => setConfigDoctorId(null)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <p className="text-sm font-semibold text-foreground">Working days</p>
+                  {canEdit && (
+                    <button
+                      onClick={() => saveDoctorSchedule(configDoctor)}
+                      disabled={savingDoctorId === configDoctor.doctorId}
+                      className="flex h-10 w-fit items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Save size={15} />{" "}
+                      {savingDoctorId === configDoctor.doctorId ? "Saving..." : "Save"}
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {canEdit
+                    ? DAYS.map((name, index) => {
+                        const isConfigured = configUsedDays.has(index);
+                        return (
+                          <button
+                            key={name}
+                            type="button"
+                            onClick={() =>
+                              handleDayPillClick(configDoctor.doctorId, index, isConfigured)
+                            }
+                            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                              isConfigured
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border text-foreground hover:border-primary/40"
+                            }`}
+                          >
+                            {name}
+                          </button>
+                        );
+                      })
+                    : DAYS.map((name, index) =>
+                        configUsedDays.has(index) ? (
+                          <span
+                            key={name}
+                            className="rounded-lg border border-primary bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+                          >
+                            {name}
+                          </span>
+                        ) : null
+                      )}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="table-no-row-hover table-compact w-full">
+                  <thead>
+                    <tr>
+                      <th>Day</th>
+                      <th>Start</th>
+                      <th>End</th>
+                      <th>Interval</th>
+                      <th>Max/slot</th>
+                      <th>Break Times</th>
+                      {canEdit && <th>Action</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {configDoctor.schedules.length > 0 ? (
+                      configDoctor.schedules.map((schedule) => (
+                        <tr key={`${configDoctor.doctorId}-${schedule.day}`}>
+                          <td className="font-semibold">{DAYS[schedule.day]}</td>
+                          <td>
+                            {canEdit ? (
+                              <div className="relative min-w-28">
+                                <input
+                                  type="time"
+                                  value={schedule.startTime}
+                                  onChange={(event) =>
+                                    updateSchedule(
+                                      configDoctor.doctorId,
+                                      schedule.day,
+                                      "startTime",
+                                      event.target.value
+                                    )
+                                  }
+                                  className="h-10 min-w-28 pr-9 text-sm"
+                                />
+                                <Clock
+                                  size={15}
+                                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                />
+                              </div>
+                            ) : (
+                              <span className="text-sm text-foreground">{schedule.startTime}</span>
+                            )}
+                          </td>
+                          <td>
+                            {canEdit ? (
+                              <div className="relative min-w-28">
+                                <input
+                                  type="time"
+                                  value={schedule.endTime}
+                                  onChange={(event) =>
+                                    updateSchedule(
+                                      configDoctor.doctorId,
+                                      schedule.day,
+                                      "endTime",
+                                      event.target.value
+                                    )
+                                  }
+                                  className="h-10 min-w-28 pr-9 text-sm"
+                                />
+                                <Clock
+                                  size={15}
+                                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                />
+                              </div>
+                            ) : (
+                              <span className="text-sm text-foreground">{schedule.endTime}</span>
+                            )}
+                          </td>
+                          <td>
+                            {canEdit ? (
+                              <select
+                                value={schedule.slotDurationMinutes}
+                                onChange={(event) =>
+                                  updateSchedule(
+                                    configDoctor.doctorId,
+                                    schedule.day,
+                                    "slotDurationMinutes",
+                                    Number(event.target.value)
+                                  )
+                                }
+                                className="h-10 min-w-24 text-sm"
+                              >
+                                <option value={10}>10 min</option>
+                                <option value={15}>15 min</option>
+                                <option value={20}>20 min</option>
+                                <option value={30}>30 min</option>
+                                <option value={45}>45 min</option>
+                                <option value={60}>60 min</option>
+                              </select>
+                            ) : (
+                              <span className="text-sm text-foreground">{schedule.slotDurationMinutes} min</span>
+                            )}
+                          </td>
+                          <td>
+                            {canEdit ? (
+                              <select
+                                value={schedule.maxConcurrentBookings}
+                                onChange={(event) =>
+                                  updateSchedule(
+                                    configDoctor.doctorId,
+                                    schedule.day,
+                                    "maxConcurrentBookings",
+                                    Number(event.target.value)
+                                  )
+                                }
+                                title="How many patients can be booked into the same slot"
+                                className="h-10 min-w-20 text-sm"
+                              >
+                                <option value={1}>1 patient</option>
+                                <option value={2}>2 patients</option>
+                                <option value={3}>3 patients</option>
+                              </select>
+                            ) : (
+                              <span className="text-sm text-foreground">
+                                {schedule.maxConcurrentBookings} patient{schedule.maxConcurrentBookings === 1 ? "" : "s"}
+                              </span>
+                            )}
+                          </td>
+                          <td className="min-w-[200px]">
+                            <div className="flex flex-col gap-2">
+                              {canEdit && (
+                                <button
+                                  onClick={() => openBreakModal(configDoctor.doctorId, schedule.day)}
+                                  className="flex w-fit items-center gap-2 rounded-lg border border-primary/30 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+                                >
+                                  <Coffee size={15} /> Add break time
+                                </button>
+                              )}
+
+                              {schedule.breaks.length > 0 ? (
+                                <div className="flex flex-col gap-1.5">
+                                  {schedule.breaks.map((brk) => (
+                                    <div
+                                      key={brk.id}
+                                      className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5"
+                                    >
+                                      <span className="text-sm font-medium text-foreground">
+                                        {brk.startTime} - {brk.endTime}
+                                      </span>
+                                      <span className="truncate text-xs text-muted-foreground">
+                                        {brk.reason}
+                                      </span>
+                                      {canEdit && (
+                                        <button
+                                          onClick={() =>
+                                            removeBreak(configDoctor.doctorId, schedule.day, brk.id)
+                                          }
+                                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                                          aria-label="Remove break"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">No breaks</p>
+                              )}
+                            </div>
+                          </td>
+                          {canEdit && (
+                            <td>
+                              <button
+                                onClick={() => removeScheduleDay(configDoctor.doctorId, schedule.day)}
+                                className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-red-300 hover:text-red-600"
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={canEdit ? 7 : 6} className="text-center text-muted-foreground">
+                          No days configured for this doctor.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1175,8 +1120,7 @@ function DoctorAvailabilityInner() {
                   placeholder="Admin username"
                   className="w-full h-10 text-sm"
                 />
-                <input
-                  type="password"
+                <PasswordInput
                   value={overrideForm.password}
                   onChange={(event) =>
                     setOverrideForm((previous) => ({
