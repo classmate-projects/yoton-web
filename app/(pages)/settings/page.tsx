@@ -27,6 +27,7 @@ import { countryDetails } from "@/helpers/countyDetails";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import PasswordInput from "@/components/PasswordInput";
+import AvatarCropModal from "@/components/AvatarCropModal";
 import ToggleButton from "@/components/ToggleButton";
 import RichTextEditor from "@/components/RichTextEditor";
 import { BranchService } from "@/services/branch.service";
@@ -86,6 +87,7 @@ export default function SettingsPage() {
 
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
 
   // Facility profile - matches the client's data-collection sheet field-for-field. Every
   // field here (except the eClaimLink password) round-trips in full and simply saves
@@ -192,15 +194,18 @@ export default function SettingsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleAvatarUpload = async () => {
-    if (!avatarFile || !me) return;
+  const handleAvatarUpload = async (blob?: Blob) => {
+    if (!me) return;
+    const source = blob ?? (avatarFile ? await resizeImageFile(avatarFile) : null);
+    if (!source) return;
     setUploadingAvatar(true);
     try {
-      const resized = await resizeImageFile(avatarFile);
-      const data = await AuthService.uploadAvatar(resized);
+      const file = source instanceof File ? source : new File([source], "avatar.jpg", { type: "image/jpeg" });
+      const data = await AuthService.uploadAvatar(file);
       setMe({ ...me, userImage: data.userImage });
       patchUserDetail({ userImage: data.userImage });
       setAvatarFile(null);
+      setCropSrc(null);
       toast.success("Profile photo updated");
     } catch {
       toast.error("Failed to upload photo");
@@ -718,24 +723,33 @@ export default function SettingsPage() {
               This photo appears in the sidebar once the menu is expanded.
             </p>
 
+            {/* Hidden file input — triggered by the button below */}
+            <input
+              id="avatar-file-input"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                setAvatarFile(file);
+                setCropSrc(URL.createObjectURL(file));
+              }}
+            />
+
             <div className="flex items-center gap-5">
+              {/* Avatar preview — always round */}
               {me.userImage ? (
                 // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path
                 <img
-                  src={avatarFile ? URL.createObjectURL(avatarFile) : (backendAssetUrl(me.userImage) ?? undefined)}
+                  src={backendAssetUrl(me.userImage) ?? undefined}
                   alt={me.name}
-                  className="h-16 w-16 rounded-xl object-cover shadow-sm shrink-0"
-                />
-              ) : avatarFile ? (
-                // eslint-disable-next-line @next/next/no-img-element -- local blob preview, not eligible for next/image
-                <img
-                  src={URL.createObjectURL(avatarFile)}
-                  alt="Preview"
-                  className="h-16 w-16 rounded-xl object-cover shadow-sm shrink-0"
+                  className="h-16 w-16 rounded-full object-cover shadow-sm shrink-0"
                 />
               ) : (
                 <div
-                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl text-lg font-bold text-white shadow-sm"
+                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white shadow-sm"
                   style={{ backgroundColor: getAvatarColor(me.userId || me.name) }}
                 >
                   {me.name ? getInitials(me.name) : <UserRound size={24} />}
@@ -749,20 +763,13 @@ export default function SettingsPage() {
                 </p>
 
                 <div className="mt-3 flex items-center gap-3">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)}
-                    className="text-sm text-foreground max-w-[220px]"
-                  />
                   <button
                     type="button"
-                    onClick={handleAvatarUpload}
-                    disabled={!avatarFile || uploadingAvatar}
-                    className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => document.getElementById("avatar-file-input")?.click()}
+                    className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90"
                   >
-                    {uploadingAvatar ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-                    Upload
+                    <Upload size={15} />
+                    Change photo
                   </button>
                   {me.userImage && (
                     <button
@@ -778,6 +785,16 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+
+            {/* Crop modal — opens as soon as a file is selected */}
+            {cropSrc && (
+              <AvatarCropModal
+                imageSrc={cropSrc}
+                uploading={uploadingAvatar}
+                onCancel={() => { setCropSrc(null); setAvatarFile(null); }}
+                onConfirm={(blob) => handleAvatarUpload(blob)}
+              />
+            )}
           </div>
         </div>
       )}
