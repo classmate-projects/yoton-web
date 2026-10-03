@@ -97,6 +97,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setItems(res.data || []);
       setTotalCount(res.totalCount ?? 0);
     } catch (error) {
+      console.log("error from here: ", error);
       toast.error(errorMessage(error, "Failed to load list"));
       setItems([]);
       setTotalCount(0);
