@@ -2282,25 +2282,6 @@ function DoctorWorkbenchInner() {
                   </div>
                 )}
 
-                {/* Dental Charting — full odontogram + periodontal grid, dental dept only */}
-                {dashboard?.isDentalSpecialty && selectedPatientId && (
-                  <div className="card p-4 flex flex-col gap-3">
-                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                      <Stethoscope size={18} className="text-primary" /> Dental Chart
-                    </h2>
-                    {summary?.latestEncounter?.encounterId ? (
-                      <DentalChartSection
-                        encounterId={summary.latestEncounter.encounterId}
-                        patientId={selectedPatientId}
-                      />
-                    ) : (
-                      <p className="text-sm text-muted-foreground py-4 text-center">
-                        No active encounter — start a visit to access the dental chart.
-                      </p>
-                    )}
-                  </div>
-                )}
-
                 {/* Follow-up — an optional booking, not a confirmed appointment; front
                     office calls the patient to arrange the actual visit. */}
                 <div className="card p-6 flex flex-col gap-3">
@@ -2447,6 +2428,25 @@ function DoctorWorkbenchInner() {
                 />
               </div>
             </div>
+
+            {/* Dental Chart — full-width below the 3-col grid, dental dept only */}
+            {dashboard?.isDentalSpecialty && selectedPatientId && (
+              <div className="card p-4 flex flex-col gap-3">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Stethoscope size={18} className="text-primary" /> Dental Chart
+                </h2>
+                {summary?.latestEncounter?.encounterId ? (
+                  <DentalChartSection
+                    encounterId={summary.latestEncounter.encounterId}
+                    patientId={selectedPatientId}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    No active encounter — start a visit to access the dental chart.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
 

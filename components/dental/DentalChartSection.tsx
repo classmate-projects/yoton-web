@@ -2,105 +2,238 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
-import { Save, RefreshCw } from "lucide-react";
+import { Save, RefreshCw, X } from "lucide-react";
 import SurfaceBox from "./SurfaceBox";
-import PerioGrid from "./PerioGrid";
 import ToothCaseSheet from "./ToothCaseSheet";
 import { DentalService } from "@/services/dental.service";
-import {
-  ToothRecord, PerioRecord, DentalChartType,
-  ToothCondition, ToothSurface,
-} from "@/types/dental.type";
+import { ToothRecord, PerioRecord, DentalChartType } from "@/types/dental.type";
 
-// ─── Tooth number sets ────────────────────────────────────────────────────────
+// ─── FDI tooth sets ───────────────────────────────────────────────────────────
+// Displayed left-to-right from viewer's perspective (patient's right → left)
 const ADULT_UPPER  = ["18","17","16","15","14","13","12","11","21","22","23","24","25","26","27","28"];
 const ADULT_LOWER  = ["48","47","46","45","44","43","42","41","31","32","33","34","35","36","37","38"];
 const PEDO_UPPER   = ["55","54","53","52","51","61","62","63","64","65"];
 const PEDO_LOWER   = ["85","84","83","82","81","71","72","73","74","75"];
 
-// ─── Tooth type classifier (for crown icon shape) ─────────────────────────────
+// ─── Tooth shape classifier ────────────────────────────────────────────────────
 type ToothShape = "incisor" | "canine" | "premolar" | "molar";
-
 function toothShape(n: string): ToothShape {
-  const num = parseInt(n, 10) % 10;
-  if (num === 3) return "canine";
-  if (num === 1 || num === 2) return "incisor";
-  if (num === 4 || num === 5) return "premolar";
+  const d = parseInt(n, 10) % 10;
+  if (d === 3) return "canine";
+  if (d === 1 || d === 2) return "incisor";
+  if (d === 4 || d === 5) return "premolar";
   return "molar";
 }
 
-function CrownIcon({ shape, isUpper, size = 32 }: { shape: ToothShape; isUpper: boolean; size?: number }) {
-  const h = size * 0.7;
-  const w = size;
+// Simplified anatomical crown SVG — distinct silhouette per type
+function CrownSVG({ shape, isUpper, w = 40 }: { shape: ToothShape; isUpper: boolean; w?: number }) {
+  const h = w * 0.75;
+  const paths: Record<ToothShape, string> = {
+    incisor:  `M${w*.22},0 L${w*.78},0 Q${w*.8},${h*.05} ${w*.75},${h} L${w*.25},${h} Q${w*.2},${h*.05} ${w*.22},0Z`,
+    canine:   `M${w*.25},0 L${w*.75},0 L${w*.65},${h*.55} L${w*.5},${h} L${w*.35},${h*.55}Z`,
+    premolar: `M${w*.15},0 Q${w*.35},${h*.1} ${w*.5},0 Q${w*.65},${h*.1} ${w*.85},0 L${w*.82},${h} L${w*.18},${h}Z`,
+    molar:    `M${w*.05},0 Q${w*.25},${h*.12} ${w*.5},0 Q${w*.75},${h*.12} ${w*.95},0 L${w*.92},${h} L${w*.08},${h}Z`,
+  };
   const flip = !isUpper ? `scale(1,-1) translate(0,${-h})` : undefined;
-  let path = "";
-  switch (shape) {
-    case "incisor":
-      path = `M${w*0.2},0 L${w*0.8},0 L${w*0.75},${h} L${w*0.25},${h} Z`;
-      break;
-    case "canine":
-      path = `M${w*0.25},0 L${w*0.75},0 L${w*0.6},${h*0.6} L${w*0.5},${h} L${w*0.4},${h*0.6} Z`;
-      break;
-    case "premolar":
-      path = `M${w*0.15},0 L${w*0.85},0 L${w*0.8},${h} L${w*0.2},${h} Z`;
-      break;
-    default: // molar
-      path = `M${w*0.05},0 L${w*0.95},0 L${w*0.9},${h} L${w*0.1},${h} Z`;
-  }
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block", overflow: "visible" }}>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
       <g transform={flip}>
-        <path d={path} fill="none" stroke="currentColor" strokeWidth={1} opacity={0.5} />
-        {(shape === "premolar" || shape === "molar") && (
-          <line x1={w*0.5} y1={0} x2={w*0.5} y2={h*0.4} stroke="currentColor" strokeWidth={0.8} opacity={0.4} />
-        )}
-        {shape === "molar" && (
-          <line x1={w*0.25} y1={0} x2={w*0.25} y2={h*0.3} stroke="currentColor" strokeWidth={0.8} opacity={0.4} />
-        )}
+        <path d={paths[shape]} fill="none" stroke="currentColor" strokeWidth={1} opacity={0.45} />
+        {shape === "molar" && <line x1={w*.5} y1={0} x2={w*.5} y2={h*.45} stroke="currentColor" strokeWidth={0.7} opacity={0.3} />}
+        {shape === "premolar" && <line x1={w*.5} y1={0} x2={w*.5} y2={h*.35} stroke="currentColor" strokeWidth={0.7} opacity={0.3} />}
       </g>
     </svg>
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function emptyTooth(toothNumber: string): ToothRecord {
-  return { toothNumber, conditions: [], surfaces: [] };
+// ─── Single perio cell (numeric depth) ───────────────────────────────────────
+function DepthInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const n = Number(value);
+  return (
+    <input
+      type="number" min={0} max={20} value={value}
+      onChange={e => onChange(e.target.value)}
+      className={`w-[22px] h-[22px] text-center text-[11px] border rounded-sm p-0 bg-transparent
+        ${n >= 4 ? "text-red-500 font-bold border-red-400" : "border-border/60 text-muted-foreground"}`}
+    />
+  );
 }
 
-function emptyPerio(toothNumber: string): PerioRecord {
-  return { toothNumber };
+// ─── Single BOP toggle cell ───────────────────────────────────────────────────
+function BopToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const on = value === "1";
+  return (
+    <button type="button" onClick={() => onChange(on ? "0" : "1")}
+      className={`w-[22px] h-[22px] rounded-sm border text-[11px] font-bold transition-colors
+        ${on ? "bg-red-500 text-white border-red-600" : "border-border/60 text-muted-foreground/40"}`}>
+      {on ? "+" : "·"}
+    </button>
+  );
 }
+
+// ─── A single row of perio data across all teeth ──────────────────────────────
+type PerioField = keyof PerioRecord;
+function PerioRow({
+  teeth, records, field, label, isBop, onUpdate, TOOTH_W,
+}: {
+  teeth: string[];
+  records: Map<string, PerioRecord>;
+  field: PerioField;
+  label: string;
+  isBop?: boolean;
+  onUpdate: (tooth: string, field: PerioField, value: string) => void;
+  TOOTH_W: number;
+}) {
+  const half = teeth.length / 2;
+
+  function parseSites(csv: string | undefined): [string, string, string] {
+    const p = (csv ?? "").split(",");
+    return [p[0] ?? "", p[1] ?? "", p[2] ?? ""];
+  }
+  function setSite(csv: string | undefined, idx: number, val: string) {
+    const p = parseSites(csv);
+    p[idx] = val;
+    return p.join(",");
+  }
+
+  return (
+    <div className="flex items-center" style={{ minWidth: teeth.length * TOOTH_W + 60 }}>
+      {/* Label */}
+      <div className="w-[56px] shrink-0 text-right pr-1.5 text-[10px] text-muted-foreground leading-none">
+        {label}
+      </div>
+      {/* Left half */}
+      <div className="flex">
+        {teeth.slice(0, half).map(t => {
+          const csv = records.get(t)?.[field] as string | undefined;
+          const sites = parseSites(csv);
+          return (
+            <div key={t} className="flex justify-center gap-[1px]" style={{ width: TOOTH_W }}>
+              {sites.map((v, i) =>
+                isBop
+                  ? <BopToggle key={i} value={v} onChange={val => onUpdate(t, field, setSite(csv, i, val))} />
+                  : <DepthInput key={i} value={v} onChange={val => onUpdate(t, field, setSite(csv, i, val))} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {/* Midline gap */}
+      <div className="w-3 shrink-0" />
+      {/* Right half */}
+      <div className="flex">
+        {teeth.slice(half).map(t => {
+          const csv = records.get(t)?.[field] as string | undefined;
+          const sites = parseSites(csv);
+          return (
+            <div key={t} className="flex justify-center gap-[1px]" style={{ width: TOOTH_W }}>
+              {sites.map((v, i) =>
+                isBop
+                  ? <BopToggle key={i} value={v} onChange={val => onUpdate(t, field, setSite(csv, i, val))} />
+                  : <DepthInput key={i} value={v} onChange={val => onUpdate(t, field, setSite(csv, i, val))} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── The arch row (crowns + surface boxes + FDI numbers) ──────────────────────
+function ArchRow({
+  teeth, isUpper, selectedTooth, toothRecords, onToothClick, TOOTH_W,
+}: {
+  teeth: string[];
+  isUpper: boolean;
+  selectedTooth: string | null;
+  toothRecords: Map<string, ToothRecord>;
+  onToothClick: (n: string) => void;
+  TOOTH_W: number;
+}) {
+  const half = teeth.length / 2;
+  const emptyRec = (n: string): ToothRecord => ({ toothNumber: n, conditions: [], surfaces: [] });
+
+  function ToothCol({ n }: { n: string }) {
+    const rec = toothRecords.get(n) ?? emptyRec(n);
+    const shape = toothShape(n);
+    return (
+      <div className="flex flex-col items-center" style={{ width: TOOTH_W }}>
+        {isUpper && <span className="text-[10px] font-semibold text-red-500 leading-none mb-0.5">{n}</span>}
+        {isUpper && <CrownSVG shape={shape} isUpper w={TOOTH_W - 2} />}
+        <SurfaceBox
+          conditions={rec.conditions}
+          surfaces={rec.surfaces}
+          isSelected={selectedTooth === n}
+          onClick={() => onToothClick(n)}
+          size={TOOTH_W - 2}
+        />
+        {!isUpper && <CrownSVG shape={shape} isUpper={false} w={TOOTH_W - 2} />}
+        {!isUpper && <span className="text-[10px] font-semibold text-red-500 leading-none mt-0.5">{n}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-end" style={{ minWidth: teeth.length * TOOTH_W + 60 }}>
+      <div className="w-[56px] shrink-0" />
+      <div className="flex">
+        {teeth.slice(0, half).map(n => <ToothCol key={n} n={n} />)}
+      </div>
+      <div className="w-3 shrink-0 self-stretch flex items-center">
+        <div className="w-px h-full bg-border mx-auto" />
+      </div>
+      <div className="flex">
+        {teeth.slice(half).map(n => <ToothCol key={n} n={n} />)}
+      </div>
+    </div>
+  );
+}
+
+// ─── Divider line ─────────────────────────────────────────────────────────────
+function ArchDivider({ label, teeth, TOOTH_W }: { label: string; teeth: string[]; TOOTH_W: number }) {
+  return (
+    <div className="flex items-center" style={{ minWidth: teeth.length * TOOTH_W + 60 }}>
+      <div className="w-[56px] shrink-0" />
+      <div className="flex-1 flex items-center gap-2">
+        <div className="flex-1 h-px bg-border/60" />
+        <span className="text-[10px] font-semibold text-muted-foreground tracking-widest uppercase px-1">{label}</span>
+        <div className="flex-1 h-px bg-border/60" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function emptyPerio(toothNumber: string): PerioRecord { return { toothNumber }; }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-interface Props {
-  encounterId: string;
-  patientId: string;
-}
-
+interface Props { encounterId: string; patientId: string; }
 type TabId = "chart" | "details" | "history";
 
 export default function DentalChartSection({ encounterId, patientId }: Props) {
-  const [chartType, setChartType] = useState<"Adult" | "Pediatric">("Adult");
-  const [tab, setTab] = useState<TabId>("chart");
-  const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [savedChart, setSavedChart] = useState<DentalChartType | null>(null);
+  const [chartType, setChartType]           = useState<"Adult" | "Pediatric">("Adult");
+  const [tab, setTab]                       = useState<TabId>("chart");
+  const [selectedTooth, setSelectedTooth]   = useState<string | null>(null);
+  const [isSaving, setIsSaving]             = useState(false);
+  const [isLoading, setIsLoading]           = useState(true);
+  const [savedChart, setSavedChart]         = useState<DentalChartType | null>(null);
 
-  const [generalNotes, setGeneralNotes] = useState("");
-  const [occlusionNotes, setOcclusionNotes] = useState("");
-  const [softTissueNotes, setSoftTissueNotes] = useState("");
+  const [generalNotes,       setGeneralNotes]       = useState("");
+  const [occlusionNotes,     setOcclusionNotes]     = useState("");
+  const [softTissueNotes,    setSoftTissueNotes]    = useState("");
   const [radioGraphicFindings, setRadioGraphicFindings] = useState("");
 
-  // Map: toothNumber → ToothRecord
   const [toothRecords, setToothRecords] = useState<Map<string, ToothRecord>>(new Map());
-  // Map: toothNumber → PerioRecord
   const [perioRecords, setPerioRecords] = useState<Map<string, PerioRecord>>(new Map());
 
   const upperTeeth = chartType === "Adult" ? ADULT_UPPER : PEDO_UPPER;
   const lowerTeeth = chartType === "Adult" ? ADULT_LOWER : PEDO_LOWER;
 
-  // ─── Load chart ─────────────────────────────────────────────────────────────
+  // Each tooth column width — sized so all 16 adult teeth fit in ~720 px
+  const TOOTH_W = chartType === "Adult" ? 44 : 56;
+
+  // ─── Load ─────────────────────────────────────────────────────────────────
   const loadChart = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -118,112 +251,76 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
         data.periodontalRecords.forEach(r => pm.set(r.toothNumber, r));
         setPerioRecords(pm);
       }
-    } catch {
-      // New chart — stay empty
-    } finally {
-      setIsLoading(false);
-    }
+    } catch { /* new chart */ }
+    finally { setIsLoading(false); }
   }, [encounterId, chartType]);
 
   useEffect(() => { loadChart(); }, [loadChart]);
 
-  // ─── Tooth record helpers ────────────────────────────────────────────────────
-  const getToothRecord = (n: string): ToothRecord => toothRecords.get(n) ?? emptyTooth(n);
-  const getPerioRecord = (n: string): PerioRecord => perioRecords.get(n) ?? emptyPerio(n);
-
-  const updateTooth = (updated: ToothRecord) => {
-    setToothRecords(prev => new Map(prev).set(updated.toothNumber, updated));
-  };
-
-  const updatePerio = (tooth: string, field: keyof PerioRecord, value: string) => {
+  // ─── Perio update ─────────────────────────────────────────────────────────
+  const updatePerio = (tooth: string, field: PerioField, value: string) => {
     setPerioRecords(prev => {
       const m = new Map(prev);
-      const rec = m.get(tooth) ?? emptyPerio(tooth);
-      m.set(tooth, { ...rec, [field]: value });
+      m.set(tooth, { ...(m.get(tooth) ?? emptyPerio(tooth)), [field]: value });
       return m;
     });
   };
 
-  // ─── Save ────────────────────────────────────────────────────────────────────
+  // ─── Tooth update ─────────────────────────────────────────────────────────
+  const updateTooth = (updated: ToothRecord) =>
+    setToothRecords(prev => new Map(prev).set(updated.toothNumber, updated));
+
+  const handleToothClick = (n: string) =>
+    setSelectedTooth(prev => prev === n ? null : n);
+
+  // ─── Save ─────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     setIsSaving(true);
     try {
       const result = await DentalService.saveChart({
-        encounterId,
-        patientId,
-        chartType,
-        generalNotes,
-        occlusionNotes,
-        softTissueNotes,
-        radioGraphicFindings,
+        encounterId, patientId, chartType,
+        generalNotes, occlusionNotes, softTissueNotes, radioGraphicFindings,
         toothRecords: Array.from(toothRecords.values()),
         periodontalRecords: Array.from(perioRecords.values()),
       });
       setSavedChart(result);
       toast.success("Dental chart saved");
-    } catch {
-      toast.error("Failed to save dental chart");
-    } finally {
-      setIsSaving(false);
-    }
+    } catch { toast.error("Failed to save dental chart"); }
+    finally { setIsSaving(false); }
   };
 
-  // ─── Tooth column ─────────────────────────────────────────────────────────────
-  function ToothColumn({ n, isUpper }: { n: string; isUpper: boolean }) {
-    const rec = getToothRecord(n);
-    const shape = toothShape(n);
-    return (
-      <div className="flex flex-col items-center gap-0.5" style={{ width: 44 }}>
-        {isUpper && (
-          <span className="text-[11px] font-semibold text-red-500 leading-none">{n}</span>
-        )}
-        {isUpper && <CrownIcon shape={shape} isUpper size={44} />}
-        <SurfaceBox
-          conditions={rec.conditions}
-          surfaces={rec.surfaces}
-          isSelected={selectedTooth === n}
-          onClick={() => setSelectedTooth(prev => prev === n ? null : n)}
-          size={44}
-        />
-        {!isUpper && <CrownIcon shape={shape} isUpper={false} size={44} />}
-        {!isUpper && (
-          <span className="text-[11px] font-semibold text-red-500 leading-none">{n}</span>
-        )}
-      </div>
-    );
-  }
-
-  // ─── Details table ────────────────────────────────────────────────────────────
+  // ─── Details list ─────────────────────────────────────────────────────────
   const allTeeth = [...upperTeeth, ...lowerTeeth];
   const filledTeeth = allTeeth.filter(n => {
     const r = toothRecords.get(n);
     return r && (r.conditions.length > 0 || r.surfaces.length > 0 || r.examination || r.diagnosisText);
   });
 
-  // ─── Render ───────────────────────────────────────────────────────────────────
+  const perioPropArgs = { records: perioRecords, onUpdate: updatePerio, TOOTH_W };
+
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="w-full border border-border rounded-lg bg-card">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/40">
+      {/* ── Header bar ── */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b border-border bg-muted/40 rounded-t-lg">
         <div className="flex gap-1">
-          {(["chart","details","history"] as TabId[]).map(t => (
+          {(["chart", "details", "history"] as TabId[]).map(t => (
             <button key={t} type="button" onClick={() => setTab(t)}
-              className={`px-3 py-1 rounded text-sm font-medium transition-colors capitalize ${
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                 tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
+              }`}>
               {t === "chart" ? "Tooth Chart" : t === "details" ? "Dental Details" : "Dental History"}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className="flex rounded overflow-hidden border border-border text-xs">
-            {(["Adult","Pediatric"] as const).map(ct => (
-              <button key={ct} type="button" onClick={() => { setChartType(ct); setSelectedTooth(null); }}
-                className={`px-3 py-1 transition-colors ${
+            {(["Adult", "Pediatric"] as const).map(ct => (
+              <button key={ct} type="button"
+                onClick={() => { setChartType(ct); setSelectedTooth(null); }}
+                className={`px-3 py-1.5 transition-colors ${
                   chartType === ct ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
-                }`}
-              >
+                }`}>
                 {ct}
               </button>
             ))}
@@ -241,81 +338,74 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
         </div>
       ) : (
         <>
-          {/* ── Tooth Chart tab ── */}
+          {/* ════════════════ TOOTH CHART TAB ════════════════ */}
           {tab === "chart" && (
-            <div className="p-4 space-y-4">
-              {/* Upper arch PerioGrid */}
-              <div>
-                <p className="text-xs text-muted-foreground mb-1 font-medium">Periodontal — Upper Arch</p>
-                <div className="overflow-x-auto">
-                  <PerioGrid
-                    teeth={upperTeeth}
-                    records={perioRecords}
-                    onUpdate={updatePerio}
-                    arch="upper"
-                  />
-                </div>
-              </div>
+            <div className="p-4 space-y-1 overflow-x-auto">
 
-              {/* Upper arch teeth */}
-              <div className="overflow-x-auto">
-                <div className="flex gap-1 justify-center min-w-fit mx-auto">
-                  {upperTeeth.slice(0, upperTeeth.length / 2).map(n => (
-                    <ToothColumn key={n} n={n} isUpper />
-                  ))}
-                  <div className="w-px bg-border mx-1 self-stretch" />
-                  {upperTeeth.slice(upperTeeth.length / 2).map(n => (
-                    <ToothColumn key={n} n={n} isUpper />
-                  ))}
-                </div>
-              </div>
+              {/* ── UPPER ARCH ── */}
+              {/* Buccal perio — above upper arch */}
+              <PerioRow teeth={upperTeeth} field="buccalProbing"   label="Probing"   {...perioPropArgs} />
+              <PerioRow teeth={upperTeeth} field="buccalBop"       label="BOP"       isBop {...perioPropArgs} />
+              <PerioRow teeth={upperTeeth} field="buccalRecession" label="Recession" {...perioPropArgs} />
 
-              {/* Midline */}
-              <div className="relative flex items-center">
-                <div className="flex-1 h-px bg-border" />
-                <span className="mx-3 text-[10px] font-medium text-muted-foreground tracking-wider uppercase">Midline</span>
-                <div className="flex-1 h-px bg-border" />
-              </div>
+              <ArchDivider label="Upper" teeth={upperTeeth} TOOTH_W={TOOTH_W} />
 
-              {/* Lower arch teeth */}
-              <div className="overflow-x-auto">
-                <div className="flex gap-1 justify-center min-w-fit mx-auto">
-                  {lowerTeeth.slice(0, lowerTeeth.length / 2).map(n => (
-                    <ToothColumn key={n} n={n} isUpper={false} />
-                  ))}
-                  <div className="w-px bg-border mx-1 self-stretch" />
-                  {lowerTeeth.slice(lowerTeeth.length / 2).map(n => (
-                    <ToothColumn key={n} n={n} isUpper={false} />
-                  ))}
-                </div>
-              </div>
+              {/* Upper crowns + surface boxes */}
+              <ArchRow
+                teeth={upperTeeth} isUpper
+                selectedTooth={selectedTooth}
+                toothRecords={toothRecords}
+                onToothClick={handleToothClick}
+                TOOTH_W={TOOTH_W}
+              />
 
-              {/* Lower arch PerioGrid */}
-              <div>
-                <p className="text-xs text-muted-foreground mb-1 font-medium">Periodontal — Lower Arch</p>
-                <div className="overflow-x-auto">
-                  <PerioGrid
-                    teeth={lowerTeeth}
-                    records={perioRecords}
-                    onUpdate={updatePerio}
-                    arch="lower"
-                  />
-                </div>
-              </div>
+              {/* Lingual perio — below upper arch */}
+              <PerioRow teeth={upperTeeth} field="lingualRecession" label="Recession" {...perioPropArgs} />
+              <PerioRow teeth={upperTeeth} field="lingualBop"       label="BOP"       isBop {...perioPropArgs} />
+              <PerioRow teeth={upperTeeth} field="lingualProbing"   label="Probing"   {...perioPropArgs} />
 
-              {/* Case sheet — expands below the arch when a tooth is selected */}
+              {/* ── MIDLINE ── */}
+              <ArchDivider label="Midline" teeth={upperTeeth} TOOTH_W={TOOTH_W} />
+
+              {/* ── LOWER ARCH ── */}
+              {/* Lingual perio — above lower arch */}
+              <PerioRow teeth={lowerTeeth} field="lingualProbing"   label="Probing"   {...perioPropArgs} />
+              <PerioRow teeth={lowerTeeth} field="lingualBop"       label="BOP"       isBop {...perioPropArgs} />
+              <PerioRow teeth={lowerTeeth} field="lingualRecession" label="Recession" {...perioPropArgs} />
+
+              <ArchDivider label="Lower" teeth={lowerTeeth} TOOTH_W={TOOTH_W} />
+
+              {/* Lower crowns + surface boxes */}
+              <ArchRow
+                teeth={lowerTeeth} isUpper={false}
+                selectedTooth={selectedTooth}
+                toothRecords={toothRecords}
+                onToothClick={handleToothClick}
+                TOOTH_W={TOOTH_W}
+              />
+
+              {/* Buccal perio — below lower arch */}
+              <PerioRow teeth={lowerTeeth} field="buccalRecession" label="Recession" {...perioPropArgs} />
+              <PerioRow teeth={lowerTeeth} field="buccalBop"       label="BOP"       isBop {...perioPropArgs} />
+              <PerioRow teeth={lowerTeeth} field="buccalProbing"   label="Probing"   {...perioPropArgs} />
+
+              {/* ── Case sheet inline when tooth selected ── */}
               {selectedTooth && (
-                <div className="border border-border rounded-lg bg-background">
+                <div className="mt-4 border border-border rounded-lg bg-background relative">
+                  <button type="button" onClick={() => setSelectedTooth(null)}
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors">
+                    <X size={16} />
+                  </button>
                   <ToothCaseSheet
                     toothNumber={selectedTooth}
-                    record={getToothRecord(selectedTooth)}
+                    record={toothRecords.get(selectedTooth) ?? { toothNumber: selectedTooth, conditions: [], surfaces: [] }}
                     onChange={updateTooth}
                   />
                 </div>
               )}
 
-              {/* General notes */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-border">
+              {/* ── General notes ── */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 mt-2 border-t border-border">
                 {([
                   ["General Notes", generalNotes, setGeneralNotes],
                   ["Occlusion Notes", occlusionNotes, setOcclusionNotes],
@@ -337,7 +427,7 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
             </div>
           )}
 
-          {/* ── Dental Details tab ── */}
+          {/* ════════════════ DENTAL DETAILS TAB ════════════════ */}
           {tab === "details" && (
             <div className="p-4">
               {filledTeeth.length === 0 ? (
@@ -355,22 +445,23 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                   </thead>
                   <tbody>
                     {filledTeeth.map(n => {
-                      const r = getToothRecord(n);
+                      const r = toothRecords.get(n)!;
                       return (
-                        <tr key={n} className="border-b border-border/50 hover:bg-muted/30 cursor-pointer"
+                        <tr key={n}
+                          className="border-b border-border/50 hover:bg-muted/30 cursor-pointer"
                           onClick={() => { setTab("chart"); setSelectedTooth(n); }}>
                           <td className="py-2 pr-3 font-semibold text-red-500">{n}</td>
                           <td className="py-2 pr-3">
                             <div className="flex flex-wrap gap-1">
                               {r.conditions.map(c => (
-                                <span key={c} className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: `${c === "Healthy" ? "#e5e7eb" : ""}` }}>
-                                  {c}
-                                </span>
+                                <span key={c} className="text-xs px-1.5 py-0.5 rounded bg-muted">{c}</span>
                               ))}
                             </div>
                           </td>
                           <td className="py-2 pr-3">{r.surfaces.join(", ") || "—"}</td>
-                          <td className="py-2 pr-3 text-xs">{r.complexity?.replace(/([A-Z])/g, " $1").trim() ?? "—"}</td>
+                          <td className="py-2 pr-3 text-xs">
+                            {r.complexity?.replace(/([A-Z])/g, " $1").trim() ?? "—"}
+                          </td>
                           <td className="py-2 text-muted-foreground max-w-xs truncate">{r.diagnosisText || "—"}</td>
                         </tr>
                       );
@@ -381,12 +472,12 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
             </div>
           )}
 
-          {/* ── Dental History tab ── */}
+          {/* ════════════════ DENTAL HISTORY TAB ════════════════ */}
           {tab === "history" && (
             <div className="p-4">
               {savedChart ? (
                 <div className="space-y-3 text-sm">
-                  <div className="flex gap-6">
+                  <div className="flex flex-wrap gap-6">
                     <div>
                       <span className="text-xs text-muted-foreground">Chart Type</span>
                       <p className="font-medium">{savedChart.chartType}</p>
@@ -418,7 +509,9 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-8">No saved chart found for this encounter.</p>
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No saved chart found for this encounter.
+                </p>
               )}
             </div>
           )}

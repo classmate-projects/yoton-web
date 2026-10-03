@@ -81,9 +81,8 @@ export default function PerioGrid({ teeth, records, onUpdate, arch }: PerioGridP
             return (
               <tr key={`buccal-${label}`} className="border-t border-border/40">
                 <td className="pr-2 py-0.5 text-right text-muted-foreground whitespace-nowrap">
-                  {arch === "upper" ? label : ""}{arch === "upper" ? "" : ""}
-                  <span className="text-[10px] text-muted-foreground/60 block">{arch === "upper" ? "Buccal" : "Buccal"}</span>
-                  {arch === "upper" && label}
+                  <span className="text-[10px] text-muted-foreground/60 block">Buccal</span>
+                  {label}
                 </td>
                 {teeth.map(t => {
                   const rec = records.get(t);
