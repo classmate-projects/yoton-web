@@ -413,6 +413,8 @@ function DoctorWorkbenchInner() {
 
   const revertEncounterForm = () => setEncounterForm(encounterFormSnapshot);
 
+  const [showDentalChartModal, setShowDentalChartModal] = useState(false);
+
   // ---------------- ENCOUNTER CORRECTIONS (admin proposing, doctor acknowledging) ----------------
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
   const [correctionDoctors, setCorrectionDoctors] = useState<UserType[]>([]);
@@ -1251,7 +1253,8 @@ function DoctorWorkbenchInner() {
         ) : (
           <div className="flex flex-col gap-6">
             <div className="card p-6 flex flex-col gap-1 border-l-4 border-l-primary">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                {/* Patient identity */}
                 <div>
                   <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
                     <Stethoscope className="text-primary" /> {summary.name}
@@ -1263,7 +1266,103 @@ function DoctorWorkbenchInner() {
                     {summary.phone || "No phone"} · {summary.email || "No email"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+
+                {/* Confidential Statement + Quick Notes — two panels in the header card */}
+                <div className="flex-1 min-w-[320px] grid grid-cols-2 gap-4 border-l border-border/50 pl-4">
+
+                  {/* Confidential Statement */}
+                  <div className="flex flex-col gap-2 border-r border-amber-400/30 pr-4">
+                    <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                      <Lock size={12} /> Confidential <span className="font-normal text-muted-foreground">(only you)</span>
+                    </p>
+                    <textarea
+                      placeholder="Private notes only you can see..."
+                      value={confidentialText}
+                      onChange={(e) => setConfidentialText(e.target.value)}
+                      className="w-full text-sm resize-none"
+                      rows={3}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={addConfidentialNote}
+                        disabled={isSavingConfidential || !confidentialText.trim()}
+                        className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                      >
+                        <Lock size={11} /> {editingConfidentialNoteId ? "Update" : "Save Privately"}
+                      </button>
+                      {editingConfidentialNoteId && (
+                        <button onClick={cancelEditConfidentialNote} className="text-xs font-semibold text-muted-foreground hover:underline">Cancel</button>
+                      )}
+                    </div>
+                    {confidentialNotes.length > 0 && (
+                      <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                        {confidentialNotes.map((n) => (
+                          <div key={n.doctorConfidentialNoteId} className="group rounded-lg bg-amber-50 dark:bg-amber-950/20 px-2.5 py-1.5 text-xs">
+                            <p className="text-foreground">{n.contentHtml}</p>
+                            <div className="flex items-center justify-between mt-0.5">
+                              <p className="text-muted-foreground">{formatDateTime(n.createdAt)}</p>
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => startEditConfidentialNote(n)} title="Edit" className="p-0.5 hover:bg-black/10 rounded-full text-amber-700"><Pencil size={11} /></button>
+                                <button onClick={() => removeConfidentialNote(n)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full text-destructive"><Trash2 size={11} /></button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick Notes */}
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                      <FileText size={12} /> Quick Notes
+                    </p>
+                    <textarea
+                      placeholder="Add a quick note..."
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      className="w-full text-sm resize-none"
+                      rows={3}
+                    />
+                    <button
+                      onClick={addQuickNote}
+                      disabled={!noteText.trim()}
+                      className="flex items-center gap-1.5 rounded-lg border border-primary/30 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 self-start"
+                    >
+                      <Plus size={12} /> Add Note
+                    </button>
+                    {quickNotes.length > 0 && (
+                      <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                        {quickNotes.map((n) =>
+                          editingQuickNoteId === n.consultationNoteId ? (
+                            <div key={n.consultationNoteId} className="rounded-lg border border-primary/40 bg-muted/30 px-2.5 py-1.5 text-xs flex flex-col gap-1.5">
+                              <textarea value={editingQuickNoteText} onChange={(e) => setEditingQuickNoteText(e.target.value)} className="w-full text-xs min-h-10" autoFocus />
+                              <div className="flex items-center gap-2 justify-end">
+                                <button onClick={cancelEditQuickNote} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                                <button onClick={saveEditQuickNote} className="text-xs font-semibold text-primary hover:underline">Save</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div key={n.consultationNoteId} className="group rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-xs">
+                              <p className="text-foreground">{n.notes}</p>
+                              <div className="flex items-center justify-between mt-0.5">
+                                <p className="text-muted-foreground">{formatDateTime(n.createdAt)}</p>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => startEditQuickNote(n)} title="Edit" className="p-0.5 hover:bg-primary/10 rounded-full text-primary"><Pencil size={11} /></button>
+                                  <button onClick={() => removeQuickNote(n)} title="Delete" className="p-0.5 hover:bg-destructive/10 rounded-full text-destructive"><Trash2 size={11} /></button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+
+                {/* Badges */}
+                <div className="flex flex-col items-end gap-2 shrink-0">
                   {unviewedDocumentCount > 0 && (
                     <button
                       onClick={() => setShowDocuments((v) => !v)}
@@ -1441,55 +1540,6 @@ function DoctorWorkbenchInner() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 flex flex-col gap-6">
-                {/* Confidential statement — visible only to this doctor, never shared
-                    with other doctors, nurses, or admin. */}
-                <div className="card p-6 flex flex-col gap-3 border-l-4 border-l-amber-500">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Lock size={18} className="text-amber-500" /> Confidential Statement
-                    <span className="text-xs font-normal text-muted-foreground ml-1">(visible only to you)</span>
-                  </h2>
-                  <textarea
-                    placeholder="Private notes only you can see..."
-                    value={confidentialText}
-                    onChange={(e) => setConfidentialText(e.target.value)}
-                    className="w-full min-h-16 text-sm"
-                  />
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={addConfidentialNote}
-                      disabled={isSavingConfidential || !confidentialText.trim()}
-                      className="self-start flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                    >
-                      <Lock size={15} /> {editingConfidentialNoteId ? "Save Changes" : "Save Privately"}
-                    </button>
-                    {editingConfidentialNoteId && (
-                      <button onClick={cancelEditConfidentialNote} className="text-sm font-semibold text-muted-foreground hover:underline">
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                  {confidentialNotes.length > 0 && (
-                    <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
-                      {confidentialNotes.map((n) => (
-                        <div key={n.doctorConfidentialNoteId} className="group rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
-                          <p className="text-foreground">{n.contentHtml}</p>
-                          <div className="flex items-center justify-between mt-1">
-                            <p className="text-xs text-muted-foreground">{formatDateTime(n.createdAt)}</p>
-                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => startEditConfidentialNote(n)} title="Edit" className="p-1 hover:bg-black/10 rounded-full text-amber-700">
-                                <Pencil size={12} />
-                              </button>
-                              <button onClick={() => removeConfidentialNote(n)} title="Delete" className="p-1 hover:bg-black/10 rounded-full text-destructive">
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
                 {/* Chief complaint / examination notes / review of systems / clinical exam */}
                 <div className="card p-6 flex flex-col gap-4">
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -1569,7 +1619,7 @@ function DoctorWorkbenchInner() {
                     />
                   </div>
 
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 flex-wrap">
                     {!isCompletedEncounter && (
                       <button
                         onClick={saveEncounter}
@@ -1586,6 +1636,14 @@ function DoctorWorkbenchInner() {
                         className="flex items-center gap-2 rounded-lg border border-primary/30 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
                       >
                         Finish Encounter
+                      </button>
+                    )}
+                    {dashboard?.isDentalSpecialty && selectedPatientId && (
+                      <button
+                        onClick={() => setShowDentalChartModal(true)}
+                        className="flex items-center gap-2 rounded-lg border border-primary/30 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
+                      >
+                        <Stethoscope size={15} /> Open Dental Chart
                       </button>
                     )}
                   </div>
@@ -1643,6 +1701,42 @@ function DoctorWorkbenchInner() {
                     </div>
                   </div>
                 )}
+
+                {/* Dental Checklist — only shown for dental specialty; follows Encounter Notes */}
+                {dashboard?.isDentalSpecialty && (
+                  <div className="card p-6 flex flex-col gap-3">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <Stethoscope size={18} className="text-primary" /> Dental Checklist
+                    </h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {([
+                        ["fissureSealantApplied", "Fissure sealant applied"],
+                        ["fluorideApplied", "Fluoride varnish applied"],
+                        ["sdfApplied", "Silver diamine fluoride applied"],
+                        ["oralHygieneEducationGiven", "Oral hygiene education given"],
+                        ["lifestyleEducationGiven", "Lifestyle factors education given"],
+                        ["smokingCessationEducationGiven", "Smoking cessation education given"],
+                        ["comprehensiveDentalPlanProvided", "Comprehensive dental plan provided"],
+                      ] as const).map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 text-sm">
+                          <ToggleButton
+                            checked={dentalForm[key]}
+                            onChange={(checked) => setDentalForm((p) => ({ ...p, [key]: checked }))}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                    <button
+                      onClick={saveDentalExtras}
+                      disabled={isSavingDentalExtras}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      Save Dental Checklist
+                    </button>
+                  </div>
+                )}
+
 
                 {/* Diagnosis — search from the admin-managed diagnosis catalog; first one
                     added becomes primary, others secondary, primary can be reassigned. */}
@@ -2245,43 +2339,6 @@ function DoctorWorkbenchInner() {
                   )}
                 </div>
 
-                {/* Dental checklist — only shown for a doctor whose specialization is
-                    flagged dental (see Specialization.IsDentalSpecialty), feeds the PL4.6,
-                    PL4.11, and PL5.2 KPI reports. */}
-                {dashboard?.isDentalSpecialty && (
-                  <div className="card p-6 flex flex-col gap-3">
-                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                      <Stethoscope size={18} className="text-primary" /> Dental Checklist
-                    </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {([
-                        ["fissureSealantApplied", "Fissure sealant applied"],
-                        ["fluorideApplied", "Fluoride varnish applied"],
-                        ["sdfApplied", "Silver diamine fluoride applied"],
-                        ["oralHygieneEducationGiven", "Oral hygiene education given"],
-                        ["lifestyleEducationGiven", "Lifestyle factors education given"],
-                        ["smokingCessationEducationGiven", "Smoking cessation education given"],
-                        ["comprehensiveDentalPlanProvided", "Comprehensive dental plan provided"],
-                      ] as const).map(([key, label]) => (
-                        <label key={key} className="flex items-center gap-2 text-sm">
-                          <ToggleButton
-                            checked={dentalForm[key]}
-                            onChange={(checked) => setDentalForm((p) => ({ ...p, [key]: checked }))}
-                          />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
-                    <button
-                      onClick={saveDentalExtras}
-                      disabled={isSavingDentalExtras}
-                      className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      Save Dental Checklist
-                    </button>
-                  </div>
-                )}
-
                 {/* Follow-up — an optional booking, not a confirmed appointment; front
                     office calls the patient to arrange the actual visit. */}
                 <div className="card p-6 flex flex-col gap-3">
@@ -2340,85 +2397,6 @@ function DoctorWorkbenchInner() {
                   )}
                 </div>
 
-                {/* Quick notes */}
-                <div className="card p-6 flex flex-col gap-3">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <FileText size={18} className="text-primary" /> Quick Notes
-                  </h2>
-                  <textarea
-                    placeholder="Add a quick note..."
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.target.value)}
-                    className="w-full min-h-16 text-sm"
-                  />
-                  <button
-                    onClick={addQuickNote}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-primary/30 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
-                  >
-                    <Plus size={15} /> Add Note
-                  </button>
-                  <div className="flex flex-col gap-2 max-h-56 overflow-y-auto">
-                    {quickNotes.length > 0 ? (
-                      quickNotes.map((n) =>
-                        editingQuickNoteId === n.consultationNoteId ? (
-                          <div
-                            key={n.consultationNoteId}
-                            className="rounded-lg border border-primary/40 bg-muted/30 px-3 py-2 text-sm flex flex-col gap-2"
-                          >
-                            <textarea
-                              value={editingQuickNoteText}
-                              onChange={(e) => setEditingQuickNoteText(e.target.value)}
-                              className="w-full min-h-14 text-sm"
-                              autoFocus
-                            />
-                            <div className="flex items-center gap-3 justify-end">
-                              <button
-                                onClick={cancelEditQuickNote}
-                                className="text-xs font-semibold text-muted-foreground hover:underline"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={saveEditQuickNote}
-                                className="text-xs font-semibold text-primary hover:underline"
-                              >
-                                Save
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div
-                            key={n.consultationNoteId}
-                            className="group rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm"
-                          >
-                            <p className="text-foreground">{n.notes}</p>
-                            <div className="flex items-center justify-between mt-1">
-                              <p className="text-xs text-muted-foreground">{formatDateTime(n.createdAt)}</p>
-                              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => startEditQuickNote(n)}
-                                  title="Edit note"
-                                  className="p-1 hover:bg-primary/10 rounded-full text-primary"
-                                >
-                                  <Pencil size={13} />
-                                </button>
-                                <button
-                                  onClick={() => removeQuickNote(n)}
-                                  title="Delete note"
-                                  className="p-1 hover:bg-destructive/10 rounded-full text-destructive"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      )
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No notes yet.</p>
-                    )}
-                  </div>
-                </div>
 
                 <PatientMedicalFormsSection
                   patientId={selectedPatientId}
@@ -2429,24 +2407,36 @@ function DoctorWorkbenchInner() {
               </div>
             </div>
 
-            {/* Dental Chart — full-width below the 3-col grid, dental dept only */}
-            {dashboard?.isDentalSpecialty && selectedPatientId && (
-              <div className="card p-4 flex flex-col gap-3">
+          </div>
+        )}
+
+        {showDentalChartModal && selectedPatientId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-card w-full max-w-[98vw] max-h-[96vh] rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Stethoscope size={18} className="text-primary" /> Dental Chart
                 </h2>
+                <button
+                  onClick={() => setShowDentalChartModal(false)}
+                  className="rounded-full p-1.5 text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-4">
                 {summary?.latestEncounter?.encounterId ? (
                   <DentalChartSection
                     encounterId={summary.latestEncounter.encounterId}
                     patientId={selectedPatientId}
                   />
                 ) : (
-                  <p className="text-sm text-muted-foreground py-4 text-center">
+                  <p className="text-sm text-muted-foreground py-8 text-center">
                     No active encounter — start a visit to access the dental chart.
                   </p>
                 )}
               </div>
-            )}
+            </div>
           </div>
         )}
 

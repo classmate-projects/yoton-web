@@ -80,6 +80,25 @@ export interface PatientGetAllType {
     passportNumber?: string | null;
 }
 
+// One row in the front-office referral queue - see ReceptionController.GetPendingReferrals.
+// Only referrals where DateSeenBySpecialist is null are returned; once the specialist
+// opens a consultation the date is auto-captured and the row disappears from this list.
+export interface PendingReferralType {
+  referralId: string;
+  patientId: string;
+  patientName: string | null;
+  patientOpNumber: string | null;
+  patientPhone: string | null;
+  referringDoctorName: string | null;
+  targetSpecializationId: string;
+  targetSpecializationName: string | null;
+  priority: string;
+  notes: string | null;
+  cancerSiteName: string | null;
+  externalFacility: string | null;
+  createdAt: string;
+}
+
 // One row per Visit within a date range (Patient Records' "Patient Visit List" toggle) - see
 // ReceptionController.GetVisitList. Shares PatientGetAllType's patient-identity fields plus
 // the visit's own.

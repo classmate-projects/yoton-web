@@ -1,6 +1,7 @@
 import api from "@/lib/axios"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { ReceptionCreatePatientType } from "@/types/reception.type";
+import { compressImageForUpload } from "@/lib/resizeImage";
 import { CreateAppointmentPayload } from "@/types/appointment.type";
 import { UpdateDoctorSchedulePayload } from "@/types/doctorAvailability.type";
 import { CheckInPayload, WalkInPayload, ReassignVisitPayload, UploadPatientDocumentPayload } from "@/types/visit.type";
@@ -142,13 +143,22 @@ export const ReceptionService = {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT_QUEUE(status))
         return data;
     },
+    getPendingReferrals: async () => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_PENDING_REFERRALS);
+        return data;
+    },
+    registerFromReferral: async (referralId: string, payload: { doctorId?: string; appointmentDate?: string; notes?: string }) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.REGISTER_FROM_REFERRAL(referralId), payload);
+        return data;
+    },
     uploadDocument: async (patientId: string, payload: UploadPatientDocumentPayload) => {
+        const compressedFile = await compressImageForUpload(payload.file);
         const form = new FormData();
         form.append("DocumentType", payload.documentType);
         if (payload.visitId) form.append("VisitId", payload.visitId);
         if (payload.linkedLabRequestId) form.append("LinkedLabRequestId", payload.linkedLabRequestId);
         if (payload.linkedRadiologyRequestId) form.append("LinkedRadiologyRequestId", payload.linkedRadiologyRequestId);
-        form.append("File", payload.file);
+        form.append("File", compressedFile);
         const { data } = await api.post(ENDPOINTS.RECEPTION.UPLOAD_DOCUMENT(patientId), form, {
             headers: { "Content-Type": "multipart/form-data" },
         })

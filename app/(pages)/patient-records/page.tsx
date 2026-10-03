@@ -16,7 +16,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { ReceptionService } from "@/services/reception.service";
 import { AuthService } from "@/services/auth.service";
 import { ConfigListService } from "@/services/configList.service";
-import { PatientFullDetailsType, PatientGetAllType, VisitListItemType } from "@/types/reception.type";
+import { PatientFullDetailsType, PatientGetAllType, PendingReferralType, VisitListItemType } from "@/types/reception.type";
 import {
   AppointmentSlotType,
   DoctorDaySlotsType,
@@ -55,7 +55,7 @@ const emptyInsuranceForm = {
   coPayPatientPercent: "",
 };
 
-type PatientListMode = "register" | "visit";
+type PatientListMode = "register" | "visit" | "referral";
 const PATIENTS_PAGE_SIZE = 50;
 
 // Shared by both list modes - VisitListItemType extends PatientGetAllType, so this one
@@ -94,6 +94,9 @@ export default function PatientRecordsPage() {
   const [listMode, setListMode] = useState<PatientListMode>("register");
   const [visits, setVisits] = useState<VisitListItemType[]>([]);
   const [isLoadingVisits, setIsLoadingVisits] = useState(false);
+  const [pendingReferrals, setPendingReferrals] = useState<PendingReferralType[]>([]);
+  const [isLoadingReferrals, setIsLoadingReferrals] = useState(false);
+  const [referralSearchTerm, setReferralSearchTerm] = useState("");
   const todayValue = toDateInputValue(new Date());
   const [fromDate, setFromDate] = useState(todayValue);
   const [toDate, setToDate] = useState(todayValue);

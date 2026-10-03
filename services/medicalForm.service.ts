@@ -1,5 +1,6 @@
 import { ENDPOINTS } from "@/lib/endpoints";
 import api from "@/lib/axios";
+import { compressImageForUpload } from "@/lib/resizeImage";
 
 export const FormTemplateService = {
   getAll: async () => {
@@ -31,8 +32,9 @@ export const FormTemplateService = {
     return data;
   },
   uploadImage: async (file: File) => {
+    const compressed = await compressImageForUpload(file);
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", compressed);
     const { data } = await api.post(ENDPOINTS.FORM_TEMPLATE.UPLOAD_IMAGE, form, {
       headers: { "Content-Type": "multipart/form-data" },
     });

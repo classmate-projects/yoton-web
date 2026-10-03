@@ -1,5 +1,6 @@
 import { ENDPOINTS } from "@/lib/endpoints"
 import api from "@/lib/axios"
+import { compressImageForUpload } from "@/lib/resizeImage"
 
 export const AuthService = {
     getMe: async () => {
@@ -7,8 +8,9 @@ export const AuthService = {
         return data;
     },
     uploadAvatar: async (file: File) => {
+        const compressed = await compressImageForUpload(file, 800);
         const form = new FormData();
-        form.append("file", file);
+        form.append("file", compressed);
         const { data } = await api.post(ENDPOINTS.AUTH.UPLOAD_AVATAR, form, {
             headers: { "Content-Type": "multipart/form-data" },
         })

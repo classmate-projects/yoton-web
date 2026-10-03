@@ -73,6 +73,8 @@ export const ENDPOINTS = {
         CONFIRM_FOLLOW_UP: (id: string) => `/api/reception/follow-ups/${id}/confirm`,
         DISMISS_FOLLOW_UP: (id: string) => `/api/reception/follow-ups/${id}`,
         RESEND_WELCOME_EMAIL: (patientId: string) => `/api/reception/${patientId}/resend-welcome-email`,
+        GET_PENDING_REFERRALS: `/api/reception/referrals/pending`,
+        REGISTER_FROM_REFERRAL: (referralId: string) => `/api/reception/referral/${referralId}/register`,
     },
     ROLE: {
         GET: `/api/role/get-all`,
@@ -240,6 +242,11 @@ export const ENDPOINTS = {
         UPDATE: (id: string) => `/api/config-lists/${id}`,
         SET_ACTIVE: (id: string, isActive: boolean) => `/api/config-lists/${id}/active?isActive=${isActive}`,
         DELETE: (id: string) => `/api/config-lists/${id}`,
+    },
+    LIST_TEMPLATE: {
+        GET: (listType: string) => `/api/list-templates/${listType}`,
+        SAVE: (listType: string) => `/api/list-templates/${listType}`,
+        HISTORY: (listType: string) => `/api/list-templates/${listType}/history`,
     },
     LAB: {
         GET_ALL: `/api/Lab`,

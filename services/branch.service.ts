@@ -1,6 +1,7 @@
 import { ENDPOINTS } from "@/lib/endpoints"
 import api from "@/lib/axios"
 import { BranchCreateType, BranchUpdateType } from "@/types/branch.type";
+import { compressImageForUpload } from "@/lib/resizeImage";
 
 export const BranchService = {
     getAll: async () => {
@@ -16,8 +17,9 @@ export const BranchService = {
         return data;
     },
     uploadLogo: async (id: string, file: File) => {
+        const compressed = await compressImageForUpload(file, 800);
         const form = new FormData();
-        form.append("file", file);
+        form.append("file", compressed);
         const { data } = await api.post(ENDPOINTS.BRANCH.UPLOAD_LOGO(id), form, {
             headers: { "Content-Type": "multipart/form-data" },
         });

@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Menu } from "lucide-react";
 import logo from "@/public/yoton_logo.png";
 import Sidebar from "@/components/sidebar";
+import BackButton from "@/components/BackButton";
 import AccessDenied from "@/components/AccessDenied";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
@@ -174,16 +175,17 @@ export default function PageLayout({
         {/* Mobile-only top bar: the desktop sidebar is off-canvas on small
             screens, so this gives touch users a way to open it plus a stable
             branded header. Hidden entirely from lg up. */}
-        <header className="lg:hidden sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-card/95 px-4 py-3 backdrop-blur">
+        <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-card/95 px-3 py-2 backdrop-blur">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
             aria-label="Open navigation menu"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
             <Menu className="h-6 w-6" />
           </button>
-          <Image src={logo} alt="Yoton" priority className="h-8 w-auto" />
+          <Image src={logo} alt="Yoton" priority className="lg:hidden h-8 w-auto flex-1" />
+          <BackButton />
         </header>
         <div className="flex-1 min-w-0">
           {status === "denied" ? <AccessDenied /> : children}

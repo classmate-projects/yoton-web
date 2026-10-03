@@ -162,13 +162,13 @@ function PerioRowFull({
     const csv = records.get(t)?.[field] as string | undefined;
     const sites = parseSites(csv);
     return (
-      <div className="flex-1 flex items-center justify-center gap-[2px] py-1.5">
+      <div className="w-[106px] shrink-0 flex items-center justify-center gap-[2px] py-1.5">
         {sites.map((v, i) =>
           isBop ? (
             <button
               key={i} type="button"
               onClick={() => onUpdate(t, field, setSite(csv, i, v === "1" ? "0" : "1"))}
-              className={`flex-1 max-w-[28px] h-[24px] rounded-sm border-2 text-[10px] font-bold transition-colors ${
+              className={`w-[34px] h-[34px] shrink-0 rounded-sm border-2 text-xs font-bold transition-colors ${
                 v === "1" ? "bg-red-500 text-white border-red-600" : "border-border text-muted-foreground/50"
               }`}
             >
@@ -178,7 +178,7 @@ function PerioRowFull({
             <input
               key={i} type="number" min={0} max={20} value={v}
               onChange={e => onUpdate(t, field, setSite(csv, i, e.target.value))}
-              className={`flex-1 max-w-[28px] min-w-0 h-[24px] text-center text-[10px] border-2 rounded-sm p-0 bg-transparent ${
+              className={`w-[34px] h-[34px] shrink-0 text-center text-xs border-2 rounded-sm p-0 bg-transparent ${
                 Number(v) >= 4 ? "text-red-500 font-bold border-red-400" : "border-border text-muted-foreground"
               }`}
             />
@@ -189,13 +189,13 @@ function PerioRowFull({
   }
 
   return (
-    <div className="flex w-full items-center h-[44px] border-b border-border/20">
+    <div className="flex w-full items-center h-[52px] border-b border-border/20">
       <div className="w-[84px] shrink-0 text-right pr-3 text-[10px] text-muted-foreground leading-none">{label}</div>
-      <div className="flex-1 flex border-r border-border/30">
+      <div className="flex border-r border-border/30">
         {teeth.slice(0, half).map(t => <ToothCells key={t} t={t} />)}
       </div>
       <div className="w-5 shrink-0" />
-      <div className="flex-1 flex border-l border-border/30">
+      <div className="flex border-l border-border/30">
         {teeth.slice(half).map(t => <ToothCells key={t} t={t} />)}
       </div>
     </div>
@@ -208,17 +208,17 @@ function PerioToothNumbers({ teeth }: { teeth: string[] }) {
   return (
     <div className="flex w-full items-center py-3">
       <div className="w-[84px] shrink-0" />
-      <div className="flex-1 flex border-r border-border/30">
+      <div className="flex border-r border-border/30">
         {teeth.slice(0, half).map(n => (
-          <div key={n} className="flex-1 text-[9px] text-red-500 font-semibold text-center">{n}</div>
+          <div key={n} className="w-[106px] text-[11px] text-red-500 font-semibold text-center">{n}</div>
         ))}
       </div>
       <div className="w-5 shrink-0 flex items-center justify-center">
         <div className="w-px h-4 bg-border/40" />
       </div>
-      <div className="flex-1 flex border-l border-border/30">
+      <div className="flex border-l border-border/30">
         {teeth.slice(half).map(n => (
-          <div key={n} className="flex-1 text-[9px] text-red-500 font-semibold text-center">{n}</div>
+          <div key={n} className="w-[106px] text-[11px] text-red-500 font-semibold text-center">{n}</div>
         ))}
       </div>
     </div>
@@ -643,6 +643,7 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
 
           {/* ════════════════ PERIODONTAL TAB ════════════════ */}
           {tab === "perio" && (
+            <div className="overflow-x-auto">
             <div className="px-4 py-3">
               <p className="text-xs text-muted-foreground mb-3 pl-[84px]">
                 3-site measurements per tooth (MB · B · DB). Values ≥ 4 mm highlighted in red.
@@ -692,6 +693,7 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                 <PerioRowFull teeth={lowerTeeth} field="buccalBop"       label="BOP"       isBop {...perioPropArgs} />
                 <PerioRowFull teeth={lowerTeeth} field="buccalProbing"   label="Probing"   {...perioPropArgs} />
               </div>
+            </div>
             </div>
           )}
 

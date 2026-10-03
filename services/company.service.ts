@@ -1,10 +1,12 @@
 import { ENDPOINTS } from "@/lib/endpoints"
 import api from "@/lib/axios"
+import { compressImageForUpload } from "@/lib/resizeImage"
 
 export const CompanyService = {
     uploadLogo: async (file: File) => {
+        const compressed = await compressImageForUpload(file, 800);
         const form = new FormData();
-        form.append("file", file);
+        form.append("file", compressed);
         const { data } = await api.post(ENDPOINTS.COMPANY.UPLOAD_LOGO, form, {
             headers: { "Content-Type": "multipart/form-data" },
         })
