@@ -36,7 +36,7 @@ const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
 ];
 
 export default function ConfigListsPage() {
-  const [listType, setListType] = useState<TabValue>("Investigation");
+  const [listType, setListType] = useState<TabValue>("Procedure");
 
   const activeType = LIST_TYPES.find((t) => t.value === listType)!;
 
