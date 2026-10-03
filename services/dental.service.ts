@@ -21,6 +21,13 @@ export const DentalService = {
     return data.data ?? null;
   },
 
+  getPreviousChart: async (patientId: string, chartType: "Adult" | "Pediatric", excludeEncounterId?: string): Promise<DentalChartType | null> => {
+    const params = new URLSearchParams({ patientId, chartType });
+    if (excludeEncounterId) params.set("excludeEncounterId", excludeEncounterId);
+    const { data } = await api.get(`/api/DentalChart/previous?${params}`);
+    return data.data ?? null;
+  },
+
   saveChart: async (payload: SaveChartPayload): Promise<DentalChartType> => {
     const { data } = await api.post("/api/DentalChart", payload);
     return data.data;
