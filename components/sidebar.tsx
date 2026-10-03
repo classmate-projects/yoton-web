@@ -456,18 +456,18 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                 <img
                   src={backendAssetUrl(currentUser.userImage) ?? undefined}
                   alt={currentUser?.name || "User"}
-                  className="h-12 w-12 rounded-lg object-cover shadow-sm"
+                  className="h-12 w-12 rounded-full object-cover shadow-sm"
                 />
               ) : (
                 <div
-                  className="flex h-12 w-12 items-center justify-center rounded-lg text-base font-bold text-white shadow-sm"
+                  className="flex h-12 w-12 items-center justify-center rounded-full text-base font-bold text-white shadow-sm"
                   style={{ backgroundColor: getAvatarColor(currentUser?.userId || currentUser?.name) }}
                 >
                   {currentUser?.name ? getInitials(currentUser.name) : <UserRound size={20} />}
                 </div>
               )
             ) : currentUser?.companyLogoUrl ? (
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-card shadow-sm">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-card shadow-sm overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path; not eligible for next/image's static optimization */}
                 <img
                   src={backendAssetUrl(currentUser.companyLogoUrl) ?? undefined}
@@ -476,7 +476,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                 />
               </div>
             ) : (
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-card shadow-sm">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-card shadow-sm overflow-hidden">
                 <Image src={logo} alt="logo" height={48} width={48} className="h-full w-full object-contain" loading="eager" />
               </div>
             )}
