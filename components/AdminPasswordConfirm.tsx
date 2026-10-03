@@ -3,6 +3,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import axios from "axios";
 import { ShieldAlert } from "lucide-react";
+import PasswordInput from "@/components/PasswordInput";
 
 interface AdminPasswordConfirmProps {
   title: string;
@@ -66,8 +67,7 @@ export default function AdminPasswordConfirm({
         <h2 className="text-lg font-semibold text-foreground mb-1 text-center">{title}</h2>
         <p className="text-sm text-muted-foreground mb-4 text-center">{description}</p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <input
-            type="password"
+          <PasswordInput
             autoFocus
             autoComplete="current-password"
             value={password}

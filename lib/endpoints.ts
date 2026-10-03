@@ -65,6 +65,7 @@ export const ENDPOINTS = {
         WALK_IN: `/api/reception/walk-in`,
         GET_VISIT: (id: string) => `/api/reception/visit/${id}`,
         REASSIGN_VISIT: (id: string) => `/api/reception/visit/${id}`,
+        CANCEL_VISIT: (id: string) => `/api/reception/visit/${id}/cancel`,
         GET_VISIT_QUEUE: (status?: string) => `/api/reception/visit/queue${status ? `?status=${status}` : ""}`,
         UPLOAD_DOCUMENT: (patientId: string) => `/api/reception/patient/${patientId}/document`,
         GET_APPOINTMENT_REQUESTS: `/api/reception/appointment-requests`,

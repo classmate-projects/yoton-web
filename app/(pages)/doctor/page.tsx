@@ -52,6 +52,7 @@ import FloatingSaveRevertBar from "@/components/FloatingSaveRevertBar";
 import ToggleButton from "@/components/ToggleButton";
 import VitalsHistoryModal from "@/components/VitalsHistoryModal";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
+import DentalChartSection from "@/components/dental/DentalChartSection";
 import { getUserDetail } from "@/lib/userDetail";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { EmrService } from "@/services/emr.service";
@@ -2278,6 +2279,25 @@ function DoctorWorkbenchInner() {
                     >
                       Save Dental Checklist
                     </button>
+                  </div>
+                )}
+
+                {/* Dental Charting — full odontogram + periodontal grid, dental dept only */}
+                {dashboard?.isDentalSpecialty && selectedPatientId && (
+                  <div className="card p-4 flex flex-col gap-3">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <Stethoscope size={18} className="text-primary" /> Dental Chart
+                    </h2>
+                    {summary?.latestEncounter?.encounterId ? (
+                      <DentalChartSection
+                        encounterId={summary.latestEncounter.encounterId}
+                        patientId={selectedPatientId}
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-4 text-center">
+                        No active encounter — start a visit to access the dental chart.
+                      </p>
+                    )}
                   </div>
                 )}
 

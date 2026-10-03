@@ -10,6 +10,7 @@ import { CalendarDays, Clock, Loader2, Stethoscope, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import PasswordInput from "@/components/PasswordInput";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
 import { ReceptionService } from "@/services/reception.service";
@@ -102,6 +103,11 @@ export default function PatientRecordsPage() {
   const [documentType, setDocumentType] = useState(DOCUMENT_TYPES[0]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // ---------------- Cancel Visit modal state ----------------
+  const [cancelVisitTarget, setCancelVisitTarget] = useState<VisitListItemType | null>(null);
+  const [cancelPassword, setCancelPassword] = useState("");
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // ---------------- Walk-in visit modal state ----------------
   // Also reused for "Edit Visit" (see openEditVisitModal) - both are the exact same
@@ -520,6 +526,27 @@ export default function PatientRecordsPage() {
     )
   }
 
+  const handleCancelVisit = async () => {
+    if (!cancelVisitTarget || !cancelPassword.trim()) return;
+    setIsCancelling(true);
+    try {
+      await ReceptionService.cancelVisit(cancelVisitTarget.visitId, cancelPassword);
+      toast.success("Visit cancelled successfully");
+      setCancelVisitTarget(null);
+      setCancelPassword("");
+      fetchVisits(fromDate, toDate);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      if (msg?.toLowerCase().includes("password")) {
+        toast.error("Incorrect password. Please try again.");
+      } else {
+        toast.error(msg ?? "Failed to cancel visit");
+      }
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   const filteredPatients = useMemo(
     () => patients.filter((p) => matchesPatientSearch(p, searchTerm)),
     [patients, searchTerm]
@@ -546,32 +573,16 @@ export default function PatientRecordsPage() {
     [filteredVisits, pageStart]
   );
 
-  // Shared by both list modes' rows - a VisitListItemType is structurally a
-  // PatientGetAllType (plus its own visit fields), so a Visit List row's patient identity
-  // works here unchanged for the actions that operate on the patient rather than the visit.
-  // Edit is the one exception: Register List edits the patient (Patient Entry's own form,
-  // reused in edit mode - see that page), Visit List edits *this* visit (department/
-  // specialty/doctor reassignment, see openEditVisitModal) - "visitId" in the row is what
-  // tells the two apart, since a plain PatientGetAllType never has one.
-  const renderActions = (patient: PatientGetAllType | VisitListItemType) => (
+  // Register List row actions — operate on the patient record itself.
+  const renderRegisterActions = (patient: PatientGetAllType) => (
     <div className="flex items-center justify-center gap-1">
-      {"visitId" in patient ? (
-        <button
-          onClick={() => openEditVisitModal(patient)}
-          className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
-          title="Edit Visit"
-        >
-          <MdOutlineEdit className="text-blue-600" size={18} />
-        </button>
-      ) : (
-        <Link
-          href={`/patient-entry?edit=${patient.opId}`}
-          className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer inline-flex"
-          title="Edit Patient"
-        >
-          <MdOutlineEdit className="text-blue-600" size={18} />
-        </Link>
-      )}
+      <Link
+        href={`/patient-entry?edit=${patient.opId}`}
+        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer inline-flex"
+        title="Edit Patient"
+      >
+        <MdOutlineEdit className="text-blue-600" size={18} />
+      </Link>
       <button
         onClick={() => openWalkInModal(patient)}
         className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
@@ -606,6 +617,28 @@ export default function PatientRecordsPage() {
         title="Delete Patient"
       >
         <DeleteIcon color="red" />
+      </button>
+    </div>
+  );
+
+  // Visit List row actions — operate on this specific visit, not the patient record.
+  const renderVisitActions = (visit: VisitListItemType) => (
+    <div className="flex items-center justify-center gap-1">
+      <button
+        onClick={() => openEditVisitModal(visit)}
+        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
+        title="Change Doctor"
+        disabled={visit.status === "Completed" || visit.status === "Cancelled"}
+      >
+        <MdOutlineEdit className={visit.status === "Completed" || visit.status === "Cancelled" ? "text-blue-300" : "text-blue-600"} size={18} />
+      </button>
+      <button
+        onClick={() => { setCancelVisitTarget(visit); setCancelPassword(""); }}
+        className="hover:bg-red-50 p-2 rounded transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        title="Cancel Visit"
+        disabled={visit.status === "Completed" || visit.status === "Cancelled"}
+      >
+        <DeleteIcon color={visit.status === "Completed" || visit.status === "Cancelled" ? "#fca5a5" : "red"} />
       </button>
     </div>
   );
@@ -692,6 +725,7 @@ export default function PatientRecordsPage() {
               </span>
               <input
                 type="text"
+                autoComplete="off"
                 placeholder="Search by name, MRN, mobile number, or national ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -741,7 +775,7 @@ export default function PatientRecordsPage() {
                       <td>{patient.email}</td>
                       <td>{patient.phone}</td>
                       <td className="truncate max-w-xs">{patient.address || "N/A"}</td>
-                      <td className="text-center">{renderActions(patient)}</td>
+                      <td className="text-center">{renderRegisterActions(patient)}</td>
                     </tr>
                   ))
                 ) : (
@@ -759,7 +793,7 @@ export default function PatientRecordsPage() {
                     <td>{visit.phone}</td>
                     <td>{format(new Date(visit.checkedInAt), "dd MMM yyyy")}</td>
                     <td>{visit.visitType === "WalkIn" ? "Walk-in" : "Appointment"}</td>
-                    <td className="text-center">{renderActions(visit)}</td>
+                    <td className="text-center">{renderVisitActions(visit)}</td>
                   </tr>
                 ))
               ) : (
@@ -1263,6 +1297,47 @@ export default function PatientRecordsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Visit — password confirmation modal */}
+      {cancelVisitTarget && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="card mx-4 w-full max-w-sm rounded-xl border border-border p-6 shadow-2xl">
+            <h2 className="text-lg font-semibold text-foreground">Cancel Visit</h2>
+            <p className="mt-1 mb-1 text-sm text-muted-foreground">
+              You are about to cancel the visit for{" "}
+              <span className="font-semibold text-foreground">{cancelVisitTarget.name}</span>.
+            </p>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Enter your password to confirm this action.
+            </p>
+            <PasswordInput
+              autoFocus
+              autoComplete="new-password"
+              value={cancelPassword}
+              onChange={(e) => setCancelPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCancelVisit()}
+              placeholder="Your password"
+            />
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setCancelVisitTarget(null); setCancelPassword(""); }}
+                className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelVisit}
+                disabled={isCancelling || !cancelPassword.trim()}
+                className="flex-1 rounded-lg bg-red-500 hover:bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {isCancelling ? "Verifying..." : "Cancel Visit"}
+              </button>
+            </div>
           </div>
         </div>
       )}

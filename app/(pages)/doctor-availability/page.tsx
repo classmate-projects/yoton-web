@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import PasswordInput from "@/components/PasswordInput";
 import { ReceptionService } from "@/services/reception.service";
 import {
   ScheduleConflict,
@@ -536,32 +537,32 @@ function DoctorAvailabilityInner() {
           </h2>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {availability.map((specialization) => {
             const isSpecializationExpanded = expandedSpecializations.has(
               specialization.specializationId
             );
 
             return (
-              <section key={specialization.specializationId} className="card">
+              <section key={specialization.specializationId} className="card flex flex-col">
                 <button
                   onClick={() =>
                     toggleSpecialization(specialization.specializationId)
                   }
-                  className="flex w-full items-center justify-between p-6 text-left transition-colors hover:bg-muted/30"
+                  className="flex w-full items-center justify-between p-5 text-left transition-colors hover:bg-muted/30 rounded-xl"
                 >
-                  <div>
-                    <h2 className="text-2xl font-semibold text-foreground">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold text-foreground truncate">
                       {specialization.specializationName}
                     </h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {specialization.doctors.length} doctors configured
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {specialization.doctors.length} doctor{specialization.doctors.length !== 1 ? "s" : ""} configured
                     </p>
                   </div>
                   {isSpecializationExpanded ? (
-                    <ChevronUp size={26} className="text-muted-foreground" />
+                    <ChevronUp size={20} className="text-muted-foreground shrink-0 ml-2" />
                   ) : (
-                    <ChevronDown size={26} className="text-muted-foreground" />
+                    <ChevronDown size={20} className="text-muted-foreground shrink-0 ml-2" />
                   )}
                 </button>
 
@@ -1119,8 +1120,7 @@ function DoctorAvailabilityInner() {
                   placeholder="Admin username"
                   className="w-full h-10 text-sm"
                 />
-                <input
-                  type="password"
+                <PasswordInput
                   value={overrideForm.password}
                   onChange={(event) =>
                     setOverrideForm((previous) => ({

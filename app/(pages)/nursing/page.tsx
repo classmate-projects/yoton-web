@@ -38,6 +38,7 @@ import {
   Users,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import PasswordInput from "@/components/PasswordInput";
 import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
@@ -2566,12 +2567,11 @@ function NurseWorkbenchInner() {
                                     <option key={n.id} value={n.id}>{n.name}</option>
                                   ))}
                                 </select>
-                                <input
-                                  type="password"
+                                <PasswordInput
                                   placeholder="Witness's password"
                                   value={administerForm.witnessPassword}
                                   onChange={(ev) => setAdministerForm((p) => ({ ...p, witnessPassword: ev.target.value }))}
-                                  className="h-9 text-sm"
+                                  className="h-9 text-sm w-full"
                                 />
                               </div>
                             )}
@@ -2621,14 +2621,13 @@ function NurseWorkbenchInner() {
               <p className="text-sm text-muted-foreground mt-1 mb-4">
                 This encounter has already been sent to the doctor. Enter your password to continue editing it.
               </p>
-              <input
-                type="password"
+              <PasswordInput
                 autoFocus
+                autoComplete="new-password"
                 value={encounterLockPassword}
                 onChange={(e) => setEncounterLockPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && confirmEncounterLockPassword()}
                 placeholder="Your password"
-                className="h-10 text-sm w-full"
               />
               <div className="flex gap-3 mt-6">
                 <button

@@ -5,6 +5,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { AlertTriangle, ClipboardList, Pencil, Plus, Printer, RefreshCw, Search, Send, X } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import PasswordInput from "@/components/PasswordInput";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { FormTemplateService, SavedMedicalFormService } from "@/services/medicalForm.service";
 import { UserService } from "@/services/user.service";
@@ -586,14 +587,13 @@ export default function PatientMedicalFormsSection({
             <p className="mt-1 mb-4 text-sm text-muted-foreground">
               This form was filled by another user. Enter your password to remove it.
             </p>
-            <input
-              type="password"
+            <PasswordInput
               autoFocus
+              autoComplete="new-password"
               value={deletePassword}
               onChange={(e) => setDeletePassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && attemptDelete(deleteLock, deletePassword)}
               placeholder="Your password"
-              className="h-10 w-full text-sm"
             />
             <div className="mt-6 flex gap-3">
               <button

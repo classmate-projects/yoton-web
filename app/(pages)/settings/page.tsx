@@ -26,6 +26,7 @@ import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { countryDetails } from "@/helpers/countyDetails";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import PasswordInput from "@/components/PasswordInput";
 import ToggleButton from "@/components/ToggleButton";
 import RichTextEditor from "@/components/RichTextEditor";
 import { BranchService } from "@/services/branch.service";
@@ -870,8 +871,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility password (eclaimlink)</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={eclaimlinkPasswordInput}
                   onChange={(e) => setEclaimlinkPasswordInput(e.target.value)}
                   placeholder={eclaimlinkPasswordSet ? "•••••••• (saved — leave blank to keep)" : "Not set"}

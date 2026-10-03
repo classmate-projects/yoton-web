@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import ApiLoadingBar from "@/components/ApiLoadingBar";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import MicrosoftClarity from "@/components/MicrosoftClarity";
+import DisableAutocomplete from "@/components/DisableAutocomplete";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,6 +51,7 @@ export default function RootLayout({
           enableSystem
         >
           <ServiceWorkerRegistration />
+          <DisableAutocomplete />
           <ApiLoadingBar />
           {children}
           <Toaster

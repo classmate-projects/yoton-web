@@ -134,6 +134,10 @@ export const ReceptionService = {
         const { data } = await api.put(ENDPOINTS.RECEPTION.REASSIGN_VISIT(id), payload)
         return data;
     },
+    cancelVisit: async (id: string, password: string) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.CANCEL_VISIT(id), { password })
+        return data;
+    },
     getVisitQueue: async (status?: string) => {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT_QUEUE(status))
         return data;

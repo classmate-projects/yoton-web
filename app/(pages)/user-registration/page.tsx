@@ -4,6 +4,7 @@ import SelectRole from "@/components/selectRole";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
+import PasswordInput from "@/components/PasswordInput";
 import { toDateInputValue } from "@/lib/date";
 import CountryCodeSelect from "@/components/CountryCodeSelect";
 import CountrySearchSelect from "@/components/CountrySearchSelect";
@@ -505,15 +506,15 @@ function UserRegistrationForm() {
                 <label htmlFor="new-password" className="font-bold">
                   New Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   id="new-password"
                   name="newPassword"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Leave blank to keep current password"
                   autoComplete="new-password"
-                  className="outline-0 p-4 rounded-xl w-full mt-2"
+                  containerClassName="mt-2"
+                  className="outline-0 p-4 rounded-xl w-full"
                   style={{
                     backgroundColor: "var(--color-highlight)",
                     border: "1px solid var(--color-border)",
@@ -721,8 +722,7 @@ function UserRegistrationForm() {
                 <label htmlFor="temporary-password" className="font-bold required">
                   Temporary Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   id="temporary-password"
                   name="temporaryPassword"
                   required
@@ -730,7 +730,8 @@ function UserRegistrationForm() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter temporary password"
                   autoComplete="new-password"
-                  className="outline-0 p-4 rounded-xl w-full mt-2"
+                  containerClassName="mt-2"
+                  className="outline-0 p-4 rounded-xl w-full"
                   style={{
                     backgroundColor: "var(--color-highlight)",
                     border: "1px solid var(--color-border)",

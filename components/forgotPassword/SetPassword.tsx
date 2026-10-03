@@ -12,7 +12,8 @@ interface SetPasswordPageType {
     isSaving: boolean;
 }
 
-import { ArrowLeft, CheckCircle2, KeyRound, Loader2, LockKeyhole } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, LockKeyhole } from "lucide-react";
+import { useState } from "react";
 
 export default function SetPasswordPage({
     password,
@@ -24,7 +25,8 @@ export default function SetPasswordPage({
     error,
     isSaving,
 }: SetPasswordPageType,) {
-
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     return (
         <div>
@@ -58,14 +60,17 @@ export default function SetPasswordPage({
                         </span>
                         <input
                             id="password"
-                            type="password"
+                            type={showPassword ? "text" : "password"}
                             placeholder="Enter new password"
                             required
                             value={password}
                             onChange={e => setPassword(e.target.value)}
-                            className="h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-4 text-base! text-foreground! placeholder:text-muted-foreground! focus-visible:bg-card!  focus-visible:ring-transparent!"
+                            className="h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-12! text-base! text-foreground! placeholder:text-muted-foreground! focus-visible:bg-card!  focus-visible:ring-transparent!"
                             autoComplete="new-password"
                         />
+                        <button type="button" tabIndex={-1} onClick={() => setShowPassword(s => !s)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                            {showPassword ? <Eye size={17} /> : <EyeOff size={17} />}
+                        </button>
                     </div>
                 </div>
 
@@ -82,14 +87,17 @@ export default function SetPasswordPage({
                         </span>
                         <input
                             id="confirm_password"
-                            type="password"
+                            type={showConfirmPassword ? "text" : "password"}
                             placeholder="Confirm new password"
                             required
                             value={confirmPassword}
                             onChange={e => setConfirmPassword(e.target.value)}
-                            className="h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-4 text-base! text-foreground! placeholder:text-muted-foreground! focus-visible:bg-card!  focus-visible:ring-transparent!"
+                            className="h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-12! text-base! text-foreground! placeholder:text-muted-foreground! focus-visible:bg-card!  focus-visible:ring-transparent!"
                             autoComplete="new-password"
                         />
+                        <button type="button" tabIndex={-1} onClick={() => setShowConfirmPassword(s => !s)} aria-label={showConfirmPassword ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                            {showConfirmPassword ? <Eye size={17} /> : <EyeOff size={17} />}
+                        </button>
                     </div>
                 </div>
 
