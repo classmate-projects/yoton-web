@@ -19,6 +19,10 @@ export const CONDITION_COLOR: Record<ToothCondition, string> = {
   ExtractionIndicated:"#dc2626",
   Fracture:           "#f97316",
   Watch:              "#eab308",
+  Attrition:          "#92400e",
+  Abrasion:           "#0d9488",
+  Erosion:            "#65a30d",
+  Calculus:           "#b45309",
 };
 
 // Whole-tooth conditions take over all 5 regions.
@@ -47,7 +51,10 @@ export default function SurfaceBox({
   conditions, surfaces, isSelected, onClick, onSurfaceClick, size = 44,
 }: Props) {
   const wholeCondition = conditions.find(c => WHOLE_TOOTH_CONDITIONS.includes(c));
-  const surfaceCondition = conditions.find(c => c === "Caries" || c === "Filled" || c === "RCT" || c === "Fracture" || c === "Watch");
+  const surfaceCondition = conditions.find(c =>
+    c === "Caries" || c === "Filled" || c === "RCT" || c === "Fracture" || c === "Watch" ||
+    c === "Attrition" || c === "Abrasion" || c === "Erosion" || c === "Calculus"
+  );
 
   const getSurfaceFill = (surface: ToothSurface): string => {
     if (wholeCondition) return CONDITION_COLOR[wholeCondition];

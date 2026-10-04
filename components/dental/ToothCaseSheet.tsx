@@ -9,6 +9,7 @@ const ALL_CONDITIONS: ToothCondition[] = [
   "Healthy", "Caries", "Filled", "Missing", "Implant",
   "Crown", "BridgeAbutment", "BridgePontic", "RCT",
   "ExtractionIndicated", "Fracture", "Watch",
+  "Attrition", "Abrasion", "Erosion", "Calculus",
 ];
 
 const ALL_SURFACES: ToothSurface[] = ["M", "D", "B", "L", "O"];
@@ -108,7 +109,7 @@ export default function ToothCaseSheet({ toothNumber, record, onChange }: Props)
     const hasImplant    = record.conditions.includes("Implant");
     if (hasMissing  && c !== "Missing")                         return true;
     if (hasPontic   && c !== "BridgePontic")                    return true;
-    if (hasImplant  && ["Caries","Filled","RCT","Missing","BridgePontic"].includes(c)) return true;
+    if (hasImplant  && ["Caries","Filled","RCT","Missing","BridgePontic","Attrition","Abrasion","Erosion"].includes(c)) return true;
     return false;
   };
 

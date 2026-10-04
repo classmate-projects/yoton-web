@@ -1,7 +1,8 @@
 export type ToothCondition =
   | "Healthy" | "Caries" | "Filled" | "Missing" | "Implant"
   | "Crown" | "BridgeAbutment" | "BridgePontic" | "RCT"
-  | "ExtractionIndicated" | "Fracture" | "Watch";
+  | "ExtractionIndicated" | "Fracture" | "Watch"
+  | "Attrition" | "Abrasion" | "Erosion" | "Calculus";
 
 export type ToothSurface = "M" | "D" | "B" | "L" | "O";
 

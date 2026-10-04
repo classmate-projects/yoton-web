@@ -2102,6 +2102,13 @@ function DoctorWorkbenchInner() {
 
                 </div>
 
+                <PatientMedicalFormsSection
+                  patientId={selectedPatientId}
+                  visitId={summary?.latestEncounter?.visitId ?? visitIdParam ?? null}
+                  patientName={summary?.name}
+                  patientNumber={summary?.opNumber || summary?.opId}
+                />
+
               </div>
 
               <div className="flex flex-col gap-6">
@@ -2359,14 +2366,6 @@ function DoctorWorkbenchInner() {
                     </div>
                   )}
                 </div>
-
-
-                <PatientMedicalFormsSection
-                  patientId={selectedPatientId}
-                  visitId={summary?.latestEncounter?.visitId ?? visitIdParam ?? null}
-                  patientName={summary?.name}
-                  patientNumber={summary?.opNumber || summary?.opId}
-                />
               </div>
             </div>
 

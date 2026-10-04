@@ -97,6 +97,11 @@ export default function PatientRecordsPage() {
   const [pendingReferrals, setPendingReferrals] = useState<PendingReferralType[]>([]);
   const [isLoadingReferrals, setIsLoadingReferrals] = useState(false);
   const [referralSearchTerm, setReferralSearchTerm] = useState("");
+  // External referrals are hidden by default so reception can focus on in-clinic workflow.
+  const [showExternalReferrals, setShowExternalReferrals] = useState(false);
+  // Tracks referral IDs successfully registered this session so reception sees "In Queue" feedback
+  // without waiting for the doctor to open an encounter. Cleared on page refresh (intentional).
+  const [registeredReferralIds, setRegisteredReferralIds] = useState<Set<string>>(new Set());
   const todayValue = toDateInputValue(new Date());
   const [fromDate, setFromDate] = useState(todayValue);
   const [toDate, setToDate] = useState(todayValue);
@@ -481,9 +486,13 @@ export default function PatientRecordsPage() {
         toast.success(data.message || (editingVisit ? "Visit updated" : "Patient registered successfully"));
         const wasReferral = !!walkInReferralId;
         const wasEditingVisit = !!editingVisit;
+        const completedReferralId = walkInReferralId;
         closeWalkInModal();
         if (wasEditingVisit) fetchVisits(fromDate, toDate);
-        if (wasReferral) fetchPendingReferrals();
+        if (wasReferral) {
+          fetchPendingReferrals();
+          if (completedReferralId) setRegisteredReferralIds((prev) => new Set(prev).add(completedReferralId));
+        }
       }
     } catch (error) {
       const fallback = `Failed to ${editingVisit ? "update visit" : "register walk-in visit"}`;
@@ -589,15 +598,17 @@ export default function PatientRecordsPage() {
   );
   const filteredReferrals = useMemo(() => {
     const q = referralSearchTerm.trim().toLowerCase();
-    if (!q) return pendingReferrals;
-    return pendingReferrals.filter(
-      (r) =>
-        r.patientName?.toLowerCase().includes(q) ||
-        r.patientOpNumber?.toLowerCase().includes(q) ||
-        r.patientPhone?.toLowerCase().includes(q) ||
-        r.targetSpecializationName?.toLowerCase().includes(q)
-    );
-  }, [pendingReferrals, referralSearchTerm]);
+    return pendingReferrals
+      .filter((r) => showExternalReferrals || !r.externalFacility)
+      .filter(
+        (r) =>
+          !q ||
+          r.patientName?.toLowerCase().includes(q) ||
+          r.patientOpNumber?.toLowerCase().includes(q) ||
+          r.patientPhone?.toLowerCase().includes(q) ||
+          r.targetSpecializationName?.toLowerCase().includes(q)
+      );
+  }, [pendingReferrals, referralSearchTerm, showExternalReferrals]);
 
   const activeFilteredCount =
     listMode === "register"
@@ -742,11 +753,16 @@ export default function PatientRecordsPage() {
               role="tab"
               aria-selected={listMode === "referral"}
               onClick={() => setListMode("referral")}
-              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors cursor-pointer ${
+              className={`relative px-4 py-1.5 rounded-md text-sm font-semibold transition-colors cursor-pointer ${
                 listMode === "referral" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               Referral List
+              {pendingReferrals.filter((r) => !r.externalFacility).length > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold w-4 h-4">
+                  {pendingReferrals.filter((r) => !r.externalFacility).length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -917,69 +933,114 @@ export default function PatientRecordsPage() {
               })}
             </div>
           )
-        ) : pagedReferrals.length === 0 ? (
-          <p className="py-16 text-center text-muted-foreground text-sm">No pending referrals.</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {pagedReferrals.map((r) => (
-              <div key={r.referralId} className="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-bold text-sm flex items-center justify-center shrink-0">
-                    {(r.patientName ?? "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground truncate">{r.patientName ?? "—"}</p>
-                    <span className="font-mono text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                      {r.patientOpNumber ?? "—"}
-                    </span>
-                  </div>
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-                    r.priority === "Urgent" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : "bg-muted text-muted-foreground"
-                  }`}>
-                    {r.priority}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-                  {r.patientPhone && (
-                    <div className="flex items-center gap-2">
-                      <MdContacts size={13} className="shrink-0 text-muted-foreground/60" />
-                      <span>{r.patientPhone}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Stethoscope size={13} className="shrink-0 text-muted-foreground/60" />
-                    <span className="truncate">
-                      {r.targetSpecializationName ?? "—"}
-                      {r.cancerSiteName && <span className="ml-1">({r.cancerSiteName})</span>}
-                      {r.externalFacility && <span className="ml-1">· {r.externalFacility}</span>}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CalendarDays size={13} className="shrink-0 text-muted-foreground/60" />
-                    <span>{format(new Date(r.createdAt), "dd MMM yyyy")}</span>
-                  </div>
-                </div>
-                <div className="pt-2 border-t border-border mt-auto">
-                  <button
-                    onClick={async () => {
-                      setWalkInReferralId(r.referralId);
-                      await openWalkInModal({
-                        opId: r.patientId,
-                        opNumber: r.patientOpNumber ?? undefined,
-                        name: r.patientName ?? "",
-                        email: "",
-                        phone: r.patientPhone ?? "",
-                        address: "",
-                      });
-                    }}
-                    className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
-                  >
-                    <Stethoscope size={13} /> Register Visit
-                  </button>
-                </div>
+          <>
+            {/* External referral toggle row */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExternalReferrals((p) => !p)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${showExternalReferrals ? "bg-primary" : "bg-muted-foreground/30"}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${showExternalReferrals ? "translate-x-4" : "translate-x-0.5"}`} />
+                </button>
+                <span className="text-xs text-muted-foreground">Show external referrals</span>
               </div>
-            ))}
-          </div>
+              {pendingReferrals.filter((r) => !!r.externalFacility).length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {pendingReferrals.filter((r) => !!r.externalFacility).length} external
+                  {!showExternalReferrals && " (hidden)"}
+                </span>
+              )}
+            </div>
+
+            {pagedReferrals.length === 0 ? (
+              <p className="py-16 text-center text-muted-foreground text-sm">No pending referrals.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pagedReferrals.map((r) => {
+                  const isExternal = !!r.externalFacility;
+                  const isRegistered = registeredReferralIds.has(r.referralId);
+                  return (
+                    <div
+                      key={r.referralId}
+                      className={`card p-4 flex flex-col gap-3 transition-shadow ${isExternal ? "opacity-50" : "hover:shadow-md"}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`w-10 h-10 rounded-full font-bold text-sm flex items-center justify-center shrink-0 ${isExternal ? "bg-muted text-muted-foreground" : "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"}`}>
+                          {(r.patientName ?? "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-foreground truncate">{r.patientName ?? "—"}</p>
+                          <span className="font-mono text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {r.patientOpNumber ?? "—"}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${r.priority === "Urgent" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : "bg-muted text-muted-foreground"}`}>
+                            {r.priority}
+                          </span>
+                          {isExternal && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                              External
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                        {r.patientPhone && (
+                          <div className="flex items-center gap-2">
+                            <MdContacts size={13} className="shrink-0 text-muted-foreground/60" />
+                            <span>{r.patientPhone}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <Stethoscope size={13} className="shrink-0 text-muted-foreground/60" />
+                          <span className="truncate">
+                            {r.targetSpecializationName ?? "—"}
+                            {r.cancerSiteName && <span className="ml-1">({r.cancerSiteName})</span>}
+                            {r.externalFacility && <span className="ml-1 font-medium text-slate-500 dark:text-slate-400">· {r.externalFacility}</span>}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CalendarDays size={13} className="shrink-0 text-muted-foreground/60" />
+                          <span>{format(new Date(r.createdAt), "dd MMM yyyy")}</span>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-border mt-auto">
+                        {isExternal ? (
+                          <p className="text-center text-xs text-muted-foreground py-1">Referred to external facility</p>
+                        ) : isRegistered ? (
+                          <div className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-xs font-semibold text-green-700 dark:text-green-400">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                            In Queue
+                          </div>
+                        ) : (
+                          <button
+                            onClick={async () => {
+                              setWalkInReferralId(r.referralId);
+                              await openWalkInModal({
+                                opId: r.patientId,
+                                opNumber: r.patientOpNumber ?? undefined,
+                                name: r.patientName ?? "",
+                                email: "",
+                                phone: r.patientPhone ?? "",
+                                address: "",
+                              });
+                            }}
+                            className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+                          >
+                            <Stethoscope size={13} /> Register Visit
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
 
         {activeFilteredCount > 0 && (

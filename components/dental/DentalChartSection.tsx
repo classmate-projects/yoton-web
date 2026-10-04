@@ -359,6 +359,56 @@ function ArchLabel({ label, teeth, TOOTH_W }: { label: string; teeth: string[]; 
   );
 }
 
+// ─── Furcation row (single dropdown per tooth, not 3-site) ───────────────────
+function FurcationRow({
+  teeth, records, onUpdate,
+}: {
+  teeth: string[];
+  records: Map<string, PerioRecord>;
+  onUpdate: (tooth: string, field: PerioField, value: string) => void;
+}) {
+  const half = teeth.length / 2;
+
+  function furcColor(v: string) {
+    if (v === "I")   return "text-yellow-600 border-yellow-400";
+    if (v === "II")  return "text-orange-600 border-orange-400";
+    if (v === "III") return "text-red-600 border-red-400";
+    return "border-border text-muted-foreground";
+  }
+
+  function Cell({ t }: { t: string }) {
+    const val = records.get(t)?.furcation ?? "";
+    return (
+      <div className="w-[106px] shrink-0 flex items-center justify-center py-1.5">
+        <select
+          value={val}
+          onChange={e => onUpdate(t, "furcation", e.target.value)}
+          className={`text-xs border rounded px-1 py-0.5 bg-background w-[76px] ${furcColor(val)}`}
+        >
+          <option value="">—</option>
+          <option value="None">None</option>
+          <option value="I">Class I</option>
+          <option value="II">Class II</option>
+          <option value="III">Class III</option>
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex w-full items-center h-[52px] border-b border-border/20">
+      <div className="w-[84px] shrink-0 text-right pr-3 text-[10px] text-muted-foreground leading-none">Furcation</div>
+      <div className="flex border-r border-border/30">
+        {teeth.slice(0, half).map(t => <Cell key={t} t={t} />)}
+      </div>
+      <div className="w-5 shrink-0" />
+      <div className="flex border-l border-border/30">
+        {teeth.slice(half).map(t => <Cell key={t} t={t} />)}
+      </div>
+    </div>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function emptyPerio(toothNumber: string): PerioRecord { return { toothNumber }; }
 
@@ -670,6 +720,10 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                 <PerioRowFull teeth={upperTeeth} field="lingualProbing"   label="Probing"   {...perioPropArgs} />
               </div>
 
+              <div className="rounded border border-border/30 overflow-hidden mt-1">
+                <FurcationRow teeth={upperTeeth} records={perioRecords} onUpdate={updatePerio} />
+              </div>
+
               {/* ── SEPARATOR ── */}
               <div className="border-t-2 border-border my-6" />
 
@@ -692,6 +746,10 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                 <PerioRowFull teeth={lowerTeeth} field="buccalRecession" label="Recession" {...perioPropArgs} />
                 <PerioRowFull teeth={lowerTeeth} field="buccalBop"       label="BOP"       isBop {...perioPropArgs} />
                 <PerioRowFull teeth={lowerTeeth} field="buccalProbing"   label="Probing"   {...perioPropArgs} />
+              </div>
+
+              <div className="rounded border border-border/30 overflow-hidden mt-1">
+                <FurcationRow teeth={lowerTeeth} records={perioRecords} onUpdate={updatePerio} />
               </div>
             </div>
             </div>
