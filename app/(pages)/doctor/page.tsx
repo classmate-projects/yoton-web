@@ -30,6 +30,7 @@ import {
   StickyNote,
   Trash2,
   Unlock as UnlockIcon,
+  Upload,
   Users,
   X,
 } from "lucide-react";
@@ -282,6 +283,10 @@ function DoctorWorkbenchInner() {
   const [unviewedDocumentCount, setUnviewedDocumentCount] = useState(0);
   const [showDocuments, setShowDocuments] = useState(false);
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [uploadDocFile, setUploadDocFile] = useState<File | null>(null);
+  const [uploadDocType, setUploadDocType] = useState("Report");
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
 
   const fetchDocuments = async (patientId: string) => {
     try {
@@ -423,8 +428,6 @@ function DoctorWorkbenchInner() {
     rosHematologic: "",
     rosAllergicImmunologic: "",
     rosIntegumentary: "",
-    currentManagementPlan: "",
-    futureManagementPlan: "",
   };
 
   const [encounterForm, setEncounterForm] = useState({
@@ -434,6 +437,8 @@ function DoctorWorkbenchInner() {
     examinationNotes: "",
     clinicalExamination: "",
     ...emptyRos,
+    currentManagementPlan: "",
+    futureManagementPlan: "",
   });
   // Baseline the form is compared against to detect unsaved edits — only meaningful for
   // admin viewing a Completed (locked) encounter, where the floating Save/Revert bar and
@@ -1300,6 +1305,26 @@ function DoctorWorkbenchInner() {
     }
   };
 
+  const handleUploadDocument = async () => {
+    if (!selectedPatientId || !uploadDocFile) return;
+    setIsUploadingDoc(true);
+    try {
+      await EmrService.uploadDocument(selectedPatientId, {
+        documentType: uploadDocType,
+        file: uploadDocFile,
+        visitId: summary?.latestEncounter?.visitId ?? undefined,
+      });
+      toast.success("Document uploaded");
+      setUploadDocFile(null);
+      setUploadDocType("Report");
+      await fetchDocuments(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to upload document"));
+    } finally {
+      setIsUploadingDoc(false);
+    }
+  };
+
   // ---------------- REFERRAL ----------------
   const [referralForm, setReferralForm] = useState({
     targetSpecializationId: "",
@@ -1395,19 +1420,17 @@ function DoctorWorkbenchInner() {
 
   useEffect(() => {
     const latest = summary?.dentalVisitExtras?.[0];
-    if (latest) {
-      setDentalForm({
-        fissureSealantApplied: latest.fissureSealantApplied,
-        fluorideApplied: latest.fluorideApplied,
-        sdfApplied: latest.sdfApplied,
-        oralHygieneEducationGiven: latest.oralHygieneEducationGiven,
-        lifestyleEducationGiven: latest.lifestyleEducationGiven,
-        smokingCessationEducationGiven: latest.smokingCessationEducationGiven,
-        comprehensiveDentalPlanProvided: latest.comprehensiveDentalPlanProvided,
-      });
-    }
+    setDentalForm({
+      fissureSealantApplied: latest?.fissureSealantApplied ?? false,
+      fluorideApplied: latest?.fluorideApplied ?? false,
+      sdfApplied: latest?.sdfApplied ?? false,
+      oralHygieneEducationGiven: latest?.oralHygieneEducationGiven ?? false,
+      lifestyleEducationGiven: latest?.lifestyleEducationGiven ?? false,
+      smokingCessationEducationGiven: latest?.smokingCessationEducationGiven ?? false,
+      comprehensiveDentalPlanProvided: latest?.comprehensiveDentalPlanProvided ?? false,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPatientId]);
+  }, [summary?.dentalVisitExtras]);
 
   const saveDentalExtras = async () => {
     if (!selectedPatientId) return;
@@ -2785,7 +2808,6 @@ function DoctorWorkbenchInner() {
                           )}
                         </div>
                       )}
-                    </div>
                 </div>
 
                 <PatientMedicalFormsSection
@@ -3218,6 +3240,166 @@ function DoctorWorkbenchInner() {
             onSave={submitTreatment}
             onClose={() => setOrderingModal(null)}
           />
+        )}
+
+        {/* Patient Documents modal */}
+        {showDocumentsModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-card w-full max-w-2xl rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden max-h-[85vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <FileText size={18} className="text-primary" /> Patient Documents
+                  {documents.length > 0 && (
+                    <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                      {documents.length}
+                    </span>
+                  )}
+                </h2>
+                <button onClick={() => setShowDocumentsModal(false)} className="p-1.5 rounded-full hover:bg-muted text-muted-foreground transition-colors">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="overflow-y-auto flex-1 p-5">
+                {documents.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                    <FileText size={32} className="opacity-30" />
+                    <p className="text-sm">No documents attached to this patient yet.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {documents.map((d) => {
+                      const fileUrl = backendAssetUrl(d.filePath);
+                      const ext = d.filePath?.split(".").pop()?.toLowerCase() ?? "";
+                      const isImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+                      const isPdf = ext === "pdf";
+                      return (
+                        <div key={d.patientDocumentId} className="flex flex-col gap-2">
+                          <div
+                            className={`rounded-lg border px-4 py-3 flex items-center justify-between gap-3 transition-colors ${
+                              !d.viewedByDoctor
+                                ? "border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20"
+                                : "border-border bg-muted/20"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold uppercase ${
+                                isPdf ? "bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400" :
+                                isImage ? "bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400" :
+                                "bg-muted text-muted-foreground"
+                              }`}>
+                                {isPdf ? "PDF" : isImage ? "IMG" : ext.toUpperCase() || "?"}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">{d.documentType}</p>
+                                <p className="text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</p>
+                              </div>
+                              {!d.viewedByDoctor && (
+                                <span className="shrink-0 rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white">NEW</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {fileUrl ? (
+                                <>
+                                  {isImage && (
+                                    <button
+                                      onClick={() => {
+                                        setPreviewDocUrl(previewDocUrl === fileUrl ? null : fileUrl);
+                                        if (!d.viewedByDoctor) markDocumentViewed(d.patientDocumentId);
+                                      }}
+                                      className="flex items-center gap-1 rounded-lg bg-primary/10 hover:bg-primary/20 px-3 py-1.5 text-xs font-semibold text-primary transition-colors"
+                                    >
+                                      {previewDocUrl === fileUrl ? "Hide" : "Preview"}
+                                    </button>
+                                  )}
+                                  <a
+                                    href={fileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={async () => { if (!d.viewedByDoctor) await markDocumentViewed(d.patientDocumentId); }}
+                                    className="flex items-center gap-1 rounded-lg bg-primary/10 hover:bg-primary/20 px-3 py-1.5 text-xs font-semibold text-primary transition-colors"
+                                  >
+                                    View
+                                  </a>
+                                  <a
+                                    href={fileUrl}
+                                    download
+                                    onClick={async () => { if (!d.viewedByDoctor) await markDocumentViewed(d.patientDocumentId); }}
+                                    className="flex items-center gap-1 rounded-lg border border-border hover:bg-muted px-3 py-1.5 text-xs font-semibold text-foreground transition-colors"
+                                  >
+                                    Download
+                                  </a>
+                                </>
+                              ) : (
+                                !d.viewedByDoctor && (
+                                  <button onClick={() => markDocumentViewed(d.patientDocumentId)} className="text-xs font-semibold text-primary hover:underline">
+                                    Mark reviewed
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          </div>
+                          {isImage && fileUrl && previewDocUrl === fileUrl && (
+                            <div className="rounded-lg overflow-hidden border border-border bg-muted/30 flex items-center justify-center">
+                              <img src={fileUrl} alt={d.documentType} className="max-h-96 w-full object-contain" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Upload section */}
+              <div className="px-5 py-4 border-t border-border flex flex-col gap-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Upload size={12} /> Attach Document
+                </p>
+                <div className="flex flex-wrap gap-2 items-end">
+                  <select
+                    value={uploadDocType}
+                    onChange={(e) => setUploadDocType(e.target.value)}
+                    className="h-9 text-sm min-w-32"
+                  >
+                    <option>Report</option>
+                    <option>Lab Result</option>
+                    <option>Radiology Image</option>
+                    <option>Prescription</option>
+                    <option>Referral Letter</option>
+                    <option>Insurance</option>
+                    <option>Other</option>
+                  </select>
+                  <label className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted cursor-pointer transition-colors">
+                    <Upload size={13} />
+                    {uploadDocFile ? uploadDocFile.name : "Choose file"}
+                    <input type="file" className="hidden" accept="image/*,.pdf" onChange={(e) => setUploadDocFile(e.target.files?.[0] ?? null)} />
+                  </label>
+                  {uploadDocFile && (
+                    <button
+                      onClick={handleUploadDocument}
+                      disabled={isUploadingDoc}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {isUploadingDoc ? "Uploading…" : "Upload"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-3 border-t border-border flex justify-end">
+                <button
+                  onClick={() => setShowDocumentsModal(false)}
+                  className="rounded-lg border border-border px-5 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Patient warning modal — shown once on file open when allergies or alert exist */}
