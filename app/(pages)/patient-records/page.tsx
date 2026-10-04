@@ -120,6 +120,8 @@ export default function PatientRecordsPage() {
   // whichever it is without the rest of the modal needing to care which.
   const [walkInPatient, setWalkInPatient] = useState<PatientGetAllType | null>(null);
   const [editingVisit, setEditingVisit] = useState<VisitListItemType | null>(null);
+  // Set when the modal is opened from the Referral List - drives which endpoint is called on submit.
+  const [walkInReferralId, setWalkInReferralId] = useState<string | null>(null);
   const [specializations, setSpecializations] = useState<SpecializationDoctorsType[]>([]);
   const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
   const [walkInDepartmentId, setWalkInDepartmentId] = useState("");
@@ -171,6 +173,19 @@ export default function PatientRecordsPage() {
     }
   };
 
+  const fetchPendingReferrals = async () => {
+    try {
+      setIsLoadingReferrals(true);
+      const data = await ReceptionService.getPendingReferrals();
+      setPendingReferrals(data.data || []);
+    } catch (error) {
+      console.error("Failed to fetch pending referrals", error);
+      toast.error("Failed to load referral list");
+    } finally {
+      setIsLoadingReferrals(false);
+    }
+  };
+
   // Register List is fetched eagerly (it's the default view, and other pages' patient-search
   // widgets share the underlying data too via the same signalR-driven refresh below) - Visit
   // List is fetched lazily, only once the toggle actually switches to it, and again whenever
@@ -182,17 +197,21 @@ export default function PatientRecordsPage() {
 
   useEffect(() => {
     if (listMode === "visit") fetchVisits(fromDate, toDate);
+    if (listMode === "referral") fetchPendingReferrals();
   }, [listMode, fromDate, toDate]);
 
   // Search/date/mode changes all invalidate whatever page the user was on - e.g. a filter
   // that now only matches 10 records shouldn't leave them stranded on page 3.
   useEffect(() => {
     setCurrentPage(1);
-  }, [listMode, searchTerm, fromDate, toDate]);
+  }, [listMode, searchTerm, referralSearchTerm, fromDate, toDate]);
 
   useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
   useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], () => {
     if (listMode === "visit") fetchVisits(fromDate, toDate);
+  });
+  useSignalRRefetch(["referralAdded", "referralUpdated", "referralRemoved", "visitCheckedIn"], () => {
+    if (listMode === "referral") fetchPendingReferrals();
   });
 
   const handleDelete = async (id: string) => {
@@ -282,6 +301,7 @@ export default function PatientRecordsPage() {
   const closeWalkInModal = () => {
     setWalkInPatient(null);
     setEditingVisit(null);
+    setWalkInReferralId(null);
     setSelectedDoctor(null);
     setDaySlots(null);
     setSelectedSlot(null);
@@ -441,6 +461,12 @@ export default function PatientRecordsPage() {
             appointmentDate: selectedSlot.start,
             notes: visitNotes || undefined,
           })
+        : walkInReferralId
+        ? await ReceptionService.registerFromReferral(walkInReferralId, {
+            doctorId: selectedDoctor.doctorId,
+            appointmentDate: selectedSlot.start,
+            notes: visitNotes || undefined,
+          })
         : await ReceptionService.walkIn({
             patientId: modalPatient.opId,
             doctorId: selectedDoctor.doctorId,
@@ -452,9 +478,12 @@ export default function PatientRecordsPage() {
         toast.error(data.message || "This slot has just been booked. Please choose another slot.");
         fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
       } else {
-        toast.success(data.message || (editingVisit ? "Visit updated" : "Walk-in visit registered"));
+        toast.success(data.message || (editingVisit ? "Visit updated" : "Patient registered successfully"));
+        const wasReferral = !!walkInReferralId;
+        const wasEditingVisit = !!editingVisit;
         closeWalkInModal();
-        if (editingVisit) fetchVisits(fromDate, toDate);
+        if (wasEditingVisit) fetchVisits(fromDate, toDate);
+        if (wasReferral) fetchPendingReferrals();
       }
     } catch (error) {
       const fallback = `Failed to ${editingVisit ? "update visit" : "register walk-in visit"}`;
@@ -558,8 +587,24 @@ export default function PatientRecordsPage() {
     () => visits.filter((v) => matchesPatientSearch(v, searchTerm)),
     [visits, searchTerm]
   );
+  const filteredReferrals = useMemo(() => {
+    const q = referralSearchTerm.trim().toLowerCase();
+    if (!q) return pendingReferrals;
+    return pendingReferrals.filter(
+      (r) =>
+        r.patientName?.toLowerCase().includes(q) ||
+        r.patientOpNumber?.toLowerCase().includes(q) ||
+        r.patientPhone?.toLowerCase().includes(q) ||
+        r.targetSpecializationName?.toLowerCase().includes(q)
+    );
+  }, [pendingReferrals, referralSearchTerm]);
 
-  const activeFilteredCount = listMode === "register" ? filteredPatients.length : filteredVisits.length;
+  const activeFilteredCount =
+    listMode === "register"
+      ? filteredPatients.length
+      : listMode === "visit"
+      ? filteredVisits.length
+      : filteredReferrals.length;
   const totalPages = Math.max(1, Math.ceil(activeFilteredCount / PATIENTS_PAGE_SIZE));
   // Clamped fallback for the one case the reset-to-1 effect above doesn't cover: the result
   // set shrinking (e.g. a patient deleted, or a signalR-driven visit refetch) while the user
@@ -574,6 +619,10 @@ export default function PatientRecordsPage() {
   const pagedVisits = useMemo(
     () => filteredVisits.slice(pageStart, pageStart + PATIENTS_PAGE_SIZE),
     [filteredVisits, pageStart]
+  );
+  const pagedReferrals = useMemo(
+    () => filteredReferrals.slice(pageStart, pageStart + PATIENTS_PAGE_SIZE),
+    [filteredReferrals, pageStart]
   );
 
   // Register List row actions — operate on the patient record itself.
@@ -688,6 +737,17 @@ export default function PatientRecordsPage() {
             >
               Patient Visit List
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={listMode === "referral"}
+              onClick={() => setListMode("referral")}
+              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors cursor-pointer ${
+                listMode === "referral" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Referral List
+            </button>
           </div>
 
           {/* From/To sit immediately left of the search bar (both pushed to the row's right
@@ -726,89 +786,201 @@ export default function PatientRecordsPage() {
               <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
                 <SearchIcon color="#555" />
               </span>
-              <input
-                type="text"
-                autoComplete="off"
-                placeholder="Search by name, MRN, mobile number, or national ID..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
-              />
+              {listMode === "referral" ? (
+                <input
+                  type="text"
+                  autoComplete="off"
+                  placeholder="Search by name, MRN, phone, or specialty..."
+                  value={referralSearchTerm}
+                  onChange={(e) => setReferralSearchTerm(e.target.value)}
+                  className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
+                />
+              ) : (
+                <input
+                  type="text"
+                  autoComplete="off"
+                  placeholder="Search by name, MRN, mobile number, or national ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
+                />
+              )}
             </div>
           </div>
         </div>
 
         <hr className="text-neutral-400/50 mb-4" />
 
-        <div className="overflow-x-auto">
-          <table>
-            <thead>
-              <tr>
-                <th>Full Name</th>
-                <th>MRN</th>
-                {listMode === "register" ? (
-                  <>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Address</th>
-                  </>
-                ) : (
-                  <>
-                    <th>Phone</th>
-                    <th>Visit Date</th>
-                    <th>Visit Type</th>
-                  </>
-                )}
-                <th className="text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(listMode === "register" ? isLoading : isLoadingVisits) ? (
-                <tr>
-                  <td colSpan={6} className="py-16 text-center">
-                    <LoadingSpinner />
-                  </td>
-                </tr>
-              ) : listMode === "register" ? (
-                pagedPatients.length > 0 ? (
-                  pagedPatients.map((patient) => (
-                    <tr key={patient.opId}>
-                      <td className="font-semibold">{patient.name}</td>
-                      <td className="font-mono text-xs">{patient.opNumber || patient.opId}</td>
-                      <td>{patient.email}</td>
-                      <td>{patient.phone}</td>
-                      <td className="truncate max-w-xs">{patient.address || "N/A"}</td>
-                      <td className="text-center">{renderRegisterActions(patient)}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="py-16 text-center text-gray-500">
-                      No patients found.
-                    </td>
-                  </tr>
-                )
-              ) : pagedVisits.length > 0 ? (
-                pagedVisits.map((visit) => (
-                  <tr key={visit.visitId}>
-                    <td className="font-semibold">{visit.name}</td>
-                    <td className="font-mono text-xs">{visit.opNumber || visit.opId}</td>
-                    <td>{visit.phone}</td>
-                    <td>{format(new Date(visit.checkedInAt), "dd MMM yyyy")}</td>
-                    <td>{visit.visitType === "WalkIn" ? "Walk-in" : "Appointment"}</td>
-                    <td className="text-center">{renderVisitActions(visit)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="py-16 text-center text-gray-500">
-                    No visits found for the selected date range.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* ---- Patient / Visit / Referral card grid ---- */}
+        {(listMode === "register" ? isLoading : listMode === "visit" ? isLoadingVisits : isLoadingReferrals) ? (
+          <div className="flex items-center justify-center py-20"><LoadingSpinner /></div>
+        ) : listMode === "register" ? (
+          pagedPatients.length === 0 ? (
+            <p className="py-16 text-center text-muted-foreground text-sm">No patients found.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pagedPatients.map((patient) => {
+                const initials = patient.name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+                return (
+                  <div key={patient.opId} className="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 text-primary font-bold text-sm flex items-center justify-center shrink-0">
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-foreground truncate">{patient.name}</p>
+                        <span className="font-mono text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          {patient.opNumber || patient.opId}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                      {patient.email && (
+                        <div className="flex items-center gap-2 truncate">
+                          <MdOutlineMailOutline size={13} className="shrink-0 text-muted-foreground/60" />
+                          <span className="truncate">{patient.email}</span>
+                        </div>
+                      )}
+                      {patient.phone && (
+                        <div className="flex items-center gap-2">
+                          <MdContacts size={13} className="shrink-0 text-muted-foreground/60" />
+                          <span>{patient.phone}</span>
+                        </div>
+                      )}
+                      {patient.address && (
+                        <div className="flex items-center gap-2 truncate">
+                          <svg className="shrink-0 text-muted-foreground/60" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                          <span className="truncate">{patient.address}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 pt-2 border-t border-border mt-auto">
+                      {renderRegisterActions(patient)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : listMode === "visit" ? (
+          pagedVisits.length === 0 ? (
+            <p className="py-16 text-center text-muted-foreground text-sm">No visits found for the selected date range.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pagedVisits.map((visit) => {
+                const initials = visit.name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+                const statusColor =
+                  visit.status === "Completed"
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                    : visit.status === "Cancelled"
+                    ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                    : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+                return (
+                  <div key={visit.visitId} className="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 text-primary font-bold text-sm flex items-center justify-center shrink-0">
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-foreground truncate">{visit.name}</p>
+                        <span className="font-mono text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          {visit.opNumber || visit.opId}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
+                        {visit.status}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                      {visit.phone && (
+                        <div className="flex items-center gap-2">
+                          <MdContacts size={13} className="shrink-0 text-muted-foreground/60" />
+                          <span>{visit.phone}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <CalendarDays size={13} className="shrink-0 text-muted-foreground/60" />
+                        <span>{format(new Date(visit.checkedInAt), "dd MMM yyyy")}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock size={13} className="shrink-0 text-muted-foreground/60" />
+                        <span>
+                          {visit.visitType === "WalkIn" ? "Walk-in" : visit.visitType === "Referral" ? "Referral" : "Appointment"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 pt-2 border-t border-border mt-auto">
+                      {renderVisitActions(visit)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : pagedReferrals.length === 0 ? (
+          <p className="py-16 text-center text-muted-foreground text-sm">No pending referrals.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {pagedReferrals.map((r) => (
+              <div key={r.referralId} className="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-bold text-sm flex items-center justify-center shrink-0">
+                    {(r.patientName ?? "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-foreground truncate">{r.patientName ?? "—"}</p>
+                    <span className="font-mono text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      {r.patientOpNumber ?? "—"}
+                    </span>
+                  </div>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                    r.priority === "Urgent" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : "bg-muted text-muted-foreground"
+                  }`}>
+                    {r.priority}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                  {r.patientPhone && (
+                    <div className="flex items-center gap-2">
+                      <MdContacts size={13} className="shrink-0 text-muted-foreground/60" />
+                      <span>{r.patientPhone}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Stethoscope size={13} className="shrink-0 text-muted-foreground/60" />
+                    <span className="truncate">
+                      {r.targetSpecializationName ?? "—"}
+                      {r.cancerSiteName && <span className="ml-1">({r.cancerSiteName})</span>}
+                      {r.externalFacility && <span className="ml-1">· {r.externalFacility}</span>}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CalendarDays size={13} className="shrink-0 text-muted-foreground/60" />
+                    <span>{format(new Date(r.createdAt), "dd MMM yyyy")}</span>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-border mt-auto">
+                  <button
+                    onClick={async () => {
+                      setWalkInReferralId(r.referralId);
+                      await openWalkInModal({
+                        opId: r.patientId,
+                        opNumber: r.patientOpNumber ?? undefined,
+                        name: r.patientName ?? "",
+                        email: "",
+                        phone: r.patientPhone ?? "",
+                        address: "",
+                      });
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+                  >
+                    <Stethoscope size={13} /> Register Visit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {activeFilteredCount > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-border">
@@ -846,7 +1018,7 @@ export default function PatientRecordsPage() {
             <div className="flex items-start justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-semibold text-foreground">
-                  {editingVisit ? "Edit visit" : "Walk-in visit"}
+                  {editingVisit ? "Edit visit" : walkInReferralId ? "Register referral" : "Walk-in visit"}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
                   {modalPatient.name}

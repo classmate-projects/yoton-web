@@ -1027,8 +1027,6 @@ function DoctorWorkbenchInner() {
     cancerSiteName: "",
     externalFacility: "",
   });
-  const [referralOutcomeDates, setReferralOutcomeDates] = useState<Record<string, string>>({});
-  const [savingOutcomeId, setSavingOutcomeId] = useState<string | null>(null);
   const [editingReferralId, setEditingReferralId] = useState<string | null>(null);
 
   const addReferral = async () => {
@@ -1099,25 +1097,6 @@ function DoctorWorkbenchInner() {
         }
       }
     );
-  };
-
-  const saveReferralOutcome = async (referralId: string) => {
-    const dateSeenBySpecialist = referralOutcomeDates[referralId];
-    if (!dateSeenBySpecialist) {
-      toast.error("Pick the date the patient was seen");
-      return;
-    }
-    if (!requireDoctorSelected()) return;
-    try {
-      setSavingOutcomeId(referralId);
-      await EmrService.setReferralOutcome(referralId, { dateSeenBySpecialist }, doctorIdParam);
-      toast.success("Referral outcome recorded");
-      if (selectedPatientId) await fetchSummary(selectedPatientId);
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to record referral outcome"));
-    } finally {
-      setSavingOutcomeId(null);
-    }
   };
 
   // ---------------- DENTAL VISIT EXTRAS ----------------
@@ -2306,23 +2285,7 @@ function DoctorWorkbenchInner() {
                               Seen by specialist on {new Date(r.dateSeenBySpecialist).toLocaleDateString()}
                             </span>
                           ) : (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="date"
-                                value={referralOutcomeDates[r.referralId] || ""}
-                                onChange={(e) =>
-                                  setReferralOutcomeDates((p) => ({ ...p, [r.referralId]: e.target.value }))
-                                }
-                                className="h-8 text-xs flex-1"
-                              />
-                              <button
-                                onClick={() => saveReferralOutcome(r.referralId)}
-                                disabled={savingOutcomeId === r.referralId}
-                                className="text-xs font-semibold text-primary hover:underline disabled:opacity-50"
-                              >
-                                Record seen date
-                              </button>
-                            </div>
+                            <span className="text-xs text-muted-foreground">Awaiting consultation</span>
                           )}
                           {r.correctedFrom && (
                             <CorrectedFromNote>
