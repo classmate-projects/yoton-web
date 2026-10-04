@@ -119,6 +119,8 @@ export const ENDPOINTS = {
     EMR: {
         GET_PATIENTS: (doctorId?: string) => `/api/emr/patients${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_PATIENT_SUMMARY: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE_PATIENT_ALERT: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/alert${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE_MEDICAL_HISTORY: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/medical-history${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_INSURANCE_COVERAGE: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/insurance-coverage${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_DASHBOARD_SUMMARY: (doctorId?: string) => `/api/emr/dashboard-summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_TODAY_SCHEDULE: (doctorId?: string, date?: string) => { const p = new URLSearchParams(); if (doctorId) p.set("doctorId", doctorId); if (date) p.set("date", date); const q = p.toString(); return `/api/emr/schedule/today${q ? `?${q}` : ""}`; },

@@ -67,6 +67,7 @@ import { ConfigListService } from "@/services/configList.service";
 import { NursingService } from "@/services/nursing.service";
 import {
   ActiveCaseItemType,
+  AllergyPayload,
   AllergyType,
   ChronicConditionType,
   DoctorConfidentialNoteType,
@@ -131,6 +132,15 @@ function DoctorWorkbenchInner() {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [summary, setSummary] = useState<PatientSummaryType | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [patientAlertText, setPatientAlertText] = useState("");
+  const [isSavingAlert, setIsSavingAlert] = useState(false);
+  const [patientWarningModal, setPatientWarningModal] = useState<{ allergies: AllergyType[]; alertText: string } | null>(null);
+  const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pastMedicalHistory, setPastMedicalHistory] = useState("");
+  const [pastSurgicalHistory, setPastSurgicalHistory] = useState("");
+  const [pastTreatmentHistory, setPastTreatmentHistory] = useState("");
+  const [isSavingHistory, setIsSavingHistory] = useState(false);
+  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Date.now() can't be called during render (React treats it as impure) - computed instead
   // in the "Print Prescription" click handler below, where reading the clock is allowed.
   const [patientAgeForPrint, setPatientAgeForPrint] = useState<number | null>(null);
@@ -284,23 +294,41 @@ function DoctorWorkbenchInner() {
   // ---------------- PATIENT SUMMARY (EMR PANEL) ----------------
   const openPatient = async (patientId: string) => {
     setSelectedPatientId(patientId);
-    await Promise.all([
+    const [loadedSummary] = await Promise.all([
       fetchSummary(patientId),
       fetchQuickNotes(patientId),
       fetchDocuments(patientId),
       fetchConfidentialNotes(patientId),
       fetchLatestVitals(patientId),
     ]);
+    const hasAlert = loadedSummary?.patientAlert?.trim();
+    const hasAllergies = (loadedSummary?.allergies?.length ?? 0) > 0;
+    if (hasAlert || hasAllergies) {
+      setPatientWarningModal({
+        allergies: loadedSummary?.allergies ?? [],
+        alertText: loadedSummary?.patientAlert ?? "",
+      });
+    }
   };
 
-  const fetchSummary = async (patientId: string) => {
+  const fetchSummary = async (patientId: string): Promise<PatientSummaryType | null> => {
     try {
       setIsLoadingSummary(true);
       const res = await EmrService.getPatientSummary(patientId, doctorIdParam);
       setSummary(res.data);
+      setPatientAlertText(res.data?.patientAlert ?? "");
+      setPastMedicalHistory(res.data?.pastMedicalHistory ?? "");
+      setPastSurgicalHistory(res.data?.pastSurgicalHistory ?? "");
+      setPastTreatmentHistory(res.data?.pastTreatmentHistory ?? "");
+      return res.data ?? null;
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load patient summary"));
       setSummary(null);
+      setPatientAlertText("");
+      setPastMedicalHistory("");
+      setPastSurgicalHistory("");
+      setPastTreatmentHistory("");
+      return null;
     } finally {
       setIsLoadingSummary(false);
     }
@@ -353,6 +381,8 @@ function DoctorWorkbenchInner() {
   const backToWorkbench = () => {
     setSelectedPatientId(null);
     setSummary(null);
+    setPatientAlertText("");
+    setPatientWarningModal(null);
     setQuickNotes([]);
     setConfidentialNotes([]);
     setVitalsHistory([]);
@@ -767,18 +797,82 @@ function DoctorWorkbenchInner() {
     );
   };
 
+  // ---------------- PATIENT ALERT ----------------
+
+  const savePatientAlert = async (text: string) => {
+    if (!selectedPatientId) return;
+    if (alertTimerRef.current) { clearTimeout(alertTimerRef.current); alertTimerRef.current = null; }
+    setIsSavingAlert(true);
+    try {
+      await EmrService.updatePatientAlert(selectedPatientId, text.trim() || null, doctorIdParam);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save patient alert"));
+    } finally {
+      setIsSavingAlert(false);
+    }
+  };
+
+  // ---------------- MEDICAL HISTORY ----------------
+
+  const saveMedicalHistory = async (medical: string, surgical: string, treatment: string) => {
+    if (!selectedPatientId) return;
+    if (historyTimerRef.current) { clearTimeout(historyTimerRef.current); historyTimerRef.current = null; }
+    setIsSavingHistory(true);
+    try {
+      await EmrService.updateMedicalHistory(
+        selectedPatientId,
+        {
+          pastMedicalHistory: medical.trim() || null,
+          pastSurgicalHistory: surgical.trim() || null,
+          pastTreatmentHistory: treatment.trim() || null,
+        },
+        doctorIdParam
+      );
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to save medical history"));
+    } finally {
+      setIsSavingHistory(false);
+    }
+  };
+
   // ---------------- ALLERGIES ----------------
-  const [allergyForm, setAllergyForm] = useState({ substance: "", reaction: "" });
+  const emptyAllergyForm = { substance: "", reaction: "", allergyCategory: "", severity: "", identifiedDate: "", status: "Active", remarks: "" };
+  const [allergyForm, setAllergyForm] = useState(emptyAllergyForm);
   const [editingAllergyId, setEditingAllergyId] = useState<string | null>(null);
+
+  const ALLERGY_CATEGORIES = ["Drug", "Food", "Environmental", "Latex", "Contrast Media", "Other"];
+  const ALLERGENS_BY_CATEGORY: Record<string, string[]> = {
+    Drug: ["Penicillin", "Amoxicillin", "Aspirin", "NSAIDs", "Sulfonamides", "Codeine", "Morphine", "Tetracycline", "Other Drug"],
+    Food: ["Peanuts", "Tree Nuts", "Shellfish", "Fish", "Milk (Dairy)", "Eggs", "Wheat (Gluten)", "Soy", "Other Food"],
+    Environmental: ["Pollen", "Dust Mites", "Pet Dander", "Mold", "Grass", "Trees", "Other Environmental"],
+    Latex: ["Latex Gloves", "Latex Products", "Other Latex"],
+    "Contrast Media": ["Iodinated Contrast", "Gadolinium Contrast", "Other Contrast Media"],
+    Other: ["Other"],
+  };
+  const SEVERITIES = ["Mild", "Moderate", "Severe", "Life-threatening"];
+  const REACTIONS = ["Rash", "Hives (Urticaria)", "Itching (Pruritus)", "Swelling (Angioedema)", "Anaphylaxis", "Nausea/Vomiting", "Diarrhea", "Respiratory Distress", "Contact Dermatitis", "Other"];
+  const ALLERGY_STATUSES = ["Active", "Inactive", "Resolved"];
 
   const addAllergy = async () => {
     if (!selectedPatientId || !allergyForm.substance.trim()) {
-      toast.error("Substance is required");
+      toast.error("Allergen is required");
+      return;
+    }
+    if (!allergyForm.allergyCategory) {
+      toast.error("Allergy category is required");
       return;
     }
     if (!requireDoctorSelected()) return;
     try {
-      const payload = { substance: allergyForm.substance.trim(), reaction: allergyForm.reaction.trim() || undefined };
+      const payload: AllergyPayload = {
+        substance: allergyForm.substance.trim(),
+        reaction: allergyForm.reaction.trim() || undefined,
+        allergyCategory: allergyForm.allergyCategory || undefined,
+        severity: allergyForm.severity || undefined,
+        identifiedDate: allergyForm.identifiedDate || undefined,
+        status: allergyForm.status || "Active",
+        remarks: allergyForm.remarks.trim() || undefined,
+      };
       if (editingAllergyId) {
         await EmrService.updateAllergy(editingAllergyId, payload, doctorIdParam);
         toast.success("Allergy corrected");
@@ -786,7 +880,7 @@ function DoctorWorkbenchInner() {
         await EmrService.addAllergy(selectedPatientId, payload, doctorIdParam);
         toast.success("Allergy added");
       }
-      setAllergyForm({ substance: "", reaction: "" });
+      setAllergyForm(emptyAllergyForm);
       setEditingAllergyId(null);
       await fetchSummary(selectedPatientId);
     } catch (error) {
@@ -796,12 +890,20 @@ function DoctorWorkbenchInner() {
 
   const startEditAllergy = (a: AllergyType) => {
     setEditingAllergyId(a.patientAllergyId);
-    setAllergyForm({ substance: a.substance, reaction: a.reaction || "" });
+    setAllergyForm({
+      substance: a.substance,
+      reaction: a.reaction || "",
+      allergyCategory: a.allergyCategory || "",
+      severity: a.severity || "",
+      identifiedDate: a.identifiedDate || "",
+      status: a.status || "Active",
+      remarks: a.remarks || "",
+    });
   };
 
   const cancelEditAllergy = () => {
     setEditingAllergyId(null);
-    setAllergyForm({ substance: "", reaction: "" });
+    setAllergyForm(emptyAllergyForm);
   };
 
   const removeAllergy = (a: AllergyType) => {
@@ -1572,6 +1674,30 @@ function DoctorWorkbenchInner() {
               )}
             </div>
 
+            {/* Patient Alerts — doctor-authored flag that persists across all visits and
+                is visible to all staff. Saved on blur so the doctor can type freely. */}
+            <div className="card px-5 py-4 border-l-4 border-l-red-500">
+              <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide flex items-center gap-1.5 mb-2">
+                <AlertTriangle size={13} /> Patient Alerts
+              </p>
+              <textarea
+                value={patientAlertText}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPatientAlertText(v);
+                  if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
+                  alertTimerRef.current = setTimeout(() => void savePatientAlert(v), 1200);
+                }}
+                onBlur={(e) => void savePatientAlert(e.target.value)}
+                placeholder="Enter any clinical alerts visible to all staff — e.g. 'Patient is claustrophobic', 'Known drug seeker'..."
+                rows={3}
+                className="w-full text-sm resize-y"
+              />
+              {isSavingAlert && (
+                <p className="text-xs text-muted-foreground mt-1">Saving…</p>
+              )}
+            </div>
+
             {/* Latest Vitals — merged from Triage (nurse's intake reading) and VitalsRecord
                 (nurse's ongoing readings), read-only here so the doctor has it in view while
                 prescribing/ordering without leaving the workbench. History icon opens the
@@ -1627,62 +1753,104 @@ function DoctorWorkbenchInner() {
                 surfaced here instead of a separate Nurse Workbench module (removed from the
                 doctor's sidebar - see helpers/sidebaritems.ts). Read-only, same data the
                 nurse enters via NursingController.GetPatientChart. */}
-            {(nurseSpecialRemarks.length > 0 || nurseNotes.length > 0 || nurseExaminationNotes.length > 0) && (
-              <div className="card p-5 flex flex-col gap-4">
-                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <StickyNote size={16} className="text-primary" /> Nurse Entries
-                </h2>
+            <div className="card p-5 flex flex-col gap-4">
+              <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                <StickyNote size={16} className="text-primary" /> Nurse Entries
+              </h2>
 
-                {nurseSpecialRemarks.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <AlertTriangle size={13} /> Special Remarks
-                    </p>
-                    {nurseSpecialRemarks.map((r) => (
-                      <div key={r.specialRemarkId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
-                        <p className="text-foreground">
-                          <span className="font-semibold">{r.remarkType}:</span> {r.description}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">{formatDateTime(r.createdAt)}</p>
+              {vitalsHistory.length === 0 && nurseSpecialRemarks.length === 0 && nurseNotes.length === 0 && nurseExaminationNotes.length === 0 && (
+                <p className="text-sm text-muted-foreground italic">No nurse entries recorded for this patient yet.</p>
+              )}
+
+              {vitalsHistory.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <HeartPulse size={13} /> Vitals
+                  </p>
+                  <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+                    {vitalsHistory.map((v, i) => (
+                      <div key={i} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${v.source === "Triage" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"}`}>
+                            {v.source}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{v.recordedByName ?? "Nurse"} · {formatDateTime(v.recordedAt)}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                          {v.temperature != null && <span className="text-muted-foreground">Temp: <span className="font-semibold text-foreground">{v.temperature}°C</span></span>}
+                          {v.heartRate != null && <span className="text-muted-foreground">HR: <span className="font-semibold text-foreground">{v.heartRate} BPM</span></span>}
+                          {v.systolic != null && v.diastolic != null && <span className="text-muted-foreground">BP: <span className="font-semibold text-foreground">{v.systolic}/{v.diastolic} mmHg</span></span>}
+                          {v.respiratory != null && <span className="text-muted-foreground">Resp: <span className="font-semibold text-foreground">{v.respiratory} bpm</span></span>}
+                          {v.oxygenSaturation != null && <span className="text-muted-foreground">O2: <span className="font-semibold text-foreground">{v.oxygenSaturation}%</span></span>}
+                          {v.bloodSugar != null && <span className="text-muted-foreground">Sugar: <span className="font-semibold text-foreground">{v.bloodSugar} mmol/L</span></span>}
+                          {v.heightCm != null && <span className="text-muted-foreground">Ht: <span className="font-semibold text-foreground">{v.heightCm} cm</span></span>}
+                          {v.weightKg != null && <span className="text-muted-foreground">Wt: <span className="font-semibold text-foreground">{v.weightKg} kg</span></span>}
+                          {v.bmi != null && <span className="text-muted-foreground">BMI: <span className="font-semibold text-foreground">{v.bmi.toFixed(1)}</span></span>}
+                        </div>
                       </div>
                     ))}
                   </div>
-                )}
+                  {vitalsHistory.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowVitalsHistory(true)}
+                      className="self-start text-xs font-semibold text-primary hover:underline flex items-center gap-1"
+                    >
+                      <History size={12} /> View trend graph
+                    </button>
+                  )}
+                </div>
+              )}
 
-                {nurseNotes.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <StickyNote size={13} /> Nurse Notes
-                    </p>
-                    {nurseNotes.map((n) => (
-                      <div key={n.nurseNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
-                        <p className="text-foreground">{n.contentHtml}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{n.nurseName ?? "Nurse"} · {formatDateTime(n.createdAt)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              {nurseSpecialRemarks.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <AlertTriangle size={13} /> Special Remarks
+                  </p>
+                  {nurseSpecialRemarks.map((r) => (
+                    <div key={r.specialRemarkId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
+                      <p className="text-foreground">
+                        <span className="font-semibold">{r.remarkType}:</span> {r.description}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">{formatDateTime(r.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-                {nurseExaminationNotes.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <NotebookPen size={13} /> Examination Notes
-                    </p>
-                    {nurseExaminationNotes.map((e) => (
-                      <div key={e.examinationNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm flex flex-col gap-1">
-                        {e.generalAppearance && (
-                          <p><span className="font-semibold">General appearance:</span> {e.generalAppearance}</p>
-                        )}
-                        <p><span className="font-semibold">Pain level:</span> {e.painLevel}/10</p>
-                        {e.mobility && <p><span className="font-semibold">Mobility:</span> {e.mobility}</p>}
-                        {e.clinicalChecks && <p><span className="font-semibold">Clinical checks:</span> {e.clinicalChecks}</p>}
-                        <p className="text-xs text-muted-foreground mt-1">{e.nurseName ?? "Nurse"} · {formatDateTime(e.createdAt)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              {nurseNotes.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <StickyNote size={13} /> Nurse Notes
+                  </p>
+                  {nurseNotes.map((n) => (
+                    <div key={n.nurseNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                      <div className="prose prose-sm max-w-none text-foreground" dangerouslySetInnerHTML={{ __html: n.contentHtml }} />
+                      <p className="text-xs text-muted-foreground mt-1">{n.nurseName ?? "Nurse"} · {formatDateTime(n.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {nurseExaminationNotes.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <NotebookPen size={13} /> Examination Notes
+                  </p>
+                  {nurseExaminationNotes.map((e) => (
+                    <div key={e.examinationNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm flex flex-col gap-1">
+                      {e.generalAppearance && (
+                        <p><span className="font-semibold">General appearance:</span> {e.generalAppearance}</p>
+                      )}
+                      <p><span className="font-semibold">Pain level:</span> {e.painLevel}/10</p>
+                      {e.mobility && <p><span className="font-semibold">Mobility:</span> {e.mobility}</p>}
+                      {e.clinicalChecks && <p><span className="font-semibold">Clinical checks:</span> {e.clinicalChecks}</p>}
+                      <p className="text-xs text-muted-foreground mt-1">{e.nurseName ?? "Nurse"} · {formatDateTime(e.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Drug allergy banner — summarizes what's already on file; the Allergies
                 section further down is where new ones get added. */}
@@ -2144,66 +2312,166 @@ function DoctorWorkbenchInner() {
                     </div>
                   )}
 
-                  <div className="border-t border-border pt-4 flex flex-col gap-2">
-                    <p className="text-sm font-semibold text-foreground/90">Allergies / Reactions</p>
-                    <div className="flex flex-wrap gap-2">
+                  <div className="border-t border-border pt-4 flex flex-col gap-3">
+                    <p className="text-sm font-semibold text-foreground/90">Allergies / Sensitivities</p>
+                    <div className="flex flex-col gap-2">
                       {summary.allergies.length > 0 ? (
-                        summary.allergies.map((a) => (
-                          <span
-                            key={a.patientAllergyId}
-                            className="group flex flex-col gap-1 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-1.5 text-sm text-red-700 dark:text-red-400"
-                          >
-                            <span className="flex items-center gap-2">
-                              {a.substance} {a.reaction ? `— ${a.reaction}` : ""}
-                              <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
-                                  <Pencil size={11} />
-                                </button>
-                                <button onClick={() => removeAllergy(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
-                                  <Trash2 size={11} />
-                                </button>
-                              </span>
-                            </span>
-                            {a.correctedFrom && (
-                              <CorrectedFromNote>
-                                <p>
-                                  Previous: {a.correctedFrom.substance}
-                                  {a.correctedFrom.reaction ? ` · reaction: ${a.correctedFrom.reaction}` : ""}
-                                </p>
-                              </CorrectedFromNote>
-                            )}
-                          </span>
-                        ))
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400">
+                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Category</th>
+                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Allergen</th>
+                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Severity</th>
+                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Reaction</th>
+                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Identified</th>
+                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Status</th>
+                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900 w-14"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {summary.allergies.map((a) => (
+                                <tr key={a.patientAllergyId} className="group hover:bg-red-50/50 dark:hover:bg-red-950/10">
+                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50 text-foreground/80">{a.allergyCategory || "—"}</td>
+                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50 font-medium text-red-700 dark:text-red-400">{a.substance}</td>
+                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50">
+                                    {a.severity ? (
+                                      <span className={`inline-block rounded px-1.5 py-0.5 font-medium ${
+                                        a.severity === "Life-threatening" ? "bg-red-200 dark:bg-red-900 text-red-800 dark:text-red-200" :
+                                        a.severity === "Severe" ? "bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300" :
+                                        a.severity === "Moderate" ? "bg-yellow-100 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300" :
+                                        "bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300"
+                                      }`}>{a.severity}</span>
+                                    ) : "—"}
+                                  </td>
+                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50 text-foreground/80">{a.reaction || "—"}</td>
+                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50 text-foreground/80">{a.identifiedDate || "—"}</td>
+                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50 text-foreground/80">{a.status || "Active"}</td>
+                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50">
+                                    <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
+                                        <Pencil size={11} />
+                                      </button>
+                                      <button onClick={() => removeAllergy(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
+                                        <Trash2 size={11} />
+                                      </button>
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {summary.allergies.some((a) => a.correctedFrom) && (
+                            <div className="mt-1 flex flex-col gap-0.5">
+                              {summary.allergies.filter((a) => a.correctedFrom).map((a) => (
+                                <CorrectedFromNote key={a.patientAllergyId}>
+                                  <p>Previous ({a.substance}): {a.correctedFrom!.substance}{a.correctedFrom!.reaction ? ` · reaction: ${a.correctedFrom!.reaction}` : ""}</p>
+                                </CorrectedFromNote>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">No known allergies.</p>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-2 items-end">
-                      <input
-                        type="text"
-                        placeholder="Substance"
-                        value={allergyForm.substance}
-                        onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))}
-                        className="h-10 text-sm flex-1 min-w-32"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Reaction"
-                        value={allergyForm.reaction}
-                        onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))}
-                        className="h-10 text-sm flex-1 min-w-32"
-                      />
-                      <button
-                        onClick={addAllergy}
-                        className="flex items-center gap-1 rounded-lg border border-primary/30 px-3 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
-                      >
-                        <Plus size={14} /> {editingAllergyId ? "Save Correction" : "Add"}
-                      </button>
-                      {editingAllergyId && (
-                        <button onClick={cancelEditAllergy} className="text-sm font-semibold text-muted-foreground hover:underline">
-                          Cancel
+
+                    {/* Allergy entry form */}
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 flex flex-col gap-3">
+                      <p className="text-xs font-semibold text-foreground/70 uppercase tracking-wide">
+                        {editingAllergyId ? "Correct Allergy Entry" : "Add Allergy / Sensitivity"}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Allergy Category <span className="text-destructive">*</span></label>
+                          <select
+                            value={allergyForm.allergyCategory}
+                            onChange={(e) => setAllergyForm((p) => ({ ...p, allergyCategory: e.target.value, substance: "" }))}
+                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+                          >
+                            <option value="">Select category</option>
+                            {ALLERGY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Allergen <span className="text-destructive">*</span></label>
+                          <select
+                            value={allergyForm.substance}
+                            onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))}
+                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+                            disabled={!allergyForm.allergyCategory}
+                          >
+                            <option value="">Select allergen</option>
+                            {(ALLERGENS_BY_CATEGORY[allergyForm.allergyCategory] ?? []).map((a) => (
+                              <option key={a} value={a}>{a}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Severity</label>
+                          <select
+                            value={allergyForm.severity}
+                            onChange={(e) => setAllergyForm((p) => ({ ...p, severity: e.target.value }))}
+                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+                          >
+                            <option value="">Select severity</option>
+                            {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Reaction</label>
+                          <select
+                            value={allergyForm.reaction}
+                            onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))}
+                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+                          >
+                            <option value="">Select reaction</option>
+                            {REACTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Identified Date</label>
+                          <input
+                            type="date"
+                            value={allergyForm.identifiedDate}
+                            onChange={(e) => setAllergyForm((p) => ({ ...p, identifiedDate: e.target.value }))}
+                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Status</label>
+                          <select
+                            value={allergyForm.status}
+                            onChange={(e) => setAllergyForm((p) => ({ ...p, status: e.target.value }))}
+                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+                          >
+                            {ALLERGY_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs text-muted-foreground">Remarks</label>
+                        <textarea
+                          rows={2}
+                          placeholder="Additional clinical notes…"
+                          value={allergyForm.remarks}
+                          onChange={(e) => setAllergyForm((p) => ({ ...p, remarks: e.target.value }))}
+                          className="text-sm rounded-lg border border-border bg-background px-2 py-1.5 resize-none"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={addAllergy}
+                          className="flex items-center gap-1 rounded-lg border border-primary/30 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
+                        >
+                          <Plus size={14} /> {editingAllergyId ? "Save Correction" : "Add Allergy"}
                         </button>
-                      )}
+                        {editingAllergyId && (
+                          <button onClick={cancelEditAllergy} className="text-sm font-semibold text-muted-foreground hover:underline">
+                            Cancel
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2769,6 +3037,81 @@ function DoctorWorkbenchInner() {
             onSave={submitTreatment}
             onClose={() => setOrderingModal(null)}
           />
+        )}
+
+        {/* Patient warning modal — shown once on file open when allergies or alert exist */}
+        {patientWarningModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-card w-full max-w-lg rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
+              {/* Header */}
+              <div className="bg-red-600 dark:bg-red-700 px-6 py-4 flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
+                  <AlertTriangle size={22} className="text-white" />
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Patient Safety Alert</h2>
+                  <p className="text-sm text-red-100">Review before proceeding with this patient</p>
+                </div>
+                <button
+                  onClick={() => setPatientWarningModal(null)}
+                  className="ml-auto p-1.5 rounded-full hover:bg-white/20 text-white transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="overflow-y-auto flex flex-col gap-4 p-5">
+                {/* Patient alert text */}
+                {patientWarningModal.alertText.trim() && (
+                  <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-1.5 flex items-center gap-1.5">
+                      <AlertTriangle size={13} /> Clinical Alert
+                    </p>
+                    <p className="text-sm text-amber-900 dark:text-amber-200 whitespace-pre-wrap">{patientWarningModal.alertText}</p>
+                  </div>
+                )}
+
+                {/* Allergies */}
+                {patientWarningModal.allergies.length > 0 && (
+                  <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-4 flex flex-col gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-400 mb-0.5">
+                      Known Allergies / Sensitivities ({patientWarningModal.allergies.length})
+                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      {patientWarningModal.allergies.map((a) => (
+                        <div key={a.patientAllergyId} className="flex flex-wrap items-center gap-2 text-sm">
+                          <span className="font-semibold text-red-700 dark:text-red-300">{a.substance}</span>
+                          {a.allergyCategory && (
+                            <span className="rounded px-1.5 py-0.5 text-xs bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-300">{a.allergyCategory}</span>
+                          )}
+                          {a.severity && (
+                            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                              a.severity === "Life-threatening" ? "bg-red-200 dark:bg-red-900 text-red-800 dark:text-red-200" :
+                              a.severity === "Severe" ? "bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300" :
+                              a.severity === "Moderate" ? "bg-yellow-100 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300" :
+                              "bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300"
+                            }`}>{a.severity}</span>
+                          )}
+                          {a.reaction && <span className="text-xs text-muted-foreground">→ {a.reaction}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-4 border-t border-border flex justify-end">
+                <button
+                  onClick={() => setPatientWarningModal(null)}
+                  className="rounded-lg bg-red-600 hover:bg-red-700 px-6 py-2.5 text-sm font-semibold text-white transition-colors"
+                >
+                  I Acknowledge — Continue
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );

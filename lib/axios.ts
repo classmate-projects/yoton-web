@@ -16,6 +16,7 @@ const api = axios.create({
 // share a single in-flight refresh call rather than each racing to rotate the same refresh
 // token (the API only accepts a refresh token once - see RefreshTokenService.RotateAsync).
 let isRefreshing = false;
+let isRedirectingToLogin = false;
 let refreshWaiters: Array<(token: string | null) => void> = [];
 
 function onRefreshed(token: string | null) {
@@ -91,6 +92,16 @@ api.interceptors.response.use(
       endApiRequest();
 
       const originalRequest = error.config;
+
+      // Once the redirect to /login is underway (or the pathname is already /login),
+      // silently drop every subsequent 401 - window.location.pathname changes
+      // asynchronously after window.location.href is set, so concurrent in-flight
+      // requests would otherwise all pass the pathname check below, fall through to
+      // Promise.reject, and log a spurious console error before navigation completes.
+      if (error.response?.status === 401 && (isRedirectingToLogin || window.location.pathname === "/login")) {
+        return new Promise(() => {});
+      }
+
       if (
         error.response?.status === 401 &&
         window.location.pathname !== "/login" &&
@@ -110,18 +121,11 @@ api.interceptors.response.use(
       }
 
       if (error.response?.status === 401 && window.location.pathname !== "/login") {
+        isRedirectingToLogin = true;
         localStorage.removeItem("yoton_token");
         localStorage.removeItem("yoton_user_detail");
         await fetch("/api/logout", { method: "POST" });
         window.location.href = "/login";
-        // A hard redirect is already underway - never resolve/reject back to the
-        // caller. Every page's own catch block would otherwise still run in the
-        // brief window before navigation actually tears the app down, logging a
-        // scary (but meaningless) "Request failed with status code 401" to the
-        // console/Next.js error overlay for something that isn't actually a bug -
-        // this is expected on every logout (in-flight or SignalR-triggered
-        // refetches losing their token) and the interceptor above already deals
-        // with it in full.
         return new Promise(() => {});
       }
     }

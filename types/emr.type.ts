@@ -38,6 +38,11 @@ export interface AllergyType {
   patientAllergyId: string;
   substance: string;
   reaction: string | null;
+  allergyCategory: string | null;
+  severity: string | null;
+  identifiedDate: string | null;
+  status: string | null;
+  remarks: string | null;
   recordedByRole: string | null;
   createdAt: string;
   correctedFromId: string | null;
@@ -214,6 +219,10 @@ export interface PatientSummaryType {
   address: string | null;
   maritalStatus: string | null;
   nationality: string | null;
+  patientAlert: string | null;
+  pastMedicalHistory: string | null;
+  pastSurgicalHistory: string | null;
+  pastTreatmentHistory: string | null;
   chronicConditions: ChronicConditionType[];
   allergies: AllergyType[];
   currentMedications: MedicationType[];
@@ -376,6 +385,11 @@ export interface ChronicConditionPayload {
 export interface AllergyPayload {
   substance: string;
   reaction?: string;
+  allergyCategory?: string;
+  severity?: string;
+  identifiedDate?: string;
+  status?: string;
+  remarks?: string;
 }
 
 export interface TaperingStepPayload {

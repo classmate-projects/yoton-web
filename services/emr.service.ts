@@ -22,6 +22,18 @@ export const EmrService = {
     const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENT_SUMMARY(patientId, doctorId));
     return data;
   },
+  updatePatientAlert: async (patientId: string, alert: string | null, doctorId?: string) => {
+    const { data } = await api.patch(ENDPOINTS.EMR.UPDATE_PATIENT_ALERT(patientId, doctorId), { alert });
+    return data;
+  },
+  updateMedicalHistory: async (
+    patientId: string,
+    payload: { pastMedicalHistory: string | null; pastSurgicalHistory: string | null; pastTreatmentHistory: string | null },
+    doctorId?: string
+  ) => {
+    const { data } = await api.patch(ENDPOINTS.EMR.UPDATE_MEDICAL_HISTORY(patientId, doctorId), payload);
+    return data;
+  },
   getInsuranceCoverage: async (patientId: string, doctorId?: string) => {
     const { data } = await api.get(ENDPOINTS.EMR.GET_INSURANCE_COVERAGE(patientId, doctorId));
     return data;

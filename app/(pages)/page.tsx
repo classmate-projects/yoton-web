@@ -91,7 +91,18 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass }: { title: st
   );
 };
 
+function hasDashboardAccess(): boolean {
+  try {
+    const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
+    if (detail.role === "admin") return true;
+    return (detail.allowedModules as string[] | undefined)?.includes("/") ?? false;
+  } catch {
+    return false;
+  }
+}
+
 export default function Home() {
+  const [canSeeDashboard] = useState(() => hasDashboardAccess());
   const [totalCounts, setTotalCounts] = useState<TotalCounts | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -101,6 +112,7 @@ export default function Home() {
   const [isActivityLoading, setIsActivityLoading] = useState(true);
 
   const fetchTotalCounts = async () => {
+    if (!hasDashboardAccess()) { setIsLoading(false); return; }
     try {
       setIsLoading(true);
       const data = await DashboardService.getCounts();
@@ -113,6 +125,7 @@ export default function Home() {
   };
 
   const fetchActivity = async () => {
+    if (!hasDashboardAccess()) { setIsActivityLoading(false); return; }
     try {
       setIsActivityLoading(true);
       const [weeklyData, revenueData, topDoctorsData] = await Promise.all([
@@ -166,7 +179,7 @@ export default function Home() {
         </p>
       </div>
 
-      {isLoading ? (
+      {canSeeDashboard && (isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="card h-32 animate-pulse bg-muted/50" />
@@ -201,17 +214,59 @@ export default function Home() {
             colorClass="bg-rose-500 text-rose-500" 
           />
         </div>
-      )}
+      ))}
 
-      <div className="mt-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 card p-8">
+      {canSeeDashboard && <>
+        <div className="mt-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 card p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2.5 rounded-xl bg-primary/10">
+                <Activity size={20} className="text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">Weekly Appointments</h3>
+                <p className="text-xs text-muted-foreground">Last 7 days</p>
+              </div>
+            </div>
+
+            {isActivityLoading ? (
+              <div className="h-56 animate-pulse bg-muted/50 rounded-xl" />
+            ) : (
+              <BarChart
+                data={buildWeeklySeries(weeklyAppointments)}
+                color="var(--primary)"
+                emptyMessage="No appointments in the last 7 days"
+              />
+            )}
+          </div>
+
+          <div className="card p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2.5 rounded-xl bg-amber-500/10">
+                <Trophy size={20} className="text-amber-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">Top Doctors</h3>
+                <p className="text-xs text-muted-foreground">By appointment volume</p>
+              </div>
+            </div>
+
+            {isActivityLoading ? (
+              <div className="h-56 animate-pulse bg-muted/50 rounded-xl" />
+            ) : (
+              <TopDoctorsList doctors={topDoctors} />
+            )}
+          </div>
+        </div>
+
+        <div className="mt-8 card p-8">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2.5 rounded-xl bg-primary/10">
-              <Activity size={20} className="text-primary" />
+            <div className="p-2.5 rounded-xl bg-emerald-500/10">
+              <ArrowUpRight size={20} className="text-emerald-500" />
             </div>
             <div>
-              <h3 className="text-lg font-bold">Weekly Appointments</h3>
-              <p className="text-xs text-muted-foreground">Last 7 days</p>
+              <h3 className="text-lg font-bold">Revenue</h3>
+              <p className="text-xs text-muted-foreground">Most recent billing activity</p>
             </div>
           </div>
 
@@ -219,54 +274,14 @@ export default function Home() {
             <div className="h-56 animate-pulse bg-muted/50 rounded-xl" />
           ) : (
             <BarChart
-              data={buildWeeklySeries(weeklyAppointments)}
-              color="var(--primary)"
-              emptyMessage="No appointments in the last 7 days"
+              data={buildRevenueSeries(revenue)}
+              color="#059669"
+              formatValue={(v) => `$${v.toLocaleString()}`}
+              emptyMessage="No billing activity recorded yet"
             />
           )}
         </div>
-
-        <div className="card p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2.5 rounded-xl bg-amber-500/10">
-              <Trophy size={20} className="text-amber-500" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold">Top Doctors</h3>
-              <p className="text-xs text-muted-foreground">By appointment volume</p>
-            </div>
-          </div>
-
-          {isActivityLoading ? (
-            <div className="h-56 animate-pulse bg-muted/50 rounded-xl" />
-          ) : (
-            <TopDoctorsList doctors={topDoctors} />
-          )}
-        </div>
-      </div>
-
-      <div className="mt-8 card p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2.5 rounded-xl bg-emerald-500/10">
-            <ArrowUpRight size={20} className="text-emerald-500" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold">Revenue</h3>
-            <p className="text-xs text-muted-foreground">Most recent billing activity</p>
-          </div>
-        </div>
-
-        {isActivityLoading ? (
-          <div className="h-56 animate-pulse bg-muted/50 rounded-xl" />
-        ) : (
-          <BarChart
-            data={buildRevenueSeries(revenue)}
-            color="#059669"
-            formatValue={(v) => `$${v.toLocaleString()}`}
-            emptyMessage="No billing activity recorded yet"
-          />
-        )}
-      </div>
+      </>}
     </div>
   );
 }
