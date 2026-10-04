@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -1188,6 +1188,19 @@ function NurseWorkbenchInner() {
   const [allergyForm, setAllergyForm] = useState(emptyAllergyForm);
   const [savingAllergy, setSavingAllergy] = useState(false);
   const [editingAllergyId, setEditingAllergyId] = useState<string | null>(null);
+  // Lets "Correct" (clicked on the allergy box up in the patient header, far from
+  // the edit form down in the canEdit section) jump the nurse straight to the form and
+  // keep its border blinking until they click anywhere, so it's unmistakable which
+  // section moved even after the scroll animation itself has finished.
+  const allergySectionRef = useRef<HTMLDivElement>(null);
+  const [allergySectionFlash, setAllergySectionFlash] = useState(false);
+
+  useEffect(() => {
+    if (!allergySectionFlash) return;
+    const stop = () => setAllergySectionFlash(false);
+    document.addEventListener("mousedown", stop);
+    return () => document.removeEventListener("mousedown", stop);
+  }, [allergySectionFlash]);
 
   const ALLERGY_CATEGORIES = ["Drug", "Food", "Environmental", "Latex", "Contrast Media", "Other"];
   const ALLERGENS_BY_CATEGORY: Record<string, string[]> = {
@@ -1201,6 +1214,13 @@ function NurseWorkbenchInner() {
   const SEVERITIES = ["Mild", "Moderate", "Severe", "Life-threatening"];
   const REACTIONS = ["Rash", "Hives (Urticaria)", "Itching (Pruritus)", "Swelling (Angioedema)", "Anaphylaxis", "Nausea/Vomiting", "Diarrhea", "Respiratory Distress", "Contact Dermatitis", "Other"];
   const ALLERGY_STATUSES = ["Active", "Inactive", "Resolved"];
+
+  // A record's stored value (especially on allergies recorded before this richer form
+  // existed, or any value entered outside these fixed lists) may not be one of the
+  // predefined options - without this, correcting such a record would silently blank out
+  // that field in the <select> (no matching <option>), even though the data is intact.
+  const withCurrentOption = (list: string[], current: string) =>
+    current && !list.includes(current) ? [current, ...list] : list;
 
   const saveAllergy = async () => {
     if (!selectedPatientId) return;
@@ -1258,6 +1278,8 @@ function NurseWorkbenchInner() {
       status: a.status || "Active",
       remarks: a.remarks || "",
     });
+    allergySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setAllergySectionFlash(true);
   };
 
   const cancelEditAllergy = () => {
@@ -1602,29 +1624,53 @@ function NurseWorkbenchInner() {
               </div>
 
               {summary.allergies.length > 0 && (
-                <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-border">
-                  <div className="flex flex-wrap gap-2">
-                    <AlertTriangle size={16} className="text-red-600 shrink-0 mt-0.5" />
-                    {summary.allergies.map((a) => (
-                      <span
-                        key={a.patientAllergyId}
-                        className="group flex items-center gap-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-2.5 py-1 text-xs font-semibold text-red-700 dark:text-red-400"
-                      >
-                        {a.allergyCategory ? `${a.allergyCategory}: ` : ""}{a.substance} {a.reaction ? `— ${a.reaction}` : ""} {a.severity ? `(${a.severity})` : ""}
-                        {a.status && a.status !== "Active" && <span className="font-normal opacity-70">[{a.status}]</span>}
-                        <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
-                            <Pencil size={10} />
-                          </button>
-                          <button onClick={() => removeAllergyRecord(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
-                            <Trash2 size={10} />
-                          </button>
-                        </span>
-                      </span>
-                    ))}
+                <div className="mt-3 pt-3 border-t border-border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle size={16} className="text-red-600 shrink-0" />
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-red-700 dark:text-red-400">
+                      Known Allergies
+                    </h3>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {summary.allergies.map((a) => {
+                      const severityClass =
+                        a.severity === "Life-threatening" ? "text-red-800 dark:text-red-200" :
+                        a.severity === "Severe" ? "text-orange-700 dark:text-orange-300" :
+                        a.severity === "Moderate" ? "text-yellow-700 dark:text-yellow-300" :
+                        a.severity === "Mild" ? "text-green-700 dark:text-green-300" : "text-foreground/90";
+                      return (
+                        <div
+                          key={a.patientAllergyId}
+                          className="group rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-3 py-2.5"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="font-bold text-red-700 dark:text-red-400">{a.substance}</p>
+                            <span className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                              <button onClick={() => startEditAllergy(a)} title="Correct" className="rounded-full p-1 hover:bg-black/10">
+                                <Pencil size={13} />
+                              </button>
+                              <button onClick={() => removeAllergyRecord(a)} title="Delete" className="rounded-full p-1 hover:bg-black/10">
+                                <Trash2 size={13} />
+                              </button>
+                            </span>
+                          </div>
+                          <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+                            <p><span className="text-muted-foreground">Allergy Category: </span><span className="font-medium text-foreground/90">{a.allergyCategory || "—"}</span></p>
+                            <p><span className="text-muted-foreground">Allergen: </span><span className="font-medium text-foreground/90">{a.substance}</span></p>
+                            <p><span className="text-muted-foreground">Severity: </span><span className={`font-medium ${severityClass}`}>{a.severity || "—"}</span></p>
+                            <p><span className="text-muted-foreground">Reaction: </span><span className="font-medium text-foreground/90">{a.reaction || "—"}</span></p>
+                            <p><span className="text-muted-foreground">Identified Date: </span><span className="font-medium text-foreground/90">{a.identifiedDate || "—"}</span></p>
+                            <p><span className="text-muted-foreground">Status: </span><span className="font-medium text-foreground/90">{a.status || "Active"}</span></p>
+                          </div>
+                          {a.remarks && (
+                            <p className="mt-1.5 text-xs italic text-foreground/70">Remarks: {a.remarks}</p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   {summary.allergies.some((a) => a.correctedFrom) && (
-                    <div className="flex flex-col gap-0.5">
+                    <div className="mt-1 flex flex-col gap-0.5">
                       {summary.allergies.filter((a) => a.correctedFrom).map((a) => (
                         <CorrectedFromNote key={a.patientAllergyId}>
                           <p>Previous ({a.substance}): {a.correctedFrom!.substance}{a.correctedFrom!.reaction ? ` · reaction: ${a.correctedFrom!.reaction}` : ""}</p>
@@ -2378,12 +2424,17 @@ function NurseWorkbenchInner() {
 
             {canEdit && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Allergies — write-only here; already shown as chips in the header card above.
-                    Same fields as the Doctor Workbench's allergy form, so a nurse-recorded
-                    allergy carries the same clinical detail as a doctor-recorded one. */}
-                <div className="card p-6 flex flex-col gap-4">
+                {/* Allergies — write-only here; already shown in the "Known Allergies" box in the
+                    header card above. Same fields as the Doctor Workbench's allergy form, so a
+                    nurse-recorded allergy carries the same clinical detail as a doctor-recorded one.
+                    "Correct" up in the header scrolls here and flashes the border (allergySectionFlash)
+                    so the nurse can find this section immediately. */}
+                <div
+                  ref={allergySectionRef}
+                  className={`card p-6 flex flex-col gap-4 ${allergySectionFlash ? "animate-section-flash" : ""}`}
+                >
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <AlertTriangle size={18} className="text-primary" /> Allergies
+                    <AlertTriangle size={18} className="text-primary" /> {editingAllergyId ? "Correct Allergy Entry" : "Allergies"}
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1">
@@ -2394,7 +2445,7 @@ function NurseWorkbenchInner() {
                         className="h-10 text-sm"
                       >
                         <option value="">Select category</option>
-                        {ALLERGY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                        {withCurrentOption(ALLERGY_CATEGORIES, allergyForm.allergyCategory).map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -2406,7 +2457,7 @@ function NurseWorkbenchInner() {
                         disabled={!allergyForm.allergyCategory}
                       >
                         <option value="">Select allergen</option>
-                        {(ALLERGENS_BY_CATEGORY[allergyForm.allergyCategory] ?? []).map((a) => (
+                        {withCurrentOption(ALLERGENS_BY_CATEGORY[allergyForm.allergyCategory] ?? [], allergyForm.substance).map((a) => (
                           <option key={a} value={a}>{a}</option>
                         ))}
                       </select>
@@ -2419,7 +2470,7 @@ function NurseWorkbenchInner() {
                         className="h-10 text-sm"
                       >
                         <option value="">Select severity</option>
-                        {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        {withCurrentOption(SEVERITIES, allergyForm.severity).map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -2430,7 +2481,7 @@ function NurseWorkbenchInner() {
                         className="h-10 text-sm"
                       >
                         <option value="">Select reaction</option>
-                        {REACTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                        {withCurrentOption(REACTIONS, allergyForm.reaction).map((r) => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -2449,7 +2500,7 @@ function NurseWorkbenchInner() {
                         onChange={(e) => setAllergyForm((p) => ({ ...p, status: e.target.value }))}
                         className="h-10 text-sm"
                       >
-                        {ALLERGY_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        {withCurrentOption(ALLERGY_STATUSES, allergyForm.status).map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
                   </div>

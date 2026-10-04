@@ -340,3 +340,16 @@ label.required::after {
   animation: bell-ring 0.7s ease-in-out;
   color: var(--primary) !important;
 }
+
+/* Blinks a card's border after a "jump to this section" scroll, so the user can tell
+   at a glance where the page landed. Amber rather than red so it reads as "look here"
+   and doesn't blend into this app's red allergy/danger styling. Keeps blinking - see
+   the allergySectionFlash effect in nursing/page.tsx - until the user clicks anywhere. */
+@keyframes section-flash {
+  0%, 100% { border-color: var(--border); box-shadow: none; }
+  50% { border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35); }
+}
+
+.animate-section-flash {
+  animation: section-flash 0.8s ease-in-out infinite;
+}
