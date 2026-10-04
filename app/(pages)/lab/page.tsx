@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import { FlaskConical, Pencil, Settings, Trash2, Undo2 } from "lucide-react";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmrButton from "@/components/EmrButton";
@@ -242,6 +243,7 @@ export default function LaboratoryPage() {
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const payload = {
@@ -257,9 +259,11 @@ export default function LaboratoryPage() {
         ? await LabService.update(editingLabRequestId, payload)
         : await LabService.create(payload);
       toast.success(data.message || (editingLabRequestId ? "Lab request corrected" : "Lab request created"));
+      notifySaveStatus("saved");
       closeModal();
       fetchAll();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, editingLabRequestId ? "Failed to correct lab request" : "Failed to create lab request"));
     } finally {
       setIsSubmitting(false);
@@ -395,13 +399,16 @@ export default function LaboratoryPage() {
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSavingResultValues(true);
       const data = await LabService.saveResultValues(resultEntryTarget.labRequestId, values);
       toast.success(data.message || "Result values saved");
+      notifySaveStatus("saved");
       closeResultEntry();
       fetchAll();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save result values"));
     } finally {
       setIsSavingResultValues(false);

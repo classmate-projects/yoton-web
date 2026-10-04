@@ -34,6 +34,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import { CalendarClock, History as HistoryIcon, UserX } from "lucide-react";
 import { UserService } from "@/services/user.service";
 import { NursingService } from "@/services/nursing.service";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { NurseShiftInput } from "@/types/nursing.type";
 import { StaffEmploymentEventType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
@@ -255,6 +256,7 @@ export default function UserManagement() {
 
   const saveShifts = async () => {
     if (!shiftsTarget) return;
+    notifySaveStatus("saving");
     setSavingShifts(true);
     try {
       const shifts: NurseShiftInput[] = shiftsWeek
@@ -262,8 +264,10 @@ export default function UserManagement() {
         .filter((row) => row.isActive);
       await NursingService.setNurseShifts(shiftsTarget.id, shifts);
       toast.success("Shifts updated");
+      notifySaveStatus("saved");
       closeShiftsManager();
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to update shifts");
     } finally {
       setSavingShifts(false);

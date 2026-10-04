@@ -9,6 +9,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { MdAdminPanelSettings, MdAdd, MdEdit, MdChecklist, MdClose, MdLock, MdLockOpen } from "react-icons/md";
 import { toast } from "sonner";
 import axios from "axios";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { FetchedRoles } from "@/types/role.type";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
@@ -310,12 +311,15 @@ export default function RoleManagementPage() {
   const handleSavePermissions = async () => {
     if (!permissionsRole) return;
     setSavingPermissions(true);
+    notifySaveStatus("saving");
     try {
       const data = await RoleService.setAllowedModules(permissionsRole.roleId, [...visibleModules]);
+      notifySaveStatus("saved");
       toast.success(data.message);
       handleClosePermissions();
     } catch (error) {
       console.error("Failed to update role permissions", error);
+      notifySaveStatus("error");
       toast.error("Failed to save permissions");
     } finally {
       setSavingPermissions(false);

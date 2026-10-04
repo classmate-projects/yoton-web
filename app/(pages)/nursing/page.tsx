@@ -38,6 +38,7 @@ import {
   Users,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import PasswordInput from "@/components/PasswordInput";
 import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
@@ -579,6 +580,7 @@ function NurseWorkbenchInner() {
   const handleSaveTriage = async () => {
     if (!encounterId) return;
     if (!requireNurseSelected()) return;
+    notifySaveStatus("saving");
 
     const missingReason = Object.entries(triageRefusals).find(([, reason]) => !reason?.trim());
     if (missingReason) {
@@ -640,8 +642,10 @@ function NurseWorkbenchInner() {
       setSavingTriage(true);
       await NursingService.saveTriage(selectedPatientId!, payload);
       toast.success("Triage saved");
+      notifySaveStatus("saved");
       await refreshChart();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save triage"));
     } finally {
       setSavingTriage(false);
@@ -809,6 +813,7 @@ function NurseWorkbenchInner() {
       return false;
     }
     if (!requireNurseSelected()) return false;
+    notifySaveStatus("saving");
     try {
       setSavingVitals(true);
       const payload = {
@@ -835,12 +840,14 @@ function NurseWorkbenchInner() {
         await NursingService.saveVitals(payload);
         toast.success("Vitals recorded");
       }
+      notifySaveStatus("saved");
       setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, bmiExclusionReason: "", notes: "" });
       setEditingVitalsId(null);
       await refreshChart();
       return true;
     } catch (error) {
       if (handleEncounterLockError(error, (pw) => saveVitals(pw))) return false;
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save vitals"));
       return false;
     } finally {
@@ -904,6 +911,7 @@ function NurseWorkbenchInner() {
       return false;
     }
     if (!requireNurseSelected()) return false;
+    notifySaveStatus("saving");
     try {
       setSavingInjection(true);
       const payload = {
@@ -922,12 +930,14 @@ function NurseWorkbenchInner() {
         await NursingService.saveInjection(payload);
         toast.success("Medication administration recorded");
       }
+      notifySaveStatus("saved");
       setInjectionForm({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
       setEditingInjectionId(null);
       await refreshChart();
       return true;
     } catch (error) {
       if (handleEncounterLockError(error, (pw) => saveInjection(pw))) return false;
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save medication entry"));
       return false;
     } finally {
@@ -980,6 +990,7 @@ function NurseWorkbenchInner() {
       return false;
     }
     if (!requireNurseSelected()) return false;
+    notifySaveStatus("saving");
     try {
       setSavingDressing(true);
       const payload = {
@@ -998,12 +1009,14 @@ function NurseWorkbenchInner() {
         await NursingService.saveDressing(payload);
         toast.success("Wound care entry recorded");
       }
+      notifySaveStatus("saved");
       setDressingForm({ woundType: "", dressingMaterial: "", infectionSigns: false, notes: "" });
       setEditingDressingId(null);
       await refreshChart();
       return true;
     } catch (error) {
       if (handleEncounterLockError(error, (pw) => saveDressing(pw))) return false;
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save wound care entry"));
       return false;
     } finally {
@@ -1045,6 +1058,7 @@ function NurseWorkbenchInner() {
       return false;
     }
     if (!requireNurseSelected()) return false;
+    notifySaveStatus("saving");
     try {
       setSavingSugar(true);
       const payload = {
@@ -1062,12 +1076,14 @@ function NurseWorkbenchInner() {
         await NursingService.saveBloodSugar(payload);
         toast.success("Blood sugar reading recorded");
       }
+      notifySaveStatus("saved");
       setSugarForm({ sugarLevel: "", type: "Random", notes: "" });
       setEditingSugarId(null);
       await refreshChart();
       return true;
     } catch (error) {
       if (handleEncounterLockError(error, (pw) => saveBloodSugar(pw))) return false;
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save blood sugar reading"));
       return false;
     } finally {
@@ -1109,6 +1125,7 @@ function NurseWorkbenchInner() {
       return false;
     }
     if (!requireNurseSelected()) return false;
+    notifySaveStatus("saving");
     try {
       setSavingIv(true);
       const payload = {
@@ -1127,12 +1144,14 @@ function NurseWorkbenchInner() {
         await NursingService.saveIVFluids(payload);
         toast.success("IV fluids entry recorded");
       }
+      notifySaveStatus("saved");
       setIvForm({ fluidType: "", volume: "", rate: "", notes: "" });
       setEditingIvId(null);
       await refreshChart();
       return true;
     } catch (error) {
       if (handleEncounterLockError(error, (pw) => saveIVFluids(pw))) return false;
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save IV fluids entry"));
       return false;
     } finally {
@@ -1176,6 +1195,7 @@ function NurseWorkbenchInner() {
     // Unlike the NursingController writes above, this one goes through EmrController —
     // real nurses are exempt from its doctorId requirement entirely, but admin isn't.
     if (!requireDoctorSelectedForAllergy()) return;
+    notifySaveStatus("saving");
     try {
       setSavingAllergy(true);
       const payload = {
@@ -1189,11 +1209,13 @@ function NurseWorkbenchInner() {
         await EmrService.addAllergy(selectedPatientId, payload, isAdmin ? selectedDoctorId : undefined);
         toast.success("Allergy recorded");
       }
+      notifySaveStatus("saved");
       setAllergyForm({ substance: "", reaction: "" });
       setEditingAllergyId(null);
       const res = await EmrService.getPatientSummary(selectedPatientId);
       setSummary(res.data);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to record allergy"));
     } finally {
       setSavingAllergy(false);
@@ -1238,6 +1260,7 @@ function NurseWorkbenchInner() {
       toast.error("Description is required");
       return;
     }
+    notifySaveStatus("saving");
     try {
       setSavingRemark(true);
       const payload = {
@@ -1251,10 +1274,12 @@ function NurseWorkbenchInner() {
         await NursingService.addSpecialRemark(selectedPatientId, payload);
         toast.success("Special remark added");
       }
+      notifySaveStatus("saved");
       setRemarkForm({ remarkType: REMARK_TYPES[0], description: "" });
       setEditingRemarkId(null);
       await refreshChart();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to add special remark"));
     } finally {
       setSavingRemark(false);
@@ -1299,6 +1324,7 @@ function NurseWorkbenchInner() {
       return;
     }
     if (!requireNurseSelected()) return;
+    notifySaveStatus("saving");
     try {
       setSavingNurseNote(true);
       const payload = {
@@ -1317,11 +1343,13 @@ function NurseWorkbenchInner() {
         await NursingService.addNote(selectedPatientId, payload);
         toast.success("Nurse note added");
       }
+      notifySaveStatus("saved");
       setNurseNoteHtml("");
       setNurseNoteConfidential(false);
       setEditingNurseNoteId(null);
       await refreshChart();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save note"));
     } finally {
       setSavingNurseNote(false);
@@ -2698,7 +2726,24 @@ function NurseWorkbenchInner() {
       </div>
 
       {isLoadingWorkbench ? (
-        <LoadingSpinner />
+        <div className="flex flex-col gap-6">
+          <div className="card p-6">
+            <div className="h-5 w-40 mb-4 animate-pulse rounded bg-muted/60" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-28 animate-pulse rounded-xl bg-muted/50" />
+              ))}
+            </div>
+          </div>
+          <div className="card p-6">
+            <div className="h-5 w-48 mb-4 animate-pulse rounded bg-muted/60" />
+            <div className="flex flex-col gap-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-16 animate-pulse rounded-lg bg-muted/50" />
+              ))}
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="flex flex-col gap-6">
           {/* Untouched Patients - every checked-in visit no nurse has opened yet (see

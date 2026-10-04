@@ -46,6 +46,7 @@ import { useAppointmentRequestSignalR } from "@/hooks/useAppointmentRequestSigna
 import { getInitials } from "@/lib/getInitials";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { getCurrencySymbol } from "@/lib/currency";
+import { notifySaveStatus } from "@/lib/saveStatus";
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -396,6 +397,7 @@ export default function Appointments() {
       toast.warning("Please select a doctor and an available time slot");
       return;
     }
+    notifySaveStatus("saving");
     try {
       setIsSavingEditVisit(true);
       const data = await ReceptionService.reassignVisit(editingQueueVisit.visitId, {
@@ -404,14 +406,17 @@ export default function Appointments() {
         notes: editVisitNotes || undefined,
       });
       if (data.status === false) {
+        notifySaveStatus("error");
         toast.error(data.message || "This slot has just been booked. Please choose another slot.");
         fetchEditVisitSlots(editVisitSelectedDoctor.doctorId, editVisitDate);
         return;
       }
       toast.success(data.message || "Visit updated");
+      notifySaveStatus("saved");
       closeEditQueueVisit();
       fetchVisitQueue();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(
         axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update visit" : "Failed to update visit"
       );
@@ -462,6 +467,7 @@ export default function Appointments() {
     request: AppointmentRequestType,
     status: "Scheduled" | "Cancelled"
   ) => {
+    notifySaveStatus("saving");
     try {
       setProcessingRequestId(request.appointmentId);
       const data = await ReceptionService.updateAppointmentStatus(
@@ -473,6 +479,7 @@ export default function Appointments() {
           ? "Appointment confirmed"
           : data.message || "Request declined"
       );
+      notifySaveStatus("saved");
       setAppointmentRequests((prev) =>
         prev.filter((r) => r.appointmentId !== request.appointmentId)
       );
@@ -480,6 +487,7 @@ export default function Appointments() {
         fetchSlots(selectedDoctor.doctorId, selectedDate);
       }
     } catch (error) {
+      notifySaveStatus("error");
       if (axios.isAxiosError(error)) {
         toast.error(error.response?.data?.message || "Failed to update the request");
       } else {
@@ -551,18 +559,22 @@ export default function Appointments() {
       toast.warning("Please select an available time slot");
       return;
     }
+    notifySaveStatus("saving");
     try {
       setIsConfirmingFollowUp(true);
       const data = await ReceptionService.confirmFollowUp(confirmingFollowUp.followUpId, followUpSelectedSlot.start);
       if (data.status === false) {
+        notifySaveStatus("error");
         toast.error(data.message || "This slot has just been booked. Please choose another slot.");
         fetchFollowUpSlots(confirmingFollowUp.doctorId!, followUpConfirmDate);
         return;
       }
       toast.success(data.message || "Follow-up confirmed and appointment booked");
+      notifySaveStatus("saved");
       setPendingFollowUps((prev) => prev.filter((f) => f.followUpId !== confirmingFollowUp.followUpId));
       closeConfirmFollowUp();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(
         axios.isAxiosError(error) ? error.response?.data?.message || "Failed to confirm follow-up" : "Failed to confirm follow-up"
       );
@@ -720,6 +732,7 @@ export default function Appointments() {
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const userId =
@@ -737,13 +750,16 @@ export default function Appointments() {
       });
 
       if (data.status === false) {
+        notifySaveStatus("error");
         toast.error(data.message || "Could not book this slot");
       } else {
         toast.success(data.message || "Appointment booked");
+        notifySaveStatus("saved");
         setBookingSlot(null);
       }
       fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
+      notifySaveStatus("error");
       if (axios.isAxiosError(error)) {
         toast.error(error.response?.data?.message || "Failed to book appointment");
       } else {
@@ -758,12 +774,14 @@ export default function Appointments() {
     const targetId = appointmentId ?? cancelSlot?.appointmentId;
     if (!targetId) return;
 
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const data = await ReceptionService.checkIn({
         appointmentId: targetId,
       });
       toast.success(data.message || "Patient checked in");
+      notifySaveStatus("saved");
       // Only a single-booking slot closes the modal automatically; a shared
       // slot stays open so staff can act on the remaining bookings too.
       if (!cancelSlot || cancelSlot.bookings.length <= 1) {
@@ -772,6 +790,7 @@ export default function Appointments() {
       fetchVisitQueue();
       if (selectedDoctor) fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
+      notifySaveStatus("error");
       if (axios.isAxiosError(error)) {
         toast.error(error.response?.data?.message || "Failed to check in patient");
       } else {
@@ -786,15 +805,18 @@ export default function Appointments() {
     const targetId = appointmentId ?? cancelSlot?.appointmentId;
     if (!targetId || !selectedDoctor) return;
 
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const data = await ReceptionService.cancelAppointment(targetId);
       toast.success(data.message || "Appointment cancelled");
+      notifySaveStatus("saved");
       if (!cancelSlot || cancelSlot.bookings.length <= 1) {
         setCancelSlot(null);
       }
       fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
+      notifySaveStatus("error");
       if (axios.isAxiosError(error)) {
         toast.error(error.response?.data?.message || "Failed to cancel appointment");
       } else {

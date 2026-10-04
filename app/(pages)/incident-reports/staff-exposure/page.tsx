@@ -7,6 +7,7 @@ import { StaffExposureService } from "@/services/staffExposure.service";
 import { UserService } from "@/services/user.service";
 import { DepartmentSerivce } from "@/services/department.service";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { StaffExposureCreatePayload, StaffExposureType } from "@/types/staffExposure.type";
 import { DepartmentTypes } from "@/types/department.type";
 
@@ -212,6 +213,7 @@ export default function StaffExposurePage() {
       payload.biteActivityCode = form.biteActivityCode || undefined;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSaving(true);
       if (editingIncidentId) {
@@ -221,10 +223,12 @@ export default function StaffExposurePage() {
         await StaffExposureService.create(payload);
         toast.success("Exposure incident reported");
       }
+      notifySaveStatus("saved");
       resetForm();
       setShowForm(false);
       await fetchIncidents();
     } catch {
+      notifySaveStatus("error");
       toast.error(editingIncidentId ? "Failed to update exposure report" : "Failed to report exposure incident");
     } finally {
       setIsSaving(false);
@@ -232,11 +236,14 @@ export default function StaffExposurePage() {
   };
 
   const updateStatus = async (id: string, status: string) => {
+    notifySaveStatus("saving");
     try {
       await StaffExposureService.update(id, { status });
       toast.success("Status updated");
+      notifySaveStatus("saved");
       await fetchIncidents();
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to update status");
     }
   };

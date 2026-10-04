@@ -27,6 +27,7 @@ import {
 } from "@/types/doctorAvailability.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { getUserDetail } from "@/lib/userDetail";
+import { notifySaveStatus } from "@/lib/saveStatus";
 
 const DAYS = [
   "Sunday",
@@ -439,6 +440,7 @@ function DoctorAvailabilityInner() {
       }
     }
 
+    notifySaveStatus("saving");
     try {
       setSavingDoctorId(doctor.doctorId);
       const updatedBy =
@@ -464,6 +466,7 @@ function DoctorAvailabilityInner() {
       });
 
       toast.success(data.message || "Schedule updated successfully");
+      notifySaveStatus("saved");
       setScheduleConflict(null);
       setOverrideForm({ username: "", password: "" });
       setOverrideError(null);
@@ -474,16 +477,20 @@ function DoctorAvailabilityInner() {
         const responseData = error.response?.data;
 
         if (status === 409 && responseData?.conflicts) {
+          notifySaveStatus("error");
           setScheduleConflict({ doctor, conflicts: responseData.conflicts });
           setOverrideError(null);
         } else if (status === 401 && adminOverride) {
+          notifySaveStatus("error");
           setOverrideError(
             responseData?.message || "Invalid admin credentials"
           );
         } else {
+          notifySaveStatus("error");
           toast.error(responseData?.message || "Failed to update schedule");
         }
       } else {
+        notifySaveStatus("error");
         toast.error("Failed to update schedule");
       }
     } finally {

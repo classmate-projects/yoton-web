@@ -10,6 +10,7 @@ import RichTextEditor from "@/components/RichTextEditor";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { EmrPatientListItem } from "@/types/emr.type";
 import { ConfidentialNoteType } from "@/types/nursing.type";
 
@@ -68,6 +69,7 @@ export default function ConfidentialNotesPage() {
       toast.error("Note content is required");
       return;
     }
+    notifySaveStatus("saving");
     try {
       setSaving(true);
       const payload = { contentHtml, isConfidential: true };
@@ -78,10 +80,12 @@ export default function ConfidentialNotesPage() {
         await NursingService.addConfidentialNote(selectedPatientId, payload);
         toast.success("Confidential note saved — visible only to you");
       }
+      notifySaveStatus("saved");
       setContentHtml("");
       setEditingNoteId(null);
       fetchNotes();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save confidential note"));
     } finally {
       setSaving(false);

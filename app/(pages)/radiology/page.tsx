@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import { Pencil, ScanLine, Settings, Trash2, Undo2, X } from "lucide-react";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload, MdOutlineImage } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmrButton from "@/components/EmrButton";
@@ -212,6 +213,7 @@ export default function RadiologyPage() {
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const payload = {
@@ -226,9 +228,11 @@ export default function RadiologyPage() {
         ? await RadiologyService.update(editingRadiologyRequestId, payload)
         : await RadiologyService.create(payload);
       toast.success(data.message || (editingRadiologyRequestId ? "Radiology request corrected" : "Radiology request created"));
+      notifySaveStatus("saved");
       closeModal();
       fetchAll();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, editingRadiologyRequestId ? "Failed to correct radiology request" : "Failed to create radiology request"));
     } finally {
       setIsSubmitting(false);
@@ -271,6 +275,7 @@ export default function RadiologyPage() {
     e.preventDefault();
     if (!scheduleFor || !scheduledDate) return;
 
+    notifySaveStatus("saving");
     try {
       const data = await RadiologyService.updateStatus(
         scheduleFor.radiologyRequestId,
@@ -278,9 +283,11 @@ export default function RadiologyPage() {
         new Date(scheduledDate).toISOString()
       );
       toast.success(data.message || "Scan scheduled");
+      notifySaveStatus("saved");
       setScheduleFor(null);
       fetchAll();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to schedule scan"));
     }
   };

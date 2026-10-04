@@ -66,6 +66,26 @@ export const EmrService = {
     const { data } = await api.post(ENDPOINTS.EMR.REJECT_CORRECTION(correctionId));
     return data;
   },
+  requestEncounterUnlock: async (patientId: string, encounterId: string, reason?: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.REQUEST_ENCOUNTER_UNLOCK(patientId, encounterId), { reason });
+    return data;
+  },
+  getMyUnlockRequestStatus: async (patientId: string, encounterId: string) => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_MY_UNLOCK_REQUEST_STATUS(patientId, encounterId));
+    return data;
+  },
+  getEncounterUnlockRequests: async () => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_ENCOUNTER_UNLOCK_REQUESTS());
+    return data;
+  },
+  approveEncounterUnlock: async (requestId: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.APPROVE_ENCOUNTER_UNLOCK(requestId));
+    return data;
+  },
+  denyEncounterUnlock: async (requestId: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.DENY_ENCOUNTER_UNLOCK(requestId));
+    return data;
+  },
   addChronicCondition: async (patientId: string, payload: ChronicConditionPayload, doctorId?: string) => {
     const { data } = await api.post(ENDPOINTS.EMR.ADD_CHRONIC_CONDITION(patientId, doctorId), payload);
     return data;

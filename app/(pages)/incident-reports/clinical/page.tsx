@@ -7,6 +7,7 @@ import { ClinicalIncidentService } from "@/services/clinicalIncident.service";
 import { ReceptionService } from "@/services/reception.service";
 import { DepartmentSerivce } from "@/services/department.service";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { ClinicalIncidentCategory, ClinicalIncidentCreatePayload, ClinicalIncidentType } from "@/types/clinicalIncident.type";
 import { PatientListItemType } from "@/types/appointment.type";
 import { DepartmentTypes } from "@/types/department.type";
@@ -344,6 +345,7 @@ export default function ClinicalIncidentsPage() {
       payload.errorTypeText = form.errorTypeText || undefined;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSaving(true);
       if (editingReportId) {
@@ -353,10 +355,12 @@ export default function ClinicalIncidentsPage() {
         await ClinicalIncidentService.create(payload);
         toast.success("Incident report filed");
       }
+      notifySaveStatus("saved");
       resetForm();
       setShowForm(false);
       await fetchReports(filterCategory || undefined);
     } catch {
+      notifySaveStatus("error");
       toast.error(editingReportId ? "Failed to update incident report" : "Failed to file incident report");
     } finally {
       setIsSaving(false);
@@ -364,11 +368,14 @@ export default function ClinicalIncidentsPage() {
   };
 
   const updateStatus = async (id: string, status: string) => {
+    notifySaveStatus("saving");
     try {
       await ClinicalIncidentService.update(id, { status });
       toast.success("Status updated");
+      notifySaveStatus("saved");
       await fetchReports(filterCategory || undefined);
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to update status");
     }
   };

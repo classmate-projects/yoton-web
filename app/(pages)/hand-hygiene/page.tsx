@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { HandHygieneService } from "@/services/handHygiene.service";
 import { DepartmentSerivce } from "@/services/department.service";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { HandHygieneObservationInput, HandHygieneSessionType } from "@/types/handHygiene.type";
 import { DepartmentTypes } from "@/types/department.type";
 
@@ -132,6 +133,7 @@ export default function HandHygienePage() {
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSaving(true);
       const payload = {
@@ -147,9 +149,11 @@ export default function HandHygienePage() {
         await HandHygieneService.createSession(payload);
         toast.success("Audit session recorded");
       }
+      notifySaveStatus("saved");
       resetSessionForm();
       await fetchSessions();
     } catch {
+      notifySaveStatus("error");
       toast.error(editingSessionId ? "Failed to update audit session" : "Failed to record audit session");
     } finally {
       setIsSaving(false);

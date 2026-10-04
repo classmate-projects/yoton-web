@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import axios from "axios";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import {
   ArrowLeft,
   Building,
@@ -105,21 +106,19 @@ export default function SettingsPage() {
   const [savingFacilityProfile, setSavingFacilityProfile] = useState(false);
 
   const [maxDiscountInput, setMaxDiscountInput] = useState("");
-  const [savingDiscountCap, setSavingDiscountCap] = useState(false);
+  const discountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [country, setCountry] = useState("");
-  const [savingCountry, setSavingCountry] = useState(false);
 
   const [currencyCode, setCurrencyCode] = useState("INR");
   const [currencyIsManual, setCurrencyIsManual] = useState(false);
-  const [savingCurrency, setSavingCurrency] = useState(false);
 
   const [pediatricMaxAgeInput, setPediatricMaxAgeInput] = useState("18");
   const [geriatricMinAgeInput, setGeriatricMinAgeInput] = useState("65");
-  const [savingAgeRanges, setSavingAgeRanges] = useState(false);
+  const ageRangesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [idleTimeoutInput, setIdleTimeoutInput] = useState("15");
-  const [savingIdleTimeout, setSavingIdleTimeout] = useState(false);
+  const idleTimeoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [includeLoginCredentials, setIncludeLoginCredentials] = useState(true);
   const [savingPatientEmailMode, setSavingPatientEmailMode] = useState(false);
@@ -240,6 +239,7 @@ export default function SettingsPage() {
     }
 
     setSavingFacilityProfile(true);
+    notifySaveStatus("saving");
     try {
       const data = await CompanyService.updateSettings({
         displayName: displayNameInput.trim(),
@@ -264,43 +264,46 @@ export default function SettingsPage() {
       setEclaimlinkUsernameInput(data.eclaimlinkUsername || "");
       setEclaimlinkPasswordSet(!!data.eclaimlinkPasswordSet);
       setEclaimlinkPasswordInput("");
+      notifySaveStatus("saved");
       toast.success("Facility profile updated");
     } catch (err) {
+      notifySaveStatus("error");
       toast.error(extractErrorMessage(err, "Failed to update facility profile"));
     } finally {
       setSavingFacilityProfile(false);
     }
   };
 
-  const handleSaveDiscountCap = async () => {
+  const handleDiscountChange = (raw: string) => {
+    setMaxDiscountInput(raw);
     if (!me) return;
-    const trimmed = maxDiscountInput.trim();
-    const parsed = trimmed === "" ? null : Number(trimmed);
-    if (parsed !== null && (Number.isNaN(parsed) || parsed < 0 || parsed > 100)) {
-      toast.error("Enter a number between 0 and 100, or leave it blank for no cap");
-      return;
-    }
-
-    setSavingDiscountCap(true);
-    try {
-      await CompanyService.updateSettings({ maxDiscountPercent: parsed });
-      setMe({ ...me, maxDiscountPercent: parsed });
-      toast.success("Discount cap updated");
-    } catch {
-      toast.error("Failed to update discount cap");
-    } finally {
-      setSavingDiscountCap(false);
-    }
+    if (discountTimer.current) clearTimeout(discountTimer.current);
+    notifySaveStatus("saving");
+    discountTimer.current = setTimeout(async () => {
+      const trimmed = raw.trim();
+      const parsed = trimmed === "" ? null : Number(trimmed);
+      if (parsed !== null && (Number.isNaN(parsed) || parsed < 0 || parsed > 100)) {
+        notifySaveStatus("error");
+        toast.error("Enter a number between 0 and 100, or leave it blank for no cap");
+        return;
+      }
+      try {
+        await CompanyService.updateSettings({ maxDiscountPercent: parsed });
+        setMe((prev) => (prev ? { ...prev, maxDiscountPercent: parsed } : prev));
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+        toast.error("Failed to update discount cap");
+      }
+    }, 800);
   };
 
-  const handleSaveCountry = async () => {
-    if (!me || !country) return;
-    setSavingCountry(true);
+  const handleCountryChange = async (newCountry: string) => {
+    setCountry(newCountry);
+    if (!me || !newCountry) return;
+    notifySaveStatus("saving");
     try {
-      const data = await CompanyService.updateSettings({ country });
-      // The backend auto-derives the currency from the country unless one was already
-      // picked manually - sync every field it returns so the Currency dropdown reflects
-      // that immediately instead of only updating after a page reload.
+      const data = await CompanyService.updateSettings({ country: newCountry });
       setMe({
         ...me,
         country: data.country,
@@ -311,83 +314,82 @@ export default function SettingsPage() {
       setCurrencyCode(data.currencyCode);
       setCurrencyIsManual(!!data.currencyIsManual);
       patchUserDetail({ currencyCode: data.currencyCode, currencySymbol: data.currencySymbol });
-      toast.success(
-        data.currencyIsManual ? "Country updated" : `Country updated — currency set to ${data.currencyCode}`
-      );
+      notifySaveStatus("saved");
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to update country");
-    } finally {
-      setSavingCountry(false);
     }
   };
 
-  const handleSaveCurrency = async () => {
+  const handleCurrencyChange = async (newCode: string) => {
+    setCurrencyCode(newCode);
     if (!me) return;
-    setSavingCurrency(true);
+    notifySaveStatus("saving");
     try {
-      const data = await CompanyService.updateSettings({ currencyCode });
+      const data = await CompanyService.updateSettings({ currencyCode: newCode });
       setMe({ ...me, currencyCode: data.currencyCode, currencySymbol: data.currencySymbol, currencyIsManual: data.currencyIsManual });
       setCurrencyIsManual(!!data.currencyIsManual);
-      // Every other open tab/page reads the symbol from this same localStorage key
-      // (see lib/currency.ts) - patch it so amounts update without a re-login.
       patchUserDetail({ currencyCode: data.currencyCode, currencySymbol: data.currencySymbol });
-      toast.success("Currency updated");
+      notifySaveStatus("saved");
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to update currency");
-    } finally {
-      setSavingCurrency(false);
     }
   };
 
-  const handleSaveAgeRanges = async () => {
+  const scheduleAgeRangesSave = (pediatricMax: string, geriatricMin: string) => {
     if (!me) return;
-    const pediatricMaxAge = Number(pediatricMaxAgeInput.trim());
-    const geriatricMinAge = Number(geriatricMinAgeInput.trim());
-    if (!Number.isInteger(pediatricMaxAge) || !Number.isInteger(geriatricMinAge) || pediatricMaxAge < 0 || geriatricMinAge < 0) {
-      toast.error("Enter whole numbers of years for both ages");
-      return;
-    }
-    if (pediatricMaxAge >= geriatricMinAge) {
-      toast.error("Pediatric max age must be less than the Geriatric min age");
-      return;
-    }
-
-    setSavingAgeRanges(true);
-    try {
-      const data = await CompanyService.updateSettings({
-        pediatricMaxAgeYears: pediatricMaxAge,
-        geriatricMinAgeYears: geriatricMinAge,
-      });
-      setMe({ ...me, pediatricMaxAgeYears: data.pediatricMaxAgeYears, geriatricMinAgeYears: data.geriatricMinAgeYears });
-      toast.success("Age category ranges updated");
-    } catch {
-      toast.error("Failed to update age category ranges");
-    } finally {
-      setSavingAgeRanges(false);
-    }
+    if (ageRangesTimer.current) clearTimeout(ageRangesTimer.current);
+    notifySaveStatus("saving");
+    ageRangesTimer.current = setTimeout(async () => {
+      const pediatricMaxAge = Number(pediatricMax.trim());
+      const geriatricMinAge = Number(geriatricMin.trim());
+      if (!Number.isInteger(pediatricMaxAge) || !Number.isInteger(geriatricMinAge) || pediatricMaxAge < 0 || geriatricMinAge < 0) {
+        notifySaveStatus("error");
+        toast.error("Enter whole numbers of years for both ages");
+        return;
+      }
+      if (pediatricMaxAge >= geriatricMinAge) {
+        notifySaveStatus("error");
+        toast.error("Pediatric max age must be less than the Geriatric min age");
+        return;
+      }
+      try {
+        const data = await CompanyService.updateSettings({
+          pediatricMaxAgeYears: pediatricMaxAge,
+          geriatricMinAgeYears: geriatricMinAge,
+        });
+        setMe((prev) => (prev ? { ...prev, pediatricMaxAgeYears: data.pediatricMaxAgeYears, geriatricMinAgeYears: data.geriatricMinAgeYears } : prev));
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+        toast.error("Failed to update age category ranges");
+      }
+    }, 800);
   };
 
-  const handleSaveIdleTimeout = async () => {
+  const handleIdleTimeoutChange = (raw: string) => {
+    setIdleTimeoutInput(raw);
     if (!me) return;
-    const minutes = Number(idleTimeoutInput.trim());
-    if (!Number.isInteger(minutes) || minutes < 2 || minutes > 480) {
-      toast.error("Enter a whole number of minutes between 2 and 480");
-      return;
-    }
-
-    setSavingIdleTimeout(true);
-    try {
-      const data = await CompanyService.updateSettings({ idleTimeoutMinutes: minutes });
-      setMe({ ...me, idleTimeoutMinutes: data.idleTimeoutMinutes });
-      // Applies to every signed-in user, this browser included - useIdleLogout picks this
-      // up immediately via onUserDetailChange rather than waiting for a reload.
-      patchUserDetail({ idleTimeoutMinutes: data.idleTimeoutMinutes });
-      toast.success("Idle timeout updated");
-    } catch {
-      toast.error("Failed to update idle timeout");
-    } finally {
-      setSavingIdleTimeout(false);
-    }
+    if (idleTimeoutTimer.current) clearTimeout(idleTimeoutTimer.current);
+    notifySaveStatus("saving");
+    idleTimeoutTimer.current = setTimeout(async () => {
+      const minutes = Number(raw.trim());
+      if (!Number.isInteger(minutes) || minutes < 2 || minutes > 480) {
+        notifySaveStatus("error");
+        toast.error("Enter a whole number of minutes between 2 and 480");
+        return;
+      }
+      try {
+        const data = await CompanyService.updateSettings({ idleTimeoutMinutes: minutes });
+        setMe((prev) => (prev ? { ...prev, idleTimeoutMinutes: data.idleTimeoutMinutes } : prev));
+        patchUserDetail({ idleTimeoutMinutes: data.idleTimeoutMinutes });
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+        toast.error("Failed to update idle timeout");
+      }
+    }, 800);
   };
 
   const handleTogglePatientEmailMode = async (checked: boolean) => {
@@ -395,10 +397,12 @@ export default function SettingsPage() {
     const previous = includeLoginCredentials;
     setIncludeLoginCredentials(checked);
     setSavingPatientEmailMode(true);
+    notifySaveStatus("saving");
     try {
       const data = await CompanyService.updateSettings({ includeLoginCredentialsInPatientEmail: checked });
       setMe({ ...me, includeLoginCredentialsInPatientEmail: data.includeLoginCredentialsInPatientEmail });
       setIncludeLoginCredentials(data.includeLoginCredentialsInPatientEmail);
+      notifySaveStatus("saved");
       toast.success(
         data.includeLoginCredentialsInPatientEmail
           ? "Patient registration emails will include mobile app login details"
@@ -406,6 +410,7 @@ export default function SettingsPage() {
       );
     } catch {
       setIncludeLoginCredentials(previous);
+      notifySaveStatus("error");
       toast.error("Failed to update patient registration email setting");
     } finally {
       setSavingPatientEmailMode(false);
@@ -439,6 +444,7 @@ export default function SettingsPage() {
   const handleSaveEmailTemplate = async () => {
     if (!me) return;
     setSavingEmailTemplate(true);
+    notifySaveStatus("saving");
     try {
       const data =
         emailTab === "credentials"
@@ -462,8 +468,10 @@ export default function SettingsPage() {
         setSimpleIsCustom(data.patientEmailSimpleIsCustom);
         setSimpleEditorKey((k) => k + 1);
       }
+      notifySaveStatus("saved");
       toast.success("Email template saved");
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to save email template");
     } finally {
       setSavingEmailTemplate(false);
@@ -564,19 +572,23 @@ export default function SettingsPage() {
 
     const editingBranch = branches.find((b) => b.branchId === editingBranchId);
     setSavingBranchName(true);
+    notifySaveStatus("saving");
     try {
       if (editingBranch?.isMain) {
         const data = await CompanyService.updateSettings({ name: trimmed });
         setMe({ ...me, companyName: data.name });
         patchUserDetail({ companyName: data.name });
         setBranches((prev) => prev.map((b) => (b.branchId === editingBranchId ? { ...b, name: data.name } : b)));
+        notifySaveStatus("saved");
         toast.success("Company name updated");
       } else {
         const data = await BranchService.update(editingBranchId, { name: trimmed });
         setBranches((prev) => prev.map((b) => (b.branchId === editingBranchId ? data.data : b)));
+        notifySaveStatus("saved");
         toast.success("Branch updated");
       }
     } catch (err) {
+      notifySaveStatus("error");
       toast.error(extractErrorMessage(err, "Failed to update"));
     } finally {
       setSavingBranchName(false);
@@ -923,7 +935,7 @@ export default function SettingsPage() {
                   max={100}
                   step="0.1"
                   value={maxDiscountInput}
-                  onChange={(e) => setMaxDiscountInput(e.target.value)}
+                  onChange={(e) => handleDiscountChange(e.target.value)}
                   placeholder="No limit"
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-7 text-sm text-foreground"
                 />
@@ -931,15 +943,6 @@ export default function SettingsPage() {
                   %
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={handleSaveDiscountCap}
-                disabled={savingDiscountCap}
-                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingDiscountCap && <Loader2 size={15} className="animate-spin" />}
-                Save
-              </button>
             </div>
           </div>
 
@@ -961,7 +964,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-3">
                   <select
                     value={country}
-                    onChange={(e) => setCountry(e.target.value)}
+                    onChange={(e) => handleCountryChange(e.target.value)}
                     className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
                   >
                     <option value="" disabled>
@@ -973,15 +976,6 @@ export default function SettingsPage() {
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={handleSaveCountry}
-                    disabled={savingCountry || !country}
-                    className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {savingCountry && <Loader2 size={15} className="animate-spin" />}
-                    Save
-                  </button>
                 </div>
               </div>
 
@@ -992,7 +986,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-3">
                   <select
                     value={currencyCode}
-                    onChange={(e) => setCurrencyCode(e.target.value)}
+                    onChange={(e) => handleCurrencyChange(e.target.value)}
                     className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
                   >
                     {SUPPORTED_CURRENCIES.map((c) => (
@@ -1001,15 +995,6 @@ export default function SettingsPage() {
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={handleSaveCurrency}
-                    disabled={savingCurrency}
-                    className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {savingCurrency && <Loader2 size={15} className="animate-spin" />}
-                    Save
-                  </button>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {currencyIsManual
@@ -1038,7 +1023,7 @@ export default function SettingsPage() {
                     min={0}
                     step="1"
                     value={pediatricMaxAgeInput}
-                    onChange={(e) => setPediatricMaxAgeInput(e.target.value)}
+                    onChange={(e) => { setPediatricMaxAgeInput(e.target.value); scheduleAgeRangesSave(e.target.value, geriatricMinAgeInput); }}
                     className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-14 text-sm text-foreground"
                   />
                   <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
@@ -1057,7 +1042,7 @@ export default function SettingsPage() {
                     min={0}
                     step="1"
                     value={geriatricMinAgeInput}
-                    onChange={(e) => setGeriatricMinAgeInput(e.target.value)}
+                    onChange={(e) => { setGeriatricMinAgeInput(e.target.value); scheduleAgeRangesSave(pediatricMaxAgeInput, e.target.value); }}
                     className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-14 text-sm text-foreground"
                   />
                   <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
@@ -1066,15 +1051,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSaveAgeRanges}
-                disabled={savingAgeRanges}
-                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingAgeRanges && <Loader2 size={15} className="animate-spin" />}
-                Save
-              </button>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               Adult: {pediatricMaxAgeInput || "0"} to {geriatricMinAgeInput || "0"} years.
@@ -1099,22 +1075,13 @@ export default function SettingsPage() {
                   max={480}
                   step="1"
                   value={idleTimeoutInput}
-                  onChange={(e) => setIdleTimeoutInput(e.target.value)}
+                  onChange={(e) => handleIdleTimeoutChange(e.target.value)}
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-12 text-sm text-foreground"
                 />
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                   min
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={handleSaveIdleTimeout}
-                disabled={savingIdleTimeout}
-                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingIdleTimeout && <Loader2 size={15} className="animate-spin" />}
-                Save
-              </button>
             </div>
           </div>
 

@@ -652,8 +652,21 @@ export default function PatientEntryPage() {
 
   if (isLoadingPatient) {
     return (
-      <div className="mainPage flex h-full items-center justify-center">
-        <LoadingSpinner />
+      <div className="mainPage flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-4xl font-bold text-foreground">Edit Patient</h1>
+          <p className="text-base text-foreground/80">Loading patient details…</p>
+        </div>
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-card rounded-lg shadow-md border border-border p-8">
+            <div className="h-5 w-40 mb-6 animate-pulse rounded bg-muted/60" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[...Array(4)].map((_, j) => (
+                <div key={j} className="h-10 animate-pulse rounded-md bg-muted/50" />
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }

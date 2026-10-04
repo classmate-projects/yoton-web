@@ -7,6 +7,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
 import { FormTemplateService } from "@/services/medicalForm.service";
 import { FormTemplateType, MedicalFormField, MedicalFormRow, normalizeRows } from "@/types/medicalForm.type";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import FormBuilderCanvas from "@/components/medicalForms/FormBuilderCanvas";
 import MedicalFormRenderer from "@/components/medicalForms/MedicalFormRenderer";
 import DepartmentSpecialtyMapper from "@/components/medicalForms/DepartmentSpecialtyMapper";
@@ -68,6 +69,7 @@ export default function MedicalFormsPage() {
       toast.error("Enter a form name");
       return;
     }
+    notifySaveStatus("saving");
     setIsSaving(true);
     try {
       const payload = { name: name.trim(), fieldsJson: JSON.stringify(rows), supportsHandover };
@@ -81,7 +83,9 @@ export default function MedicalFormsPage() {
         setTemplates((prev) => [...prev, data.data]);
         toast.success("Template created — map it to a department or specialty below");
       }
+      notifySaveStatus("saved");
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to save form template");
     } finally {
       setIsSaving(false);
@@ -100,12 +104,15 @@ export default function MedicalFormsPage() {
   };
 
   const handleToggleActive = async (template: FormTemplateType) => {
+    notifySaveStatus("saving");
     try {
       await FormTemplateService.setActive(template.formTemplateId, !template.isActive);
       setTemplates((prev) =>
         prev.map((t) => (t.formTemplateId === template.formTemplateId ? { ...t, isActive: !t.isActive } : t))
       );
+      notifySaveStatus("saved");
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to update form template");
     }
   };

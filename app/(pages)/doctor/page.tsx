@@ -29,10 +29,12 @@ import {
   Stamp,
   StickyNote,
   Trash2,
+  Unlock as UnlockIcon,
   Users,
   X,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import DatePicker from "@/components/DatePicker";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
@@ -71,6 +73,7 @@ import {
   DoctorDashboardSummaryType,
   EmrPatientListItem,
   EncounterCorrectionType,
+  EncounterUnlockRequestType,
   FollowUpType,
   MedicationPayload,
   MedicationType,
@@ -122,6 +125,7 @@ function DoctorWorkbenchInner() {
   const [activeCases, setActiveCases] = useState<ActiveCaseItemType[]>([]);
   const [patients, setPatients] = useState<EmrPatientListItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [patientsPage, setPatientsPage] = useState(1);
   const [isLoadingWorkbench, setIsLoadingWorkbench] = useState(true);
 
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
@@ -396,6 +400,8 @@ function DoctorWorkbenchInner() {
   // the "propose correction" flow kick in instead of the normal direct save.
   const [encounterFormSnapshot, setEncounterFormSnapshot] = useState(encounterForm);
   const [isSavingEncounter, setIsSavingEncounter] = useState(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedFormRef = useRef<string>("");
 
   const isCompletedEncounter = summary?.latestEncounter?.status === "Completed";
   const isEncounterDirty =
@@ -424,12 +430,44 @@ function DoctorWorkbenchInner() {
     };
     setEncounterForm(loaded);
     setEncounterFormSnapshot(loaded);
+    // Seed the last-saved baseline so the auto-save debounce doesn't fire immediately
+    // after the encounter loads (nothing has actually changed yet).
+    lastSavedFormRef.current = JSON.stringify(loaded);
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     // Intentionally re-run only when the encounter identity changes, not on every field edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.latestEncounter?.encounterId]);
 
+  // Auto-save: 3 s after the doctor stops editing, silently persist the encounter.
+  // Only runs for active (non-completed) encounters with a patient selected.
+  useEffect(() => {
+    if (isCompletedEncounter || !selectedPatientId || !summary?.latestEncounter) return;
+    const serialized = JSON.stringify(encounterForm);
+    if (serialized === lastSavedFormRef.current) return; // nothing changed
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(async () => {
+      if (JSON.stringify(encounterForm) === lastSavedFormRef.current) return;
+      notifySaveStatus("saving");
+      try {
+        await EmrService.upsertEncounter(
+          selectedPatientId,
+          { ...encounterForm, visitId: visitIdParam },
+          doctorIdParam
+        );
+        lastSavedFormRef.current = JSON.stringify(encounterForm);
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+      }
+    }, 3000);
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encounterForm]);
+
   const saveEncounter = async () => {
     if (!selectedPatientId || !requireDoctorSelected()) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    notifySaveStatus("saving");
     try {
       setIsSavingEncounter(true);
       await EmrService.upsertEncounter(
@@ -437,9 +475,12 @@ function DoctorWorkbenchInner() {
         { ...encounterForm, visitId: visitIdParam },
         doctorIdParam
       );
+      lastSavedFormRef.current = JSON.stringify(encounterForm);
       toast.success("Encounter saved");
+      notifySaveStatus("saved");
       await fetchSummary(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save encounter"));
     } finally {
       setIsSavingEncounter(false);
@@ -487,6 +528,7 @@ function DoctorWorkbenchInner() {
       toast.error("Select the doctor this correction should go to");
       return;
     }
+    notifySaveStatus("saving");
     try {
       setIsProposingCorrection(true);
       await EmrService.proposeEncounterCorrection(selectedPatientId, summary.latestEncounter.encounterId, {
@@ -494,13 +536,93 @@ function DoctorWorkbenchInner() {
         targetUserId: selectedCorrectionDoctorId,
       });
       toast.success("Correction sent — it applies once the doctor acknowledges it");
+      notifySaveStatus("saved");
       setEncounterFormSnapshot(encounterForm);
       setShowCorrectionModal(false);
       await fetchEncounterCorrections();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to send correction"));
     } finally {
       setIsProposingCorrection(false);
+    }
+  };
+
+  // ---------------- ENCOUNTER UNLOCK REQUESTS (doctor requests admin to reopen) ----------------
+  const [unlockReason, setUnlockReason] = useState("");
+  const [isRequestingUnlock, setIsRequestingUnlock] = useState(false);
+  const [showUnlockRequestModal, setShowUnlockRequestModal] = useState(false);
+  const [pendingUnlockForEncounter, setPendingUnlockForEncounter] = useState(false);
+  const [unlockRequests, setUnlockRequests] = useState<EncounterUnlockRequestType[]>([]);
+  const [resolvingUnlockId, setResolvingUnlockId] = useState<string | null>(null);
+
+  const fetchUnlockRequests = async () => {
+    if (!isAdmin) return;
+    try {
+      const res = await EmrService.getEncounterUnlockRequests();
+      setUnlockRequests(res.data || []);
+    } catch {
+      setUnlockRequests([]);
+    }
+  };
+
+  const fetchUnlockStatusForEncounter = async () => {
+    if (isAdmin || !selectedPatientId || !summary?.latestEncounter || !isCompletedEncounter) return;
+    try {
+      const res = await EmrService.getMyUnlockRequestStatus(selectedPatientId, summary.latestEncounter.encounterId);
+      setPendingUnlockForEncounter(res.pending ?? false);
+    } catch {
+      setPendingUnlockForEncounter(false);
+    }
+  };
+
+  useEffect(() => {
+    if (checkedAuth && isAdmin) fetchUnlockRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkedAuth, isAdmin]);
+
+  useEffect(() => {
+    fetchUnlockStatusForEncounter();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary?.latestEncounter?.encounterId, isCompletedEncounter]);
+
+  useSignalRRefetch(["encounterUnlockRequested", "encounterUnlockResolved"], () => {
+    fetchUnlockRequests();
+    fetchUnlockStatusForEncounter();
+  });
+
+  const submitUnlockRequest = async () => {
+    if (!selectedPatientId || !summary?.latestEncounter) return;
+    try {
+      setIsRequestingUnlock(true);
+      await EmrService.requestEncounterUnlock(selectedPatientId, summary.latestEncounter.encounterId, unlockReason);
+      toast.success("Unlock request sent — an admin will review it");
+      setPendingUnlockForEncounter(true);
+      setShowUnlockRequestModal(false);
+      setUnlockReason("");
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to send unlock request"));
+    } finally {
+      setIsRequestingUnlock(false);
+    }
+  };
+
+  const resolveUnlockRequest = async (requestId: string, action: "approve" | "deny") => {
+    try {
+      setResolvingUnlockId(requestId);
+      if (action === "approve") {
+        await EmrService.approveEncounterUnlock(requestId);
+        toast.success("Encounter unlocked — the doctor can now edit it");
+      } else {
+        await EmrService.denyEncounterUnlock(requestId);
+        toast.success("Unlock request denied");
+      }
+      await fetchUnlockRequests();
+      if (selectedPatientId) await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to resolve unlock request"));
+    } finally {
+      setResolvingUnlockId(null);
     }
   };
 
@@ -800,6 +922,7 @@ function DoctorWorkbenchInner() {
   const submitLabRadiology = async (values: LabRadiologyConfigValues) => {
     if (!selectedPatientId || !orderingModal) return;
     if (!requireDoctorSelected()) return;
+    notifySaveStatus("saving");
     setIsSavingOrder(true);
     try {
       const shared = {
@@ -845,9 +968,11 @@ function DoctorWorkbenchInner() {
         });
         toast.success("Radiology order updated");
       }
+      notifySaveStatus("saved");
       setOrderingModal(null);
       await fetchSummary(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save order"));
     } finally {
       setIsSavingOrder(false);
@@ -857,6 +982,7 @@ function DoctorWorkbenchInner() {
   const submitTreatment = async (values: TreatmentConfigValues) => {
     if (!selectedPatientId || !orderingModal) return;
     if (!requireDoctorSelected()) return;
+    notifySaveStatus("saving");
     setIsSavingOrder(true);
     try {
       const shared = {
@@ -882,9 +1008,11 @@ function DoctorWorkbenchInner() {
         });
         toast.success("Treatment updated");
       }
+      notifySaveStatus("saved");
       setOrderingModal(null);
       await fetchSummary(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save treatment"));
     } finally {
       setIsSavingOrder(false);
@@ -898,6 +1026,7 @@ function DoctorWorkbenchInner() {
 
   const addConfidentialNote = async () => {
     if (!selectedPatientId || !confidentialText.trim()) return;
+    notifySaveStatus("saving");
     try {
       setIsSavingConfidential(true);
       if (editingConfidentialNoteId) {
@@ -907,10 +1036,12 @@ function DoctorWorkbenchInner() {
         await EmrService.addConfidentialNote(selectedPatientId, { contentHtml: confidentialText.trim() });
         toast.success("Confidential statement saved");
       }
+      notifySaveStatus("saved");
       setConfidentialText("");
       setEditingConfidentialNoteId(null);
       await fetchConfidentialNotes(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save confidential statement"));
     } finally {
       setIsSavingConfidential(false);
@@ -1165,6 +1296,7 @@ function DoctorWorkbenchInner() {
   const saveDentalExtras = async () => {
     if (!selectedPatientId) return;
     if (!requireDoctorSelected()) return;
+    notifySaveStatus("saving");
     try {
       setIsSavingDentalExtras(true);
       await EmrService.saveDentalExtras(
@@ -1173,8 +1305,10 @@ function DoctorWorkbenchInner() {
         doctorIdParam
       );
       toast.success("Dental checklist saved");
+      notifySaveStatus("saved");
       await fetchSummary(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save dental checklist"));
     } finally {
       setIsSavingDentalExtras(false);
@@ -1188,12 +1322,15 @@ function DoctorWorkbenchInner() {
 
   const addQuickNote = async () => {
     if (!selectedPatientId || !noteText.trim() || !requireDoctorSelected()) return;
+    notifySaveStatus("saving");
     try {
       await EmrService.addQuickNote(selectedPatientId, noteText.trim(), doctorIdParam);
       toast.success("Note added");
+      notifySaveStatus("saved");
       setNoteText("");
       await fetchQuickNotes(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to add note"));
     }
   };
@@ -1210,12 +1347,15 @@ function DoctorWorkbenchInner() {
 
   const saveEditQuickNote = async () => {
     if (!selectedPatientId || !editingQuickNoteId || !editingQuickNoteText.trim()) return;
+    notifySaveStatus("saving");
     try {
       await EmrService.updateQuickNote(editingQuickNoteId, editingQuickNoteText.trim(), doctorIdParam);
       toast.success("Note updated");
+      notifySaveStatus("saved");
       cancelEditQuickNote();
       await fetchQuickNotes(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to update note"));
     }
   };
@@ -1236,18 +1376,22 @@ function DoctorWorkbenchInner() {
     );
   };
 
+  const PAGE_SIZE = 10;
   const filteredPatients = (() => {
     const term = searchTerm.trim().toLowerCase();
-    const matched = term
+    return term
       ? patients.filter(
           (p) =>
             p.name?.toLowerCase().includes(term) ||
             p.opNumber?.toLowerCase().includes(term) ||
             p.opId?.toLowerCase().includes(term)
         )
-      : patients.slice(0, 10);
-    return matched;
+      : patients;
   })();
+  const totalPatientPages = Math.ceil(filteredPatients.length / PAGE_SIZE);
+  const pagedPatients = searchTerm.trim()
+    ? filteredPatients
+    : filteredPatients.slice((patientsPage - 1) * PAGE_SIZE, patientsPage * PAGE_SIZE);
 
   if (!checkedAuth) {
     return (
@@ -1568,9 +1712,23 @@ function DoctorWorkbenchInner() {
 
                   {isCompletedEncounter && (
                     <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                      {isAdmin
-                        ? "This encounter is finalized — edits here are proposed as a correction, not saved directly."
-                        : "This encounter is finalized and locked. Ask an admin to request a correction if it needs to change."}
+                      {isAdmin ? (
+                        "This encounter is finalized — edits here are proposed as a correction, not saved directly."
+                      ) : pendingUnlockForEncounter ? (
+                        <span className="text-amber-600 dark:text-amber-400 font-medium">
+                          Unlock request pending — an admin will review it shortly.
+                        </span>
+                      ) : (
+                        <div className="flex items-center justify-between gap-3">
+                          <span>This encounter is finalized and locked.</span>
+                          <button
+                            onClick={() => setShowUnlockRequestModal(true)}
+                            className="shrink-0 rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                          >
+                            Request Edit Access
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1716,6 +1874,44 @@ function DoctorWorkbenchInner() {
                           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
                         >
                           <Save size={15} /> Send correction
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Doctor's unlock request modal */}
+                {showUnlockRequestModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+                    <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
+                      <h2 className="text-xl font-semibold mb-1 text-foreground">Request Edit Access</h2>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        This encounter is finalized. An admin will review your request and unlock it if approved.
+                      </p>
+                      <div className="flex flex-col gap-1 mb-6">
+                        <label className="text-sm font-semibold text-foreground/90">Reason (optional)</label>
+                        <textarea
+                          value={unlockReason}
+                          onChange={(e) => setUnlockReason(e.target.value)}
+                          placeholder="Briefly explain why you need to edit this encounter..."
+                          className="w-full min-h-[80px] text-sm"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => { setShowUnlockRequestModal(false); setUnlockReason(""); }}
+                          className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={submitUnlockRequest}
+                          disabled={isRequestingUnlock}
+                          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                        >
+                          Send Request
                         </button>
                       </div>
                     </div>
@@ -2607,7 +2803,32 @@ function DoctorWorkbenchInner() {
       </div>
 
       {isLoadingWorkbench ? (
-        <LoadingSpinner />
+        <div className="flex flex-col gap-6">
+          <div className="card p-6">
+            <div className="h-5 w-40 mb-4 animate-pulse rounded bg-muted/60" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-28 animate-pulse rounded-xl bg-muted/50" />
+              ))}
+            </div>
+          </div>
+          <div className="card p-6">
+            <div className="h-5 w-48 mb-4 animate-pulse rounded bg-muted/60" />
+            <div className="flex flex-col gap-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-16 animate-pulse rounded-lg bg-muted/50" />
+              ))}
+            </div>
+          </div>
+          <div className="card p-6">
+            <div className="h-5 w-36 mb-4 animate-pulse rounded bg-muted/60" />
+            <div className="flex flex-col gap-2">
+              {[...Array(2)].map((_, i) => (
+                <div key={i} className="h-16 animate-pulse rounded-lg bg-muted/50" />
+              ))}
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="flex flex-col gap-6">
           {/* Corrections an admin proposed for one of this doctor's finalized encounters —
@@ -2658,6 +2879,51 @@ function DoctorWorkbenchInner() {
             </div>
           )}
 
+          {/* Admin: pending encounter unlock requests */}
+          {isAdmin && unlockRequests.filter((r) => r.status === "Pending").length > 0 && (
+            <div className="card p-6 flex flex-col gap-3 border-l-4 border-l-amber-500">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <UnlockIcon size={18} className="text-amber-500" /> Encounter Unlock Requests
+                <span className="text-xs font-normal text-muted-foreground ml-1">
+                  ({unlockRequests.filter((r) => r.status === "Pending").length} pending)
+                </span>
+              </h2>
+              <div className="flex flex-col gap-2">
+                {unlockRequests.filter((r) => r.status === "Pending").map((r) => (
+                  <div key={r.encounterUnlockRequestId} className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="font-semibold text-foreground">{r.requestedByName ?? "Doctor"}</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          requests unlock for {r.patientName ?? "a patient"} · {formatDateTime(r.createdAt)}
+                        </span>
+                        {r.reason && (
+                          <p className="text-xs text-muted-foreground mt-0.5">Reason: {r.reason}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => resolveUnlockRequest(r.encounterUnlockRequestId, "approve")}
+                          disabled={resolvingUnlockId === r.encounterUnlockRequestId}
+                          className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                        >
+                          <Check size={13} /> Approve
+                        </button>
+                        <button
+                          onClick={() => resolveUnlockRequest(r.encounterUnlockRequestId, "deny")}
+                          disabled={resolvingUnlockId === r.encounterUnlockRequestId}
+                          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
+                        >
+                          <X size={13} /> Deny
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <StatCard icon={<Users size={18} />} label="Patients Under Care" value={dashboard?.patientsUnderCare ?? 0} />
@@ -2673,12 +2939,15 @@ function DoctorWorkbenchInner() {
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <CalendarClock size={18} className="text-primary" /> My Schedules
                 </h2>
-                <input
-                  type="date"
-                  value={scheduleDate}
-                  onChange={(e) => setScheduleDate(e.target.value)}
-                  className="h-9 px-3 text-sm rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:border-primary"
-                />
+                <div className="w-44">
+                  <DatePicker
+                    value={scheduleDate}
+                    onChange={(val) => setScheduleDate(val)}
+                    dateFormat="dd/MM/yyyy"
+                    placeholder="Pick a date"
+                    className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-muted px-3 text-sm text-foreground transition-all focus-within:border-primary focus-within:outline-none"
+                  />
+                </div>
               </div>
               <div className="overflow-x-auto">
                 {isLoadingSchedule ? (
@@ -2782,8 +3051,10 @@ function DoctorWorkbenchInner() {
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Users size={18} className="text-primary" /> Patients
                 </h2>
-                {!searchTerm.trim() && (
-                  <span className="text-xs text-muted-foreground">Showing 10 most recent</span>
+                {!searchTerm.trim() && patients.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {patients.length <= PAGE_SIZE ? `${patients.length} patients` : `Page ${patientsPage} of ${totalPatientPages}`}
+                  </span>
                 )}
               </div>
               <div className="relative w-64">
@@ -2792,7 +3063,7 @@ function DoctorWorkbenchInner() {
                   type="text"
                   placeholder="Search by name or MRN…"
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => { setSearchTerm(e.target.value); setPatientsPage(1); }}
                   className="w-full h-10 pl-9 text-sm"
                 />
               </div>
@@ -2810,8 +3081,8 @@ function DoctorWorkbenchInner() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPatients.length > 0 ? (
-                    filteredPatients.map((p) => (
+                  {pagedPatients.length > 0 ? (
+                    pagedPatients.map((p) => (
                       <tr key={p.opId}>
                         <td className="font-mono text-xs">{p.opNumber || p.opId}</td>
                         <td className="font-semibold">{p.name}</td>
@@ -2838,6 +3109,29 @@ function DoctorWorkbenchInner() {
                 </tbody>
               </table>
             </div>
+            {!searchTerm.trim() && totalPatientPages > 1 && (
+              <div className="flex items-center justify-between px-2 pt-3 pb-1 border-t border-border">
+                <span className="text-xs text-muted-foreground">
+                  Page {patientsPage} of {totalPatientPages} &mdash; {filteredPatients.length} patients
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPatientsPage((p) => Math.max(1, p - 1))}
+                    disabled={patientsPage === 1}
+                    className="px-3 py-1 text-xs rounded-md border border-border disabled:opacity-40 hover:bg-muted transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() => setPatientsPage((p) => Math.min(totalPatientPages, p + 1))}
+                    disabled={patientsPage === totalPatientPages}
+                    className="px-3 py-1 text-xs rounded-md border border-border disabled:opacity-40 hover:bg-muted transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

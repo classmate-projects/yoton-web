@@ -349,6 +349,20 @@ export interface EncounterCorrectionType {
   resolvedAt: string | null;
 }
 
+export interface EncounterUnlockRequestType {
+  encounterUnlockRequestId: string;
+  encounterId: string;
+  patientId: string;
+  patientName: string | null;
+  requestedByUserId: string;
+  requestedByName: string | null;
+  reason: string | null;
+  status: "Pending" | "Approved" | "Denied";
+  resolvedByUserId: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
 export interface ChronicConditionPayload {
   name: string;
   diagnosedYear?: number;

@@ -169,6 +169,11 @@ export const ENDPOINTS = {
         GET_MY_PENDING_CORRECTIONS: () => `/api/emr/my-pending-corrections`,
         ACKNOWLEDGE_CORRECTION: (correctionId: string) => `/api/emr/encounter/correction/${correctionId}/acknowledge`,
         REJECT_CORRECTION: (correctionId: string) => `/api/emr/encounter/correction/${correctionId}/reject`,
+        REQUEST_ENCOUNTER_UNLOCK: (patientId: string, encounterId: string) => `/api/emr/patient/${patientId}/encounter/${encounterId}/request-unlock`,
+        GET_MY_UNLOCK_REQUEST_STATUS: (patientId: string, encounterId: string) => `/api/emr/patient/${patientId}/encounter/${encounterId}/unlock-request-status`,
+        GET_ENCOUNTER_UNLOCK_REQUESTS: () => `/api/emr/encounter-unlock-requests`,
+        APPROVE_ENCOUNTER_UNLOCK: (requestId: string) => `/api/emr/encounter/unlock-request/${requestId}/approve`,
+        DENY_ENCOUNTER_UNLOCK: (requestId: string) => `/api/emr/encounter/unlock-request/${requestId}/deny`,
     },
     CLINICAL_INCIDENT: {
         GET_ALL: (category?: string, status?: string) => {

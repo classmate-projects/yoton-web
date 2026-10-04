@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import { Pencil, Pill, Trash2 } from "lucide-react";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdWarning } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmrButton from "@/components/EmrButton";
@@ -448,6 +449,7 @@ export default function PharmacyPage() {
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSubmittingRx(true);
       const payload = {
@@ -460,9 +462,11 @@ export default function PharmacyPage() {
         ? await PharmacyService.updatePrescription(editingPrescriptionId, payload)
         : await PharmacyService.createPrescription(payload);
       toast.success(data.message || (editingPrescriptionId ? "Prescription corrected" : "Prescription created"));
+      notifySaveStatus("saved");
       closeRxModal();
       fetchAll();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, editingPrescriptionId ? "Failed to correct prescription" : "Failed to create prescription"));
     } finally {
       setIsSubmittingRx(false);
@@ -502,6 +506,7 @@ export default function PharmacyPage() {
       toast.warning("Please select which nurse collected the medicine");
       return;
     }
+    notifySaveStatus("saving");
     try {
       setIssuingId(dispenseTarget.prescriptionId);
       const data = await PharmacyService.issue(dispenseTarget.prescriptionId, {
@@ -509,9 +514,11 @@ export default function PharmacyPage() {
         collectorUserId: collectedBy === "Nurse" ? collectorUserId : undefined,
       });
       toast.success(data.message || "Medicine issued");
+      notifySaveStatus("saved");
       closeDispenseModal();
       fetchAll();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to issue medicine"));
     } finally {
       setIssuingId(null);

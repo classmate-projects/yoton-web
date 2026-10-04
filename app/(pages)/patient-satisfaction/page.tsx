@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { PatientSatisfactionService } from "@/services/patientSatisfaction.service";
 import { ReceptionService } from "@/services/reception.service";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { PatientSatisfactionCreatePayload, PatientSatisfactionType } from "@/types/patientSatisfaction.type";
 import { PatientListItemType } from "@/types/appointment.type";
 
@@ -145,6 +146,7 @@ export default function PatientSatisfactionPage() {
     }
     Object.assign(payload, scores);
 
+    notifySaveStatus("saving");
     try {
       setIsSaving(true);
       if (editingResponseId) {
@@ -154,10 +156,12 @@ export default function PatientSatisfactionPage() {
         await PatientSatisfactionService.create(payload);
         toast.success("Response recorded");
       }
+      notifySaveStatus("saved");
       resetForm();
       setShowForm(false);
       await fetchResponses();
     } catch {
+      notifySaveStatus("error");
       toast.error(editingResponseId ? "Failed to update response" : "Failed to record response");
     } finally {
       setIsSaving(false);

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import { MdPayment, MdAdd } from "react-icons/md";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmrButton from "@/components/EmrButton";
 import { BillingService } from "@/services/billing.service";
@@ -210,6 +211,7 @@ function BillingPageInner() {
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const data = await BillingService.create({
@@ -220,10 +222,12 @@ function BillingPageInner() {
         tax,
       });
       toast.success(data.message || "Bill created");
+      notifySaveStatus("saved");
       closeModal();
       fetchAll();
       setDetailBill(data.data);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to create bill"));
     } finally {
       setIsSubmitting(false);
@@ -237,6 +241,7 @@ function BillingPageInner() {
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsAddingItem(true);
       const data = await BillingService.addItem({
@@ -245,11 +250,13 @@ function BillingPageInner() {
         amount: itemAmount,
       });
       toast.success(data.message || "Item added");
+      notifySaveStatus("saved");
       setItemDescription("");
       setItemAmount(0);
       setDetailBill(data.data);
       fetchAll();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to add item"));
     } finally {
       setIsAddingItem(false);
@@ -258,13 +265,16 @@ function BillingPageInner() {
 
   const handlePay = async () => {
     if (!detailBill) return;
+    notifySaveStatus("saving");
     try {
       setIsPaying(true);
       const data = await BillingService.pay(detailBill.billId, payMethod);
       toast.success(data.message || "Payment recorded");
+      notifySaveStatus("saved");
       setDetailBill(data.data);
       fetchAll();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to record payment"));
     } finally {
       setIsPaying(false);

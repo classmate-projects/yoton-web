@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { CheckCircle2, Clock, LogIn, LogOut } from "lucide-react";
 import { AttendanceService } from "@/services/attendance.service";
 import { AttendanceRecordType } from "@/types/attendance.type";
-import LoadingSpinner from "@/components/LoadingSpinner";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
 import { getUserDetail } from "@/lib/userDetail";
 
@@ -64,14 +63,6 @@ export default function CheckInPage() {
     fetchToday();
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <LoadingSpinner />
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-2xl py-6 px-4 sm:py-8 sm:px-10">
       <div className="mb-6 flex flex-col items-center gap-1 text-center">
@@ -83,7 +74,12 @@ export default function CheckInPage() {
       </div>
 
       <div className="rounded-xl border border-border bg-card p-6 text-center">
-        {!today ? (
+        {isLoading ? (
+          <div className="space-y-3">
+            <div className="h-4 w-48 mx-auto animate-pulse rounded bg-muted/60" />
+            <div className="h-9 w-28 mx-auto animate-pulse rounded-md bg-muted/60" />
+          </div>
+        ) : !today ? (
           <>
             <p className="mb-4 text-sm text-muted-foreground">You haven&apos;t checked in today.</p>
             <button

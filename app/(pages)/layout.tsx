@@ -12,6 +12,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import CheckInPromptModal from "@/components/CheckInPromptModal";
 import CheckInHeaderWidget from "@/components/CheckInHeaderWidget";
+import AutoSaveIndicator from "@/components/AutoSaveIndicator";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
@@ -204,6 +205,8 @@ export default function PageLayout({
           </button>
           <Image src={logo} alt="Yoton" priority className="lg:hidden h-8 w-auto" />
           <BackButton />
+          <div className="flex-1" />
+          <AutoSaveIndicator />
           <CheckInHeaderWidget />
         </header>
         <div className="flex-1 min-w-0">
