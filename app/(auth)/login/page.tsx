@@ -149,7 +149,9 @@ export default function LoginPage() {
       });
 
       toast.success(`Welcome back, ${data.body.name}!`);
-      router.push("/");
+      // replace, not push: login must never become a back-navigation target
+      // once the user is signed in.
+      router.replace("/");
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
       submittingRef.current = false;

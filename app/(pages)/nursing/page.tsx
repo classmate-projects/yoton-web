@@ -56,7 +56,7 @@ import { TreatmentService } from "@/services/treatment.service";
 import { UserService } from "@/services/user.service";
 import { UserType } from "@/types/user.type";
 import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
-import { AllergyType, EmrPatientListItem, PatientSummaryType, SpecialRemarkType } from "@/types/emr.type";
+import { AllergyPayload, AllergyType, EmrPatientListItem, PatientSummaryType, SpecialRemarkType } from "@/types/emr.type";
 import { TreatmentType } from "@/types/treatment.type";
 import { LabRequestType } from "@/types/lab.type";
 import { RadiologyRequestType } from "@/types/radiology.type";
@@ -1182,14 +1182,34 @@ function NurseWorkbenchInner() {
   };
 
   // ---------------- ALLERGY FORM ----------------
-  const [allergyForm, setAllergyForm] = useState({ substance: "", reaction: "" });
+  // Same fields/options as the Doctor Workbench's allergy form (app/(pages)/doctor/page.tsx) -
+  // kept in sync so a nurse-recorded allergy carries the same clinical detail as a doctor-recorded one.
+  const emptyAllergyForm = { substance: "", reaction: "", allergyCategory: "", severity: "", identifiedDate: "", status: "Active", remarks: "" };
+  const [allergyForm, setAllergyForm] = useState(emptyAllergyForm);
   const [savingAllergy, setSavingAllergy] = useState(false);
   const [editingAllergyId, setEditingAllergyId] = useState<string | null>(null);
+
+  const ALLERGY_CATEGORIES = ["Drug", "Food", "Environmental", "Latex", "Contrast Media", "Other"];
+  const ALLERGENS_BY_CATEGORY: Record<string, string[]> = {
+    Drug: ["Penicillin", "Amoxicillin", "Aspirin", "NSAIDs", "Sulfonamides", "Codeine", "Morphine", "Tetracycline", "Other Drug"],
+    Food: ["Peanuts", "Tree Nuts", "Shellfish", "Fish", "Milk (Dairy)", "Eggs", "Wheat (Gluten)", "Soy", "Other Food"],
+    Environmental: ["Pollen", "Dust Mites", "Pet Dander", "Mold", "Grass", "Trees", "Other Environmental"],
+    Latex: ["Latex Gloves", "Latex Products", "Other Latex"],
+    "Contrast Media": ["Iodinated Contrast", "Gadolinium Contrast", "Other Contrast Media"],
+    Other: ["Other"],
+  };
+  const SEVERITIES = ["Mild", "Moderate", "Severe", "Life-threatening"];
+  const REACTIONS = ["Rash", "Hives (Urticaria)", "Itching (Pruritus)", "Swelling (Angioedema)", "Anaphylaxis", "Nausea/Vomiting", "Diarrhea", "Respiratory Distress", "Contact Dermatitis", "Other"];
+  const ALLERGY_STATUSES = ["Active", "Inactive", "Resolved"];
 
   const saveAllergy = async () => {
     if (!selectedPatientId) return;
     if (!allergyForm.substance.trim()) {
-      toast.error("Substance is required");
+      toast.error("Allergen is required");
+      return;
+    }
+    if (!allergyForm.allergyCategory) {
+      toast.error("Allergy category is required");
       return;
     }
     // Unlike the NursingController writes above, this one goes through EmrController —
@@ -1198,9 +1218,14 @@ function NurseWorkbenchInner() {
     notifySaveStatus("saving");
     try {
       setSavingAllergy(true);
-      const payload = {
+      const payload: AllergyPayload = {
         substance: allergyForm.substance.trim(),
         reaction: allergyForm.reaction.trim() || undefined,
+        allergyCategory: allergyForm.allergyCategory || undefined,
+        severity: allergyForm.severity || undefined,
+        identifiedDate: allergyForm.identifiedDate || undefined,
+        status: allergyForm.status || "Active",
+        remarks: allergyForm.remarks.trim() || undefined,
       };
       if (editingAllergyId) {
         await EmrService.updateAllergy(editingAllergyId, payload, isAdmin ? selectedDoctorId : undefined);
@@ -1210,7 +1235,7 @@ function NurseWorkbenchInner() {
         toast.success("Allergy recorded");
       }
       notifySaveStatus("saved");
-      setAllergyForm({ substance: "", reaction: "" });
+      setAllergyForm(emptyAllergyForm);
       setEditingAllergyId(null);
       const res = await EmrService.getPatientSummary(selectedPatientId);
       setSummary(res.data);
@@ -1224,12 +1249,20 @@ function NurseWorkbenchInner() {
 
   const startEditAllergy = (a: AllergyType) => {
     setEditingAllergyId(a.patientAllergyId);
-    setAllergyForm({ substance: a.substance, reaction: a.reaction || "" });
+    setAllergyForm({
+      substance: a.substance,
+      reaction: a.reaction || "",
+      allergyCategory: a.allergyCategory || "",
+      severity: a.severity || "",
+      identifiedDate: a.identifiedDate || "",
+      status: a.status || "Active",
+      remarks: a.remarks || "",
+    });
   };
 
   const cancelEditAllergy = () => {
     setEditingAllergyId(null);
-    setAllergyForm({ substance: "", reaction: "" });
+    setAllergyForm(emptyAllergyForm);
   };
 
   const removeAllergyRecord = (a: AllergyType) => {
@@ -1569,24 +1602,36 @@ function NurseWorkbenchInner() {
               </div>
 
               {summary.allergies.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border">
-                  <AlertTriangle size={16} className="text-red-600 shrink-0 mt-0.5" />
-                  {summary.allergies.map((a) => (
-                    <span
-                      key={a.patientAllergyId}
-                      className="group flex items-center gap-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-2.5 py-1 text-xs font-semibold text-red-700 dark:text-red-400"
-                    >
-                      {a.substance} {a.reaction ? `— ${a.reaction}` : ""}
-                      <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
-                          <Pencil size={10} />
-                        </button>
-                        <button onClick={() => removeAllergyRecord(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
-                          <Trash2 size={10} />
-                        </button>
+                <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-border">
+                  <div className="flex flex-wrap gap-2">
+                    <AlertTriangle size={16} className="text-red-600 shrink-0 mt-0.5" />
+                    {summary.allergies.map((a) => (
+                      <span
+                        key={a.patientAllergyId}
+                        className="group flex items-center gap-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-2.5 py-1 text-xs font-semibold text-red-700 dark:text-red-400"
+                      >
+                        {a.allergyCategory ? `${a.allergyCategory}: ` : ""}{a.substance} {a.reaction ? `— ${a.reaction}` : ""} {a.severity ? `(${a.severity})` : ""}
+                        {a.status && a.status !== "Active" && <span className="font-normal opacity-70">[{a.status}]</span>}
+                        <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
+                            <Pencil size={10} />
+                          </button>
+                          <button onClick={() => removeAllergyRecord(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
+                            <Trash2 size={10} />
+                          </button>
+                        </span>
                       </span>
-                    </span>
-                  ))}
+                    ))}
+                  </div>
+                  {summary.allergies.some((a) => a.correctedFrom) && (
+                    <div className="flex flex-col gap-0.5">
+                      {summary.allergies.filter((a) => a.correctedFrom).map((a) => (
+                        <CorrectedFromNote key={a.patientAllergyId}>
+                          <p>Previous ({a.substance}): {a.correctedFrom!.substance}{a.correctedFrom!.reaction ? ` · reaction: ${a.correctedFrom!.reaction}` : ""}</p>
+                        </CorrectedFromNote>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2333,14 +2378,90 @@ function NurseWorkbenchInner() {
 
             {canEdit && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Allergies — write-only here; already shown as chips in the header card above */}
+                {/* Allergies — write-only here; already shown as chips in the header card above.
+                    Same fields as the Doctor Workbench's allergy form, so a nurse-recorded
+                    allergy carries the same clinical detail as a doctor-recorded one. */}
                 <div className="card p-6 flex flex-col gap-4">
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <AlertTriangle size={18} className="text-primary" /> Allergies
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input type="text" placeholder="Substance (e.g. Penicillin)" value={allergyForm.substance} onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))} className="h-10 text-sm" />
-                    <input type="text" placeholder="Reaction (optional)" value={allergyForm.reaction} onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))} className="h-10 text-sm" />
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Allergy Category <span className="text-destructive">*</span></label>
+                      <select
+                        value={allergyForm.allergyCategory}
+                        onChange={(e) => setAllergyForm((p) => ({ ...p, allergyCategory: e.target.value, substance: "" }))}
+                        className="h-10 text-sm"
+                      >
+                        <option value="">Select category</option>
+                        {ALLERGY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Allergen <span className="text-destructive">*</span></label>
+                      <select
+                        value={allergyForm.substance}
+                        onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))}
+                        className="h-10 text-sm"
+                        disabled={!allergyForm.allergyCategory}
+                      >
+                        <option value="">Select allergen</option>
+                        {(ALLERGENS_BY_CATEGORY[allergyForm.allergyCategory] ?? []).map((a) => (
+                          <option key={a} value={a}>{a}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Severity</label>
+                      <select
+                        value={allergyForm.severity}
+                        onChange={(e) => setAllergyForm((p) => ({ ...p, severity: e.target.value }))}
+                        className="h-10 text-sm"
+                      >
+                        <option value="">Select severity</option>
+                        {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Reaction</label>
+                      <select
+                        value={allergyForm.reaction}
+                        onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))}
+                        className="h-10 text-sm"
+                      >
+                        <option value="">Select reaction</option>
+                        {REACTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Identified Date</label>
+                      <input
+                        type="date"
+                        value={allergyForm.identifiedDate}
+                        onChange={(e) => setAllergyForm((p) => ({ ...p, identifiedDate: e.target.value }))}
+                        className="h-10 text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Status</label>
+                      <select
+                        value={allergyForm.status}
+                        onChange={(e) => setAllergyForm((p) => ({ ...p, status: e.target.value }))}
+                        className="h-10 text-sm"
+                      >
+                        {ALLERGY_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-muted-foreground">Remarks</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Additional clinical notes…"
+                      value={allergyForm.remarks}
+                      onChange={(e) => setAllergyForm((p) => ({ ...p, remarks: e.target.value }))}
+                      className="text-sm resize-none"
+                    />
                   </div>
                   <div className="flex items-center gap-3">
                     <button onClick={saveAllergy} disabled={savingAllergy} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">

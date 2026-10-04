@@ -13,86 +13,11 @@ import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import CheckInPromptModal from "@/components/CheckInPromptModal";
 import CheckInHeaderWidget from "@/components/CheckInHeaderWidget";
 import AutoSaveIndicator from "@/components/AutoSaveIndicator";
-import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
 import { useSessionRevokedListener } from "@/hooks/useSessionRevokedListener";
 import { onUserDetailChange } from "@/lib/userDetail";
-
-// Pages that are reachable by URL (e.g. from a button on an admin page) but
-// intentionally left out of the sidebar itself — still need the same
-// access gate as sidebar items, just not a nav entry of their own.
-interface ProtectedRoute {
-  navLink: string;
-  // Which sidebarMenuItems.navLink's allowed-modules entry governs this route, for
-  // entries that aren't independently grantable in their own right (undefined means
-  // "use this route's own navLink" — see isRouteAllowed below).
-  moduleKey?: string;
-  // Set only for the handful of routes that sit outside the per-role allow-list system
-  // entirely (mirrors the backend's matching hardcoded [Authorize(Roles=...)] carve-outs):
-  // admin-only meta pages that control the permission system itself, and Confidential
-  // Notes' nurse-only rule, which excludes even admin.
-  hardcodedRoles?: string[];
-}
-
-const extraProtectedRoutes: ProtectedRoute[] = [
-  { navLink: "/role-management", hardcodedRoles: ["admin"] },
-  { navLink: "/user-registration", hardcodedRoles: ["admin"] },
-];
-
-// Settings and Confidential Notes are never part of the allow-list (see
-// helpers/sidebaritems.ts's comments on each) - Settings is always reachable, and
-// Confidential Notes has its own hardcoded nurse-only rule instead. Check-in is now
-// mandatory for all users (header widget + daily popup) and no longer in the sidebar
-// or the allow-list system. User Management, Departments
-// & Staff, Configurable Lists and Reports are admin-only *by default* (backend's
-// ModuleKeys.AdminOnly - excluded from the Role Management checklist, see its comment) but
-// deliberately NOT hardcoded here the way /role-management and /user-registration above
-// are: RoleController.ForceModule can still grant one of them to a specific non-admin role,
-// and that role's allowedModules (checked below, same as any other module) is what actually
-// reflects a force-grant like that - a hardcoded rule here would keep blocking the page even
-// after the backend legitimately allows it.
-const protectedRoutes: ProtectedRoute[] = [
-  ...sidebarMenuItems
-    .filter((item) => item.navLink !== "/settings")
-    .map((item) =>
-      item.navLink === "/nursing/confidential-notes"
-        ? { navLink: item.navLink, hardcodedRoles: ["nurse"] }
-        : { navLink: item.navLink },
-    ),
-  ...extraProtectedRoutes,
-];
-
-function matchRoute(pathname: string) {
-  const matches = protectedRoutes.filter(
-    (item) => pathname === item.navLink || pathname.startsWith(`${item.navLink}/`),
-  );
-  if (matches.length === 0) return undefined;
-
-  // Prefer the most specific (longest navLink) match, not array order — otherwise a
-  // more restrictive sub-route (e.g. "/nursing/confidential-notes", nurse-only) could
-  // lose to a broader parent route (e.g. "/nursing") declared earlier.
-  return matches.reduce((best, item) => (item.navLink.length > best.navLink.length ? item : best));
-}
-
-function isRouteAllowed(route: ProtectedRoute, role: string, allowedModules: string[]) {
-  if (route.hardcodedRoles) return route.hardcodedRoles.includes(role);
-  // Admin always has every module - mirrors the backend's ModuleAccessChecker bypass,
-  // so admin can never be locked out by a missing/misconfigured allow-list row.
-  if (role === "admin") return true;
-  return allowedModules.includes(route.moduleKey ?? route.navLink);
-}
-
-function firstAllowedRoute(role: string, allowedModules: string[]) {
-  return (
-    sidebarMenuItems.find(
-      (item) =>
-        item.navLink !== "/settings" &&
-        item.navLink !== "/nursing/confidential-notes" &&
-        (role === "admin" || allowedModules.includes(item.navLink)),
-    ) ?? sidebarMenuItems.find((item) => item.navLink === "/settings")
-  );
-}
+import { matchRoute, isRouteAllowed, getHomeRoute } from "@/lib/routeAccess";
 
 export default function PageLayout({
   children,
@@ -117,6 +42,10 @@ export default function PageLayout({
   const [status, setStatus] = useState<"checking" | "allowed" | "denied" | "redirecting">(
     "checking",
   );
+  // This role's actual landing page - "/" when the dashboard is allowed, otherwise
+  // whatever firstAllowedRoute resolves to below. Passed to BackButton so it can tell
+  // when the current page *is* that landing page, even when that isn't "/".
+  const [homeRoute, setHomeRoute] = useState("/");
 
   useEffect(() => {
     const checkAccess = () => {
@@ -132,6 +61,8 @@ export default function PageLayout({
         role = "";
       }
 
+      setHomeRoute(getHomeRoute(role, allowedModules));
+
       const match = matchRoute(pathname);
 
       // Unlisted routes (not in the sidebar or the extra list above) aren't
@@ -145,10 +76,10 @@ export default function PageLayout({
       // to the first page their role actually has, instead of an Access
       // Denied wall on the very first screen after login.
       if (pathname === "/") {
-        const target = firstAllowedRoute(role, allowedModules);
-        if (target) {
+        const target = getHomeRoute(role, allowedModules);
+        if (target !== "/") {
           setStatus("redirecting");
-          router.replace(target.navLink);
+          router.replace(target);
           return;
         }
       }
@@ -204,7 +135,7 @@ export default function PageLayout({
             <Menu className="h-6 w-6" />
           </button>
           <Image src={logo} alt="Yoton" priority className="lg:hidden h-8 w-auto" />
-          <BackButton />
+          <BackButton homePath={homeRoute} />
           <div className="flex-1" />
           <AutoSaveIndicator />
           <CheckInHeaderWidget />
