@@ -56,6 +56,7 @@ import VitalsHistoryModal from "@/components/VitalsHistoryModal";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import DentalChartSection from "@/components/dental/DentalChartSection";
 import { getUserDetail } from "@/lib/userDetail";
+import { backendAssetUrl } from "@/lib/backendAsset";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
@@ -276,9 +277,11 @@ function DoctorWorkbenchInner() {
   }, [checkedAuth]);
 
   // ---------------- EXTERNAL DOCUMENTS ----------------
-  const [documents, setDocuments] = useState<{ patientDocumentId: string; documentType: string; createdAt: string }[]>([]);
+  type DocumentItem = { patientDocumentId: string; documentType: string; filePath: string | null; viewedByDoctor: boolean; createdAt: string };
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [unviewedDocumentCount, setUnviewedDocumentCount] = useState(0);
   const [showDocuments, setShowDocuments] = useState(false);
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
 
   const fetchDocuments = async (patientId: string) => {
     try {
@@ -382,7 +385,11 @@ function DoctorWorkbenchInner() {
     setSelectedPatientId(null);
     setSummary(null);
     setPatientAlertText("");
+    setPastMedicalHistory("");
+    setPastSurgicalHistory("");
+    setPastTreatmentHistory("");
     setPatientWarningModal(null);
+    setShowDocumentsModal(false);
     setQuickNotes([]);
     setConfidentialNotes([]);
     setVitalsHistory([]);
@@ -416,10 +423,13 @@ function DoctorWorkbenchInner() {
     rosHematologic: "",
     rosAllergicImmunologic: "",
     rosIntegumentary: "",
+    currentManagementPlan: "",
+    futureManagementPlan: "",
   };
 
   const [encounterForm, setEncounterForm] = useState({
     chiefComplaint: "",
+    diagnosisDescription: "",
     plannedProcedures: "",
     examinationNotes: "",
     clinicalExamination: "",
@@ -441,6 +451,7 @@ function DoctorWorkbenchInner() {
     const e = summary?.latestEncounter;
     const loaded = {
       chiefComplaint: e?.chiefComplaint || "",
+      diagnosisDescription: e?.diagnosisDescription || "",
       plannedProcedures: e?.plannedProcedures || "",
       examinationNotes: e?.examinationNotes || "",
       clinicalExamination: e?.clinicalExamination || "",
@@ -457,6 +468,8 @@ function DoctorWorkbenchInner() {
       rosHematologic: e?.rosHematologic || "",
       rosAllergicImmunologic: e?.rosAllergicImmunologic || "",
       rosIntegumentary: e?.rosIntegumentary || "",
+      currentManagementPlan: e?.currentManagementPlan || "",
+      futureManagementPlan: e?.futureManagementPlan || "",
     };
     setEncounterForm(loaded);
     setEncounterFormSnapshot(loaded);
@@ -924,6 +937,7 @@ function DoctorWorkbenchInner() {
 
   // ---------------- MEDICATIONS ----------------
   const [editingMedication, setEditingMedication] = useState<MedicationType | null>(null);
+  const [medTab, setMedTab] = useState<"current" | "history">("current");
 
   const addMedication = async (payload: MedicationPayload): Promise<boolean> => {
     if (!selectedPatientId) return false;
@@ -1629,14 +1643,31 @@ function DoctorWorkbenchInner() {
 
                 {/* Badges */}
                 <div className="flex flex-col items-end gap-2 shrink-0">
-                  {unviewedDocumentCount > 0 && (
-                    <button
-                      onClick={() => setShowDocuments((v) => !v)}
-                      className="flex items-center gap-1.5 rounded-full bg-blue-100 dark:bg-blue-950/40 px-3 py-1 text-xs font-semibold text-blue-700 dark:text-blue-400 cursor-pointer"
-                    >
-                      <Bell size={13} /> {unviewedDocumentCount} new document{unviewedDocumentCount === 1 ? "" : "s"}
-                    </button>
-                  )}
+                  {/* Documents button — always visible so doctors can access attachments at any time */}
+                  <button
+                    onClick={() => setShowDocumentsModal(true)}
+                    className={`relative flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      unviewedDocumentCount > 0
+                        ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                        : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <FileText size={13} />
+                    Patient Documents
+                    {documents.length > 0 && (
+                      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                        unviewedDocumentCount > 0 ? "bg-blue-600 text-white" : "bg-muted-foreground/20 text-muted-foreground"
+                      }`}>
+                        {documents.length}
+                      </span>
+                    )}
+                    {unviewedDocumentCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+                      </span>
+                    )}
+                  </button>
                   {summary.latestEncounter && (
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -1650,28 +1681,6 @@ function DoctorWorkbenchInner() {
                   )}
                 </div>
               </div>
-
-              {showDocuments && documents.length > 0 && (
-                <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-border">
-                  {documents.map((d) => (
-                    <div
-                      key={d.patientDocumentId}
-                      className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
-                    >
-                      <span className="font-medium">{d.documentType}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</span>
-                        <button
-                          onClick={() => markDocumentViewed(d.patientDocumentId)}
-                          className="text-xs font-semibold text-primary hover:underline cursor-pointer"
-                        >
-                          Mark reviewed
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Patient Alerts — doctor-authored flag that persists across all visits and
@@ -1695,6 +1704,65 @@ function DoctorWorkbenchInner() {
               />
               {isSavingAlert && (
                 <p className="text-xs text-muted-foreground mt-1">Saving…</p>
+              )}
+            </div>
+
+            {/* Medical History — three persistent free-text fields auto-saved 1.2 s after
+                the last keystroke, same pattern as Patient Alerts. All three are sent
+                together in one PATCH so a single blur on any field saves them all. */}
+            <div className="card px-5 py-4">
+              <p className="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
+                <ClipboardList size={13} className="text-primary" /> Medical History
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Past Medical History</p>
+                  <textarea
+                    value={pastMedicalHistory}
+                    rows={3}
+                    className="w-full text-sm resize-y"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setPastMedicalHistory(v);
+                      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+                      historyTimerRef.current = setTimeout(() => void saveMedicalHistory(v, pastSurgicalHistory, pastTreatmentHistory), 1200);
+                    }}
+                    onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Past Surgical History</p>
+                  <textarea
+                    value={pastSurgicalHistory}
+                    rows={3}
+                    className="w-full text-sm resize-y"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setPastSurgicalHistory(v);
+                      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+                      historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, v, pastTreatmentHistory), 1200);
+                    }}
+                    onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Past Treatment History</p>
+                  <textarea
+                    value={pastTreatmentHistory}
+                    rows={3}
+                    className="w-full text-sm resize-y"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setPastTreatmentHistory(v);
+                      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+                      historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, v), 1200);
+                    }}
+                    onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
+                  />
+                </div>
+              </div>
+              {isSavingHistory && (
+                <p className="text-xs text-muted-foreground mt-2">Saving…</p>
               )}
             </div>
 
@@ -1929,19 +1997,16 @@ function DoctorWorkbenchInner() {
                     />
                   </div>
 
-                  <details className="group">
-                    <summary className="cursor-pointer text-sm font-semibold text-foreground/90 flex items-center gap-2 list-none">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground/90 flex items-center gap-2 mb-3">
                       <ClipboardList size={16} className="text-primary" /> Review of Systems
-                      <span className="text-xs font-normal text-muted-foreground">(click to expand)</span>
-                    </summary>
-                    <div className="mt-3">
-                      <ReviewOfSystemsPanel
-                        value={encounterForm}
-                        onChange={(key, value) => setEncounterForm((p) => ({ ...p, [key]: value }))}
-                        disabled={isCompletedEncounter && !isAdmin}
-                      />
-                    </div>
-                  </details>
+                    </p>
+                    <ReviewOfSystemsPanel
+                      value={encounterForm}
+                      onChange={(key, value) => setEncounterForm((p) => ({ ...p, [key]: value }))}
+                      disabled={isCompletedEncounter && !isAdmin}
+                    />
+                  </div>
 
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold text-muted-foreground">Clinical examination</label>
@@ -1963,6 +2028,42 @@ function DoctorWorkbenchInner() {
                       disabled={isCompletedEncounter && !isAdmin}
                       className="w-full min-h-16 text-sm disabled:opacity-60"
                     />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Current Management Plan</label>
+                    {!encounterForm.currentManagementPlan && (isCompletedEncounter && !isAdmin) ? (
+                      <p className="text-sm text-muted-foreground italic">No records found.</p>
+                    ) : (
+                      <textarea
+                        placeholder="Current (immediate) management plan..."
+                        value={encounterForm.currentManagementPlan}
+                        onChange={(e) => setEncounterForm((p) => ({ ...p, currentManagementPlan: e.target.value }))}
+                        disabled={isCompletedEncounter && !isAdmin}
+                        className="w-full min-h-24 text-sm disabled:opacity-60"
+                      />
+                    )}
+                    {summary.latestEncounter?.updatedAt && encounterForm.currentManagementPlan && (
+                      <p className="text-xs text-muted-foreground">Last updated: {formatDateTime(summary.latestEncounter.updatedAt)}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Future Management Plan</label>
+                    {!encounterForm.futureManagementPlan && (isCompletedEncounter && !isAdmin) ? (
+                      <p className="text-sm text-muted-foreground italic">No records found.</p>
+                    ) : (
+                      <textarea
+                        placeholder="Future management plan / follow-up plan..."
+                        value={encounterForm.futureManagementPlan}
+                        onChange={(e) => setEncounterForm((p) => ({ ...p, futureManagementPlan: e.target.value }))}
+                        disabled={isCompletedEncounter && !isAdmin}
+                        className="w-full min-h-24 text-sm disabled:opacity-60"
+                      />
+                    )}
+                    {summary.latestEncounter?.updatedAt && encounterForm.futureManagementPlan && (
+                      <p className="text-xs text-muted-foreground">Last updated: {formatDateTime(summary.latestEncounter.updatedAt)}</p>
+                    )}
                   </div>
 
                   <div className="flex gap-3 flex-wrap">
@@ -2178,6 +2279,35 @@ function DoctorWorkbenchInner() {
                     }}
                     onSelect={(opt) => addDiagnosis(opt.id)}
                   />
+
+                  {/* Narrative Diagnosis */}
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    <span className="self-start rounded bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary-foreground">
+                      Narrative Diagnosis
+                    </span>
+                    <div className="relative">
+                      <textarea
+                        rows={3}
+                        placeholder="Enter a narrative or free-text description of the diagnosis…"
+                        value={encounterForm.diagnosisDescription}
+                        onChange={(e) => setEncounterForm((p) => ({ ...p, diagnosisDescription: e.target.value }))}
+                        disabled={isCompletedEncounter}
+                        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                      />
+                      {encounterForm.diagnosisDescription && (
+                        <button
+                          type="button"
+                          title="Copy to clipboard"
+                          onClick={() => { navigator.clipboard.writeText(encounterForm.diagnosisDescription); toast.success("Copied"); }}
+                          className="absolute bottom-2 right-2 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Medical history */}
@@ -2478,133 +2608,184 @@ function DoctorWorkbenchInner() {
 
                 {/* Medications */}
                 <div className="card p-6 flex flex-col gap-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                      <Pill size={18} className="text-primary" /> Medication Tracking
-                    </h2>
-                    {summary.currentMedications.length > 0 && (
-                      <button
-                        onClick={() => {
-                          setPatientAgeForPrint(
-                            summary.dateOfBirth
-                              ? Math.floor(
-                                  (Date.now() - new Date(summary.dateOfBirth).getTime()) /
-                                    (365.25 * 24 * 60 * 60 * 1000)
-                                )
-                              : null
-                          );
-                          setShowPrescriptionPrint(true);
-                        }}
-                        className="text-sm font-semibold text-primary hover:underline"
-                      >
-                        Print Prescription
-                      </button>
-                    )}
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-semibold text-foreground/90 mb-2">Current Medications</p>
-                    {summary.currentMedications.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>Drug</th>
-                              <th>Dosage</th>
-                              <th>Route</th>
-                              <th>Frequency</th>
-                              <th>Priority</th>
-                              <th>Instructions</th>
-                              <th>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {summary.currentMedications.map((m) => (
-                              <tr key={m.medicationId}>
-                                <td className="font-semibold">
-                                  {m.drugName}
-                                  {m.isDiscontinued && (
-                                    <span
-                                      className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 align-middle"
-                                      title={m.discontinuedDate ? `Discontinued by health authority on ${new Date(m.discontinuedDate).toLocaleDateString()}` : "Discontinued by health authority"}
-                                    >
-                                      Discontinued
-                                    </span>
-                                  )}
-                                </td>
-                                <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
-                                <td>{m.route || "—"}</td>
-                                <td>{m.frequency || "—"}</td>
-                                <td>
-                                  {m.priority !== "Routine" ? (
-                                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${m.priority === "STAT" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
-                                      {m.priority}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">Routine</span>
-                                  )}
-                                </td>
-                                <td className="text-xs text-muted-foreground max-w-48 truncate">{m.instructions || "—"}</td>
-                                <td>
-                                  <div className="flex flex-col items-start gap-1">
-                                    <div className="flex items-center gap-3">
-                                      <button
-                                        onClick={() => discontinueMedication(m.medicationId)}
-                                        className="text-sm font-semibold text-red-600 hover:underline"
-                                      >
-                                        Discontinue
-                                      </button>
-                                      <button onClick={() => setEditingMedication(m)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
-                                        <Pencil size={13} />
-                                      </button>
-                                      <button onClick={() => removeMedication(m)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
-                                        <Trash2 size={13} />
-                                      </button>
-                                    </div>
-                                    {m.correctedFrom && (
-                                      <CorrectedFromNote>
-                                        <p>
-                                          Previous: {m.correctedFrom.drugName} ·{" "}
-                                          {m.correctedFrom.dosage
-                                            ? `${m.correctedFrom.dosage}${m.correctedFrom.dosageUnit ? ` ${m.correctedFrom.dosageUnit}` : ""}`
-                                            : "—"}{" "}
-                                          · {m.correctedFrom.frequency || "—"}
-                                          {m.correctedFrom.durationDays ? ` · ${m.correctedFrom.durationDays} days` : ""}
-                                          {m.correctedFrom.route ? ` · ${m.correctedFrom.route}` : ""}
-                                        </p>
-                                      </CorrectedFromNote>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No active medications.</p>
-                    )}
-                  </div>
-
-                  {summary.medicationHistory.length > 0 && (
-                    <div>
-                      <p className="text-sm font-semibold text-foreground/90 mb-2">Medication History</p>
-                      <div className="flex flex-col gap-1.5">
-                        {summary.medicationHistory.map((m) => (
-                          <div
-                            key={m.medicationId}
-                            className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                          <Pill size={18} className="text-primary" /> Medication Tracking
+                        </h2>
+                        {medTab === "current" && summary.currentMedications.length > 0 && (
+                          <button
+                            onClick={() => {
+                              setPatientAgeForPrint(
+                                summary.dateOfBirth
+                                  ? Math.floor(
+                                      (Date.now() - new Date(summary.dateOfBirth).getTime()) /
+                                        (365.25 * 24 * 60 * 60 * 1000)
+                                    )
+                                  : null
+                              );
+                              setShowPrescriptionPrint(true);
+                            }}
+                            className="text-sm font-semibold text-primary hover:underline"
                           >
-                            <span className="font-medium">{m.drugName}</span>
-                            <span className="text-muted-foreground text-xs">
-                              Ended {formatDate(m.endedAt)}
-                            </span>
-                          </div>
-                        ))}
+                            Print Prescription
+                          </button>
+                        )}
                       </div>
-                    </div>
-                  )}
 
+                      {/* Tabs */}
+                      <div className="flex border-b border-border">
+                        <button
+                          onClick={() => setMedTab("current")}
+                          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
+                            medTab === "current"
+                              ? "border-primary text-primary"
+                              : "border-transparent text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          Current Medications
+                          {summary.currentMedications.length > 0 && (
+                            <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
+                              {summary.currentMedications.length}
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setMedTab("history")}
+                          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
+                            medTab === "history"
+                              ? "border-primary text-primary"
+                              : "border-transparent text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          Medication History
+                          {summary.medicationHistory.length > 0 && (
+                            <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                              {summary.medicationHistory.length}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+
+                      {medTab === "current" && (
+                        <div>
+                          {summary.currentMedications.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th>Drug</th>
+                                    <th>Dosage</th>
+                                    <th>Route</th>
+                                    <th>Frequency</th>
+                                    <th>Priority</th>
+                                    <th>Instructions</th>
+                                    <th>Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {summary.currentMedications.map((m) => (
+                                    <tr key={m.medicationId}>
+                                      <td className="font-semibold">
+                                        {m.drugName}
+                                        {m.isDiscontinued && (
+                                          <span
+                                            className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 align-middle"
+                                            title={m.discontinuedDate ? `Discontinued by health authority on ${new Date(m.discontinuedDate).toLocaleDateString()}` : "Discontinued by health authority"}
+                                          >
+                                            Discontinued
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
+                                      <td>{m.route || "—"}</td>
+                                      <td>{m.frequency || "—"}</td>
+                                      <td>
+                                        {m.priority !== "Routine" ? (
+                                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${m.priority === "STAT" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                                            {m.priority}
+                                          </span>
+                                        ) : (
+                                          <span className="text-muted-foreground text-xs">Routine</span>
+                                        )}
+                                      </td>
+                                      <td className="text-xs text-muted-foreground max-w-48 truncate">{m.instructions || "—"}</td>
+                                      <td>
+                                        <div className="flex flex-col items-start gap-1">
+                                          <div className="flex items-center gap-3">
+                                            <button
+                                              onClick={() => discontinueMedication(m.medicationId)}
+                                              className="text-sm font-semibold text-red-600 hover:underline"
+                                            >
+                                              Discontinue
+                                            </button>
+                                            <button onClick={() => setEditingMedication(m)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                              <Pencil size={13} />
+                                            </button>
+                                            <button onClick={() => removeMedication(m)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                              <Trash2 size={13} />
+                                            </button>
+                                          </div>
+                                          {m.correctedFrom && (
+                                            <CorrectedFromNote>
+                                              <p>
+                                                Previous: {m.correctedFrom.drugName} ·{" "}
+                                                {m.correctedFrom.dosage
+                                                  ? `${m.correctedFrom.dosage}${m.correctedFrom.dosageUnit ? ` ${m.correctedFrom.dosageUnit}` : ""}`
+                                                  : "—"}{" "}
+                                                · {m.correctedFrom.frequency || "—"}
+                                                {m.correctedFrom.durationDays ? ` · ${m.correctedFrom.durationDays} days` : ""}
+                                                {m.correctedFrom.route ? ` · ${m.correctedFrom.route}` : ""}
+                                              </p>
+                                            </CorrectedFromNote>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No active medications.</p>
+                          )}
+                        </div>
+                      )}
+
+                      {medTab === "history" && (
+                        <div>
+                          {summary.medicationHistory.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th>Drug</th>
+                                    <th>Dosage</th>
+                                    <th>Route</th>
+                                    <th>Frequency</th>
+                                    <th>Duration</th>
+                                    <th>Ended</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {summary.medicationHistory.map((m) => (
+                                    <tr key={m.medicationId}>
+                                      <td className="font-semibold">{m.drugName}</td>
+                                      <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
+                                      <td>{m.route || "—"}</td>
+                                      <td>{m.frequency || "—"}</td>
+                                      <td>{m.durationDays ? `${m.durationDays} days` : "—"}</td>
+                                      <td className="text-xs text-muted-foreground">{m.endedAt ? formatDate(m.endedAt) : "—"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No medication history recorded.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                 </div>
 
                 <PatientMedicalFormsSection

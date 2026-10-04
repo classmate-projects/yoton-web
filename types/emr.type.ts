@@ -132,6 +132,8 @@ export interface EncounterType {
   rosHematologic: string | null;
   rosAllergicImmunologic: string | null;
   rosIntegumentary: string | null;
+  currentManagementPlan: string | null;
+  futureManagementPlan: string | null;
   status: string;
   createdAt: string;
   updatedAt: string | null;
@@ -302,6 +304,8 @@ export interface EncounterUpsertPayload {
   rosHematologic?: string;
   rosAllergicImmunologic?: string;
   rosIntegumentary?: string;
+  currentManagementPlan?: string;
+  futureManagementPlan?: string;
 }
 
 export interface ProposeEncounterCorrectionPayload {
@@ -325,6 +329,8 @@ export interface ProposeEncounterCorrectionPayload {
   rosHematologic?: string;
   rosAllergicImmunologic?: string;
   rosIntegumentary?: string;
+  currentManagementPlan?: string;
+  futureManagementPlan?: string;
 }
 
 export interface EncounterCorrectionType {
@@ -354,6 +360,8 @@ export interface EncounterCorrectionType {
   rosHematologic: string | null;
   rosAllergicImmunologic: string | null;
   rosIntegumentary: string | null;
+  currentManagementPlan: string | null;
+  futureManagementPlan: string | null;
   createdAt: string;
   resolvedAt: string | null;
 }
