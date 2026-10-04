@@ -30,8 +30,8 @@ export const EmrService = {
     const { data } = await api.get(ENDPOINTS.EMR.GET_DASHBOARD_SUMMARY(doctorId));
     return data;
   },
-  getTodaySchedule: async (doctorId?: string) => {
-    const { data } = await api.get(ENDPOINTS.EMR.GET_TODAY_SCHEDULE(doctorId));
+  getTodaySchedule: async (doctorId?: string, date?: string) => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_TODAY_SCHEDULE(doctorId, date));
     return data;
   },
   getActiveCases: async (doctorId?: string) => {

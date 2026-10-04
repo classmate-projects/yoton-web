@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -165,19 +165,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Messages",
         navLink: "/messages",
         icon: MessageCircle,
-        group: "User Modules"
-    },
-
-    // Daily attendance check-in/check-out (see AttendanceController) - a normal
-    // admin-grantable module like any other above, not a permanent exemption. Declared
-    // after every role-specific workbench for the same firstAllowedRoute() ordering reason
-    // as Doctors Availability/EMR/Messages: a role whose real home module is one of those
-    // should still land there after login, not here, if both happen to be granted.
-    {
-        id: 24,
-        name: "Check-in",
-        navLink: "/check-in",
-        icon: CheckCircle2,
         group: "User Modules"
     },
 

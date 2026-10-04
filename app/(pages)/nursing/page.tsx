@@ -48,6 +48,7 @@ import OrderedItemsList from "@/components/orders/OrderedItemsList";
 import TreatmentConfigModal from "@/components/orders/TreatmentConfigModal";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import EmrButton from "@/components/EmrButton";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
 import { TreatmentService } from "@/services/treatment.service";
@@ -2724,9 +2725,14 @@ function NurseWorkbenchInner() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-semibold text-sm text-foreground truncate">{p.patientName || "Unknown patient"}</p>
-                      <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 font-semibold shrink-0">
-                        {p.visitType === "WalkIn" ? "Walk-in" : "Appointment"}
-                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <EmrButton patientId={p.patientId} patientName={p.patientName} />
+                        </div>
+                        <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 font-semibold">
+                          {p.visitType === "WalkIn" ? "Walk-in" : "Appointment"}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between gap-2 mt-1">
                       <p className="text-xs text-muted-foreground">
@@ -2824,12 +2830,15 @@ function NurseWorkbenchInner() {
                             {formatVisitDate(p.lastAppointmentDate)}
                           </td>
                           <td>
-                            <button
-                              onClick={() => openPatient(p.opId)}
-                              className="text-sm font-semibold text-primary hover:underline"
-                            >
-                              Open Chart
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => openPatient(p.opId)}
+                                className="text-sm font-semibold text-primary hover:underline"
+                              >
+                                Open Chart
+                              </button>
+                              <EmrButton patientId={p.opId} patientName={p.name} />
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -2875,9 +2884,12 @@ function NurseWorkbenchInner() {
                           <p className="font-semibold text-sm text-foreground">{item.description}</p>
                           <p className="text-xs text-muted-foreground">{item.patientName || "Unknown patient"}</p>
                         </div>
-                        <span className="rounded-full bg-amber-100 text-amber-700 text-xs px-2 py-0.5 font-semibold shrink-0">
-                          {item.priority && item.priority !== "Normal" && item.priority !== "Routine" ? item.priority : item.itemType}
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <EmrButton patientId={item.patientId} patientName={item.patientName} />
+                          <span className="rounded-full bg-amber-100 text-amber-700 text-xs px-2 py-0.5 font-semibold">
+                            {item.priority && item.priority !== "Normal" && item.priority !== "Routine" ? item.priority : item.itemType}
+                          </span>
+                        </div>
                       </div>
                       {canEdit && item.itemType === "Task" && (
                         <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>

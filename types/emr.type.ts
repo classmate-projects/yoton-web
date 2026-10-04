@@ -249,6 +249,10 @@ export interface TodayScheduleItemType {
   patientName: string;
   appointmentDate: string;
   status: string;
+  isWalkIn: boolean;
+  visitId: string | null;
+  visitStatus: string | null;
+  checkedInAt: string | null;
 }
 
 export interface ActiveCaseItemType {

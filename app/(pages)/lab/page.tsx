@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { FlaskConical, Pencil, Settings, Trash2, Undo2 } from "lucide-react";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import EmrButton from "@/components/EmrButton";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
@@ -808,6 +809,7 @@ export default function LaboratoryPage() {
                           >
                             <Settings size={14} />
                           </button>
+                          <EmrButton patientId={r.patientId} patientName={r.patientName} />
                         </div>
                         {r.correctedFrom && (
                           <CorrectedFromNote>

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Pencil, Pill, Trash2 } from "lucide-react";
 import { MdAdd, MdWarning } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import EmrButton from "@/components/EmrButton";
 import DatePicker from "@/components/DatePicker";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
@@ -961,6 +962,7 @@ export default function PharmacyPage() {
                               ) : (
                                 <span className="text-xs text-muted-foreground">—</span>
                               )}
+                              <EmrButton patientId={rx.patientId} patientName={rx.patientName} />
                             </div>
                             {rx.correctedFrom && (
                               <CorrectedFromNote>

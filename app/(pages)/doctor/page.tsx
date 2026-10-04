@@ -116,6 +116,9 @@ function DoctorWorkbenchInner() {
 
   const [dashboard, setDashboard] = useState<DoctorDashboardSummaryType | null>(null);
   const [schedule, setSchedule] = useState<TodayScheduleItemType[]>([]);
+  const [scheduleDate, setScheduleDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
   const [activeCases, setActiveCases] = useState<ActiveCaseItemType[]>([]);
   const [patients, setPatients] = useState<EmrPatientListItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -179,12 +182,24 @@ function DoctorWorkbenchInner() {
   }, [checkedAuth, isAdmin]);
 
   // ---------------- WORKBENCH DATA ----------------
+  const loadSchedule = async (date: string) => {
+    try {
+      setIsLoadingSchedule(true);
+      const res = await EmrService.getTodaySchedule(doctorIdParam, date);
+      setSchedule(res.data || []);
+    } catch {
+      toast.error("Failed to load schedule");
+    } finally {
+      setIsLoadingSchedule(false);
+    }
+  };
+
   const fetchWorkbench = async () => {
     try {
       setIsLoadingWorkbench(true);
       const [dashboardRes, scheduleRes, activeCasesRes, patientsRes] = await Promise.all([
         EmrService.getDashboardSummary(doctorIdParam),
-        EmrService.getTodaySchedule(doctorIdParam),
+        EmrService.getTodaySchedule(doctorIdParam, scheduleDate),
         EmrService.getActiveCases(doctorIdParam),
         EmrService.getPatients(doctorIdParam),
       ]);
@@ -204,6 +219,26 @@ function DoctorWorkbenchInner() {
     fetchWorkbench();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, selectedDoctorId]);
+
+  useEffect(() => {
+    if (!checkedAuth || isLoadingWorkbench) return;
+    loadSchedule(scheduleDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleDate]);
+
+  useEffect(() => {
+    const id = setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  function formatWait(checkedInAt: string | null): string {
+    if (!checkedInAt) return "—";
+    const mins = Math.floor((scheduleNow - new Date(checkedInAt).getTime()) / 60_000);
+    if (mins < 1) return "< 1 min";
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m} min`;
+  }
 
   useSignalRRefetch(
     [
@@ -1201,12 +1236,18 @@ function DoctorWorkbenchInner() {
     );
   };
 
-  const filteredPatients = patients.filter(
-    (p) =>
-      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.opNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.opId?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredPatients = (() => {
+    const term = searchTerm.trim().toLowerCase();
+    const matched = term
+      ? patients.filter(
+          (p) =>
+            p.name?.toLowerCase().includes(term) ||
+            p.opNumber?.toLowerCase().includes(term) ||
+            p.opId?.toLowerCase().includes(term)
+        )
+      : patients.slice(0, 10);
+    return matched;
+  })();
 
   if (!checkedAuth) {
     return (
@@ -2628,45 +2669,87 @@ function DoctorWorkbenchInner() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 card p-6">
-              <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                <CalendarClock size={18} className="text-primary" /> Today&apos;s Schedule
-              </h2>
+              <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <CalendarClock size={18} className="text-primary" /> My Schedules
+                </h2>
+                <input
+                  type="date"
+                  value={scheduleDate}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                  className="h-9 px-3 text-sm rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:border-primary"
+                />
+              </div>
               <div className="overflow-x-auto">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Patient</th>
-                      <th>Time</th>
-                      <th>Status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {schedule.length > 0 ? (
-                      schedule.map((item) => (
-                        <tr key={item.appointmentId}>
-                          <td className="font-semibold">{item.patientName}</td>
-                          <td>{new Date(item.appointmentDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
-                          <td>{item.status}</td>
-                          <td>
-                            <button
-                              onClick={() => openPatient(item.patientId)}
-                              className="text-sm font-semibold text-primary hover:underline"
-                            >
-                              Open EMR
-                            </button>
+                {isLoadingSchedule ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">Loading…</p>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Patient</th>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Appt. Status</th>
+                        <th>Visit Status</th>
+                        <th>Waiting</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {schedule.length > 0 ? (
+                        schedule.map((item) => (
+                          <tr key={item.appointmentId}>
+                            <td className="font-semibold">{item.patientName}</td>
+                            <td className="whitespace-nowrap">{new Date(item.appointmentDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                            <td>
+                              {item.isWalkIn ? (
+                                <span className="inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold px-2 py-0.5">
+                                  Walk-in
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5">
+                                  Scheduled
+                                </span>
+                              )}
+                            </td>
+                            <td className="text-sm">{item.status}</td>
+                            <td className="text-sm">
+                              {item.visitStatus ? (
+                                <span className="text-green-600 dark:text-green-400 font-medium">{item.visitStatus.replace(/([A-Z])/g, " $1").trim()}</span>
+                              ) : (
+                                <span className="text-muted-foreground">Not arrived</span>
+                              )}
+                            </td>
+                            <td className="whitespace-nowrap font-mono text-sm">
+                              {item.checkedInAt ? (
+                                <span className={`${formatWait(item.checkedInAt) !== "—" && parseInt(formatWait(item.checkedInAt)) >= 30 ? "text-amber-600 dark:text-amber-400 font-semibold" : ""}`}>
+                                  {formatWait(item.checkedInAt)}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                            <td>
+                              <button
+                                onClick={() => openPatient(item.patientId)}
+                                className="text-sm font-semibold text-primary hover:underline"
+                              >
+                                Open EMR
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="text-center text-muted-foreground py-8">
+                            No appointments on this date.
                           </td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={4} className="text-center text-muted-foreground py-8">
-                          No appointments today.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
 
@@ -2694,15 +2777,20 @@ function DoctorWorkbenchInner() {
           </div>
 
           <div className="card p-6">
-            <div className="flex items-center justify-between mb-4 gap-4">
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Users size={18} className="text-primary" /> Patients
-              </h2>
+            <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Users size={18} className="text-primary" /> Patients
+                </h2>
+                {!searchTerm.trim() && (
+                  <span className="text-xs text-muted-foreground">Showing 10 most recent</span>
+                )}
+              </div>
               <div className="relative w-64">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Search by name or MRN..."
+                  placeholder="Search by name or MRN…"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full h-10 pl-9 text-sm"

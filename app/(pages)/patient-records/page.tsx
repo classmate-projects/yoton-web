@@ -6,7 +6,8 @@ import Link from "next/link";
 import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
 import { MdContacts, MdOutlinePersonAddAlt1, MdOutlineUploadFile, MdOutlineMailOutline, MdOutlineEdit } from "react-icons/md";
-import { CalendarDays, Clock, Loader2, Stethoscope, X } from "lucide-react";
+import { CalendarDays, Clock, ClipboardList, Loader2, Stethoscope, X } from "lucide-react";
+import PatientEmrModal from "@/components/PatientEmrModal";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -111,6 +112,9 @@ export default function PatientRecordsPage() {
   const [documentType, setDocumentType] = useState(DOCUMENT_TYPES[0]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // ---------------- EMR modal state ----------------
+  const [emrPatient, setEmrPatient] = useState<{ id: string; name: string } | null>(null);
 
   // ---------------- Cancel Visit modal state ----------------
   const [cancelVisitTarget, setCancelVisitTarget] = useState<VisitListItemType | null>(null);
@@ -652,6 +656,13 @@ export default function PatientRecordsPage() {
         title="Register Walk-in Visit"
       >
         <MdOutlinePersonAddAlt1 className="text-blue-600" size={18} />
+      </button>
+      <button
+        onClick={() => setEmrPatient({ id: patient.opId, name: patient.name })}
+        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
+        title="View EMR"
+      >
+        <ClipboardList className="text-blue-600" size={18} />
       </button>
       <button
         onClick={() => setUploadTarget(patient)}
@@ -1535,6 +1546,16 @@ export default function PatientRecordsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* EMR modal */}
+      {emrPatient && (
+        <PatientEmrModal
+          patientId={emrPatient.id}
+          patientName={emrPatient.name}
+          isOpen={!!emrPatient}
+          onClose={() => setEmrPatient(null)}
+        />
       )}
 
       {/* Cancel Visit — password confirmation modal */}

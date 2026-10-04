@@ -6,6 +6,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { MdPayment, MdAdd } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import EmrButton from "@/components/EmrButton";
 import { BillingService } from "@/services/billing.service";
 import { ReceptionService } from "@/services/reception.service";
 import { BillingSummaryType, BillType, ChargeableItemType } from "@/types/billing.type";
@@ -408,6 +409,7 @@ function BillingPageInner() {
                             Cancel
                           </button>
                         )}
+                        <EmrButton patientId={bill.patientId} patientName={bill.patientName} />
                       </div>
                     </td>
                   </tr>

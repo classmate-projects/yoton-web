@@ -75,6 +75,15 @@ export const ENDPOINTS = {
         RESEND_WELCOME_EMAIL: (patientId: string) => `/api/reception/${patientId}/resend-welcome-email`,
         GET_PENDING_REFERRALS: `/api/reception/referrals/pending`,
         REGISTER_FROM_REFERRAL: (referralId: string) => `/api/reception/referral/${referralId}/register`,
+        GET_PATIENT_EMR_CONSULTATIONS: (patientId: string, from?: string, to?: string) => {
+            const params = new URLSearchParams();
+            if (from) params.set("from", from);
+            if (to) params.set("to", to);
+            const qs = params.toString();
+            return `/api/reception/patient/${patientId}/emr/consultations${qs ? `?${qs}` : ""}`;
+        },
+        GET_PATIENT_EMR_ENCOUNTER: (patientId: string, encounterId: string) =>
+            `/api/reception/patient/${patientId}/emr/encounter/${encounterId}`,
     },
     ROLE: {
         GET: `/api/role/get-all`,
@@ -112,7 +121,7 @@ export const ENDPOINTS = {
         GET_PATIENT_SUMMARY: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_INSURANCE_COVERAGE: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/insurance-coverage${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_DASHBOARD_SUMMARY: (doctorId?: string) => `/api/emr/dashboard-summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
-        GET_TODAY_SCHEDULE: (doctorId?: string) => `/api/emr/schedule/today${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        GET_TODAY_SCHEDULE: (doctorId?: string, date?: string) => { const p = new URLSearchParams(); if (doctorId) p.set("doctorId", doctorId); if (date) p.set("date", date); const q = p.toString(); return `/api/emr/schedule/today${q ? `?${q}` : ""}`; },
         GET_ACTIVE_CASES: (doctorId?: string) => `/api/emr/active-cases${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPSERT_ENCOUNTER: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/encounter${doctorId ? `?doctorId=${doctorId}` : ""}`,
         FINISH_ENCOUNTER: (encounterId: string, doctorId?: string) => `/api/emr/encounter/${encounterId}/finish${doctorId ? `?doctorId=${doctorId}` : ""}`,

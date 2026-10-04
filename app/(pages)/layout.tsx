@@ -10,6 +10,8 @@ import BackButton from "@/components/BackButton";
 import AccessDenied from "@/components/AccessDenied";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
+import CheckInPromptModal from "@/components/CheckInPromptModal";
+import CheckInHeaderWidget from "@/components/CheckInHeaderWidget";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
@@ -39,8 +41,9 @@ const extraProtectedRoutes: ProtectedRoute[] = [
 
 // Settings and Confidential Notes are never part of the allow-list (see
 // helpers/sidebaritems.ts's comments on each) - Settings is always reachable, and
-// Confidential Notes has its own hardcoded nurse-only rule instead. Check-in is a normal
-// admin-grantable module like any other (see Role Management). User Management, Departments
+// Confidential Notes has its own hardcoded nurse-only rule instead. Check-in is now
+// mandatory for all users (header widget + daily popup) and no longer in the sidebar
+// or the allow-list system. User Management, Departments
 // & Staff, Configurable Lists and Reports are admin-only *by default* (backend's
 // ModuleKeys.AdminOnly - excluded from the Role Management checklist, see its comment) but
 // deliberately NOT hardcoded here the way /role-management and /user-registration above
@@ -106,6 +109,7 @@ export default function PageLayout({
   // rail), so this is inert there; on mobile the hamburger in the top bar opens
   // the off-canvas Sidebar and the Sidebar closes itself on navigation.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [showCheckInPrompt, setShowCheckInPrompt] = useState(false);
 
   // null = still checking, so we never flash a page the role can't see (or
   // bounce off the redirect target) before the check lands.
@@ -160,6 +164,20 @@ export default function PageLayout({
     return onUserDetailChange(checkAccess);
   }, [pathname, router]);
 
+  // Show check-in prompt once per calendar day for every user.
+  useEffect(() => {
+    if (status !== "allowed") return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem("yoton_checkin_prompt_date") !== today) {
+      setShowCheckInPrompt(true);
+    }
+  }, [status]);
+
+  const handleCheckInPromptClose = () => {
+    localStorage.setItem("yoton_checkin_prompt_date", new Date().toISOString().slice(0, 10));
+    setShowCheckInPrompt(false);
+  };
+
   if (status === "checking" || status === "redirecting") {
     return (
       <div className="flex min-h-screen w-full items-center justify-center">
@@ -184,13 +202,17 @@ export default function PageLayout({
           >
             <Menu className="h-6 w-6" />
           </button>
-          <Image src={logo} alt="Yoton" priority className="lg:hidden h-8 w-auto flex-1" />
+          <Image src={logo} alt="Yoton" priority className="lg:hidden h-8 w-auto" />
           <BackButton />
+          <CheckInHeaderWidget />
         </header>
         <div className="flex-1 min-w-0">
           {status === "denied" ? <AccessDenied /> : children}
         </div>
       </div>
+      {showCheckInPrompt && (
+        <CheckInPromptModal onClose={handleCheckInPromptClose} />
+      )}
       {warningSecondsLeft !== null && (
         <SessionTimeoutModal secondsLeft={warningSecondsLeft} onStayLoggedIn={stayLoggedIn} />
       )}

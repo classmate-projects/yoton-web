@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Pencil, ScanLine, Settings, Trash2, Undo2, X } from "lucide-react";
 import { MdAdd, MdOutlineFileUpload, MdOutlineImage } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import EmrButton from "@/components/EmrButton";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
@@ -689,6 +690,7 @@ export default function RadiologyPage() {
                           >
                             <Settings size={14} />
                           </button>
+                          <EmrButton patientId={r.patientId} patientName={r.patientName} />
                         </div>
                         {r.correctedFrom && (
                           <CorrectedFromNote>
