@@ -1,5 +1,6 @@
 import api from "@/lib/axios";
 import { ENDPOINTS } from "@/lib/endpoints";
+import { compressImageForUpload } from "@/lib/resizeImage";
 import {
   EncounterUpsertPayload,
   ChronicConditionPayload,
@@ -178,6 +179,17 @@ export const EmrService = {
   },
   markDocumentViewed: async (patientId: string, id: string) => {
     const { data } = await api.post(ENDPOINTS.EMR.MARK_DOCUMENT_VIEWED(patientId, id));
+    return data;
+  },
+  uploadDocument: async (patientId: string, payload: { documentType: string; file: File; visitId?: string }) => {
+    const compressedFile = await compressImageForUpload(payload.file);
+    const form = new FormData();
+    form.append("DocumentType", payload.documentType);
+    if (payload.visitId) form.append("VisitId", payload.visitId);
+    form.append("File", compressedFile);
+    const { data } = await api.post(ENDPOINTS.RECEPTION.UPLOAD_DOCUMENT(patientId), form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
     return data;
   },
   addConfidentialNote: async (patientId: string, payload: DoctorConfidentialNotePayload) => {

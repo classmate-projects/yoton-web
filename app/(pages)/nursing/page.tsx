@@ -35,7 +35,9 @@ import {
   Thermometer,
   Trash2,
   Undo2,
+  Upload,
   Users,
+  X,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { notifySaveStatus } from "@/lib/saveStatus";
@@ -51,6 +53,7 @@ import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import EmrButton from "@/components/EmrButton";
 import { EmrService } from "@/services/emr.service";
+import { backendAssetUrl } from "@/lib/backendAsset";
 import { NursingService } from "@/services/nursing.service";
 import { TreatmentService } from "@/services/treatment.service";
 import { UserService } from "@/services/user.service";
@@ -306,6 +309,16 @@ function NurseWorkbenchInner() {
   const [isLoadingChart, setIsLoadingChart] = useState(false);
   const [isEndingEncounter, setIsEndingEncounter] = useState(false);
 
+  // ---------------- DOCUMENTS ----------------
+  type DocumentItem = { patientDocumentId: string; documentType: string; filePath: string | null; viewedByNurse: boolean; createdAt: string };
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [unviewedDocumentCount, setUnviewedDocumentCount] = useState(0);
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [uploadDocFile, setUploadDocFile] = useState<File | null>(null);
+  const [uploadDocType, setUploadDocType] = useState("Report");
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
+
   // ---------------- TRIAGE FORM ----------------
   const [triageForm, setTriageForm] = useState<TriageFormState>(emptyTriageForm());
   // Which vitals are toggled "patient refused" - key present (even with an empty-string
@@ -434,6 +447,47 @@ function NurseWorkbenchInner() {
   // directly, so it needs to be able to pass it through explicitly instead. That's what
   // actually advances Visit.Status CheckedIn -> WithNurse (see EnsureActiveEncounter), which
   // is what makes that patient drop off the grid.
+  const fetchDocuments = async (patientId: string) => {
+    try {
+      const res = await EmrService.getDocuments(patientId);
+      setDocuments(res.data?.items || []);
+      setUnviewedDocumentCount(res.data?.unviewedCount || 0);
+    } catch {
+      setDocuments([]);
+      setUnviewedDocumentCount(0);
+    }
+  };
+
+  const markDocumentViewed = async (id: string) => {
+    if (!selectedPatientId) return;
+    try {
+      await EmrService.markDocumentViewed(selectedPatientId, id);
+      await fetchDocuments(selectedPatientId);
+    } catch {
+      // silently ignore
+    }
+  };
+
+  const handleUploadDocument = async () => {
+    if (!selectedPatientId || !uploadDocFile) return;
+    setIsUploadingDoc(true);
+    try {
+      await EmrService.uploadDocument(selectedPatientId, {
+        documentType: uploadDocType,
+        file: uploadDocFile,
+        visitId: currentVisitId ?? undefined,
+      });
+      toast.success("Document uploaded");
+      setUploadDocFile(null);
+      setUploadDocType("Report");
+      await fetchDocuments(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to upload document"));
+    } finally {
+      setIsUploadingDoc(false);
+    }
+  };
+
   const openPatient = async (patientId: string, visitId?: string) => {
     const resolvedVisitId = visitId ?? visitIdParam;
     setSelectedPatientId(patientId);
@@ -466,6 +520,7 @@ function NurseWorkbenchInner() {
       if (!canStartEncounter) {
         toast("Select a nurse to start recording for this patient.", { icon: "ℹ️" });
       }
+      fetchDocuments(patientId);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load patient chart"));
     } finally {
@@ -1657,6 +1712,31 @@ function NurseWorkbenchInner() {
                   ))}
                 </div>
               )}
+
+              {/* Documents button */}
+              <div className="flex items-center gap-2 pt-2 border-t border-border mt-1">
+                <button
+                  onClick={() => setShowDocumentsModal(true)}
+                  className={`relative flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    unviewedDocumentCount > 0
+                      ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                      : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <FileText size={13} />
+                  Patient Documents
+                  {documents.length > 0 && (
+                    <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                      unviewedDocumentCount > 0 ? "bg-blue-600 text-white" : "bg-muted-foreground/20 text-muted-foreground"
+                    }`}>
+                      {documents.length}
+                    </span>
+                  )}
+                  {unviewedDocumentCount > 0 && (
+                    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-blue-500 border-2 border-card" />
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Triage - the nurse's initial assessment for this encounter, at the top since
