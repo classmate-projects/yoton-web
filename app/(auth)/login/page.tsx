@@ -138,6 +138,9 @@ export default function LoginPage() {
           currencySymbol: data.body.currencySymbol,
           idleTimeoutMinutes: data.body.idleTimeoutMinutes,
           branchId: data.body.branchId,
+          departmentId: data.body.departmentId ?? null,
+          departmentName: data.body.departmentName ?? null,
+          staffCheckInRequired: data.body.staffCheckInRequired ?? false,
         }),
       );
 

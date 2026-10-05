@@ -9,12 +9,13 @@ import { dispatchAttendanceUpdate } from "@/components/CheckInHeaderWidget";
 
 interface CheckInPromptModalProps {
   onClose: () => void;
+  mandatory?: boolean;
 }
 
 const formatTime = (value: string | null) =>
   value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
 
-export default function CheckInPromptModal({ onClose }: CheckInPromptModalProps) {
+export default function CheckInPromptModal({ onClose, mandatory = false }: CheckInPromptModalProps) {
   const [today, setToday] = useState<AttendanceRecordType | null | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -45,16 +46,21 @@ export default function CheckInPromptModal({ onClose }: CheckInPromptModalProps)
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-2">
             <CheckCircle2 size={20} className="text-primary" />
-            <h2 className="text-lg font-semibold text-foreground">Daily Check-in</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              {mandatory && !today?.checkInAt ? "Check-in Required" : "Daily Check-in"}
+            </h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Dismiss"
-          >
-            <X size={18} />
-          </button>
+          {/* Hide dismiss X when check-in is mandatory and the user hasn't checked in yet */}
+          {(!mandatory || today?.checkInAt) && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Dismiss"
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
 
         {today === undefined ? (
@@ -79,7 +85,9 @@ export default function CheckInPromptModal({ onClose }: CheckInPromptModalProps)
         ) : (
           <div>
             <p className="text-sm text-muted-foreground mb-4">
-              You haven&apos;t checked in today. Would you like to check in now?
+              {mandatory
+                ? "Check-in is required before you can start your session today."
+                : "You haven’t checked in today. Would you like to check in now?"}
             </p>
             <div className="flex flex-col gap-2">
               <button
@@ -91,13 +99,16 @@ export default function CheckInPromptModal({ onClose }: CheckInPromptModalProps)
                 <LogIn size={16} />
                 {isSubmitting ? "Checking in…" : "Check In"}
               </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted"
-              >
-                Maybe Later
-              </button>
+              {/* Only show "Maybe Later" when check-in is not mandatory */}
+              {!mandatory && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted"
+                >
+                  Maybe Later
+                </button>
+              )}
             </div>
           </div>
         )}

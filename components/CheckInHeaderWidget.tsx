@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Clock, LogIn, LogOut } from "lucide-react";
 import { AttendanceService } from "@/services/attendance.service";
 import { AttendanceRecordType } from "@/types/attendance.type";
+import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
 
 export const ATTENDANCE_UPDATED_EVENT = "yoton:attendance-updated";
@@ -18,6 +19,7 @@ export default function CheckInHeaderWidget() {
   const [today, setToday] = useState<AttendanceRecordType | null | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmingCheckOut, setConfirmingCheckOut] = useState(false);
+  const [mandatory, setMandatory] = useState(false);
 
   const fetchToday = () => {
     AttendanceService.getToday()
@@ -25,10 +27,18 @@ export default function CheckInHeaderWidget() {
       .catch(() => setToday(null));
   };
 
+  const readMandatory = () =>
+    setMandatory(getUserDetail()?.staffCheckInRequired ?? false);
+
   useEffect(() => {
     fetchToday();
+    readMandatory();
     window.addEventListener(ATTENDANCE_UPDATED_EVENT, fetchToday);
-    return () => window.removeEventListener(ATTENDANCE_UPDATED_EVENT, fetchToday);
+    const cleanup = onUserDetailChange(readMandatory);
+    return () => {
+      window.removeEventListener(ATTENDANCE_UPDATED_EVENT, fetchToday);
+      cleanup();
+    };
   }, []);
 
   const handleCheckIn = async () => {
@@ -53,18 +63,32 @@ export default function CheckInHeaderWidget() {
 
   if (today === undefined) return null;
 
+  // When check-in is mandatory and the user hasn't checked in, wrap the button in a
+  // pulsing ring so it draws immediate attention without changing its core action.
+  const notCheckedIn = !today;
+  const showPulse = mandatory && notCheckedIn;
+
   return (
     <div className="flex items-center gap-2 shrink-0">
       {!today ? (
-        <button
-          type="button"
-          onClick={handleCheckIn}
-          disabled={isSubmitting}
-          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <LogIn size={13} />
-          {isSubmitting ? "…" : "Check In"}
-        </button>
+        <div className={showPulse ? "relative" : undefined}>
+          {showPulse && (
+            <span className="absolute inset-0 rounded-md animate-ping bg-amber-400/40 pointer-events-none" />
+          )}
+          <button
+            type="button"
+            onClick={handleCheckIn}
+            disabled={isSubmitting}
+            className={`relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 ${
+              showPulse
+                ? "bg-amber-500 text-white ring-2 ring-amber-400"
+                : "bg-primary text-primary-foreground"
+            }`}
+          >
+            <LogIn size={13} />
+            {isSubmitting ? "…" : "Check In"}
+          </button>
+        </div>
       ) : !today.checkOutAt ? (
         <div className="flex items-center gap-2">
           <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground">

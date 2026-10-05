@@ -16,7 +16,7 @@ import AutoSaveIndicator from "@/components/AutoSaveIndicator";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
 import { useSessionRevokedListener } from "@/hooks/useSessionRevokedListener";
-import { onUserDetailChange } from "@/lib/userDetail";
+import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { matchRoute, isRouteAllowed, getHomeRoute } from "@/lib/routeAccess";
 
 export default function PageLayout({
@@ -145,7 +145,10 @@ export default function PageLayout({
         </div>
       </div>
       {showCheckInPrompt && (
-        <CheckInPromptModal onClose={handleCheckInPromptClose} />
+        <CheckInPromptModal
+          onClose={handleCheckInPromptClose}
+          mandatory={getUserDetail()?.staffCheckInRequired ?? false}
+        />
       )}
       {warningSecondsLeft !== null && (
         <SessionTimeoutModal secondsLeft={warningSecondsLeft} onStayLoggedIn={stayLoggedIn} />
