@@ -9,7 +9,9 @@ export type ConfigListType =
   | "InsuranceProvider"
   | "DrugType"
   | "CancerSite"
-  | "Procedure";
+  | "Procedure"
+  | "FamilyRelation"
+  | "FamilyHistoryCondition";
 
 // "Lab" | "Radiology" | "Treatment" - which order type a ListType=Procedure catalog entry
 // creates when added to a patient's file. See Helpers/OrderCategoryHelper.cs.

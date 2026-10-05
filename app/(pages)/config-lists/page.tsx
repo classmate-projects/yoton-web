@@ -33,6 +33,8 @@ const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
   { value: "InsuranceProvider", label: "Insurance Provider", hint: "Selectable at patient registration when Payment Type is Insurance or Corporate" },
   { value: "DrugType", label: "Drug Type", hint: "Tablet, Syrup, Injection, Cream — selectable when prescribing on the doctor workbench" },
   { value: "CancerSite", label: "Cancer Site", hint: "Selectable on an urgent suspected-cancer referral in the doctor workbench" },
+  { value: "FamilyRelation", label: "Family History - Relation", hint: "The \"Relation\" dropdown on the Family History section (doctor and nurse workbenches) - e.g. Father, Mother, Sibling" },
+  { value: "FamilyHistoryCondition", label: "Family History - Condition", hint: "The \"History\" dropdown on the Family History section (doctor and nurse workbenches) - the condition recorded against that relative" },
 ];
 
 export default function ConfigListsPage() {

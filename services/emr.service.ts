@@ -5,6 +5,7 @@ import {
   EncounterUpsertPayload,
   ChronicConditionPayload,
   AllergyPayload,
+  FamilyHistoryPayload,
   MedicationPayload,
   ReferralPayload,
   DentalVisitExtraPayload,
@@ -121,6 +122,18 @@ export const EmrService = {
   },
   removeAllergy: async (patientAllergyId: string, doctorId?: string) => {
     const { data } = await api.delete(ENDPOINTS.EMR.REMOVE_ALLERGY(patientAllergyId, doctorId));
+    return data;
+  },
+  addFamilyHistory: async (patientId: string, payload: FamilyHistoryPayload, doctorId?: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.ADD_FAMILY_HISTORY(patientId, doctorId), payload);
+    return data;
+  },
+  updateFamilyHistory: async (familyHistoryId: string, payload: FamilyHistoryPayload, doctorId?: string) => {
+    const { data } = await api.put(ENDPOINTS.EMR.UPDATE_FAMILY_HISTORY(familyHistoryId, doctorId), payload);
+    return data;
+  },
+  removeFamilyHistory: async (familyHistoryId: string, doctorId?: string) => {
+    const { data } = await api.delete(ENDPOINTS.EMR.REMOVE_FAMILY_HISTORY(familyHistoryId, doctorId));
     return data;
   },
   addMedication: async (patientId: string, payload: MedicationPayload, doctorId?: string) => {

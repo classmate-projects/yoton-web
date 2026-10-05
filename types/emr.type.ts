@@ -49,6 +49,18 @@ export interface AllergyType {
   correctedFrom: AllergyType | null;
 }
 
+export interface FamilyHistoryType {
+  familyHistoryId: string;
+  relation: string;
+  history: string;
+  status: string | null;
+  remarks: string | null;
+  recordedByName: string | null;
+  createdAt: string;
+  correctedFromId: string | null;
+  correctedFrom: FamilyHistoryType | null;
+}
+
 export interface TaperingStepType {
   medicationTaperingStepId: string;
   stepOrder: number;
@@ -228,6 +240,7 @@ export interface PatientSummaryType {
   pastTreatmentHistory: string | null;
   chronicConditions: ChronicConditionType[];
   allergies: AllergyType[];
+  familyHistory: FamilyHistoryType[];
   currentMedications: MedicationType[];
   medicationHistory: MedicationType[];
   latestEncounter: EncounterType | null;
@@ -397,6 +410,13 @@ export interface AllergyPayload {
   allergyCategory?: string;
   severity?: string;
   identifiedDate?: string;
+  status?: string;
+  remarks?: string;
+}
+
+export interface FamilyHistoryPayload {
+  relation: string;
+  history: string;
   status?: string;
   remarks?: string;
 }

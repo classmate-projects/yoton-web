@@ -55,6 +55,7 @@ import FloatingSaveRevertBar from "@/components/FloatingSaveRevertBar";
 import ToggleButton from "@/components/ToggleButton";
 import VitalsHistoryModal from "@/components/VitalsHistoryModal";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
+import FamilyHistorySection from "@/components/FamilyHistorySection";
 import DentalChartSection from "@/components/dental/DentalChartSection";
 import { getUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
@@ -1788,6 +1789,14 @@ function DoctorWorkbenchInner() {
                 <p className="text-xs text-muted-foreground mt-2">Saving…</p>
               )}
             </div>
+
+            <FamilyHistorySection
+              patientId={selectedPatientId}
+              familyHistory={summary.familyHistory}
+              doctorId={doctorIdParam}
+              requireAttribution={requireDoctorSelected}
+              onSaved={async () => { await fetchSummary(selectedPatientId); }}
+            />
 
             {/* Latest Vitals — merged from Triage (nurse's intake reading) and VitalsRecord
                 (nurse's ongoing readings), read-only here so the doctor has it in view while

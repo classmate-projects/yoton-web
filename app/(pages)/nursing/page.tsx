@@ -48,6 +48,7 @@ import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
+import FamilyHistorySection from "@/components/FamilyHistorySection";
 import PatientMedicalFormsSection from "@/components/medicalForms/PatientMedicalFormsSection";
 import OrderedItemsList from "@/components/orders/OrderedItemsList";
 import TreatmentConfigModal from "@/components/orders/TreatmentConfigModal";
@@ -836,6 +837,9 @@ function NurseWorkbenchInner() {
   // linked row - so this only changes which endpoint saveVitals calls, not what it sends.
   const [editingVitalsId, setEditingVitalsId] = useState<string | null>(null);
   const [vitalsView, setVitalsView] = useState<"table" | "trend">("table");
+  // Read-only mirror of the doctor workbench's Medication Tracking tabs - nurses can see
+  // current and past medications here but add/correct/discontinue stays doctor-only.
+  const [medHistoryTab, setMedHistoryTab] = useState<"current" | "history">("current");
   // Which TREND_METRICS keys are currently plotted - multi-select via checkboxes (see the
   // Trend view below) rather than TrendChart's old one-metric-at-a-time dropdown, each its
   // own colored line on one shared chart. Starts with every metric checked.
@@ -1814,7 +1818,174 @@ function NurseWorkbenchInner() {
                   ))}
                 </div>
               )}
+
+              {/* Medical History - read-only here; only the doctor workbench can edit it
+                  (EmrController.UpdateMedicalHistory is doctor/admin-only). Always shown,
+                  not gated on having data (unlike allergies/remarks above), so the section
+                  itself is never mistaken for missing - an empty record just reads "—". */}
+              <div className="mt-3 pt-3 border-t border-border">
+                <div className="flex items-center gap-2 mb-2">
+                  <ClipboardList size={16} className="text-primary shrink-0" />
+                  <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Medical History
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-0.5">Past Medical History</p>
+                    <p className="text-sm text-foreground whitespace-pre-wrap">
+                      {summary.pastMedicalHistory || <span className="text-muted-foreground italic">No past medical history</span>}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-0.5">Past Surgical History</p>
+                    <p className="text-sm text-foreground whitespace-pre-wrap">
+                      {summary.pastSurgicalHistory || <span className="text-muted-foreground italic">No past surgical history</span>}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* Medication History - read-only mirror of the doctor workbench's Medication
+                Tracking panel (current + past meds), placed right after Medical History
+                above. Actually administering a dose is a separate, always-visible action
+                further down ("Prescribed Medications") - this is reference only, so no
+                add/correct/discontinue controls here. */}
+            <div className="card p-6 flex flex-col gap-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Pill size={18} className="text-primary" /> Medication History
+              </h2>
+
+              <div className="flex border-b border-border">
+                <button
+                  onClick={() => setMedHistoryTab("current")}
+                  className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
+                    medHistoryTab === "current"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Current Medications
+                  {summary.currentMedications.length > 0 && (
+                    <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
+                      {summary.currentMedications.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setMedHistoryTab("history")}
+                  className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
+                    medHistoryTab === "history"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Medication History
+                  {summary.medicationHistory.length > 0 && (
+                    <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                      {summary.medicationHistory.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {medHistoryTab === "current" && (
+                <div>
+                  {summary.currentMedications.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Drug</th>
+                            <th>Dosage</th>
+                            <th>Route</th>
+                            <th>Frequency</th>
+                            <th>Priority</th>
+                            <th>Instructions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {summary.currentMedications.map((m) => (
+                            <tr key={m.medicationId}>
+                              <td className="font-semibold">
+                                {m.drugName}
+                                {m.isHighRisk && (
+                                  <span className="ml-2 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive align-middle">
+                                    High-risk
+                                  </span>
+                                )}
+                              </td>
+                              <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
+                              <td>{m.route || "—"}</td>
+                              <td>{m.frequency || "—"}</td>
+                              <td>
+                                {m.priority !== "Routine" ? (
+                                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${m.priority === "STAT" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                                    {m.priority}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">Routine</span>
+                                )}
+                              </td>
+                              <td className="text-xs text-muted-foreground max-w-48 truncate">{m.instructions || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No active medications.</p>
+                  )}
+                </div>
+              )}
+
+              {medHistoryTab === "history" && (
+                <div>
+                  {summary.medicationHistory.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Drug</th>
+                            <th>Dosage</th>
+                            <th>Route</th>
+                            <th>Frequency</th>
+                            <th>Duration</th>
+                            <th>Ended</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {summary.medicationHistory.map((m) => (
+                            <tr key={m.medicationId}>
+                              <td className="font-semibold">{m.drugName}</td>
+                              <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
+                              <td>{m.route || "—"}</td>
+                              <td>{m.frequency || "—"}</td>
+                              <td>{m.durationDays ? `${m.durationDays} days` : "—"}</td>
+                              <td className="text-xs text-muted-foreground">{m.endedAt ? formatDate(m.endedAt) : "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No medication history recorded.</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <FamilyHistorySection
+              patientId={selectedPatientId}
+              familyHistory={summary.familyHistory}
+              doctorId={isAdmin ? selectedDoctorId : undefined}
+              requireAttribution={requireDoctorSelectedForAllergy}
+              onSaved={async () => {
+                const res = await EmrService.getPatientSummary(selectedPatientId);
+                setSummary(res.data);
+              }}
+            />
 
             {/* Triage - the nurse's initial assessment for this encounter, at the top since
                 it's normally the first thing recorded for a newly arrived patient. Upserted
@@ -2068,21 +2239,6 @@ function NurseWorkbenchInner() {
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">None recorded.</p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground/90 mb-2">Current Medications</p>
-                  {summary.currentMedications.length > 0 ? (
-                    <div className="flex flex-col gap-1.5">
-                      {summary.currentMedications.map((m) => (
-                        <div key={m.medicationId} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
-                          <span className="font-medium">{m.drugName}</span>
-                          <span className="text-xs text-muted-foreground ml-2">{m.dosage} {m.frequency}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No active prescriptions.</p>
                   )}
                 </div>
               </div>
@@ -3469,162 +3625,6 @@ function NurseWorkbenchInner() {
         />
       )}
 
-      {/* Patient Documents modal */}
-      {showDocumentsModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-card w-full max-w-2xl rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden max-h-[85vh]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <FileText size={18} className="text-primary" /> Patient Documents
-                {documents.length > 0 && (
-                  <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                    {documents.length}
-                  </span>
-                )}
-              </h2>
-              <button onClick={() => setShowDocumentsModal(false)} className="p-1.5 rounded-full hover:bg-muted text-muted-foreground transition-colors">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="overflow-y-auto flex-1 p-5">
-              {documents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
-                  <FileText size={32} className="opacity-30" />
-                  <p className="text-sm">No documents attached to this patient yet.</p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {documents.map((d) => {
-                    const fileUrl = backendAssetUrl(d.filePath);
-                    const ext = d.filePath?.split(".").pop()?.toLowerCase() ?? "";
-                    const isImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
-                    const isPdf = ext === "pdf";
-                    return (
-                      <div key={d.patientDocumentId} className="flex flex-col gap-2">
-                        <div
-                          className={`rounded-lg border px-4 py-3 flex items-center justify-between gap-3 transition-colors ${
-                            !d.viewedByNurse
-                              ? "border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20"
-                              : "border-border bg-muted/20"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold uppercase ${
-                              isPdf ? "bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400" :
-                              isImage ? "bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400" :
-                              "bg-muted text-muted-foreground"
-                            }`}>
-                              {isPdf ? "PDF" : isImage ? "IMG" : ext.toUpperCase() || "?"}
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-foreground truncate">{d.documentType}</p>
-                              <p className="text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</p>
-                            </div>
-                            {!d.viewedByNurse && (
-                              <span className="shrink-0 rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white">NEW</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {fileUrl ? (
-                              <>
-                                {isImage && (
-                                  <button
-                                    onClick={() => {
-                                      setPreviewDocUrl(previewDocUrl === fileUrl ? null : fileUrl);
-                                      if (!d.viewedByNurse) markDocumentViewed(d.patientDocumentId);
-                                    }}
-                                    className="flex items-center gap-1 rounded-lg bg-primary/10 hover:bg-primary/20 px-3 py-1.5 text-xs font-semibold text-primary transition-colors"
-                                  >
-                                    {previewDocUrl === fileUrl ? "Hide" : "Preview"}
-                                  </button>
-                                )}
-                                <a
-                                  href={fileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={async () => { if (!d.viewedByNurse) await markDocumentViewed(d.patientDocumentId); }}
-                                  className="flex items-center gap-1 rounded-lg bg-primary/10 hover:bg-primary/20 px-3 py-1.5 text-xs font-semibold text-primary transition-colors"
-                                >
-                                  View
-                                </a>
-                                <a
-                                  href={fileUrl}
-                                  download
-                                  onClick={async () => { if (!d.viewedByNurse) await markDocumentViewed(d.patientDocumentId); }}
-                                  className="flex items-center gap-1 rounded-lg border border-border hover:bg-muted px-3 py-1.5 text-xs font-semibold text-foreground transition-colors"
-                                >
-                                  Download
-                                </a>
-                              </>
-                            ) : (
-                              !d.viewedByNurse && (
-                                <button onClick={() => markDocumentViewed(d.patientDocumentId)} className="text-xs font-semibold text-primary hover:underline">
-                                  Mark reviewed
-                                </button>
-                              )
-                            )}
-                          </div>
-                        </div>
-                        {isImage && fileUrl && previewDocUrl === fileUrl && (
-                          <div className="rounded-lg overflow-hidden border border-border bg-muted/30 flex items-center justify-center">
-                            <img src={fileUrl} alt={d.documentType} className="max-h-96 w-full object-contain" />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Upload section */}
-            <div className="px-5 py-4 border-t border-border flex flex-col gap-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Upload size={12} /> Attach Document
-              </p>
-              <div className="flex flex-wrap gap-2 items-end">
-                <select
-                  value={uploadDocType}
-                  onChange={(e) => setUploadDocType(e.target.value)}
-                  className="h-9 text-sm min-w-32"
-                >
-                  <option>Report</option>
-                  <option>Lab Result</option>
-                  <option>Radiology Image</option>
-                  <option>Prescription</option>
-                  <option>Referral Letter</option>
-                  <option>Insurance</option>
-                  <option>Other</option>
-                </select>
-                <label className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted cursor-pointer transition-colors">
-                  <Upload size={13} />
-                  {uploadDocFile ? uploadDocFile.name : "Choose file"}
-                  <input type="file" className="hidden" accept="image/*,.pdf" onChange={(e) => setUploadDocFile(e.target.files?.[0] ?? null)} />
-                </label>
-                {uploadDocFile && (
-                  <button
-                    onClick={handleUploadDocument}
-                    disabled={isUploadingDoc}
-                    className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                  >
-                    {isUploadingDoc ? "Uploading…" : "Upload"}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="px-5 py-3 border-t border-border flex justify-end">
-              <button
-                onClick={() => setShowDocumentsModal(false)}
-                className="rounded-lg border border-border px-5 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
