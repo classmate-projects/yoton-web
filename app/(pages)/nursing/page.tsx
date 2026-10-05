@@ -2096,33 +2096,45 @@ function NurseWorkbenchInner() {
                   <>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       <div className="flex items-center gap-1 col-span-2 sm:col-span-1">
-                        <input type="number" placeholder="Sys" value={vitalsForm.systolic} onChange={(e) => setVitalsForm((p) => ({ ...p, systolic: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" min="0" placeholder="Sys" value={vitalsForm.systolic} onChange={(e) => setVitalsForm((p) => ({ ...p, systolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">/</span>
-                        <input type="number" placeholder="Dia" value={vitalsForm.diastolic} onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" min="0" placeholder="Dia" value={vitalsForm.diastolic} onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">mmHg</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" placeholder="Pulse" value={vitalsForm.heartRate} onChange={(e) => setVitalsForm((p) => ({ ...p, heartRate: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" min="0" placeholder="Pulse" value={vitalsForm.heartRate} onChange={(e) => setVitalsForm((p) => ({ ...p, heartRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">bpm</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" step="0.1" placeholder="Temp" value={vitalsForm.temperature} onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" step="0.1" min="0" placeholder="Temp" value={vitalsForm.temperature} onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">°C</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" placeholder="Resp Rate" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm((p) => ({ ...p, respiratoryRate: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" min="0" placeholder="Resp Rate" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm((p) => ({ ...p, respiratoryRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">br/min</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" placeholder="SpO2" value={vitalsForm.oxygenSaturation} onChange={(e) => setVitalsForm((p) => ({ ...p, oxygenSaturation: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          placeholder="SpO2"
+                          value={vitalsForm.oxygenSaturation}
+                          onChange={(e) => {
+                            let v = e.target.value.replace(/-/g, "");
+                            if (v !== "" && Number(v) > 100) v = "100";
+                            setVitalsForm((p) => ({ ...p, oxygenSaturation: v }));
+                          }}
+                          className="h-10 text-sm w-full"
+                        />
                         <span className="text-xs text-muted-foreground shrink-0">%</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" step="0.1" placeholder="Height" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm((p) => ({ ...p, heightCm: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" step="0.1" min="0" placeholder="Height" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm((p) => ({ ...p, heightCm: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">cm</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" step="0.1" placeholder="Weight" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm((p) => ({ ...p, weightKg: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" step="0.1" min="0" placeholder="Weight" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm((p) => ({ ...p, weightKg: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">kg</span>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -2441,7 +2453,7 @@ function NurseWorkbenchInner() {
                 {canEdit && (
                   <>
                     <div className="grid grid-cols-2 gap-3">
-                      <input type="number" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value }))} className="h-10 text-sm" />
+                      <input type="number" min="0" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
                       <select value={sugarForm.type} onChange={(e) => setSugarForm((p) => ({ ...p, type: e.target.value }))} className="h-10 text-sm">
                         <option>Random</option>
                         <option>Fasting</option>
@@ -2493,8 +2505,8 @@ function NurseWorkbenchInner() {
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <input type="text" placeholder="Fluid type (e.g. Normal Saline)" value={ivForm.fluidType} onChange={(e) => setIvForm((p) => ({ ...p, fluidType: e.target.value }))} className="h-10 text-sm sm:col-span-1" />
-                      <input type="number" placeholder="Volume (ml)" value={ivForm.volume} onChange={(e) => setIvForm((p) => ({ ...p, volume: e.target.value }))} className="h-10 text-sm" />
-                      <input type="number" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value }))} className="h-10 text-sm" />
+                      <input type="number" min="0" placeholder="Volume (ml)" value={ivForm.volume} onChange={(e) => setIvForm((p) => ({ ...p, volume: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
+                      <input type="number" min="0" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
                     </div>
                     <textarea placeholder="Notes..." value={ivForm.notes} onChange={(e) => setIvForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
                     <div className="flex items-center gap-3">
