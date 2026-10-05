@@ -29,6 +29,10 @@ export interface CurrentUserDetail {
     // never assigned a branch, or a company with no non-main branches. Used to default the
     // Branch filter on User Management to "my branch" and to highlight it in Settings.
     branchId?: string | null;
+    // Admin-configurable in Settings >> Company Settings. When true the check-in button
+    // pulses until the user checks in and the daily prompt cannot be dismissed without
+    // checking in. Absent/false means check-in is optional.
+    staffCheckInRequired?: boolean;
 }
 
 export interface UserType {

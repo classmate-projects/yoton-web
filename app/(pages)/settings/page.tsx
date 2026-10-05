@@ -70,6 +70,8 @@ interface MeResponse {
   companyEclaimlinkUsername: string | null;
   companyEclaimlinkPasswordSet: boolean;
   branchId: string | null;
+  staffCheckInRequired: boolean;
+  eodAutoCheckOutTime: string | null;
 }
 
 // Each tile on the landing grid drills into one settings category. Adding a new
@@ -119,6 +121,11 @@ export default function SettingsPage() {
 
   const [idleTimeoutInput, setIdleTimeoutInput] = useState("15");
   const idleTimeoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [staffCheckInRequired, setStaffCheckInRequired] = useState(false);
+  const [savingCheckInRequired, setSavingCheckInRequired] = useState(false);
+  const [eodAutoCheckOutInput, setEodAutoCheckOutInput] = useState("");
+  const eodAutoCheckOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [includeLoginCredentials, setIncludeLoginCredentials] = useState(true);
   const [savingPatientEmailMode, setSavingPatientEmailMode] = useState(false);
@@ -181,6 +188,8 @@ export default function SettingsPage() {
         setPediatricMaxAgeInput(String(data.pediatricMaxAgeYears ?? 18));
         setGeriatricMinAgeInput(String(data.geriatricMinAgeYears ?? 65));
         setIdleTimeoutInput(String(data.idleTimeoutMinutes ?? 15));
+        setStaffCheckInRequired(data.staffCheckInRequired ?? false);
+        setEodAutoCheckOutInput(data.eodAutoCheckOutTime ?? "");
         setIncludeLoginCredentials(data.includeLoginCredentialsInPatientEmail ?? true);
         setCredentialsSubject(data.patientEmailCredentialsSubject || "");
         setCredentialsBody(data.patientEmailCredentialsBody || "");
@@ -388,6 +397,46 @@ export default function SettingsPage() {
       } catch {
         notifySaveStatus("error");
         toast.error("Failed to update idle timeout");
+      }
+    }, 800);
+  };
+
+  const handleStaffCheckInRequiredToggle = async (checked: boolean) => {
+    if (!me) return;
+    const previous = staffCheckInRequired;
+    setStaffCheckInRequired(checked);
+    setSavingCheckInRequired(true);
+    try {
+      const data = await CompanyService.updateSettings({ staffCheckInRequired: checked });
+      setMe((prev) =>
+        prev ? { ...prev, staffCheckInRequired: data.staffCheckInRequired } : prev
+      );
+      patchUserDetail({ staffCheckInRequired: data.staffCheckInRequired });
+      toast.success(checked ? "Check-in is now required for all staff" : "Check-in requirement removed");
+    } catch {
+      setStaffCheckInRequired(previous);
+      toast.error("Failed to update check-in setting");
+    } finally {
+      setSavingCheckInRequired(false);
+    }
+  };
+
+  const handleEodAutoCheckOutChange = (raw: string) => {
+    setEodAutoCheckOutInput(raw);
+    if (!me) return;
+    if (eodAutoCheckOutTimer.current) clearTimeout(eodAutoCheckOutTimer.current);
+    notifySaveStatus("saving");
+    eodAutoCheckOutTimer.current = setTimeout(async () => {
+      try {
+        // Send "" to clear (if input is empty), or the time string to set.
+        const data = await CompanyService.updateSettings({ eodAutoCheckOutTime: raw.trim() });
+        setMe((prev) =>
+          prev ? { ...prev, eodAutoCheckOutTime: data.eodAutoCheckOutTime ?? null } : prev
+        );
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+        toast.error("Failed to update auto check-out time");
       }
     }, 800);
   };
@@ -1082,6 +1131,53 @@ export default function SettingsPage() {
                   min
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* Staff check-in */}
+          <div className="bg-card border border-border rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-foreground mb-1">Staff check-in</h2>
+            <p className="text-sm text-muted-foreground mb-5">
+              When enabled, every staff member sees a highlighted check-in button until
+              they check in for the day, and the daily check-in prompt cannot be dismissed
+              without checking in.
+            </p>
+            <div className="flex items-center justify-between gap-4 mb-5">
+              <div>
+                <p className="text-sm font-medium text-foreground">Require daily check-in</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Check-in button pulses amber until the staff member checks in
+                </p>
+              </div>
+              <ToggleButton
+                checked={staffCheckInRequired}
+                onChange={handleStaffCheckInRequiredToggle}
+                disabled={savingCheckInRequired}
+              />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground mb-1.5">
+                End-of-day auto check-out
+              </p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Staff who haven&apos;t checked out by this time (UTC) are automatically
+                checked out. Leave empty to disable auto check-out.
+              </p>
+              <input
+                type="time"
+                value={eodAutoCheckOutInput}
+                onChange={(e) => handleEodAutoCheckOutChange(e.target.value)}
+                className="w-36 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+              />
+              {eodAutoCheckOutInput && (
+                <button
+                  type="button"
+                  onClick={() => handleEodAutoCheckOutChange("")}
+                  className="ml-3 text-xs text-muted-foreground hover:text-foreground underline"
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
 

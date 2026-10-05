@@ -27,6 +27,7 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import { ReceptionService } from "@/services/reception.service";
+import { AuthService } from "@/services/auth.service";
 import { ChatService } from "@/services/chat.service";
 import { getChatConnection } from "@/lib/chatSignalR";
 import {
@@ -149,6 +150,16 @@ export default function Appointments() {
     DoctorDaySlotsType["slots"][number] | null
   >(null);
 
+  // ---------------- Department filter (defaults to user's assigned department) ----------------
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("all");
+
+  useEffect(() => {
+    AuthService.getMe().then((data) => {
+      const deptId: string | null = data?.departmentId ?? null;
+      if (deptId) setSelectedDeptFilter(deptId);
+    }).catch(() => {});
+  }, []);
+
   // ---------------- Book Appointment modals ----------------
   const [showBookModal, setShowBookModal] = useState(false);
   const [bookModalDeptFilter, setBookModalDeptFilter] = useState("all");
@@ -196,6 +207,7 @@ export default function Appointments() {
     patientNationalId: string | null;
     patientOpNumber: string | null;
     doctorId: string | null;
+    departmentId: string | null;
     doctorName: string | null;
     specializationName: string | null;
     notes: string | null;
@@ -1032,6 +1044,21 @@ export default function Appointments() {
             </p>
           </div>
 
+          {bookModalDepts.length > 0 && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Department</label>
+              <select
+                value={selectedDeptFilter}
+                onChange={(e) => setSelectedDeptFilter(e.target.value)}
+                className="h-10 rounded-xl border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:border-primary"
+              >
+                <option value="all">All departments</option>
+                {bookModalDepts.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -1249,16 +1276,19 @@ export default function Appointments() {
           ) : todayAppointmentQueue.length === 0 ? (
             <p className="text-sm text-muted-foreground">No appointments booked for today.</p>
           ) : (() => {
+            const byDept = selectedDeptFilter === "all"
+              ? todayAppointmentQueue
+              : todayAppointmentQueue.filter((a) => a.departmentId === selectedDeptFilter);
             const term = appointmentQueueSearch.trim().toLowerCase();
             const filtered = term
-              ? todayAppointmentQueue.filter(
+              ? byDept.filter(
                   (a) =>
                     a.patientName?.toLowerCase().includes(term) ||
                     a.patientOpNumber?.toLowerCase().includes(term) ||
                     a.patientPhone?.toLowerCase().includes(term) ||
                     a.patientNationalId?.toLowerCase().includes(term)
                 )
-              : todayAppointmentQueue;
+              : byDept;
             if (filtered.length === 0)
               return <p className="text-sm text-muted-foreground">No results match your search.</p>;
             return (
@@ -1379,15 +1409,18 @@ export default function Appointments() {
             <p className="text-sm text-muted-foreground">No scheduled appointments for this date.</p>
           ) : (() => {
             const term = registrationSearch.trim().toLowerCase();
+            const byDept = selectedDeptFilter === "all"
+              ? scheduledAppointments
+              : scheduledAppointments.filter((a) => a.departmentId === selectedDeptFilter);
             const filtered = term
-              ? scheduledAppointments.filter(
+              ? byDept.filter(
                   (a) =>
                     a.patientName?.toLowerCase().includes(term) ||
                     a.doctorName?.toLowerCase().includes(term) ||
                     a.specializationName?.toLowerCase().includes(term) ||
                     a.patientOpNumber?.toLowerCase().includes(term)
                 )
-              : scheduledAppointments;
+              : byDept;
             if (filtered.length === 0)
               return <p className="text-sm text-muted-foreground">No results match your search.</p>;
             return (

@@ -35,6 +35,9 @@ export const CompanyService = {
         facilityId?: string;
         eclaimlinkUsername?: string;
         eclaimlinkPassword?: string;
+        staffCheckInRequired?: boolean;
+        // "" clears the EOD auto-checkout; "HH:mm" sets it; omit to leave unchanged.
+        eodAutoCheckOutTime?: string;
     }) => {
         const { data } = await api.put(ENDPOINTS.COMPANY.UPDATE_SETTINGS, payload);
         return data;
