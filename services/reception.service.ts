@@ -92,6 +92,16 @@ export const ReceptionService = {
         })
         return data;
     },
+    overlapAppointment: async (payload: Pick<CreateAppointmentPayload, "patientId" | "doctorId" | "appointmentDate" | "notes" | "userId">) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.OVERLAP_APPOINTMENT, {
+            PatientId: payload.patientId,
+            DoctorId: payload.doctorId,
+            AppointmentDate: payload.appointmentDate,
+            Notes: payload.notes,
+            UserId: payload.userId,
+        })
+        return data;
+    },
     cancelAppointment: async (appointmentId: string) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CANCEL(appointmentId))
         return data;
@@ -117,6 +127,10 @@ export const ReceptionService = {
             AppointmentId: appointmentId,
             Status: status,
         })
+        return data;
+    },
+    getScheduledAppointments: async (date?: string) => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_SCHEDULED_APPOINTMENTS(date))
         return data;
     },
     checkIn: async (payload: CheckInPayload) => {

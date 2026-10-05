@@ -58,6 +58,7 @@ export interface CreateAppointmentPayload {
   userId?: string;
   isFollowUp?: boolean;
   urgencyLevel?: string; // Routine, Urgent
+  allowOverlap?: boolean;
 }
 
 export interface PatientListItemType {
