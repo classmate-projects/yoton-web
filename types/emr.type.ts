@@ -217,6 +217,7 @@ export interface PatientSummaryType {
   sex: string | null;
   dateOfBirth: string | null;
   phone: string | null;
+  phoneCode: string | null;
   email: string | null;
   address: string | null;
   maritalStatus: string | null;
