@@ -1,6 +1,6 @@
 {
   "name": "yoton",
-  "version": "1.2.42",
+  "version": "1.6.04",
   "private": true,
   "scripts": {
     "dev": "next dev",
