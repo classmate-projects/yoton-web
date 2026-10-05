@@ -1566,7 +1566,7 @@ function DoctorWorkbenchInner() {
                     MRN {summary.opNumber || summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {summary.phone || "No phone"} · {summary.email || "No email"}
+                    {summary.phone ? `${summary.phoneCode ? `${summary.phoneCode} ` : ""}${summary.phone}` : "No phone"} · {summary.email || "No email"}
                   </p>
                 </div>
 

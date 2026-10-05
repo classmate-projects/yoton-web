@@ -16,8 +16,10 @@ import {
   ClipboardCheck,
   ClipboardList,
   Clock,
+  Download,
   Droplets,
   FileText,
+  FileX,
   Flag,
   FlaskConical,
   HeartPulse,
@@ -317,7 +319,6 @@ function NurseWorkbenchInner() {
   const [uploadDocFile, setUploadDocFile] = useState<File | null>(null);
   const [uploadDocType, setUploadDocType] = useState("Report");
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
-  const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
 
   // ---------------- TRIAGE FORM ----------------
   const [triageForm, setTriageForm] = useState<TriageFormState>(emptyTriageForm());
@@ -466,6 +467,31 @@ function NurseWorkbenchInner() {
     } catch {
       // silently ignore
     }
+  };
+
+  // Only these render natively in-browser (an <img> / a PDF <iframe>) - everything else
+  // (xlsx, docx, csv, zip, ...) has no in-browser preview, so clicking it just downloads
+  // the file instead of showing a blank/broken preview pane.
+  const PREVIEWABLE_IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp"];
+  const PREVIEWABLE_EXTS = [...PREVIEWABLE_IMAGE_EXTS, "pdf"];
+
+  const downloadDocument = (fileUrl: string, fileName: string) => {
+    const a = document.createElement("a");
+    a.href = fileUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const openDocument = (d: DocumentItem, fileUrl: string, ext: string) => {
+    if (!d.viewedByNurse) markDocumentViewed(d.patientDocumentId);
+    if (PREVIEWABLE_EXTS.includes(ext)) {
+      window.open(fileUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    downloadDocument(fileUrl, d.documentType);
+    toast(`Preview isn't available for ${ext ? `.${ext}` : "this"} files — downloading it instead.`, { icon: "ℹ️" });
   };
 
   const handleUploadDocument = async () => {
@@ -1245,8 +1271,9 @@ function NurseWorkbenchInner() {
   const [editingAllergyId, setEditingAllergyId] = useState<string | null>(null);
   // Lets "Correct" (clicked on the allergy box up in the patient header, far from
   // the edit form down in the canEdit section) jump the nurse straight to the form and
-  // keep its border blinking until they click anywhere, so it's unmistakable which
-  // section moved even after the scroll animation itself has finished.
+  // keep its border blinking - up to 15s, or until the nurse clicks or types anywhere,
+  // whichever comes first - so it's unmistakable which section moved even after the
+  // scroll animation itself has finished.
   const allergySectionRef = useRef<HTMLDivElement>(null);
   const [allergySectionFlash, setAllergySectionFlash] = useState(false);
 
@@ -1254,7 +1281,13 @@ function NurseWorkbenchInner() {
     if (!allergySectionFlash) return;
     const stop = () => setAllergySectionFlash(false);
     document.addEventListener("mousedown", stop);
-    return () => document.removeEventListener("mousedown", stop);
+    document.addEventListener("keydown", stop);
+    const timer = setTimeout(stop, 15000);
+    return () => {
+      document.removeEventListener("mousedown", stop);
+      document.removeEventListener("keydown", stop);
+      clearTimeout(timer);
+    };
   }, [allergySectionFlash]);
 
   const ALLERGY_CATEGORIES = ["Drug", "Food", "Environmental", "Latex", "Contrast Media", "Other"];
@@ -1658,7 +1691,7 @@ function NurseWorkbenchInner() {
         ) : (
           <div className="flex flex-col gap-6">
             <div className="card p-6 flex flex-col gap-1 border-l-4 border-l-primary">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
                     <HeartPulse className="text-primary" /> {summary.name}
@@ -1667,15 +1700,38 @@ function NurseWorkbenchInner() {
                     MRN {summary.opNumber || summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {summary.phone || "No phone"} · {summary.email || "No email"}
+                    {summary.phone ? `${summary.phoneCode ? `${summary.phoneCode} ` : ""}${summary.phone}` : "No phone"} · {summary.email || "No email"}
                   </p>
                 </div>
-                {summary.latestEncounter?.chiefComplaint && (
-                  <div className="rounded-lg bg-muted/40 border border-border px-3 py-2 max-w-sm">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">Chief Complaint</p>
-                    <p className="text-sm text-foreground">{summary.latestEncounter.chiefComplaint}</p>
-                  </div>
-                )}
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  <button
+                    onClick={() => setShowDocumentsModal(true)}
+                    className={`relative flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      unviewedDocumentCount > 0
+                        ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                        : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <FileText size={13} />
+                    Patient Documents
+                    {documents.length > 0 && (
+                      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                        unviewedDocumentCount > 0 ? "bg-blue-600 text-white" : "bg-muted-foreground/20 text-muted-foreground"
+                      }`}>
+                        {documents.length}
+                      </span>
+                    )}
+                    {unviewedDocumentCount > 0 && (
+                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-blue-500 border-2 border-card" />
+                    )}
+                  </button>
+                  {summary.latestEncounter?.chiefComplaint && (
+                    <div className="rounded-lg bg-muted/40 border border-border px-3 py-2 max-w-sm">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Chief Complaint</p>
+                      <p className="text-sm text-foreground">{summary.latestEncounter.chiefComplaint}</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {summary.allergies.length > 0 && (
@@ -1758,31 +1814,6 @@ function NurseWorkbenchInner() {
                   ))}
                 </div>
               )}
-
-              {/* Documents button */}
-              <div className="flex items-center gap-2 pt-2 border-t border-border mt-1">
-                <button
-                  onClick={() => setShowDocumentsModal(true)}
-                  className={`relative flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    unviewedDocumentCount > 0
-                      ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40"
-                      : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  <FileText size={13} />
-                  Patient Documents
-                  {documents.length > 0 && (
-                    <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                      unviewedDocumentCount > 0 ? "bg-blue-600 text-white" : "bg-muted-foreground/20 text-muted-foreground"
-                    }`}>
-                      {documents.length}
-                    </span>
-                  )}
-                  {unviewedDocumentCount > 0 && (
-                    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-blue-500 border-2 border-card" />
-                  )}
-                </button>
-              </div>
             </div>
 
             {/* Triage - the nurse's initial assessment for this encounter, at the top since
@@ -2065,33 +2096,45 @@ function NurseWorkbenchInner() {
                   <>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       <div className="flex items-center gap-1 col-span-2 sm:col-span-1">
-                        <input type="number" placeholder="Sys" value={vitalsForm.systolic} onChange={(e) => setVitalsForm((p) => ({ ...p, systolic: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" min="0" placeholder="Sys" value={vitalsForm.systolic} onChange={(e) => setVitalsForm((p) => ({ ...p, systolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">/</span>
-                        <input type="number" placeholder="Dia" value={vitalsForm.diastolic} onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" min="0" placeholder="Dia" value={vitalsForm.diastolic} onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">mmHg</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" placeholder="Pulse" value={vitalsForm.heartRate} onChange={(e) => setVitalsForm((p) => ({ ...p, heartRate: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" min="0" placeholder="Pulse" value={vitalsForm.heartRate} onChange={(e) => setVitalsForm((p) => ({ ...p, heartRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">bpm</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" step="0.1" placeholder="Temp" value={vitalsForm.temperature} onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" step="0.1" min="0" placeholder="Temp" value={vitalsForm.temperature} onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">°C</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" placeholder="Resp Rate" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm((p) => ({ ...p, respiratoryRate: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" min="0" placeholder="Resp Rate" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm((p) => ({ ...p, respiratoryRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">br/min</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" placeholder="SpO2" value={vitalsForm.oxygenSaturation} onChange={(e) => setVitalsForm((p) => ({ ...p, oxygenSaturation: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          placeholder="SpO2"
+                          value={vitalsForm.oxygenSaturation}
+                          onChange={(e) => {
+                            let v = e.target.value.replace(/-/g, "");
+                            if (v !== "" && Number(v) > 100) v = "100";
+                            setVitalsForm((p) => ({ ...p, oxygenSaturation: v }));
+                          }}
+                          className="h-10 text-sm w-full"
+                        />
                         <span className="text-xs text-muted-foreground shrink-0">%</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" step="0.1" placeholder="Height" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm((p) => ({ ...p, heightCm: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" step="0.1" min="0" placeholder="Height" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm((p) => ({ ...p, heightCm: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">cm</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input type="number" step="0.1" placeholder="Weight" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm((p) => ({ ...p, weightKg: e.target.value }))} className="h-10 text-sm w-full" />
+                        <input type="number" step="0.1" min="0" placeholder="Weight" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm((p) => ({ ...p, weightKg: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                         <span className="text-xs text-muted-foreground shrink-0">kg</span>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -2410,7 +2453,7 @@ function NurseWorkbenchInner() {
                 {canEdit && (
                   <>
                     <div className="grid grid-cols-2 gap-3">
-                      <input type="number" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value }))} className="h-10 text-sm" />
+                      <input type="number" min="0" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
                       <select value={sugarForm.type} onChange={(e) => setSugarForm((p) => ({ ...p, type: e.target.value }))} className="h-10 text-sm">
                         <option>Random</option>
                         <option>Fasting</option>
@@ -2462,8 +2505,8 @@ function NurseWorkbenchInner() {
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <input type="text" placeholder="Fluid type (e.g. Normal Saline)" value={ivForm.fluidType} onChange={(e) => setIvForm((p) => ({ ...p, fluidType: e.target.value }))} className="h-10 text-sm sm:col-span-1" />
-                      <input type="number" placeholder="Volume (ml)" value={ivForm.volume} onChange={(e) => setIvForm((p) => ({ ...p, volume: e.target.value }))} className="h-10 text-sm" />
-                      <input type="number" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value }))} className="h-10 text-sm" />
+                      <input type="number" min="0" placeholder="Volume (ml)" value={ivForm.volume} onChange={(e) => setIvForm((p) => ({ ...p, volume: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
+                      <input type="number" min="0" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
                     </div>
                     <textarea placeholder="Notes..." value={ivForm.notes} onChange={(e) => setIvForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
                     <div className="flex items-center gap-3">
@@ -2928,6 +2971,151 @@ function NurseWorkbenchInner() {
                   className="w-full bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-semibold py-2.5 rounded-lg transition-colors"
                 >
                   {submittingEncounterLock ? "Verifying..." : "Confirm & Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Patient Documents modal */}
+        {showDocumentsModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-card w-full max-w-2xl rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden max-h-[85vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <FileText size={18} className="text-primary" /> Patient Documents
+                  {documents.length > 0 && (
+                    <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                      {documents.length}
+                    </span>
+                  )}
+                </h2>
+                <button
+                  onClick={() => setShowDocumentsModal(false)}
+                  className="p-1.5 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="overflow-y-auto flex-1 p-5">
+                {documents.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
+                    <FileX size={40} className="opacity-30" />
+                    <p className="text-sm">No documents available for this patient yet.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {documents.map((d) => {
+                      const fileUrl = backendAssetUrl(d.filePath);
+                      const ext = d.filePath?.split(".").pop()?.toLowerCase() ?? "";
+                      const isImage = PREVIEWABLE_IMAGE_EXTS.includes(ext);
+                      const isPdf = ext === "pdf";
+                      const isPreviewable = isImage || isPdf;
+                      return (
+                          <div
+                            key={d.patientDocumentId}
+                            className={`rounded-lg border px-4 py-3 flex items-center justify-between gap-3 transition-colors ${
+                              !d.viewedByNurse
+                                ? "border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20"
+                                : "border-border bg-muted/20"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold uppercase ${
+                                isPdf ? "bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400" :
+                                isImage ? "bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400" :
+                                "bg-muted text-muted-foreground"
+                              }`}>
+                                {isPdf ? "PDF" : isImage ? "IMG" : ext.toUpperCase() || "?"}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">{d.documentType}</p>
+                                <p className="text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</p>
+                              </div>
+                              {!d.viewedByNurse && (
+                                <span className="shrink-0 rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white">NEW</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {fileUrl ? (
+                                <>
+                                  <button
+                                    onClick={() => openDocument(d, fileUrl, ext)}
+                                    className="flex items-center gap-1 rounded-lg bg-primary/10 hover:bg-primary/20 px-3 py-1.5 text-xs font-semibold text-primary transition-colors"
+                                  >
+                                    {isPreviewable ? "Preview" : (<><Download size={12} /> Download</>)}
+                                  </button>
+                                  {isPreviewable && (
+                                    <button
+                                      onClick={() => downloadDocument(fileUrl, d.documentType)}
+                                      title="Download"
+                                      className="flex items-center gap-1 rounded-lg border border-border hover:bg-muted px-3 py-1.5 text-xs font-semibold text-foreground transition-colors"
+                                    >
+                                      <Download size={12} />
+                                    </button>
+                                  )}
+                                </>
+                              ) : (
+                                !d.viewedByNurse && (
+                                  <button onClick={() => markDocumentViewed(d.patientDocumentId)} className="text-xs font-semibold text-primary hover:underline">
+                                    Mark reviewed
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Upload section */}
+              <div className="px-5 py-4 border-t border-border flex flex-col gap-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Upload size={12} /> Attach Document
+                </p>
+                <div className="flex flex-wrap gap-2 items-end">
+                  <select
+                    value={uploadDocType}
+                    onChange={(e) => setUploadDocType(e.target.value)}
+                    className="h-9 text-sm min-w-32"
+                  >
+                    <option>Report</option>
+                    <option>Lab Result</option>
+                    <option>Radiology Image</option>
+                    <option>Prescription</option>
+                    <option>Referral Letter</option>
+                    <option>Insurance</option>
+                    <option>Other</option>
+                  </select>
+                  <label className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted cursor-pointer transition-colors">
+                    <Upload size={13} />
+                    {uploadDocFile ? uploadDocFile.name : "Choose file"}
+                    <input type="file" className="hidden" onChange={(e) => setUploadDocFile(e.target.files?.[0] ?? null)} />
+                  </label>
+                  {uploadDocFile && (
+                    <button
+                      onClick={handleUploadDocument}
+                      disabled={isUploadingDoc}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {isUploadingDoc ? "Uploading…" : "Upload"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-3 border-t border-border flex justify-end">
+                <button
+                  onClick={() => setShowDocumentsModal(false)}
+                  className="rounded-lg border border-border px-5 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                >
+                  Close
                 </button>
               </div>
             </div>
