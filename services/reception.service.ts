@@ -157,6 +157,10 @@ export const ReceptionService = {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT_QUEUE(status))
         return data;
     },
+    getDailyVisitStats: async (): Promise<{ waiting: number; completedToday: number }> => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DAILY_VISIT_STATS)
+        return data;
+    },
     getPendingReferrals: async () => {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_PENDING_REFERRALS);
         return data;

@@ -13,6 +13,7 @@ import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import CheckInPromptModal from "@/components/CheckInPromptModal";
 import CheckInHeaderWidget from "@/components/CheckInHeaderWidget";
 import AutoSaveIndicator from "@/components/AutoSaveIndicator";
+import DailyStatsBar from "@/components/DailyStatsBar";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
 import { useSessionRevokedListener } from "@/hooks/useSessionRevokedListener";
@@ -122,24 +123,22 @@ export default function PageLayout({
     <div className="min-h-full flex flex-row">
       <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Mobile-only top bar: the desktop sidebar is off-canvas on small
-            screens, so this gives touch users a way to open it plus a stable
-            branded header. Hidden entirely from lg up. */}
         <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-card/95 px-3 py-2 backdrop-blur">
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen(true)}
-            aria-label="Open navigation menu"
-            className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-          <Image src={logo} alt="Yoton" priority className="lg:hidden h-8 w-auto" />
-          <BackButton homePath={homeRoute} />
-          <div className="flex-1" />
-          <AutoSaveIndicator />
-          <CheckInHeaderWidget />
-        </header>
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Open navigation menu"
+              className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+            <Image src={logo} alt="Yoton" priority className="lg:hidden h-8 w-auto" />
+            <BackButton homePath={homeRoute} />
+            <DailyStatsBar variant="inline" />
+            <div className="flex-1" />
+            <AutoSaveIndicator />
+            <CheckInHeaderWidget />
+          </header>
         <div className="flex-1 min-w-0">
           {status === "denied" ? <AccessDenied /> : children}
         </div>

@@ -59,7 +59,7 @@ export default function SurfaceBox({
   const getSurfaceFill = (surface: ToothSurface): string => {
     if (wholeCondition) return CONDITION_COLOR[wholeCondition];
     if (surfaces.includes(surface) && surfaceCondition) return CONDITION_COLOR[surfaceCondition];
-    return "transparent";
+    return "none";
   };
 
   const allSurfaces: ToothSurface[] = ["M", "D", "B", "L", "O"];
@@ -84,8 +84,8 @@ export default function SurfaceBox({
           key={surface}
           d={SURFACE_PATHS[surface]}
           fill={getSurfaceFill(surface)}
-          stroke="currentColor"
-          strokeWidth={0.5}
+          stroke="#9ca3af"
+          strokeWidth={1}
           className={onSurfaceClick ? "cursor-pointer" : ""}
           onClick={onSurfaceClick ? (e) => { e.stopPropagation(); onSurfaceClick(surface); } : undefined}
         />
