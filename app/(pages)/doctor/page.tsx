@@ -60,6 +60,7 @@ import DentalChartSection from "@/components/dental/DentalChartSection";
 import { getUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import PatientEmrModal from "@/components/PatientEmrModal";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
 import { SpecializationService } from "@/services/specialization.service";
@@ -132,6 +133,7 @@ function DoctorWorkbenchInner() {
   const [patientsPage, setPatientsPage] = useState(1);
   const [isLoadingWorkbench, setIsLoadingWorkbench] = useState(true);
 
+  const [emrModal, setEmrModal] = useState<{ patientId: string; patientName: string } | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [summary, setSummary] = useState<PatientSummaryType | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
@@ -3716,7 +3718,7 @@ function DoctorWorkbenchInner() {
                             </td>
                             <td>
                               <button
-                                onClick={() => openPatient(item.patientId)}
+                                onClick={() => setEmrModal({ patientId: item.patientId, patientName: item.patientName })}
                                 className="text-sm font-semibold text-primary hover:underline"
                               >
                                 Open EMR
@@ -3746,7 +3748,7 @@ function DoctorWorkbenchInner() {
                   activeCases.map((c) => (
                     <button
                       key={c.encounterId}
-                      onClick={() => openPatient(c.patientId)}
+                      onClick={() => setEmrModal({ patientId: c.patientId, patientName: c.patientName })}
                       className="text-left rounded-lg border border-border bg-muted/30 px-3 py-2 hover:border-primary/40 transition-colors"
                     >
                       <p className="font-semibold text-sm text-foreground">{c.patientName}</p>
@@ -3806,7 +3808,7 @@ function DoctorWorkbenchInner() {
                         <td>{formatDate(p.lastAppointmentDate)}</td>
                         <td>
                           <button
-                            onClick={() => openPatient(p.opId)}
+                            onClick={() => setEmrModal({ patientId: p.opId, patientName: p.name })}
                             className="text-sm font-semibold text-primary hover:underline"
                           >
                             Open EMR
@@ -3851,6 +3853,14 @@ function DoctorWorkbenchInner() {
         </div>
       )}
 
+      {emrModal && (
+        <PatientEmrModal
+          patientId={emrModal.patientId}
+          patientName={emrModal.patientName}
+          isOpen={!!emrModal}
+          onClose={() => setEmrModal(null)}
+        />
+      )}
     </div>
   );
 }
