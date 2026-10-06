@@ -369,6 +369,7 @@ export default function PatientEntryPage() {
 
   useSignalRRefetch(["appointmentCreated", "appointmentCancelled"], fetchSlots);
 
+
   const closeConsultFlow = () => {
     setRegisteredPatient(null);
     setShowConsultForm(false);

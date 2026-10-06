@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
+import PatientRegistrationModal from "@/components/PatientRegistrationModal";
 import { ReceptionService } from "@/services/reception.service";
 import { AuthService } from "@/services/auth.service";
 import { ChatService } from "@/services/chat.service";
@@ -152,11 +153,16 @@ export default function Appointments() {
 
   // ---------------- Department filter (defaults to user's assigned department) ----------------
   const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("all");
+  const [userDeptInfo, setUserDeptInfo] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     AuthService.getMe().then((data) => {
       const deptId: string | null = data?.departmentId ?? null;
-      if (deptId) setSelectedDeptFilter(deptId);
+      const deptName: string | null = data?.departmentName ?? null;
+      if (deptId) {
+        setSelectedDeptFilter(deptId);
+        if (deptName) setUserDeptInfo({ id: deptId, name: deptName });
+      }
     }).catch(() => {});
   }, []);
 
@@ -166,6 +172,7 @@ export default function Appointments() {
   const [patientSearch, setPatientSearch] = useState("");
   const [selectedPatient, setSelectedPatient] =
     useState<PatientListItemType | null>(null);
+  const [showNewPatientModal, setShowNewPatientModal] = useState(false);
   const [notes, setNotes] = useState("");
   const [isFollowUp, setIsFollowUp] = useState(false);
   const [urgencyLevel, setUrgencyLevel] = useState("Routine");
@@ -834,6 +841,15 @@ export default function Appointments() {
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
   }, [specializations]);
 
+  // If the user's dept from getMe() isn't a known dept (no doctors/specializations assigned to it),
+  // the select would visually show "All departments" while the state still holds the dept ID,
+  // silently filtering out all appointments. Fall back to "all" in that case.
+  useEffect(() => {
+    if (selectedDeptFilter === "all" || bookModalDepts.length === 0) return;
+    const exists = bookModalDepts.some((d) => d.id === selectedDeptFilter);
+    if (!exists) setSelectedDeptFilter("all");
+  }, [bookModalDepts, selectedDeptFilter]);
+
   const bookModalSpecOptions = useMemo(() => {
     return specializations
       .filter((s) => bookModalDeptFilter === "all" || s.departmentId === bookModalDeptFilter)
@@ -893,8 +909,11 @@ export default function Appointments() {
       )
     : [];
 
+
   const handleConfirmBooking = async () => {
-    if (!bookingSlot || !selectedDoctor || !selectedPatient) {
+    if (!bookingSlot || !selectedDoctor) return;
+
+    if (!selectedPatient) {
       toast.warning("Please select a patient first");
       return;
     }
@@ -906,8 +925,10 @@ export default function Appointments() {
         JSON.parse(localStorage.getItem("yoton_user_detail") || "{}")
           .userId ?? undefined;
 
+      const patientId = selectedPatient?.opId ?? "";
+
       const data = await ReceptionService.createAppointment({
-        patientId: selectedPatient.opId,
+        patientId,
         doctorId: selectedDoctor.doctorId,
         appointmentDate: bookingSlot.start,
         notes,
@@ -923,6 +944,7 @@ export default function Appointments() {
         toast.success(data.message || "Appointment booked");
         notifySaveStatus("saved");
         setBookingSlot(null);
+        setBookingMode("existing");
       }
       fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
@@ -1044,7 +1066,7 @@ export default function Appointments() {
             </p>
           </div>
 
-          {bookModalDepts.length > 0 && (
+          {(bookModalDepts.length > 0 || userDeptInfo) && (
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Department</label>
               <select
@@ -1056,6 +1078,9 @@ export default function Appointments() {
                 {bookModalDepts.map((d) => (
                   <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
+                {userDeptInfo && !bookModalDepts.some((d) => d.id === userDeptInfo.id) && (
+                  <option key={userDeptInfo.id} value={userDeptInfo.id}>{userDeptInfo.name}</option>
+                )}
               </select>
             </div>
           )}
@@ -1855,8 +1880,8 @@ export default function Appointments() {
       {/* Book appointment modal */}
       {bookingSlot && selectedDoctor && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-border">
-            <div className="flex items-start justify-between mb-6">
+          <div className="bg-card rounded-xl shadow-2xl max-w-2xl w-full p-5 max-h-[96vh] overflow-y-auto border border-border">
+            <div className="flex items-start justify-between mb-4">
               <div>
                 <h2 className="text-2xl font-semibold text-foreground">
                   Book appointment
@@ -1868,7 +1893,7 @@ export default function Appointments() {
                 </p>
               </div>
               <button
-                onClick={() => setBookingSlot(null)}
+                onClick={() => { setBookingSlot(null); setBookingMode("existing"); setNewPatientName(""); setNewPatientPhone(""); setNewPatientPhoneCode("+91"); setNewPatientSex(""); setNewPatientDob(""); setNewPatientEmail(""); setNewPatientNationalId(""); }}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <X size={20} />
@@ -1876,10 +1901,28 @@ export default function Appointments() {
             </div>
 
             <div className="space-y-4">
+              {/* Patient mode toggle */}
+              <div className="flex rounded-lg border border-border overflow-hidden text-sm font-semibold">
+                <button
+                  type="button"
+                  className="flex-1 py-2 bg-primary text-white"
+                >
+                  Existing patient
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowNewPatientModal(true)}
+                  className="flex-1 py-2 bg-muted text-muted-foreground hover:bg-muted/70 transition-colors cursor-pointer"
+                >
+                  New patient
+                </button>
+              </div>
+
+              {/* Patient search */}
               <div className="relative">
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">
-                  Patient
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-semibold text-foreground/90">Patient</label>
+                </div>
                 <input
                   type="text"
                   value={patientSearch}
@@ -1901,79 +1944,49 @@ export default function Appointments() {
                         }}
                         className="w-full text-left px-4 py-2 hover:bg-primary/5 border-b border-border last:border-b-0 transition-colors"
                       >
-                        <div className="font-medium text-foreground">
-                          {patient.name}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {patient.opNumber || patient.opId} • {patient.phone}
-                        </div>
+                        <div className="font-medium text-foreground">{patient.name}</div>
+                        <div className="text-sm text-muted-foreground">{patient.opNumber || patient.opId} • {patient.phone}</div>
                       </button>
                     ))}
                   </div>
                 )}
                 {selectedPatient && (
                   <div className="mt-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
-                    <p className="text-sm text-foreground/90">
-                      <span className="font-semibold">Selected: </span>
-                      {selectedPatient.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedPatient.opNumber || selectedPatient.opId} • {selectedPatient.phone}
-                    </p>
+                    <p className="text-sm text-foreground/90"><span className="font-semibold">Selected: </span>{selectedPatient.name}</p>
+                    <p className="text-xs text-muted-foreground">{selectedPatient.opNumber || selectedPatient.opId} • {selectedPatient.phone}</p>
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">
-                  Notes
-                </label>
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">Notes</label>
                 <textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   placeholder="Reason for visit"
-                  className="w-full min-h-20 px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
+                  rows={2}
+                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-semibold text-foreground/90">
-                  Follow-up visit
-                </label>
-                <input
-                  type="checkbox"
-                  checked={isFollowUp}
-                  onChange={(event) => setIsFollowUp(event.target.checked)}
-                  className="h-5 w-5"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">
-                  Urgency
-                </label>
-                <div className="flex gap-3">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      checked={urgencyLevel === "Routine"}
-                      onChange={() => setUrgencyLevel("Routine")}
-                    />
-                    Routine
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="followUpCheck" checked={isFollowUp} onChange={(event) => setIsFollowUp(event.target.checked)} className="h-4 w-4" />
+                  <label htmlFor="followUpCheck" className="text-sm font-semibold text-foreground/90 cursor-pointer">Follow-up visit</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-foreground/90">Urgency:</span>
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" checked={urgencyLevel === "Routine"} onChange={() => setUrgencyLevel("Routine")} /> Routine
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      checked={urgencyLevel === "Urgent"}
-                      onChange={() => setUrgencyLevel("Urgent")}
-                    />
-                    Urgent
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" checked={urgencyLevel === "Urgent"} onChange={() => setUrgencyLevel("Urgent")} /> Urgent
                   </label>
                 </div>
               </div>
             </div>
 
-            <div className="flex gap-3 mt-8">
+            <div className="flex gap-3 mt-5">
               <button
                 onClick={() => setBookingSlot(null)}
                 className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors"
@@ -2439,6 +2452,24 @@ export default function Appointments() {
           </div>
         </div>
       )}
+
+      {/* New Patient Registration Modal */}
+      <PatientRegistrationModal
+        isOpen={showNewPatientModal}
+        onClose={() => setShowNewPatientModal(false)}
+        onBooked={() => {
+          setBookingSlot(null);
+          if (selectedDoctor) fetchSlots(selectedDoctor.doctorId, selectedDate);
+        }}
+        presetDoctorId={selectedDoctor?.doctorId ?? ""}
+        presetSpecId={selectedDoctor?.specializationId ?? ""}
+        presetDeptId={specializations.find(s => s.specializationId === selectedDoctor?.specializationId)?.departmentId ?? ""}
+        presetSlotStart={bookingSlot?.start ?? ""}
+        presetDate={toDateInputValue(selectedDate)}
+        doctorName={selectedDoctor?.name ?? ""}
+        slotDisplayTime={bookingSlot ? format(new Date(bookingSlot.start), "dd MMM yyyy, h:mm a") : ""}
+        specializations={specializations}
+      />
     </div>
   );
 }
