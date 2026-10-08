@@ -87,6 +87,8 @@ export const ENDPOINTS = {
         },
         GET_PATIENT_EMR_ENCOUNTER: (patientId: string, encounterId: string) =>
             `/api/reception/patient/${patientId}/emr/encounter/${encounterId}`,
+        REVERT_CHECKIN: (id: string) => `/api/reception/visit/${id}/revert-checkin`,
+        UPDATE_APPOINTMENT: (id: string) => `/api/reception/appointment/${id}`,
     },
     ROLE: {
         GET: `/api/role/get-all`,
@@ -130,6 +132,7 @@ export const ENDPOINTS = {
         GET_ACTIVE_CASES: (doctorId?: string) => `/api/emr/active-cases${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPSERT_ENCOUNTER: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/encounter${doctorId ? `?doctorId=${doctorId}` : ""}`,
         FINISH_ENCOUNTER: (encounterId: string, doctorId?: string) => `/api/emr/encounter/${encounterId}/finish${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        RELEASE_VISIT: (visitId: string, doctorId?: string) => `/api/emr/visit/${visitId}/release${doctorId ? `?doctorId=${doctorId}` : ""}`,
         ADD_CHRONIC_CONDITION: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/chronic-condition${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPDATE_CHRONIC_CONDITION: (chronicConditionId: string, doctorId?: string) => `/api/emr/chronic-condition/${chronicConditionId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         REMOVE_CHRONIC_CONDITION: (chronicConditionId: string, doctorId?: string) => `/api/emr/chronic-condition/${chronicConditionId}${doctorId ? `?doctorId=${doctorId}` : ""}`,

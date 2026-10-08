@@ -15,8 +15,11 @@ import {
   ChevronRight,
   Clock,
   GraduationCap,
+  HelpCircle,
   ListChecks,
+  Pencil,
   RefreshCw,
+  RotateCcw,
   Search,
   Stethoscope,
   UserCheck,
@@ -177,6 +180,14 @@ export default function Appointments() {
   const [isFollowUp, setIsFollowUp] = useState(false);
   const [urgencyLevel, setUrgencyLevel] = useState("Routine");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bookingMode, setBookingMode] = useState<"existing" | "new">("existing");
+  const [newPatientName, setNewPatientName] = useState("");
+  const [newPatientPhone, setNewPatientPhone] = useState("");
+  const [newPatientPhoneCode, setNewPatientPhoneCode] = useState("+91");
+  const [newPatientSex, setNewPatientSex] = useState("");
+  const [newPatientDob, setNewPatientDob] = useState("");
+  const [newPatientEmail, setNewPatientEmail] = useState("");
+  const [newPatientNationalId, setNewPatientNationalId] = useState("");
 
   const [visitQueue, setVisitQueue] = useState<VisitType[]>([]);
   const [isLoadingQueue, setIsLoadingQueue] = useState(false);
@@ -224,6 +235,7 @@ export default function Appointments() {
     alreadyRegistered: boolean;
     visitId: string | null;
     visitStatus: string | null;
+    hasEncounter: boolean;
   };
   const [scheduledAppointments, setScheduledAppointments] = useState<ScheduledAppointmentItem[]>([]);
   const [isLoadingScheduled, setIsLoadingScheduled] = useState(false);
@@ -231,10 +243,19 @@ export default function Appointments() {
   const [registrationSearch, setRegistrationSearch] = useState("");
   const [registeringId, setRegisteringId] = useState<string | null>(null);
 
-  // ---------------- Today's Appointment Queue (column 1, non-walk-in only, max 10) ----------------
+  // ---------------- Today's Appointment Queue (column 1, non-walk-in only) ----------------
   const [todayAppointmentQueue, setTodayAppointmentQueue] = useState<ScheduledAppointmentItem[]>([]);
   const [isLoadingTodayQueue, setIsLoadingTodayQueue] = useState(false);
   const [appointmentQueueSearch, setAppointmentQueueSearch] = useState("");
+
+  // ---------------- Edit Appointment (pre-registration, reuses edit-visit modal state) ----------------
+  const [editingQueueAppointment, setEditingQueueAppointment] = useState<ScheduledAppointmentItem | null>(null);
+  const [isSavingEditAppointment, setIsSavingEditAppointment] = useState(false);
+  const [editUrgencyLevel, setEditUrgencyLevel] = useState("Routine");
+  const [editIsFollowUp, setEditIsFollowUp] = useState(false);
+
+  // ---------------- Revert registration ----------------
+  const [revertingVisitId, setRevertingVisitId] = useState<string | null>(null);
 
   // ---------------- Overlap booking (add a 2nd / 3rd patient to an already-booked slot) ----------------
   const [overlapSlot, setOverlapSlot] = useState<DoctorDaySlotsType["slots"][number] | null>(null);
@@ -436,17 +457,17 @@ export default function Appointments() {
   };
 
   useEffect(() => { fetchScheduledAppointments(registrationDate); }, [registrationDate]);
-  useSignalRRefetch(["visitCheckedIn", "appointmentCreated", "appointmentStatusUpdated", "visitStatusUpdated"], () => fetchScheduledAppointments(registrationDate));
+  useSignalRRefetch(["visitCheckedIn", "appointmentCreated", "appointmentStatusUpdated", "visitStatusUpdated", "encounterSaved", "encounterFinished"], () => fetchScheduledAppointments(registrationDate));
 
   const fetchTodayAppointmentQueue = async () => {
     try {
       setIsLoadingTodayQueue(true);
       const res = await ReceptionService.getScheduledAppointments(todayValue);
-      const appts = (res.items ?? []).filter((a: ScheduledAppointmentItem) => !a.isWalkIn);
+      const appts = (res.items ?? []).filter((a: ScheduledAppointmentItem) => !a.isWalkIn && !a.alreadyRegistered);
       appts.sort((a: ScheduledAppointmentItem, b: ScheduledAppointmentItem) =>
         new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime()
       );
-      setTodayAppointmentQueue(appts.slice(0, 10));
+      setTodayAppointmentQueue(appts);
     } catch {
       setTodayAppointmentQueue([]);
     } finally {
@@ -598,6 +619,88 @@ export default function Appointments() {
       );
     } finally {
       setIsSavingEditVisit(false);
+    }
+  };
+
+  // ---------------- Edit Appointment handlers ----------------
+  const openEditAppointment = (apt: ScheduledAppointmentItem) => {
+    setEditingQueueAppointment(apt);
+    setEditVisitDoctorSearch("");
+    setEditVisitSelectedDoctor(null);
+    setEditVisitDate(new Date(apt.appointmentDate));
+    setEditVisitDaySlots(null);
+    setEditVisitSelectedSlot(null);
+    setEditVisitNotes(apt.notes ?? "");
+    setEditVisitDeptFilter("all");
+    setEditVisitSpecFilter("all");
+    setEditUrgencyLevel(apt.urgencyLevel ?? "Routine");
+    setEditIsFollowUp(apt.isFollowUp ?? false);
+  };
+
+  const closeEditAppointment = () => {
+    setEditingQueueAppointment(null);
+    setEditVisitSelectedDoctor(null);
+    setEditVisitDaySlots(null);
+    setEditVisitSelectedSlot(null);
+    setEditVisitDeptFilter("all");
+    setEditVisitSpecFilter("all");
+  };
+
+  const handleSaveEditAppointment = async () => {
+    if (!editingQueueAppointment || !editVisitSelectedDoctor || !editVisitSelectedSlot) {
+      toast.warning("Please select a doctor and an available time slot");
+      return;
+    }
+    notifySaveStatus("saving");
+    try {
+      setIsSavingEditAppointment(true);
+      const data = await ReceptionService.updateAppointment(editingQueueAppointment.appointmentId, {
+        doctorId: editVisitSelectedDoctor.doctorId,
+        appointmentDate: editVisitSelectedSlot.start,
+        notes: editVisitNotes || undefined,
+        urgencyLevel: editUrgencyLevel,
+        isFollowUp: editIsFollowUp,
+      });
+      if (data.status === false) {
+        notifySaveStatus("error");
+        toast.error(data.message || "This slot has just been booked. Please choose another slot.");
+        fetchEditVisitSlots(editVisitSelectedDoctor.doctorId, editVisitDate);
+        return;
+      }
+      toast.success(data.message || "Appointment updated");
+      notifySaveStatus("saved");
+      closeEditAppointment();
+      fetchTodayAppointmentQueue();
+      fetchScheduledAppointments(registrationDate);
+    } catch (error) {
+      notifySaveStatus("error");
+      toast.error(axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update appointment" : "Failed to update appointment");
+    } finally {
+      setIsSavingEditAppointment(false);
+    }
+  };
+
+  // ---------------- Revert registration handler ----------------
+  const handleRevertCheckIn = async (apt: ScheduledAppointmentItem) => {
+    if (!apt.visitId) return;
+    if ((apt.visitStatus && apt.visitStatus !== "CheckedIn") || apt.hasEncounter) {
+      toast.error("Doctor has already started the encounter for this patient. Kindly contact the doctor.");
+      return;
+    }
+    try {
+      setRevertingVisitId(apt.visitId);
+      notifySaveStatus("saving");
+      const data = await ReceptionService.revertCheckIn(apt.visitId);
+      toast.success(data.message || "Registration reverted");
+      notifySaveStatus("saved");
+      fetchTodayAppointmentQueue();
+      fetchScheduledAppointments(registrationDate);
+      fetchVisitQueue();
+    } catch (error) {
+      notifySaveStatus("error");
+      toast.error(axios.isAxiosError(error) ? error.response?.data?.message || "Failed to revert registration" : "Failed to revert registration");
+    } finally {
+      setRevertingVisitId(null);
     }
   };
 
@@ -944,6 +1047,13 @@ export default function Appointments() {
         toast.success(data.message || "Appointment booked");
         notifySaveStatus("saved");
         setBookingSlot(null);
+        setShowBookModal(false);
+        setSelectedDoctor(null);
+        setPatientSearch("");
+        setSelectedPatient(null);
+        setNotes("");
+        setIsFollowUp(false);
+        setUrgencyLevel("Routine");
         setBookingMode("existing");
       }
       fetchSlots(selectedDoctor.doctorId, selectedDate);
@@ -970,9 +1080,7 @@ export default function Appointments() {
       const data = await ReceptionService.cancelAppointment(targetId);
       toast.success(data.message || "Appointment cancelled");
       notifySaveStatus("saved");
-      if (!cancelSlot || cancelSlot.bookings.length <= 1) {
-        setCancelSlot(null);
-      }
+      setCancelSlot(null);
       fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
       notifySaveStatus("error");
@@ -1299,7 +1407,7 @@ export default function Appointments() {
           {isLoadingTodayQueue ? (
             <LoadingSpinner />
           ) : todayAppointmentQueue.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No appointments booked for today.</p>
+            <p className="text-sm text-muted-foreground">No pending appointments for today.</p>
           ) : (() => {
             const byDept = selectedDeptFilter === "all"
               ? todayAppointmentQueue
@@ -1324,15 +1432,29 @@ export default function Appointments() {
                     <th className="pb-2 pr-4">Time</th>
                     <th className="pb-2 pr-4">Patient</th>
                     <th className="pb-2 pr-4">Doctor</th>
-                    <th className="pb-2 pr-4">Status</th>
-                    <th className="pb-2">Action</th>
+                    <th className="pb-2 pr-4">Urgency</th>
+                    <th className="pb-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((apt) => (
                     <tr key={apt.appointmentId} className="border-b border-border last:border-0">
-                      <td className="py-2.5 pr-4 text-muted-foreground whitespace-nowrap">
-                        {format(new Date(apt.appointmentDate), "h:mm a")}
+                      <td className="py-2.5 pr-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-muted-foreground">{format(new Date(apt.appointmentDate), "h:mm a")}</span>
+                          {/* Appointment info tooltip */}
+                          <div className="relative group/aptip">
+                            <HelpCircle size={13} className="text-primary/60 cursor-help" />
+                            <div className="pointer-events-none invisible group-hover/aptip:visible absolute left-0 top-full mt-1.5 z-50 w-52 rounded-lg bg-popover border border-border shadow-lg p-2.5 text-xs text-foreground">
+                              <p className="font-semibold mb-1">Appointment details</p>
+                              <p className="text-muted-foreground">Time: {format(new Date(apt.appointmentDate), "h:mm a")}</p>
+                              {apt.doctorName && <p className="text-muted-foreground">Doctor: {apt.doctorName}</p>}
+                              {apt.specializationName && <p className="text-muted-foreground">Specialty: {apt.specializationName}</p>}
+                              {apt.urgencyLevel === "Urgent" && <p className="text-red-400 font-medium mt-1">⚠ Urgent</p>}
+                              {apt.notes && <p className="text-muted-foreground mt-1 italic">"{apt.notes}"</p>}
+                            </div>
+                          </div>
+                        </div>
                       </td>
                       <td className="py-2.5 pr-4">
                         <p className="font-semibold text-foreground">{apt.patientName ?? "Unknown"}</p>
@@ -1353,37 +1475,35 @@ export default function Appointments() {
                         )}
                       </td>
                       <td className="py-2.5 pr-4">
-                        {apt.alreadyRegistered && apt.visitStatus ? (
-                          visitStatusBadge(apt.visitStatus)
-                        ) : apt.alreadyRegistered ? (
-                          visitStatusBadge("CheckedIn")
-                        ) : apt.status === "Pending" ? (
-                          <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-400">
-                            Pending
-                          </span>
+                        {apt.urgencyLevel === "Urgent" ? (
+                          <span className="rounded-md bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-400">Urgent</span>
                         ) : (
-                          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                            Scheduled
-                          </span>
+                          <span className="text-xs text-muted-foreground">Routine</span>
                         )}
                       </td>
                       <td className="py-2.5">
-                        {apt.alreadyRegistered ? (
-                          <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                            <UserCheck size={13} /> Registered
-                          </span>
-                        ) : apt.status === "Pending" ? (
-                          <span className="text-xs text-muted-foreground">Confirm first</span>
-                        ) : (
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <button
-                            onClick={() => handleRegister(apt.appointmentId)}
-                            disabled={registeringId === apt.appointmentId}
-                            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                            onClick={() => openEditAppointment(apt)}
+                            title="Edit appointment"
+                            className="flex items-center gap-1 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted cursor-pointer"
                           >
-                            <UserCheck size={13} />
-                            {registeringId === apt.appointmentId ? "Registering…" : "Register"}
+                            <Pencil size={12} />
+                            Edit
                           </button>
-                        )}
+                          {apt.status === "Pending" ? (
+                            <span className="text-xs text-muted-foreground">Confirm first</span>
+                          ) : (
+                            <button
+                              onClick={() => handleRegister(apt.appointmentId)}
+                              disabled={registeringId === apt.appointmentId}
+                              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                            >
+                              <UserCheck size={13} />
+                              {registeringId === apt.appointmentId ? "Registering…" : "Register"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1394,11 +1514,11 @@ export default function Appointments() {
           })()}
         </section>
 
-        {/* ---- Doctor Registration Queue ---- */}
+        {/* ---- Registered Patients ---- */}
         <section className="card p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <ListChecks className="text-primary" size={20} /> Doctor Registration Queue
+              <ListChecks className="text-primary" size={20} /> Registered Patients
             </h2>
             <div className="flex items-center gap-2 flex-wrap">
               <label className="relative block">
@@ -1430,22 +1550,24 @@ export default function Appointments() {
 
           {isLoadingScheduled ? (
             <LoadingSpinner />
-          ) : scheduledAppointments.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No scheduled appointments for this date.</p>
           ) : (() => {
             const term = registrationSearch.trim().toLowerCase();
             const byDept = selectedDeptFilter === "all"
               ? scheduledAppointments
               : scheduledAppointments.filter((a) => a.departmentId === selectedDeptFilter);
+            // Right panel shows only registered patients
+            const registered = byDept.filter((a) => a.alreadyRegistered);
+            if (registered.length === 0)
+              return <p className="text-sm text-muted-foreground">No patients have been registered for this date yet.</p>;
             const filtered = term
-              ? byDept.filter(
+              ? registered.filter(
                   (a) =>
                     a.patientName?.toLowerCase().includes(term) ||
                     a.doctorName?.toLowerCase().includes(term) ||
                     a.specializationName?.toLowerCase().includes(term) ||
                     a.patientOpNumber?.toLowerCase().includes(term)
                 )
-              : byDept;
+              : registered;
             if (filtered.length === 0)
               return <p className="text-sm text-muted-foreground">No results match your search.</p>;
             return (
@@ -1453,20 +1575,33 @@ export default function Appointments() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs font-semibold uppercase text-muted-foreground border-b border-border">
-                      <th className="pb-2 pr-4">Time</th>
+                      <th className="pb-2 pr-4">Appt. Time</th>
                       <th className="pb-2 pr-4">Patient</th>
                       <th className="pb-2 pr-4">Doctor / Specialty</th>
-                      <th className="pb-2 pr-4">Notes</th>
                       <th className="pb-2 pr-4">Urgency</th>
-                      <th className="pb-2 pr-4">Status</th>
+                      <th className="pb-2 pr-4">Visit Status</th>
                       <th className="pb-2">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((apt) => (
                       <tr key={apt.appointmentId} className="border-b border-border last:border-0">
-                        <td className="py-2.5 pr-4 text-muted-foreground whitespace-nowrap">
-                          {format(new Date(apt.appointmentDate), "h:mm a")}
+                        <td className="py-2.5 pr-4 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-muted-foreground">{format(new Date(apt.appointmentDate), "h:mm a")}</span>
+                            {/* Appointment detail tooltip */}
+                            <div className="relative group/regtip">
+                              <HelpCircle size={13} className="text-primary/60 cursor-help" />
+                              <div className="pointer-events-none invisible group-hover/regtip:visible absolute left-0 top-full mt-1.5 z-50 w-52 rounded-lg bg-popover border border-border shadow-lg p-2.5 text-xs text-foreground">
+                                <p className="font-semibold mb-1">Appointment details</p>
+                                <p className="text-muted-foreground">Booked for: {format(new Date(apt.appointmentDate), "h:mm a")}</p>
+                                {apt.doctorName && <p className="text-muted-foreground">Doctor: {apt.doctorName}</p>}
+                                {apt.specializationName && <p className="text-muted-foreground">Specialty: {apt.specializationName}</p>}
+                                {apt.urgencyLevel === "Urgent" && <p className="text-red-400 font-medium mt-1">⚠ Urgent</p>}
+                                {apt.notes && <p className="text-muted-foreground mt-1 italic">"{apt.notes}"</p>}
+                              </div>
+                            </div>
+                          </div>
                         </td>
                         <td className="py-2.5 pr-4">
                           <p className="font-semibold text-foreground">{apt.patientName ?? "Unknown"}</p>
@@ -1489,50 +1624,43 @@ export default function Appointments() {
                             <span className="text-muted-foreground">—</span>
                           )}
                         </td>
-                        <td className="py-2.5 pr-4 max-w-[160px] truncate text-muted-foreground">
-                          {apt.notes || "—"}
-                        </td>
                         <td className="py-2.5 pr-4">
                           {apt.urgencyLevel === "Urgent" ? (
-                            <span className="rounded-md bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-400">
-                              Urgent
-                            </span>
+                            <span className="rounded-md bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-400">Urgent</span>
                           ) : (
                             <span className="text-xs text-muted-foreground">Routine</span>
                           )}
                         </td>
                         <td className="py-2.5 pr-4">
-                          {apt.alreadyRegistered && apt.visitStatus ? (
-                            visitStatusBadge(apt.visitStatus)
-                          ) : apt.alreadyRegistered ? (
-                            visitStatusBadge("CheckedIn")
-                          ) : apt.status === "Pending" ? (
-                            <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-400">
-                              Pending confirmation
-                            </span>
-                          ) : (
-                            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                              Scheduled
-                            </span>
-                          )}
+                          {apt.visitStatus
+                            ? visitStatusBadge(apt.visitStatus)
+                            : visitStatusBadge("CheckedIn")}
                         </td>
                         <td className="py-2.5">
-                          {apt.alreadyRegistered ? (
-                            <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                              <UserCheck size={13} /> Registered
-                            </span>
-                          ) : apt.status === "Pending" ? (
-                            <span className="text-xs text-muted-foreground">Confirm first</span>
-                          ) : (
-                            <button
-                              onClick={() => handleRegister(apt.appointmentId)}
-                              disabled={registeringId === apt.appointmentId}
-                              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
-                            >
-                              <UserCheck size={13} />
-                              {registeringId === apt.appointmentId ? "Registering…" : "Register"}
-                            </button>
-                          )}
+                          {(() => {
+                            const isLocked = (apt.visitStatus != null && apt.visitStatus !== "CheckedIn") || apt.hasEncounter;
+                            return (
+                              <button
+                                onClick={() => {
+                                  if (isLocked) {
+                                    toast.error("Doctor has already started the encounter at this time. Kindly contact the doctor.");
+                                  } else {
+                                    handleRevertCheckIn(apt);
+                                  }
+                                }}
+                                disabled={revertingVisitId === apt.visitId}
+                                title={isLocked ? "Cannot revert — encounter in progress" : "Revert registration"}
+                                className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium cursor-pointer transition-colors ${
+                                  isLocked
+                                    ? "border-border bg-muted/30 text-muted-foreground opacity-50"
+                                    : "border-orange-500/30 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"
+                                } disabled:opacity-50`}
+                              >
+                                <RotateCcw size={12} />
+                                {revertingVisitId === apt.visitId ? "Reverting…" : "Revert"}
+                              </button>
+                            );
+                          })()}
                         </td>
                       </tr>
                     ))}
@@ -2268,6 +2396,216 @@ export default function Appointments() {
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 {isConfirmingFollowUp ? "Booking..." : "Confirm & book"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Edit Appointment modal (pre-registration, reuses same doctor/slot picker state) ---- */}
+      {editingQueueAppointment && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl shadow-2xl max-w-2xl w-full p-6 border border-border">
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-semibold text-foreground">Edit appointment</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {editingQueueAppointment.patientName ?? "Unknown"}
+                </p>
+              </div>
+              <button
+                onClick={closeEditAppointment}
+                className="text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Department</label>
+                  <select
+                    value={editVisitDeptFilter}
+                    onChange={(e) => {
+                      setEditVisitDeptFilter(e.target.value);
+                      setEditVisitSpecFilter("all");
+                      setEditVisitSelectedDoctor(null);
+                    }}
+                    className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="all">All departments</option>
+                    {editVisitDeptOptions.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Specialty</label>
+                  <select
+                    value={editVisitSpecFilter}
+                    onChange={(e) => {
+                      setEditVisitSpecFilter(e.target.value);
+                      setEditVisitSelectedDoctor(null);
+                    }}
+                    className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="all">All specialties</option>
+                    {editVisitSpecOptions.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">Doctor</label>
+                <input
+                  type="text"
+                  value={editVisitDoctorSearch}
+                  onChange={(event) => {
+                    setEditVisitDoctorSearch(event.target.value);
+                    setEditVisitSelectedDoctor(null);
+                  }}
+                  placeholder="Search by doctor name or specialization..."
+                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-blue-500 text-foreground"
+                />
+
+                {editVisitSelectedDoctor ? (
+                  <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-900">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{editVisitSelectedDoctor.name}</p>
+                      <p className="text-xs text-muted-foreground">{editVisitSelectedDoctor.specializationName}</p>
+                    </div>
+                    <button
+                      onClick={() => setEditVisitSelectedDoctor(null)}
+                      className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                    {editVisitDoctorResults.length > 0 ? (
+                      editVisitDoctorResults.map((doctor) => (
+                        <button
+                          key={doctor.doctorId}
+                          onClick={() => setEditVisitSelectedDoctor(doctor)}
+                          className="w-full text-left px-4 py-2 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer flex items-center gap-2"
+                        >
+                          <Stethoscope size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                          <span>
+                            <span className="font-medium text-foreground">{doctor.name}</span>
+                            <span className="text-xs text-muted-foreground ml-2">{doctor.specializationName}</span>
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-4 py-3 text-sm text-muted-foreground">No doctors found.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {editVisitSelectedDoctor && (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground/90 mb-2">Date</label>
+                    <DatePicker
+                      value={toDateInputValue(editVisitDate)}
+                      min={toDateInputValue(new Date())}
+                      onChange={(v) => v && setEditVisitDate(new Date(`${v}T00:00:00`))}
+                      dateFormat="dd-MM-yyyy"
+                      placeholder="DD-MM-YYYY"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground/90 mb-2">Available slots</label>
+                    {isLoadingEditVisitSlots ? (
+                      <LoadingSpinner />
+                    ) : (editVisitDaySlots?.slots.filter((s) => s.isAvailable).length ?? 0) === 0 ? (
+                      <p className="text-sm text-muted-foreground">No open slots for this doctor on this day.</p>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2 max-h-56 overflow-y-auto">
+                        {editVisitDaySlots!.slots
+                          .filter((s) => s.isAvailable)
+                          .map((slot) => (
+                            <button
+                              key={slot.start}
+                              type="button"
+                              onClick={() => setEditVisitSelectedSlot(slot)}
+                              className={`rounded-lg border px-2 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                                editVisitSelectedSlot?.start === slot.start
+                                  ? "border-primary bg-primary text-white"
+                                  : "border-emerald-600/30 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400"
+                              }`}
+                            >
+                              <Clock size={13} className="inline mr-1" />
+                              {format(new Date(slot.start), "h:mm a")}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground/90 mb-2">Notes</label>
+                    <textarea
+                      value={editVisitNotes}
+                      onChange={(event) => setEditVisitNotes(event.target.value)}
+                      rows={2}
+                      placeholder="Reason for visit (optional)"
+                      className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-blue-500 text-foreground resize-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editIsFollowUp}
+                        onChange={(e) => setEditIsFollowUp(e.target.checked)}
+                      />
+                      <span className="font-semibold text-foreground/90">Follow-up visit</span>
+                    </label>
+                    <div className="flex items-center gap-3 text-sm">
+                      <span className="font-semibold text-foreground/90">Urgency:</span>
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={editUrgencyLevel === "Routine"}
+                          onChange={() => setEditUrgencyLevel("Routine")}
+                        />
+                        Routine
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={editUrgencyLevel === "Urgent"}
+                          onChange={() => setEditUrgencyLevel("Urgent")}
+                        />
+                        Urgent
+                      </label>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={closeEditAppointment}
+                className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEditAppointment}
+                disabled={isSavingEditAppointment || !editVisitSelectedDoctor || !editVisitSelectedSlot}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                {isSavingEditAppointment ? "Saving..." : "Save changes"}
               </button>
             </div>
           </div>

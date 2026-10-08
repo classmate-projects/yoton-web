@@ -305,6 +305,11 @@ function NurseWorkbenchInner() {
   const [dateFilter, setDateFilter] = useState("");
   const [isLoadingWorkbench, setIsLoadingWorkbench] = useState(true);
 
+  const PAGE_SIZE = 10;
+  const [untouchedPage, setUntouchedPage] = useState(0);
+  const [monitoringPage, setMonitoringPage] = useState(0);
+  const [workQueuePage, setWorkQueuePage] = useState(0);
+
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [summary, setSummary] = useState<PatientSummaryType | null>(null);
   const [chart, setChart] = useState<NursingChartType | null>(null);
@@ -1642,12 +1647,7 @@ function NurseWorkbenchInner() {
     return (
       <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
         <div className="flex items-center justify-between mb-6 gap-4">
-          <button
-            onClick={backToWorkbench}
-            className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary"
-          >
-            <ArrowLeft size={16} /> Back to workbench
-          </button>
+          <div />
           {isDoctor && (
             <span className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
               <Lock size={12} /> Read-only view
@@ -3358,7 +3358,7 @@ function NurseWorkbenchInner() {
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {untouchedPatients.map((p) => (
+                {untouchedPatients.slice(untouchedPage * PAGE_SIZE, (untouchedPage + 1) * PAGE_SIZE).map((p) => (
                   <div
                     key={p.visitId}
                     onClick={() => p.patientId && openPatient(p.patientId, p.visitId)}
@@ -3386,6 +3386,17 @@ function NurseWorkbenchInner() {
                   </div>
                 ))}
               </div>
+              {untouchedPatients.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
+                  <span className="text-xs text-muted-foreground">
+                    {untouchedPage * PAGE_SIZE + 1}–{Math.min((untouchedPage + 1) * PAGE_SIZE, untouchedPatients.length)} of {untouchedPatients.length}
+                  </span>
+                  <div className="flex gap-2">
+                    <button disabled={untouchedPage === 0} onClick={() => setUntouchedPage(p => p - 1)} className="px-3 py-1 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted">Previous</button>
+                    <button disabled={(untouchedPage + 1) * PAGE_SIZE >= untouchedPatients.length} onClick={() => setUntouchedPage(p => p + 1)} className="px-3 py-1 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted">Next</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -3410,7 +3421,7 @@ function NurseWorkbenchInner() {
                       type="text"
                       placeholder="Search by name, MRN, or doctor..."
                       value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onChange={(e) => { setSearchTerm(e.target.value); setMonitoringPage(0); }}
                       className="w-full h-10 pl-9 text-sm"
                     />
                   </div>
@@ -3421,7 +3432,7 @@ function NurseWorkbenchInner() {
                       Birth on Patient Entry - not the native browser date input. */}
                   <DatePicker
                     value={dateFilter}
-                    onChange={(v) => setDateFilter(v)}
+                    onChange={(v) => { setDateFilter(v); setMonitoringPage(0); }}
                     dateFormat="dd-MM-yyyy"
                     placeholder="DD-MM-YYYY"
                     className="flex h-10 w-36 items-center justify-between gap-2 rounded-lg border border-border bg-(--color-highlight) px-3 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -3451,7 +3462,7 @@ function NurseWorkbenchInner() {
                   </thead>
                   <tbody>
                     {filteredPatients.length > 0 ? (
-                      filteredPatients.map((p) => (
+                      filteredPatients.slice(monitoringPage * PAGE_SIZE, (monitoringPage + 1) * PAGE_SIZE).map((p) => (
                         <tr key={p.opId}>
                           <td className="font-mono text-xs">{p.opNumber || p.opId}</td>
                           <td className="font-semibold">{p.name}</td>
@@ -3493,6 +3504,17 @@ function NurseWorkbenchInner() {
                   </tbody>
                 </table>
               </div>
+              {filteredPatients.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
+                  <span className="text-xs text-muted-foreground">
+                    {monitoringPage * PAGE_SIZE + 1}–{Math.min((monitoringPage + 1) * PAGE_SIZE, filteredPatients.length)} of {filteredPatients.length}
+                  </span>
+                  <div className="flex gap-2">
+                    <button disabled={monitoringPage === 0} onClick={() => setMonitoringPage(p => p - 1)} className="px-3 py-1 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted">Previous</button>
+                    <button disabled={(monitoringPage + 1) * PAGE_SIZE >= filteredPatients.length} onClick={() => setMonitoringPage(p => p + 1)} className="px-3 py-1 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted">Next</button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="card p-6">
@@ -3512,9 +3534,9 @@ function NurseWorkbenchInner() {
                   NursingController.GetWorkQueue. Only Task rows carry the Start/Complete
                   status actions below; the other item types are just click-through to the
                   patient's chart, since they're driven by their own dedicated workflows. */}
-              <div className="flex flex-col gap-3 max-h-[28rem] overflow-y-auto">
+              <div className="flex flex-col gap-3">
                 {workQueue.length > 0 ? (
-                  workQueue.map((item) => (
+                  workQueue.slice(workQueuePage * PAGE_SIZE, (workQueuePage + 1) * PAGE_SIZE).map((item) => (
                     <div
                       key={`${item.itemType}-${item.sourceId}`}
                       className="rounded-lg border border-border bg-muted/30 px-3 py-2 cursor-pointer hover:bg-muted/50"
@@ -3554,6 +3576,17 @@ function NurseWorkbenchInner() {
                   <p className="text-sm text-muted-foreground">No pending work. Great job!</p>
                 )}
               </div>
+              {workQueue.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
+                  <span className="text-xs text-muted-foreground">
+                    {workQueuePage * PAGE_SIZE + 1}–{Math.min((workQueuePage + 1) * PAGE_SIZE, workQueue.length)} of {workQueue.length}
+                  </span>
+                  <div className="flex gap-2">
+                    <button disabled={workQueuePage === 0} onClick={() => setWorkQueuePage(p => p - 1)} className="px-3 py-1 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted">Previous</button>
+                    <button disabled={(workQueuePage + 1) * PAGE_SIZE >= workQueue.length} onClick={() => setWorkQueuePage(p => p + 1)} className="px-3 py-1 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted">Next</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

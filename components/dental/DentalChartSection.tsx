@@ -291,6 +291,7 @@ function ToothCol({
               isSelected={isSelected}
               onClick={onToothClick}
               size={TOOTH_W - 4}
+              shape={shape}
             />
           </div>
         </>
@@ -304,6 +305,7 @@ function ToothCol({
             isSelected={isSelected}
             onClick={onToothClick}
             size={TOOTH_W - 4}
+            shape={shape}
           />
           {/* Crown anatomy */}
           <div className="mt-0.5">

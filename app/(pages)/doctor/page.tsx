@@ -114,6 +114,7 @@ function DoctorWorkbenchInner() {
   const visitIdParam = searchParams.get("visitId") || undefined;
   const initialPatientIdParam = searchParams.get("patientId") || undefined;
 
+  const [activeVisitId, setActiveVisitId] = useState<string | undefined>(visitIdParam);
   const [role, setRole] = useState<string | null>(null);
   const [checkedAuth, setCheckedAuth] = useState(false);
 
@@ -264,6 +265,7 @@ function DoctorWorkbenchInner() {
       "appointmentCreated",
       "appointmentCancelled",
       "appointmentStatusUpdated",
+      "visitCheckedIn",
       "visitStatusUpdated",
       "encounterSaved",
       "encounterFinished",
@@ -303,7 +305,8 @@ function DoctorWorkbenchInner() {
   };
 
   // ---------------- PATIENT SUMMARY (EMR PANEL) ----------------
-  const openPatient = async (patientId: string) => {
+  const openPatient = async (patientId: string, visitId?: string | null) => {
+    setActiveVisitId(visitId != null ? visitId : undefined);
     setSelectedPatientId(patientId);
     const [loadedSummary] = await Promise.all([
       fetchSummary(patientId),
@@ -390,6 +393,7 @@ function DoctorWorkbenchInner() {
   };
 
   const backToWorkbench = () => {
+    setActiveVisitId(undefined);
     setSelectedPatientId(null);
     setSummary(null);
     setPatientAlertText("");
@@ -411,7 +415,7 @@ function DoctorWorkbenchInner() {
   // EMR panel directly instead of landing on the workbench list.
   useEffect(() => {
     if (checkedAuth && initialPatientIdParam) {
-      openPatient(initialPatientIdParam);
+      openPatient(initialPatientIdParam, visitIdParam);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, initialPatientIdParam]);
@@ -448,6 +452,8 @@ function DoctorWorkbenchInner() {
   // the "propose correction" flow kick in instead of the normal direct save.
   const [encounterFormSnapshot, setEncounterFormSnapshot] = useState(encounterForm);
   const [isSavingEncounter, setIsSavingEncounter] = useState(false);
+  const [isReleasingPatient, setIsReleasingPatient] = useState(false);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedFormRef = useRef<string>("");
 
@@ -502,7 +508,7 @@ function DoctorWorkbenchInner() {
       try {
         await EmrService.upsertEncounter(
           selectedPatientId,
-          { ...encounterForm, visitId: visitIdParam },
+          { ...encounterForm, visitId: activeVisitId },
           doctorIdParam
         );
         lastSavedFormRef.current = JSON.stringify(encounterForm);
@@ -523,7 +529,7 @@ function DoctorWorkbenchInner() {
       setIsSavingEncounter(true);
       await EmrService.upsertEncounter(
         selectedPatientId,
-        { ...encounterForm, visitId: visitIdParam },
+        { ...encounterForm, visitId: activeVisitId },
         doctorIdParam
       );
       lastSavedFormRef.current = JSON.stringify(encounterForm);
@@ -539,6 +545,21 @@ function DoctorWorkbenchInner() {
   };
 
   const revertEncounterForm = () => setEncounterForm(encounterFormSnapshot);
+
+  const releasePatient = async () => {
+    if (!activeVisitId) return;
+    try {
+      setIsReleasingPatient(true);
+      await EmrService.releaseVisit(activeVisitId, doctorIdParam);
+      toast.success("Patient released and returned to appointment queue.");
+      setShowReleaseConfirm(false);
+      backToWorkbench();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to release patient"));
+    } finally {
+      setIsReleasingPatient(false);
+    }
+  };
 
   const [showDentalChartModal, setShowDentalChartModal] = useState(false);
 
@@ -2119,6 +2140,15 @@ function DoctorWorkbenchInner() {
                         Finish Encounter
                       </button>
                     )}
+                    {activeVisitId && !isCompletedEncounter && (
+                      <button
+                        onClick={() => setShowReleaseConfirm(true)}
+                        disabled={isSavingEncounter || isReleasingPatient}
+                        className="flex items-center gap-2 rounded-lg border border-destructive/40 px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                      >
+                        Release Patient
+                      </button>
+                    )}
                     {dashboard?.isDentalSpecialty && selectedPatientId && (
                       <button
                         onClick={() => setShowDentalChartModal(true)}
@@ -3413,6 +3443,34 @@ function DoctorWorkbenchInner() {
           </div>
         )}
 
+        {/* Release Patient confirmation modal */}
+        {showReleaseConfirm && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-card w-full max-w-sm rounded-2xl border border-border shadow-2xl p-6 flex flex-col gap-4">
+              <h3 className="text-base font-semibold text-foreground">Release Patient?</h3>
+              <p className="text-sm text-muted-foreground">
+                This will void any unsaved encounter data for this visit and return the patient to the appointment queue. Reception can re-register them when ready.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowReleaseConfirm(false)}
+                  disabled={isReleasingPatient}
+                  className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={releasePatient}
+                  disabled={isReleasingPatient}
+                  className="px-4 py-2 rounded-lg bg-destructive text-sm font-semibold text-destructive-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  {isReleasingPatient ? "Releasing..." : "Yes, Release"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Patient warning modal — shown once on file open when allergies or alert exist */}
         {patientWarningModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -3718,10 +3776,10 @@ function DoctorWorkbenchInner() {
                             </td>
                             <td>
                               <button
-                                onClick={() => setEmrModal({ patientId: item.patientId, patientName: item.patientName })}
+                                onClick={() => openPatient(item.patientId, item.visitId)}
                                 className="text-sm font-semibold text-primary hover:underline"
                               >
-                                Open EMR
+                                See Patient
                               </button>
                             </td>
                           </tr>
@@ -3748,7 +3806,7 @@ function DoctorWorkbenchInner() {
                   activeCases.map((c) => (
                     <button
                       key={c.encounterId}
-                      onClick={() => setEmrModal({ patientId: c.patientId, patientName: c.patientName })}
+                      onClick={() => openPatient(c.patientId)}
                       className="text-left rounded-lg border border-border bg-muted/30 px-3 py-2 hover:border-primary/40 transition-colors"
                     >
                       <p className="font-semibold text-sm text-foreground">{c.patientName}</p>
@@ -3808,10 +3866,10 @@ function DoctorWorkbenchInner() {
                         <td>{formatDate(p.lastAppointmentDate)}</td>
                         <td>
                           <button
-                            onClick={() => setEmrModal({ patientId: p.opId, patientName: p.name })}
+                            onClick={() => openPatient(p.opId)}
                             className="text-sm font-semibold text-primary hover:underline"
                           >
-                            Open EMR
+                            Open Chart
                           </button>
                         </td>
                       </tr>

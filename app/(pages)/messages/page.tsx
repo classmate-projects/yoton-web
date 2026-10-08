@@ -360,14 +360,12 @@ export default function MessagesPage() {
   };
 
   return (
-    // h-screen, not h-full: the shared (pages) layout only sets min-h-full up
-    // the ancestor chain (so ordinary pages can grow taller than the viewport
-    // and let the page scroll), which means a plain h-full here has no
-    // definite height to resolve against and just grows with content too -
-    // the whole page would scroll instead of this panel's own message list.
-    // 100vh doesn't need ancestor cooperation, so it actually pins this page
-    // to the viewport and lets the flex-1 min-h-0 chain below clip properly.
-    <div className="flex h-screen flex-col py-6 px-4 sm:py-8 sm:px-10">
+    // h-full works here because the layout's content area is now a fixed-height
+    // flex container (h-screen overflow-hidden on the root, overflow-auto on the
+    // content div), giving this child a definite height to resolve against.
+    // The flex-1 min-h-0 chain below clips the message list rather than letting
+    // it grow the page.
+    <div className="flex h-full flex-col py-6 px-4 sm:py-8 sm:px-10">
       <div className="flex flex-col gap-1 mb-6 shrink-0">
         <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
           <MessageCircle className="text-primary" /> Messages

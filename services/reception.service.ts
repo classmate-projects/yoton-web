@@ -182,5 +182,13 @@ export const ReceptionService = {
         })
         return data;
     },
+    revertCheckIn: async (visitId: string) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.REVERT_CHECKIN(visitId));
+        return data;
+    },
+    updateAppointment: async (appointmentId: string, payload: { doctorId?: string; appointmentDate?: string; notes?: string; urgencyLevel?: string; isFollowUp?: boolean }) => {
+        const { data } = await api.put(ENDPOINTS.RECEPTION.UPDATE_APPOINTMENT(appointmentId), payload);
+        return data;
+    },
 
 }

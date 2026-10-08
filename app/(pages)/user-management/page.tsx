@@ -31,11 +31,9 @@ import AddUserIcon from "@/public/icons/AddUserIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { CalendarClock, History as HistoryIcon, UserX } from "lucide-react";
+import { History as HistoryIcon, UserX } from "lucide-react";
 import { UserService } from "@/services/user.service";
-import { NursingService } from "@/services/nursing.service";
 import { notifySaveStatus } from "@/lib/saveStatus";
-import { NurseShiftInput } from "@/types/nursing.type";
 import { StaffEmploymentEventType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
@@ -413,15 +411,6 @@ export default function UserManagement() {
         </button>
       )}
 
-      {user.role.toLowerCase() === "nurse" && (
-        <button
-          onClick={() => openShiftsManager(user)}
-          title="Manage Shifts"
-          className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer text-purple-600"
-        >
-          <CalendarClock size={18} />
-        </button>
-      )}
 
     </div>
   );

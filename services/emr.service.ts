@@ -60,6 +60,10 @@ export const EmrService = {
     const { data } = await api.put(ENDPOINTS.EMR.FINISH_ENCOUNTER(encounterId, doctorId));
     return data;
   },
+  releaseVisit: async (visitId: string, doctorId?: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.RELEASE_VISIT(visitId, doctorId));
+    return data;
+  },
   proposeEncounterCorrection: async (patientId: string, encounterId: string, payload: ProposeEncounterCorrectionPayload) => {
     const { data } = await api.post(ENDPOINTS.EMR.PROPOSE_ENCOUNTER_CORRECTION(patientId, encounterId), payload);
     return data;

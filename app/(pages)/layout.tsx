@@ -120,10 +120,10 @@ export default function PageLayout({
   }
 
   return (
-    <div className="min-h-full flex flex-row">
+    <div className="h-screen flex flex-row overflow-hidden">
       <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
-      <div className="flex-1 min-w-0 flex flex-col">
-        <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-card/95 px-3 py-2 backdrop-blur">
+      <div className="flex-1 min-w-0 flex flex-col min-h-0">
+        <header className="shrink-0 z-30 flex items-center gap-2 border-b border-border bg-card/95 px-3 py-2">
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
@@ -139,7 +139,7 @@ export default function PageLayout({
             <AutoSaveIndicator />
             <CheckInHeaderWidget />
           </header>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 min-h-0 overflow-auto">
           {status === "denied" ? <AccessDenied /> : children}
         </div>
       </div>
