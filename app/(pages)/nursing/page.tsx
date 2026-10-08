@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import {
-  ArrowLeft,
   Activity,
   AlertTriangle,
   Ban,
@@ -274,6 +273,7 @@ const emptyTriageForm = (): TriageFormState => ({
 
 function NurseWorkbenchInner() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const visitIdParam = searchParams.get("visitId") || undefined;
   const patientIdParam = searchParams.get("patientId") || undefined;
@@ -335,7 +335,7 @@ function NurseWorkbenchInner() {
   // Collapsed by default - triage is a one-time intake assessment, not something a nurse
   // reopens on every visit to this patient's chart the way vitals/tasks are, so it shouldn't
   // eat the top of the screen unless a nurse actually clicks in to use or review it.
-  const [isTriageExpanded, setIsTriageExpanded] = useState(false);
+  const [showTriageModal, setShowTriageModal] = useState(false);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -521,6 +521,12 @@ function NurseWorkbenchInner() {
   };
 
   const openPatient = async (patientId: string, visitId?: string) => {
+    if (patientId !== patientIdParam) {
+      const params = new URLSearchParams();
+      params.set("patientId", patientId);
+      if (visitId ?? visitIdParam) params.set("visitId", (visitId ?? visitIdParam)!);
+      router.push(`${pathname}?${params.toString()}`);
+    }
     const resolvedVisitId = visitId ?? visitIdParam;
     setSelectedPatientId(patientId);
     setCurrentVisitId(resolvedVisitId ?? null);
@@ -563,8 +569,17 @@ function NurseWorkbenchInner() {
   // Arriving from the reception visit queue (?patientId=&visitId=) opens that patient's
   // chart directly instead of landing on the workbench list.
   useEffect(() => {
-    if (checkedAuth && patientIdParam) {
+    if (!checkedAuth) return;
+    if (patientIdParam) {
       openPatient(patientIdParam);
+    } else if (selectedPatientId) {
+      // URL params cleared by browser back button — return to workbench.
+      setSelectedPatientId(null);
+      setSummary(null);
+      setChart(null);
+      setEncounterId(null);
+      setCurrentVisitId(null);
+      fetchWorkbench();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, patientIdParam]);
@@ -600,6 +615,7 @@ function NurseWorkbenchInner() {
     setEncounterId(null);
     setCurrentVisitId(null);
     fetchWorkbench();
+    if (patientIdParam) router.push(pathname);
   };
 
   // Prefills from the active encounter's saved triage (if any) whenever a different patient/
@@ -1645,14 +1661,8 @@ function NurseWorkbenchInner() {
   // ==================== PATIENT CHART ====================
   if (selectedPatientId) {
     return (
-      <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
-        <div className="flex items-center justify-between mb-6 gap-4">
-          <button
-            onClick={backToWorkbench}
-            className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors"
-          >
-            <ArrowLeft size={16} /> Back to patients
-          </button>
+      <div className="h-full flex flex-col overflow-hidden">
+        <div className="shrink-0 flex items-center justify-between px-4 sm:px-10 py-4 border-b border-border gap-4">
           {isDoctor && (
             <span className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
               <Lock size={12} /> Read-only view
@@ -1695,7 +1705,8 @@ function NurseWorkbenchInner() {
           )}
         </div>
 
-        {isLoadingChart || !summary ? (
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-10 py-6 sm:py-8">
+        {!summary ? (
           <LoadingSpinner />
         ) : (
           <div className="flex flex-col gap-6">
@@ -1713,6 +1724,19 @@ function NurseWorkbenchInner() {
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-2 shrink-0">
+                  <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowTriageModal(true)}
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      chart?.triage
+                        ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+                        : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <ClipboardCheck size={13} />
+                    Triage
+                    {chart?.triage && <span className="ml-0.5 text-[10px] font-bold rounded-full bg-primary text-primary-foreground px-1.5 py-0.5">✓</span>}
+                  </button>
                   <button
                     onClick={() => setShowDocumentsModal(true)}
                     className={`relative flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
@@ -1734,6 +1758,7 @@ function NurseWorkbenchInner() {
                       <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-blue-500 border-2 border-card" />
                     )}
                   </button>
+                  </div>
                   {summary.latestEncounter?.chiefComplaint && (
                     <div className="rounded-lg bg-muted/40 border border-border px-3 py-2 max-w-sm">
                       <p className="text-xs font-semibold uppercase text-muted-foreground">Chief Complaint</p>
@@ -1852,6 +1877,7 @@ function NurseWorkbenchInner() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Medication History - read-only mirror of the doctor workbench's Medication
                 Tracking panel (current + past meds), placed right after Medical History
                 above. Actually administering a dose is a separate, always-visible action
@@ -1991,204 +2017,195 @@ function NurseWorkbenchInner() {
                 setSummary(res.data);
               }}
             />
-
-            {/* Triage - the nurse's initial assessment for this encounter, at the top since
-                it's normally the first thing recorded for a newly arrived patient. Upserted
-                per encounter (see NursingController.SaveTriage) - reopening a patient with an
-                existing triage on this encounter shows it prefilled for editing rather than a
-                second copy. */}
-            <div className="card p-6 flex flex-col gap-5">
-              <button
-                type="button"
-                onClick={() => setIsTriageExpanded((prev) => !prev)}
-                aria-expanded={isTriageExpanded}
-                className="flex items-center justify-between gap-4 cursor-pointer text-left"
-              >
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  {isTriageExpanded ? <ChevronDown size={18} className="text-muted-foreground" /> : <ChevronRight size={18} className="text-muted-foreground" />}
-                  <ClipboardCheck size={18} className="text-primary" /> Triage
-                </h2>
-                {chart?.triage && (
-                  <span className="text-xs text-muted-foreground">
-                    Last saved by {chart.triage.nurseName || "—"} · {formatDateTime(chart.triage.createdAt)}
-                  </span>
-                )}
-              </button>
-
-              {isTriageExpanded && (
-              <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm rounded-lg border border-border bg-muted/20 p-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">IP Number</p>
-                  <p className="font-semibold text-foreground">{summary.opNumber || summary.opId}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Marital Status</p>
-                  <p className="font-semibold text-foreground">{summary.maritalStatus || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Gender / Age / DOB</p>
-                  <p className="font-semibold text-foreground">{summary.sex || "—"} · {formatDate(summary.dateOfBirth)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Nationality</p>
-                  <p className="font-semibold text-foreground">{summary.nationality || "—"}</p>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
-                  <FileText size={13} /> Chief Complaint
-                </h3>
-                {/* Doctor-only now - a nurse can see it here once the doctor has documented
-                    it (encounter.ChiefComplaint), but never enter or edit it from Triage.
-                    The backend already refuses to persist a nurse-supplied value even if this
-                    were bypassed - see NursingController.SaveTriage's own comment - and once
-                    the encounter is Completed, EmrController.UpsertEncounter locks the whole
-                    row (chief complaint included) against every role, doctor and admin alike,
-                    same as the rest of the encounter. */}
-                {summary.latestEncounter?.chiefComplaint ? (
-                  <p className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
-                    {summary.latestEncounter.chiefComplaint}
-                  </p>
-                ) : (
-                  <p className="w-full rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
-                    Not yet documented by the doctor.
-                  </p>
-                )}
-              </div>
-
-              <div className="border-t border-border pt-5">
-                <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
-                  <Flag size={13} /> Triage Priority
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-                  {TRIAGE_PRIORITY_LEVELS.map((lvl) => {
-                    const selected = triageForm.priorityLevel === lvl.level;
-                    return (
-                      <label
-                        key={lvl.level}
-                        className={`relative flex flex-col gap-1 rounded-xl border p-3 transition-all ${
-                          canEdit ? "cursor-pointer" : "cursor-default"
-                        } ${selected ? lvl.active : `${lvl.idle} ${canEdit ? "hover:opacity-80" : ""}`}`}
-                      >
-                        <input
-                          type="radio"
-                          className="sr-only"
-                          disabled={!canEdit}
-                          checked={selected}
-                          onChange={() => setTriageForm((prev) => ({ ...prev, priorityLevel: lvl.level }))}
-                        />
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-bold uppercase tracking-wide">{lvl.label}</span>
-                          {selected && <CheckCircle2 size={14} className="shrink-0" />}
-                        </div>
-                        <p className="text-sm font-bold leading-tight">{lvl.name}</p>
-                        <p className={`text-xs ${selected ? "text-white/80" : "opacity-70"}`}>{lvl.eta}</p>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="border-t border-border pt-5 flex flex-col gap-3">
-                <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                  <Stethoscope size={13} /> Symptoms
-                </h3>
-                {TRIAGE_SYMPTOM_ROWS.map((row) => {
-                  const detailKey = `${row.key}Detail` as const;
-                  return (
-                    <div key={row.key} className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 rounded-lg border border-border bg-muted/20 p-3">
-                      <p className="text-sm text-foreground flex-1 sm:pt-2">{row.label}</p>
-                      <div className="inline-flex rounded-lg border border-border bg-muted p-0.5 shrink-0">
-                        {(["Yes", "No", "Unknown"] as const).map((opt) => (
-                          <button
-                            key={opt}
-                            type="button"
-                            disabled={!canEdit}
-                            onClick={() => setTriageForm((prev) => ({ ...prev, [row.key]: opt }))}
-                            className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
-                              triageForm[row.key] === opt
-                                ? "bg-card text-foreground shadow-sm"
-                                : "text-muted-foreground hover:text-foreground"
-                            } ${canEdit ? "cursor-pointer" : "cursor-default"}`}
-                          >
-                            {opt}
-                          </button>
-                        ))}
-                      </div>
-                      <textarea
-                        placeholder="Details"
-                        disabled={!canEdit}
-                        value={triageForm[detailKey]}
-                        onChange={(e) => setTriageForm((prev) => ({ ...prev, [detailKey]: e.target.value }))}
-                        rows={1}
-                        className="text-sm sm:flex-1 sm:min-w-64 resize-y"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              <fieldset disabled={!canEdit} className="contents">
-                <div className="border-t border-border pt-5">
-                  <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
-                    <Activity size={13} /> Vital Signs in Triage
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {TRIAGE_VITAL_FIELDS.map(renderTriageVitalRow)}
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-muted-foreground">BMI (kg/m2)</label>
-                      <input type="text" disabled value={triageBmi != null ? String(triageBmi) : ""} className="text-sm opacity-70" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-5">
-                  <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
-                    <HeartPulse size={13} /> Obstetric
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {TRIAGE_OBSTETRIC_FIELDS.map(renderTriageVitalRow)}
-                  </div>
-                </div>
-              </fieldset>
-
-              <div className="border-t border-border pt-5 flex flex-wrap items-end justify-between gap-4">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <ToggleButton
-                      disabled={!canEdit}
-                      checked={triageForm.patientRefused}
-                      onChange={(checked) => setTriageForm((prev) => ({ ...prev, patientRefused: checked }))}
-                    />
-                    <span className="text-sm font-semibold text-foreground">Patient Refused (entire assessment)</span>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground block mb-1">Action Date Time</label>
-                    <input
-                      type="datetime-local"
-                      disabled={!canEdit}
-                      value={triageForm.actionDateTime}
-                      onChange={(e) => setTriageForm((prev) => ({ ...prev, actionDateTime: e.target.value }))}
-                      className="text-sm"
-                    />
-                  </div>
-                </div>
-
-                {canEdit && (
-                  <button
-                    onClick={handleSaveTriage}
-                    disabled={savingTriage || !encounterId}
-                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                  >
-                    <Save size={15} /> Save Triage
-                  </button>
-                )}
-              </div>
-              </>
-              )}
             </div>
+
+            {/* Triage modal */}
+            {showTriageModal && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div className="bg-card rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+                  {/* Modal header */}
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+                    <div>
+                      <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                        <ClipboardCheck size={18} className="text-primary" /> Triage — {summary.name}
+                      </h2>
+                      {chart?.triage && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Last saved by {chart.triage.nurseName || "—"} · {formatDateTime(chart.triage.createdAt)}
+                        </p>
+                      )}
+                    </div>
+                    <button onClick={() => setShowTriageModal(false)} className="p-2 rounded-full hover:bg-muted transition-colors">
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  {/* Modal body — scrollable */}
+                  <div className="overflow-y-auto flex-1 p-6 flex flex-col gap-5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm rounded-lg border border-border bg-muted/20 p-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">IP Number</p>
+                        <p className="font-semibold text-foreground">{summary.opNumber || summary.opId}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Marital Status</p>
+                        <p className="font-semibold text-foreground">{summary.maritalStatus || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Gender / Age / DOB</p>
+                        <p className="font-semibold text-foreground">{summary.sex || "—"} · {formatDate(summary.dateOfBirth)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Nationality</p>
+                        <p className="font-semibold text-foreground">{summary.nationality || "—"}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
+                        <FileText size={13} /> Chief Complaint
+                      </h3>
+                      {summary.latestEncounter?.chiefComplaint ? (
+                        <p className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
+                          {summary.latestEncounter.chiefComplaint}
+                        </p>
+                      ) : (
+                        <p className="w-full rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+                          Not yet documented by the doctor.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="border-t border-border pt-5">
+                      <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                        <Flag size={13} /> Triage Priority
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                        {TRIAGE_PRIORITY_LEVELS.map((lvl) => {
+                          const selected = triageForm.priorityLevel === lvl.level;
+                          return (
+                            <label
+                              key={lvl.level}
+                              className={`relative flex flex-col gap-1 rounded-xl border p-3 transition-all ${
+                                canEdit ? "cursor-pointer" : "cursor-default"
+                              } ${selected ? lvl.active : `${lvl.idle} ${canEdit ? "hover:opacity-80" : ""}`}`}
+                            >
+                              <input
+                                type="radio"
+                                className="sr-only"
+                                disabled={!canEdit}
+                                checked={selected}
+                                onChange={() => setTriageForm((prev) => ({ ...prev, priorityLevel: lvl.level }))}
+                              />
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wide">{lvl.label}</span>
+                                {selected && <CheckCircle2 size={14} className="shrink-0" />}
+                              </div>
+                              <p className="text-sm font-bold leading-tight">{lvl.name}</p>
+                              <p className={`text-xs ${selected ? "text-white/80" : "opacity-70"}`}>{lvl.eta}</p>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border pt-5 flex flex-col gap-3">
+                      <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                        <Stethoscope size={13} /> Symptoms
+                      </h3>
+                      {TRIAGE_SYMPTOM_ROWS.map((row) => {
+                        const detailKey = `${row.key}Detail` as const;
+                        return (
+                          <div key={row.key} className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 rounded-lg border border-border bg-muted/20 p-3">
+                            <p className="text-sm text-foreground flex-1 sm:pt-2">{row.label}</p>
+                            <div className="inline-flex rounded-lg border border-border bg-muted p-0.5 shrink-0">
+                              {(["Yes", "No", "Unknown"] as const).map((opt) => (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  disabled={!canEdit}
+                                  onClick={() => setTriageForm((prev) => ({ ...prev, [row.key]: opt }))}
+                                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                                    triageForm[row.key] === opt
+                                      ? "bg-card text-foreground shadow-sm"
+                                      : "text-muted-foreground hover:text-foreground"
+                                  } ${canEdit ? "cursor-pointer" : "cursor-default"}`}
+                                >
+                                  {opt}
+                                </button>
+                              ))}
+                            </div>
+                            <textarea
+                              placeholder="Details"
+                              disabled={!canEdit}
+                              value={triageForm[detailKey]}
+                              onChange={(e) => setTriageForm((prev) => ({ ...prev, [detailKey]: e.target.value }))}
+                              rows={1}
+                              className="text-sm sm:flex-1 sm:min-w-64 resize-y"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <fieldset disabled={!canEdit} className="contents">
+                      <div className="border-t border-border pt-5">
+                        <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                          <Activity size={13} /> Vital Signs in Triage
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {TRIAGE_VITAL_FIELDS.map(renderTriageVitalRow)}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-medium text-muted-foreground">BMI (kg/m2)</label>
+                            <input type="text" disabled value={triageBmi != null ? String(triageBmi) : ""} className="text-sm opacity-70" />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="border-t border-border pt-5">
+                        <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">
+                          <HeartPulse size={13} /> Obstetric
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {TRIAGE_OBSTETRIC_FIELDS.map(renderTriageVitalRow)}
+                        </div>
+                      </div>
+                    </fieldset>
+
+                    <div className="border-t border-border pt-5 flex flex-wrap items-end justify-between gap-4">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-3">
+                          <ToggleButton
+                            disabled={!canEdit}
+                            checked={triageForm.patientRefused}
+                            onChange={(checked) => setTriageForm((prev) => ({ ...prev, patientRefused: checked }))}
+                          />
+                          <span className="text-sm font-semibold text-foreground">Patient Refused (entire assessment)</span>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground block mb-1">Action Date Time</label>
+                          <input
+                            type="datetime-local"
+                            disabled={!canEdit}
+                            value={triageForm.actionDateTime}
+                            onChange={(e) => setTriageForm((prev) => ({ ...prev, actionDateTime: e.target.value }))}
+                            className="text-sm"
+                          />
+                        </div>
+                      </div>
+                      {canEdit && (
+                        <button
+                          onClick={async () => { await handleSaveTriage(); setShowTriageModal(false); }}
+                          disabled={savingTriage || !encounterId}
+                          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                        >
+                          <Save size={15} /> Save Triage
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Read-only clinical snapshot from the doctor's EMR */}
@@ -2256,30 +2273,33 @@ function NurseWorkbenchInner() {
                 {canEdit && (
                   <>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      <div className="flex items-center gap-1 col-span-2 sm:col-span-1">
-                        <input type="number" min="0" placeholder="Sys" value={vitalsForm.systolic} onChange={(e) => setVitalsForm((p) => ({ ...p, systolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
-                        <span className="text-xs text-muted-foreground shrink-0">/</span>
-                        <input type="number" min="0" placeholder="Dia" value={vitalsForm.diastolic} onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
-                        <span className="text-xs text-muted-foreground shrink-0">mmHg</span>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Blood Pressure — Systolic <span className="text-destructive">*</span></label>
+                        <input type="number" min="0" placeholder="e.g. 120 mmHg" value={vitalsForm.systolic} onChange={(e) => setVitalsForm((p) => ({ ...p, systolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <input type="number" min="0" placeholder="Pulse" value={vitalsForm.heartRate} onChange={(e) => setVitalsForm((p) => ({ ...p, heartRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
-                        <span className="text-xs text-muted-foreground shrink-0">bpm</span>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Blood Pressure — Diastolic <span className="text-destructive">*</span></label>
+                        <input type="number" min="0" placeholder="e.g. 80 mmHg" value={vitalsForm.diastolic} onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <input type="number" step="0.1" min="0" placeholder="Temp" value={vitalsForm.temperature} onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
-                        <span className="text-xs text-muted-foreground shrink-0">°C</span>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Heart Rate / Pulse <span className="text-destructive">*</span></label>
+                        <input type="number" min="0" placeholder="e.g. 72 bpm" value={vitalsForm.heartRate} onChange={(e) => setVitalsForm((p) => ({ ...p, heartRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <input type="number" min="0" placeholder="Resp Rate" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm((p) => ({ ...p, respiratoryRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
-                        <span className="text-xs text-muted-foreground shrink-0">br/min</span>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Temperature</label>
+                        <input type="number" step="0.1" min="0" placeholder="e.g. 37.0 °C" value={vitalsForm.temperature} onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Respiratory Rate</label>
+                        <input type="number" min="0" placeholder="e.g. 16 br/min" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm((p) => ({ ...p, respiratoryRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Oxygen Saturation (SpO2)</label>
                         <input
                           type="number"
                           min="0"
                           max="100"
-                          placeholder="SpO2"
+                          placeholder="e.g. 98 %"
                           value={vitalsForm.oxygenSaturation}
                           onChange={(e) => {
                             let v = e.target.value.replace(/-/g, "");
@@ -2288,19 +2308,18 @@ function NurseWorkbenchInner() {
                           }}
                           className="h-10 text-sm w-full"
                         />
-                        <span className="text-xs text-muted-foreground shrink-0">%</span>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <input type="number" step="0.1" min="0" placeholder="Height" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm((p) => ({ ...p, heightCm: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
-                        <span className="text-xs text-muted-foreground shrink-0">cm</span>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Height</label>
+                        <input type="number" step="0.1" min="0" placeholder="e.g. 170 cm" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm((p) => ({ ...p, heightCm: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <input type="number" step="0.1" min="0" placeholder="Weight" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm((p) => ({ ...p, weightKg: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
-                        <span className="text-xs text-muted-foreground shrink-0">kg</span>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Weight</label>
+                        <input type="number" step="0.1" min="0" placeholder="e.g. 70 kg" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm((p) => ({ ...p, weightKg: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <input type="text" readOnly disabled placeholder="BMI" value={liveBmi ?? ""} className="h-10 text-sm w-full" />
-                        <span className="text-xs text-muted-foreground shrink-0">kg/m²</span>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">BMI (auto-calculated)</label>
+                        <input type="text" readOnly disabled placeholder="kg/m²" value={liveBmi ?? ""} className="h-10 text-sm w-full" />
                       </div>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -2602,63 +2621,61 @@ function NurseWorkbenchInner() {
                     ))}
                   </div>
                 )}
+
+                {/* Blood Sugar — merged into Vital Signs card */}
+                <div className="border-t border-border pt-4 flex flex-col gap-3">
+                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Droplets size={15} className="text-primary" /> Blood Sugar
+                  </h3>
+                  {canEdit && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <input type="number" min="0" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
+                        <select value={sugarForm.type} onChange={(e) => setSugarForm((p) => ({ ...p, type: e.target.value }))} className="h-10 text-sm">
+                          <option>Random</option>
+                          <option>Fasting</option>
+                          <option>Post-Prandial</option>
+                        </select>
+                      </div>
+                      <textarea placeholder="Notes..." value={sugarForm.notes} onChange={(e) => setSugarForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => saveBloodSugar()} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                          <Save size={15} /> {editingSugarId ? "Save Changes" : "Save Entry"}
+                        </button>
+                        {editingSugarId && (
+                          <button onClick={cancelEditSugar} className="text-sm font-semibold text-muted-foreground hover:underline">
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  {chart && chart.bloodSugarChecks.length > 0 && (
+                    <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
+                      {chart.bloodSugarChecks.slice(0, 5).map((s) => (
+                        <div key={s.bloodSugarTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                          <span className="font-medium">{s.sugarLevel} mg/dL · {s.type}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</span>
+                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => startEditSugar(s)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                <Pencil size={12} />
+                              </button>
+                              <button onClick={() => removeSugarRecord(s)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Blood Sugar */}
-              <div className="card p-6 flex flex-col gap-4">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Droplets size={18} className="text-primary" /> Blood Sugar
-                </h2>
-                {canEdit && (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <input type="number" min="0" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
-                      <select value={sugarForm.type} onChange={(e) => setSugarForm((p) => ({ ...p, type: e.target.value }))} className="h-10 text-sm">
-                        <option>Random</option>
-                        <option>Fasting</option>
-                        <option>Post-Prandial</option>
-                      </select>
-                    </div>
-                    <textarea placeholder="Notes..." value={sugarForm.notes} onChange={(e) => setSugarForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <div className="flex items-center gap-3">
-                      <button onClick={() => saveBloodSugar()} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                        <Save size={15} /> {editingSugarId ? "Save Changes" : "Save Entry"}
-                      </button>
-                      {editingSugarId && (
-                        <button onClick={cancelEditSugar} className="text-sm font-semibold text-muted-foreground hover:underline">
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {chart && chart.bloodSugarChecks.length > 0 && (
-                  <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
-                    {chart.bloodSugarChecks.slice(0, 5).map((s) => (
-                      <div key={s.bloodSugarTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
-                        <span className="font-medium">{s.sugarLevel} mg/dL · {s.type}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</span>
-                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => startEditSugar(s)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
-                              <Pencil size={12} />
-                            </button>
-                            <button onClick={() => removeSugarRecord(s)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* IV Fluids */}
-              <div className="card p-6 flex flex-col gap-4">
+            {/* IV Fluids */}
+            <div className="card p-6 flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Activity size={18} className="text-primary" /> IV Fluids
                 </h2>
@@ -2703,7 +2720,6 @@ function NurseWorkbenchInner() {
                     ))}
                   </div>
                 )}
-              </div>
             </div>
 
             {canEdit && (
@@ -2837,7 +2853,8 @@ function NurseWorkbenchInner() {
               </div>
             )}
 
-            {/* Nurse Notes */}
+            {/* Nurse Notes + Medical Forms */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="card p-6 flex flex-col gap-4">
               <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <FileText size={18} className="text-primary" /> Nurse Notes
@@ -2884,6 +2901,13 @@ function NurseWorkbenchInner() {
                   ))}
                 </div>
               )}
+            </div>
+            <PatientMedicalFormsSection
+              patientId={selectedPatientId}
+              visitId={currentVisitId}
+              patientName={summary?.name}
+              patientNumber={summary?.opNumber || summary?.opId}
+            />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -3090,12 +3114,6 @@ function NurseWorkbenchInner() {
               </div>
             </div>
 
-            <PatientMedicalFormsSection
-              patientId={selectedPatientId}
-              visitId={currentVisitId}
-              patientName={summary?.name}
-              patientNumber={summary?.opNumber || summary?.opId}
-            />
           </div>
         )}
 
@@ -3282,14 +3300,15 @@ function NurseWorkbenchInner() {
             </div>
           </div>
         )}
+        </div>
       </div>
     );
   }
 
   // ==================== WORKBENCH ====================
   return (
-    <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="shrink-0 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between px-4 sm:px-10 py-4 border-b border-border">
         <div>
           <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
             <HeartPulse className="text-primary" /> Nurse Workbench
@@ -3326,6 +3345,7 @@ function NurseWorkbenchInner() {
         )}
       </div>
 
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-10 py-6 sm:py-8">
       {isLoadingWorkbench ? (
         <div className="flex flex-col gap-6">
           <div className="card p-6">
@@ -3663,6 +3683,7 @@ function NurseWorkbenchInner() {
         />
       )}
 
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -112,6 +112,7 @@ const formatDateTime = (value: string | null | undefined) =>
 
 function DoctorWorkbenchInner() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const visitIdParam = searchParams.get("visitId") || undefined;
   const initialPatientIdParam = searchParams.get("patientId") || undefined;
@@ -310,6 +311,14 @@ function DoctorWorkbenchInner() {
 
   // ---------------- PATIENT SUMMARY (EMR PANEL) ----------------
   const openPatient = async (patientId: string, visitId?: string | null) => {
+    // Push to browser history so the back button returns to the workbench list.
+    // Skip if the URL already reflects this patient (opened via URL param).
+    if (patientId !== initialPatientIdParam) {
+      const params = new URLSearchParams();
+      params.set("patientId", patientId);
+      if (visitId) params.set("visitId", visitId);
+      router.push(`${pathname}?${params.toString()}`);
+    }
     setActiveVisitId(visitId != null ? visitId : undefined);
     setSelectedPatientId(patientId);
     const [loadedSummary] = await Promise.all([
@@ -396,7 +405,24 @@ function DoctorWorkbenchInner() {
     }
   };
 
-  const backToWorkbench = () => {
+  const backToWorkbench = async () => {
+    // Flush any pending auto-save before clearing state — the effect cleanup would
+    // clearTimeout on the timer, silently dropping edits made in the last 3 seconds.
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    if (selectedPatientId && !isCompletedEncounter && summary?.latestEncounter &&
+        JSON.stringify(encounterForm) !== lastSavedFormRef.current) {
+      notifySaveStatus("saving");
+      try {
+        await EmrService.upsertEncounter(
+          selectedPatientId,
+          { ...encounterForm, visitId: activeVisitId },
+          doctorIdParam
+        );
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+      }
+    }
     setActiveVisitId(undefined);
     setSelectedPatientId(null);
     setSummary(null);
@@ -413,13 +439,34 @@ function DoctorWorkbenchInner() {
     setNurseNotes([]);
     setNurseExaminationNotes([]);
     fetchWorkbench();
+    // Clear URL params so browser back/forward history stays consistent.
+    if (initialPatientIdParam) router.push(pathname);
   };
 
   // Arriving from the reception visit queue (?patientId=&visitId=) opens that patient's
   // EMR panel directly instead of landing on the workbench list.
   useEffect(() => {
-    if (checkedAuth && initialPatientIdParam) {
+    if (!checkedAuth) return;
+    if (initialPatientIdParam) {
       openPatient(initialPatientIdParam, visitIdParam);
+    } else if (selectedPatientId) {
+      // URL params were cleared by the browser back button — return to workbench.
+      setActiveVisitId(undefined);
+      setSelectedPatientId(null);
+      setSummary(null);
+      setPatientAlertText("");
+      setPastMedicalHistory("");
+      setPastSurgicalHistory("");
+      setPastTreatmentHistory("");
+      setPatientWarningModal(null);
+      setShowDocumentsModal(false);
+      setQuickNotes([]);
+      setConfidentialNotes([]);
+      setVitalsHistory([]);
+      setNurseSpecialRemarks([]);
+      setNurseNotes([]);
+      setNurseExaminationNotes([]);
+      fetchWorkbench();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, initialPatientIdParam]);
@@ -525,6 +572,19 @@ function DoctorWorkbenchInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encounterForm]);
 
+  // Warn the doctor before a browser refresh or tab close if they have unsaved encounter edits.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!selectedPatientId || isCompletedEncounter) return;
+      if (JSON.stringify(encounterForm) !== lastSavedFormRef.current) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [selectedPatientId, isCompletedEncounter, encounterForm]);
+
   const saveEncounter = async () => {
     if (!selectedPatientId || !requireDoctorSelected()) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
@@ -557,7 +617,7 @@ function DoctorWorkbenchInner() {
       await EmrService.releaseVisit(activeVisitId, doctorIdParam);
       toast.success("Patient released and returned to appointment queue.");
       setShowReleaseConfirm(false);
-      backToWorkbench();
+      await backToWorkbench();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to release patient"));
     } finally {
@@ -1578,7 +1638,7 @@ function DoctorWorkbenchInner() {
         >
           <ArrowLeft size={16} /> Back to patients
         </button>
-        {isLoadingSummary || !summary ? (
+        {!summary ? (
           <LoadingSpinner />
         ) : (
           <div className="flex flex-col gap-6">
@@ -2590,11 +2650,23 @@ function DoctorWorkbenchInner() {
 
                 {/* Medications */}
                 <div className="card p-6 flex flex-col gap-4">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Pill size={18} className="text-primary" /> Medication Tracking
+                  </h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-border">
+                    {/* Current Medications */}
+                    <div className="flex flex-col gap-3">
                       <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                          <Pill size={18} className="text-primary" /> Medication Tracking
-                        </h2>
-                        {medTab === "current" && summary.currentMedications.length > 0 && (
+                        <p className="text-sm font-semibold text-foreground/90 flex items-center gap-1.5">
+                          Current Medications
+                          {summary.currentMedications.length > 0 && (
+                            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
+                              {summary.currentMedications.length}
+                            </span>
+                          )}
+                        </p>
+                        {summary.currentMedications.length > 0 && (
                           <button
                             onClick={() => {
                               setPatientAgeForPrint(
@@ -2607,166 +2679,136 @@ function DoctorWorkbenchInner() {
                               );
                               setShowPrescriptionPrint(true);
                             }}
-                            className="text-sm font-semibold text-primary hover:underline"
+                            className="text-xs font-semibold text-primary hover:underline"
                           >
                             Print Prescription
                           </button>
                         )}
                       </div>
-
-                      {/* Tabs */}
-                      <div className="flex border-b border-border">
-                        <button
-                          onClick={() => setMedTab("current")}
-                          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
-                            medTab === "current"
-                              ? "border-primary text-primary"
-                              : "border-transparent text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          Current Medications
-                          {summary.currentMedications.length > 0 && (
-                            <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
-                              {summary.currentMedications.length}
-                            </span>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => setMedTab("history")}
-                          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
-                            medTab === "history"
-                              ? "border-primary text-primary"
-                              : "border-transparent text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          Medication History
-                          {summary.medicationHistory.length > 0 && (
-                            <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
-                              {summary.medicationHistory.length}
-                            </span>
-                          )}
-                        </button>
-                      </div>
-
-                      {medTab === "current" && (
-                        <div>
-                          {summary.currentMedications.length > 0 ? (
-                            <div className="overflow-x-auto">
-                              <table>
-                                <thead>
-                                  <tr>
-                                    <th>Drug</th>
-                                    <th>Dosage</th>
-                                    <th>Route</th>
-                                    <th>Frequency</th>
-                                    <th>Priority</th>
-                                    <th>Instructions</th>
-                                    <th>Action</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {summary.currentMedications.map((m) => (
-                                    <tr key={m.medicationId}>
-                                      <td className="font-semibold">
-                                        {m.drugName}
-                                        {m.isDiscontinued && (
-                                          <span
-                                            className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 align-middle"
-                                            title={m.discontinuedDate ? `Discontinued by health authority on ${new Date(m.discontinuedDate).toLocaleDateString()}` : "Discontinued by health authority"}
-                                          >
-                                            Discontinued
-                                          </span>
-                                        )}
-                                      </td>
-                                      <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
-                                      <td>{m.route || "—"}</td>
-                                      <td>{m.frequency || "—"}</td>
-                                      <td>
-                                        {m.priority !== "Routine" ? (
-                                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${m.priority === "STAT" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
-                                            {m.priority}
-                                          </span>
-                                        ) : (
-                                          <span className="text-muted-foreground text-xs">Routine</span>
-                                        )}
-                                      </td>
-                                      <td className="text-xs text-muted-foreground max-w-48 truncate">{m.instructions || "—"}</td>
-                                      <td>
-                                        <div className="flex flex-col items-start gap-1">
-                                          <div className="flex items-center gap-3">
-                                            <button
-                                              onClick={() => discontinueMedication(m.medicationId)}
-                                              className="text-sm font-semibold text-red-600 hover:underline"
-                                            >
-                                              Discontinue
-                                            </button>
-                                            <button onClick={() => setEditingMedication(m)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
-                                              <Pencil size={13} />
-                                            </button>
-                                            <button onClick={() => removeMedication(m)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
-                                              <Trash2 size={13} />
-                                            </button>
-                                          </div>
-                                          {m.correctedFrom && (
-                                            <CorrectedFromNote>
-                                              <p>
-                                                Previous: {m.correctedFrom.drugName} ·{" "}
-                                                {m.correctedFrom.dosage
-                                                  ? `${m.correctedFrom.dosage}${m.correctedFrom.dosageUnit ? ` ${m.correctedFrom.dosageUnit}` : ""}`
-                                                  : "—"}{" "}
-                                                · {m.correctedFrom.frequency || "—"}
-                                                {m.correctedFrom.durationDays ? ` · ${m.correctedFrom.durationDays} days` : ""}
-                                                {m.correctedFrom.route ? ` · ${m.correctedFrom.route}` : ""}
-                                              </p>
-                                            </CorrectedFromNote>
-                                          )}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">No active medications.</p>
-                          )}
+                      {summary.currentMedications.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Drug</th>
+                                <th>Dosage</th>
+                                <th>Route</th>
+                                <th>Frequency</th>
+                                <th>Priority</th>
+                                <th>Instructions</th>
+                                <th>Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {summary.currentMedications.map((m) => (
+                                <tr key={m.medicationId}>
+                                  <td className="font-semibold">
+                                    {m.drugName}
+                                    {m.isDiscontinued && (
+                                      <span
+                                        className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 align-middle"
+                                        title={m.discontinuedDate ? `Discontinued by health authority on ${new Date(m.discontinuedDate).toLocaleDateString()}` : "Discontinued by health authority"}
+                                      >
+                                        Discontinued
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
+                                  <td>{m.route || "—"}</td>
+                                  <td>{m.frequency || "—"}</td>
+                                  <td>
+                                    {m.priority !== "Routine" ? (
+                                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${m.priority === "STAT" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                                        {m.priority}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs">Routine</span>
+                                    )}
+                                  </td>
+                                  <td className="text-xs text-muted-foreground max-w-48 truncate">{m.instructions || "—"}</td>
+                                  <td>
+                                    <div className="flex flex-col items-start gap-1">
+                                      <div className="flex items-center gap-3">
+                                        <button
+                                          onClick={() => discontinueMedication(m.medicationId)}
+                                          className="text-sm font-semibold text-red-600 hover:underline"
+                                        >
+                                          Discontinue
+                                        </button>
+                                        <button onClick={() => setEditingMedication(m)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                          <Pencil size={13} />
+                                        </button>
+                                        <button onClick={() => removeMedication(m)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                      {m.correctedFrom && (
+                                        <CorrectedFromNote>
+                                          <p>
+                                            Previous: {m.correctedFrom.drugName} ·{" "}
+                                            {m.correctedFrom.dosage
+                                              ? `${m.correctedFrom.dosage}${m.correctedFrom.dosageUnit ? ` ${m.correctedFrom.dosageUnit}` : ""}`
+                                              : "—"}{" "}
+                                            · {m.correctedFrom.frequency || "—"}
+                                            {m.correctedFrom.durationDays ? ` · ${m.correctedFrom.durationDays} days` : ""}
+                                            {m.correctedFrom.route ? ` · ${m.correctedFrom.route}` : ""}
+                                          </p>
+                                        </CorrectedFromNote>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No active medications.</p>
                       )}
+                    </div>
 
-                      {medTab === "history" && (
-                        <div>
-                          {summary.medicationHistory.length > 0 ? (
-                            <div className="overflow-x-auto">
-                              <table>
-                                <thead>
-                                  <tr>
-                                    <th>Drug</th>
-                                    <th>Dosage</th>
-                                    <th>Route</th>
-                                    <th>Frequency</th>
-                                    <th>Duration</th>
-                                    <th>Ended</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {summary.medicationHistory.map((m) => (
-                                    <tr key={m.medicationId}>
-                                      <td className="font-semibold">{m.drugName}</td>
-                                      <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
-                                      <td>{m.route || "—"}</td>
-                                      <td>{m.frequency || "—"}</td>
-                                      <td>{m.durationDays ? `${m.durationDays} days` : "—"}</td>
-                                      <td className="text-xs text-muted-foreground">{m.endedAt ? formatDate(m.endedAt) : "—"}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">No medication history recorded.</p>
-                          )}
+                    {/* Medication History */}
+                    <div className="flex flex-col gap-3 md:pl-6">
+                      <p className="text-sm font-semibold text-foreground/90 flex items-center gap-1.5">
+                        Medication History
+                        {summary.medicationHistory.length > 0 && (
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                            {summary.medicationHistory.length}
+                          </span>
+                        )}
+                      </p>
+                      {summary.medicationHistory.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Drug</th>
+                                <th>Dosage</th>
+                                <th>Route</th>
+                                <th>Frequency</th>
+                                <th>Duration</th>
+                                <th>Ended</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {summary.medicationHistory.map((m) => (
+                                <tr key={m.medicationId}>
+                                  <td className="font-semibold">{m.drugName}</td>
+                                  <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
+                                  <td>{m.route || "—"}</td>
+                                  <td>{m.frequency || "—"}</td>
+                                  <td>{m.durationDays ? `${m.durationDays} days` : "—"}</td>
+                                  <td className="text-xs text-muted-foreground">{m.endedAt ? formatDate(m.endedAt) : "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No medication history recorded.</p>
                       )}
+                    </div>
+                  </div>
                 </div>
 
                 <PatientMedicalFormsSection

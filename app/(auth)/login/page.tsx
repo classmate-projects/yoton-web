@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import {
   Activity,
   ArrowRight,
@@ -9,7 +10,10 @@ import {
   EyeOff,
   Loader2,
   LockKeyhole,
+  Monitor,
+  Moon,
   ShieldCheck,
+  Sun,
   UserRound,
   X,
 } from "lucide-react";
@@ -54,6 +58,9 @@ function RecentAccountAvatar({ account, selected }: { account: RecentAccount; se
 
 export default function LoginPage() {
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const [showPassword, setShowPassword] = useState(false);
   const [emailOrUserName, setEmailOrUserName] = useState("");
@@ -163,7 +170,16 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-background text-foreground">
+    <main className="relative min-h-screen w-full bg-background text-foreground">
+      {mounted && (
+        <button
+          onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "system" : "dark")}
+          title={`Theme: ${theme}`}
+          className="absolute right-4 top-4 z-50 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card shadow-sm hover:bg-muted transition-colors"
+        >
+          {theme === "dark" ? <Moon size={16} /> : theme === "light" ? <Sun size={16} /> : <Monitor size={16} />}
+        </button>
+      )}
       <div className="grid min-h-screen w-full lg:grid-cols-[1.05fr_0.95fr]">
         <section className="relative hidden overflow-hidden bg-[color-mix(in_srgb,var(--primary)_85%,black)] px-10 py-10 text-white lg:flex lg:flex-col lg:justify-between">
           <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.13)_0%,rgba(255,255,255,0)_42%),radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_82%_78%,rgba(0,0,0,0.22),transparent_30%)]" />
