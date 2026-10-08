@@ -11,6 +11,7 @@ import { notifySaveStatus } from "@/lib/saveStatus";
 import { ClinicalIncidentCategory, ClinicalIncidentCreatePayload, ClinicalIncidentType } from "@/types/clinicalIncident.type";
 import { PatientListItemType } from "@/types/appointment.type";
 import { DepartmentTypes } from "@/types/department.type";
+import { SearchableSelect } from "@/components/SearchableSelect";
 
 const CATEGORIES: { value: ClinicalIncidentCategory; label: string }[] = [
   { value: "SentinelEvent", label: "Sentinel Event" },
@@ -433,18 +434,14 @@ export default function ClinicalIncidentsPage() {
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-muted-foreground">Department</label>
-              <select
+              <SearchableSelect
                 value={form.departmentId}
-                onChange={(e) => setForm((p) => ({ ...p, departmentId: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Not specified</option>
-                {departments.map((d) => (
-                  <option key={d.departmentId} value={d.departmentId}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, departmentId: v }))}
+                options={[
+                  { value: "", label: "Not specified" },
+                  ...departments.map((d) => ({ value: d.departmentId, label: d.name })),
+                ]}
+              />
             </div>
             <div className="flex flex-col gap-1 sm:col-span-2 relative">
               <label className="text-xs font-semibold text-muted-foreground">Patient (optional)</label>
@@ -534,16 +531,14 @@ export default function ClinicalIncidentsPage() {
                 onChange={(e) => setForm((p) => ({ ...p, drugName: e.target.value }))}
                 className="h-10 text-sm"
               />
-              <select
+              <SearchableSelect
                 value={form.staffCategoryCode}
-                onChange={(e) => setForm((p) => ({ ...p, staffCategoryCode: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Which staff category made the error?</option>
-                {STAFF_CATEGORY_MED.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, staffCategoryCode: v }))}
+                options={[
+                  { value: "", label: "Which staff category made the error?" },
+                  ...STAFF_CATEGORY_MED.map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
               {form.staffCategoryCode === "5" && (
                 <input
                   type="text"
@@ -553,27 +548,23 @@ export default function ClinicalIncidentsPage() {
                   className="h-10 text-sm"
                 />
               )}
-              <select
+              <SearchableSelect
                 value={form.errorStageCode}
-                onChange={(e) => setForm((p) => ({ ...p, errorStageCode: e.target.value, errorTypeCode: "" }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Which step did the error occur in?</option>
-                {ERROR_STAGE.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
-              <select
+                onChange={(v) => setForm((p) => ({ ...p, errorStageCode: v, errorTypeCode: "" }))}
+                options={[
+                  { value: "", label: "Which step did the error occur in?" },
+                  ...ERROR_STAGE.map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
+              <SearchableSelect
                 value={form.errorTypeCode}
-                onChange={(e) => setForm((p) => ({ ...p, errorTypeCode: e.target.value }))}
+                onChange={(v) => setForm((p) => ({ ...p, errorTypeCode: v }))}
                 disabled={!form.errorStageCode}
-                className="h-10 text-sm"
-              >
-                <option value="">Type of error within that step</option>
-                {(ERROR_TYPE_BY_STAGE[form.errorStageCode] || []).map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "Type of error within that step" },
+                  ...(ERROR_TYPE_BY_STAGE[form.errorStageCode] || []).map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
               <input
                 type="text"
                 placeholder="Specify other type (if applicable)"
@@ -581,26 +572,24 @@ export default function ClinicalIncidentsPage() {
                 onChange={(e) => setForm((p) => ({ ...p, errorTypeOtherText: e.target.value }))}
                 className="h-10 text-sm"
               />
-              <select
-                value={form.levelOfHarmCode}
-                onChange={(e) => setForm((p) => ({ ...p, levelOfHarmCode: e.target.value }))}
-                className="h-10 text-sm sm:col-span-2"
-              >
-                <option value="">Level of harm</option>
-                {LEVEL_OF_HARM_MED.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
-              <select
+              <div className="sm:col-span-2">
+                <SearchableSelect
+                  value={form.levelOfHarmCode}
+                  onChange={(v) => setForm((p) => ({ ...p, levelOfHarmCode: v }))}
+                  options={[
+                    { value: "", label: "Level of harm" },
+                    ...LEVEL_OF_HARM_MED.map((o) => ({ value: o.code, label: o.label })),
+                  ]}
+                />
+              </div>
+              <SearchableSelect
                 value={form.contributingFactorCode}
-                onChange={(e) => setForm((p) => ({ ...p, contributingFactorCode: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Contributing factor</option>
-                {CONTRIBUTING_FACTOR.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, contributingFactorCode: v }))}
+                options={[
+                  { value: "", label: "Contributing factor" },
+                  ...CONTRIBUTING_FACTOR.map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
               {form.contributingFactorCode === "7" && (
                 <input
                   type="text"
@@ -610,40 +599,36 @@ export default function ClinicalIncidentsPage() {
                   className="h-10 text-sm"
                 />
               )}
-              <select
+              <SearchableSelect
                 value={form.errorProneAbbreviationCode}
-                onChange={(e) => setForm((p) => ({ ...p, errorProneAbbreviationCode: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Due to an error-prone abbreviation?</option>
-                <option value="1">Yes</option>
-                <option value="2">No</option>
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, errorProneAbbreviationCode: v }))}
+                options={[
+                  { value: "", label: "Due to an error-prone abbreviation?" },
+                  { value: "1", label: "Yes" },
+                  { value: "2", label: "No" },
+                ]}
+              />
             </div>
           )}
 
           {form.category === "DentalError" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <select
+              <SearchableSelect
                 value={form.staffCategoryCode}
-                onChange={(e) => setForm((p) => ({ ...p, staffCategoryCode: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Which staff category made the error?</option>
-                {STAFF_CATEGORY_DENTAL.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
-              <select
+                onChange={(v) => setForm((p) => ({ ...p, staffCategoryCode: v }))}
+                options={[
+                  { value: "", label: "Which staff category made the error?" },
+                  ...STAFF_CATEGORY_DENTAL.map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
+              <SearchableSelect
                 value={form.stageCode}
-                onChange={(e) => setForm((p) => ({ ...p, stageCode: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Which stage of treatment?</option>
-                {DENTAL_STAGE.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, stageCode: v }))}
+                options={[
+                  { value: "", label: "Which stage of treatment?" },
+                  ...DENTAL_STAGE.map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
               {form.stageCode === "4" && (
                 <input
                   type="text"
@@ -660,26 +645,24 @@ export default function ClinicalIncidentsPage() {
                 onChange={(e) => setForm((p) => ({ ...p, errorTypeText: e.target.value }))}
                 className="h-10 text-sm"
               />
-              <select
-                value={form.levelOfHarmCode}
-                onChange={(e) => setForm((p) => ({ ...p, levelOfHarmCode: e.target.value }))}
-                className="h-10 text-sm sm:col-span-2"
-              >
-                <option value="">Level of harm</option>
-                {LEVEL_OF_HARM_DENTAL.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
-              <select
+              <div className="sm:col-span-2">
+                <SearchableSelect
+                  value={form.levelOfHarmCode}
+                  onChange={(v) => setForm((p) => ({ ...p, levelOfHarmCode: v }))}
+                  options={[
+                    { value: "", label: "Level of harm" },
+                    ...LEVEL_OF_HARM_DENTAL.map((o) => ({ value: o.code, label: o.label })),
+                  ]}
+                />
+              </div>
+              <SearchableSelect
                 value={form.contributingFactorCode}
-                onChange={(e) => setForm((p) => ({ ...p, contributingFactorCode: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Contributing factor</option>
-                {CONTRIBUTING_FACTOR.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, contributingFactorCode: v }))}
+                options={[
+                  { value: "", label: "Contributing factor" },
+                  ...CONTRIBUTING_FACTOR.map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
               {form.contributingFactorCode === "7" && (
                 <input
                   type="text"
@@ -761,15 +744,11 @@ export default function ClinicalIncidentsPage() {
                       <RotateCcw size={12} /> Reopen
                     </button>
                   ) : (
-                    <select
+                    <SearchableSelect
                       value={r.status}
-                      onChange={(e) => updateStatus(r.clinicalIncidentReportId, e.target.value)}
-                      className="h-8 text-xs"
-                    >
-                      {STATUS_OPTIONS.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
+                      onChange={(v) => updateStatus(r.clinicalIncidentReportId, v)}
+                      options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
+                    />
                   )}
                   {r.status !== "Closed" && (
                     <>

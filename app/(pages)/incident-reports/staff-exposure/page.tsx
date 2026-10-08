@@ -10,6 +10,7 @@ import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { StaffExposureCreatePayload, StaffExposureType } from "@/types/staffExposure.type";
 import { DepartmentTypes } from "@/types/department.type";
+import { SearchableSelect } from "@/components/SearchableSelect";
 
 interface StaffOption {
   id: string;
@@ -276,16 +277,14 @@ export default function StaffExposurePage() {
       {showForm && (
         <div className="card p-6 mb-6 flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <select
+            <SearchableSelect
               value={form.exposedStaffUserId}
-              onChange={(e) => setForm((p) => ({ ...p, exposedStaffUserId: e.target.value }))}
-              className="h-10 text-sm"
-            >
-              <option value="">Exposed staff member</option>
-              {staffOptions.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+              onChange={(v) => setForm((p) => ({ ...p, exposedStaffUserId: v }))}
+              options={[
+                { value: "", label: "Exposed staff member" },
+                ...staffOptions.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
             <input
               type="datetime-local"
               value={form.eventDateTime}
@@ -299,16 +298,14 @@ export default function StaffExposurePage() {
               onChange={(e) => setForm((p) => ({ ...p, position: e.target.value }))}
               className="h-10 text-sm"
             />
-            <select
+            <SearchableSelect
               value={form.homeDepartmentId}
-              onChange={(e) => setForm((p) => ({ ...p, homeDepartmentId: e.target.value }))}
-              className="h-10 text-sm"
-            >
-              <option value="">Home department</option>
-              {departments.map((d) => (
-                <option key={d.departmentId} value={d.departmentId}>{d.name}</option>
-              ))}
-            </select>
+              onChange={(v) => setForm((p) => ({ ...p, homeDepartmentId: v }))}
+              options={[
+                { value: "", label: "Home department" },
+                ...departments.map((d) => ({ value: d.departmentId, label: d.name })),
+              ]}
+            />
             <input
               type="number"
               step="0.5"
@@ -328,26 +325,22 @@ export default function StaffExposurePage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <select
+            <SearchableSelect
               value={form.exposureTypeCode}
-              onChange={(e) => setForm((p) => ({ ...p, exposureTypeCode: e.target.value }))}
-              className="h-10 text-sm"
-            >
-              <option value="">Type of exposure</option>
-              {EXPOSURE_TYPE.map((o) => (
-                <option key={o.code} value={o.code}>{o.label}</option>
-              ))}
-            </select>
-            <select
+              onChange={(v) => setForm((p) => ({ ...p, exposureTypeCode: v }))}
+              options={[
+                { value: "", label: "Type of exposure" },
+                ...EXPOSURE_TYPE.map((o) => ({ value: o.code, label: o.label })),
+              ]}
+            />
+            <SearchableSelect
               value={form.bodySiteCode}
-              onChange={(e) => setForm((p) => ({ ...p, bodySiteCode: e.target.value }))}
-              className="h-10 text-sm"
-            >
-              <option value="">Body site of exposure</option>
-              {BODY_SITE.map((o) => (
-                <option key={o.code} value={o.code}>{o.label}</option>
-              ))}
-            </select>
+              onChange={(v) => setForm((p) => ({ ...p, bodySiteCode: v }))}
+              options={[
+                { value: "", label: "Body site of exposure" },
+                ...BODY_SITE.map((o) => ({ value: o.code, label: o.label })),
+              ]}
+            />
             {form.bodySiteCode === "8" && (
               <input
                 type="text"
@@ -375,26 +368,22 @@ export default function StaffExposurePage() {
 
           {exposureType === "1" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg bg-muted/30 p-3">
-              <select
+              <SearchableSelect
                 value={form.objectCausingInjuryCode}
-                onChange={(e) => setForm((p) => ({ ...p, objectCausingInjuryCode: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Object causing injury</option>
-                {OBJECT_CAUSING_INJURY.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
-              <select
+                onChange={(v) => setForm((p) => ({ ...p, objectCausingInjuryCode: v }))}
+                options={[
+                  { value: "", label: "Object causing injury" },
+                  ...OBJECT_CAUSING_INJURY.map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
+              <SearchableSelect
                 value={form.injuryTypeCode}
-                onChange={(e) => setForm((p) => ({ ...p, injuryTypeCode: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Type of injury</option>
-                {INJURY_TYPE.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, injuryTypeCode: v }))}
+                options={[
+                  { value: "", label: "Type of injury" },
+                  ...INJURY_TYPE.map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
               <input
                 type="text"
                 placeholder="Object detail (specific mechanism)"
@@ -413,26 +402,22 @@ export default function StaffExposurePage() {
 
           {(exposureType === "2" || exposureType === "3") && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg bg-muted/30 p-3">
-              <select
+              <SearchableSelect
                 value={form.bloodExposureAmountCode}
-                onChange={(e) => setForm((p) => ({ ...p, bloodExposureAmountCode: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Estimated blood/fluid exposure amount</option>
-                {BLOOD_AMOUNT.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
-              <select
+                onChange={(v) => setForm((p) => ({ ...p, bloodExposureAmountCode: v }))}
+                options={[
+                  { value: "", label: "Estimated blood/fluid exposure amount" },
+                  ...BLOOD_AMOUNT.map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
+              <SearchableSelect
                 value={form.woundDescriptionCode}
-                onChange={(e) => setForm((p) => ({ ...p, woundDescriptionCode: e.target.value }))}
-                className="h-10 text-sm"
-              >
-                <option value="">Wound description</option>
-                {WOUND_DESCRIPTION.map((o) => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, woundDescriptionCode: v }))}
+                options={[
+                  { value: "", label: "Wound description" },
+                  ...WOUND_DESCRIPTION.map((o) => ({ value: o.code, label: o.label })),
+                ]}
+              />
               <input
                 type="text"
                 placeholder="Activity/event when exposure occurred"
@@ -504,15 +489,11 @@ export default function StaffExposurePage() {
                       <RotateCcw size={12} /> Reopen
                     </button>
                   ) : (
-                    <select
+                    <SearchableSelect
                       value={i.status}
-                      onChange={(e) => updateStatus(i.staffExposureIncidentId, e.target.value)}
-                      className="h-8 text-xs"
-                    >
-                      {STATUS_OPTIONS.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
+                      onChange={(v) => updateStatus(i.staffExposureIncidentId, v)}
+                      options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
+                    />
                   )}
                   {i.status !== "Closed" && (
                     <>

@@ -10,6 +10,9 @@ import CountryCodeSelect from "@/components/CountryCodeSelect";
 import CountrySearchSelect from "@/components/CountrySearchSelect";
 import SearchableSelect from "@/components/SearchableSelect";
 import { countryDetails } from "@/helpers/countyDetails";
+import { ConfigListService } from "@/services/configList.service";
+import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
+import { X } from "lucide-react";
 import { SpecializationService } from "@/services/specialization.service";
 import { UserService } from "@/services/user.service";
 import { DepartmentSerivce } from "@/services/department.service";
@@ -58,7 +61,8 @@ function UserRegistrationForm() {
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
   const [selectedSpecialization, setSelectedSpecialization] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
-  const [consultationFee, setConsultationFee] = useState(0);
+  const [consultationServiceId, setConsultationServiceId] = useState("");
+  const [consultationServiceLabel, setConsultationServiceLabel] = useState("");
   const [experience, setExperience] = useState(0);
 
 
@@ -201,7 +205,8 @@ function UserRegistrationForm() {
         if (!doctorInfo) return;
         setSelectedSpecialization(doctorInfo.specializationId);
         setLicenseNumber(doctorInfo.licenseNumber);
-        setConsultationFee(doctorInfo.consultationFee);
+        setConsultationServiceId(doctorInfo.consultationServiceId ?? "");
+        setConsultationServiceLabel(doctorInfo.consultationServiceName ?? "");
         setExperience(doctorInfo.experienceYears);
       })
       .catch(() => {});
@@ -226,7 +231,7 @@ function UserRegistrationForm() {
       SpecializationId: selectedSpecialization,
       LicenseNumber: licenseNumber,
       ExperienceYears: experience,
-      ConsultationFee: consultationFee
+      ConsultationServiceId: consultationServiceId || undefined,
     }
 
     try {
@@ -525,12 +530,16 @@ function UserRegistrationForm() {
 
               <div className="w-full flex flex-col gap-2">
                 <label htmlFor="gender" className="font-bold text-sm">Gender</label>
-                <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)}>
-                  <option value="">Unspecified</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
+                <SearchableSelect
+                  value={gender}
+                  onChange={setGender}
+                  options={[
+                    { value: "", label: "Unspecified" },
+                    { value: "Male", label: "Male" },
+                    { value: "Female", label: "Female" },
+                    { value: "Other", label: "Other" },
+                  ]}
+                />
               </div>
 
               <div className="w-full">
@@ -742,12 +751,16 @@ function UserRegistrationForm() {
 
               <div className="w-full flex flex-col gap-2">
                 <label htmlFor="gender" className="font-bold text-sm">Gender</label>
-                <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)}>
-                  <option value="">Unspecified</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
+                <SearchableSelect
+                  value={gender}
+                  onChange={setGender}
+                  options={[
+                    { value: "", label: "Unspecified" },
+                    { value: "Male", label: "Male" },
+                    { value: "Female", label: "Female" },
+                    { value: "Other", label: "Other" },
+                  ]}
+                />
               </div>
 
               <div className="w-full">
@@ -847,13 +860,31 @@ function UserRegistrationForm() {
               </div>
 
               <div className="flex flex-col gap-1 w-full">
-                <label htmlFor="consultation_fee" className="font-bold text-sm">Consultation Fee</label>
-                <input
-                  type="text"
-                  placeholder="eg: 50"
-                  value={consultationFee}
-                  onChange={(e) => setConsultationFee(Number(e.target.value))}
+                <label className="font-bold text-sm">Consultation Service</label>
+                <CatalogSearchInput
+                  placeholder="Search by CPT code or procedure name..."
+                  fetchOptions={async (search) => {
+                    const res = await ConfigListService.get("Procedure", search);
+                    return (res.data || []).map((i: { listItemId: string; name: string; code: string | null; department?: string; cashPrice?: number | null }) => ({
+                      id: i.listItemId,
+                      name: i.name,
+                      code: i.code,
+                      meta: [i.department, i.cashPrice != null ? `AED ${i.cashPrice}` : null].filter(Boolean).join(" · ") || undefined,
+                    }));
+                  }}
+                  onSelect={(opt) => {
+                    setConsultationServiceId(opt.id);
+                    setConsultationServiceLabel(`${opt.code ? opt.code + " · " : ""}${opt.name}`);
+                  }}
                 />
+                {consultationServiceLabel && (
+                  <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                    <span className="text-foreground">{consultationServiceLabel}</span>
+                    <button type="button" onClick={() => { setConsultationServiceId(""); setConsultationServiceLabel(""); }}>
+                      <X size={14} className="text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-1 w-full">

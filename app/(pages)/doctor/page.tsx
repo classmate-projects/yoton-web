@@ -39,6 +39,7 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import DatePicker from "@/components/DatePicker";
+import SearchableSelect from "@/components/SearchableSelect";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
 import OrderedItemsList from "@/components/orders/OrderedItemsList";
@@ -2287,18 +2288,16 @@ function DoctorWorkbenchInner() {
                       </p>
                       <div className="flex flex-col gap-1 mb-6">
                         <label className="text-sm font-bold text-foreground/90 required">Doctor</label>
-                        <select
-                          value={selectedCorrectionDoctorId}
-                          onChange={(e) => setSelectedCorrectionDoctorId(e.target.value)}
-                          className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                        >
-                          <option value="">Select doctor…</option>
-                          {correctionDoctors.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="mt-1">
+                          <SearchableSelect
+                            value={selectedCorrectionDoctorId}
+                            onChange={setSelectedCorrectionDoctorId}
+                            options={[
+                              { value: "", label: "Select doctor…" },
+                              ...correctionDoctors.map((d) => ({ value: d.id, label: d.name })),
+                            ]}
+                          />
+                        </div>
                       </div>
                       <div className="flex justify-end gap-3">
                         <button
@@ -2557,69 +2556,65 @@ function DoctorWorkbenchInner() {
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         <div className="flex flex-col gap-1">
                           <label className="text-xs text-muted-foreground">Allergy Category <span className="text-destructive">*</span></label>
-                          <select
+                          <SearchableSelect
                             value={allergyForm.allergyCategory}
-                            onChange={(e) => setAllergyForm((p) => ({ ...p, allergyCategory: e.target.value, substance: "" }))}
-                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
-                          >
-                            <option value="">Select category</option>
-                            {ALLERGY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="text-xs text-muted-foreground">Allergen <span className="text-destructive">*</span></label>
-                          <select
-                            value={allergyForm.substance}
-                            onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))}
-                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
-                            disabled={!allergyForm.allergyCategory}
-                          >
-                            <option value="">Select allergen</option>
-                            {(ALLERGENS_BY_CATEGORY[allergyForm.allergyCategory] ?? []).map((a) => (
-                              <option key={a} value={a}>{a}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="text-xs text-muted-foreground">Severity</label>
-                          <select
-                            value={allergyForm.severity}
-                            onChange={(e) => setAllergyForm((p) => ({ ...p, severity: e.target.value }))}
-                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
-                          >
-                            <option value="">Select severity</option>
-                            {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="text-xs text-muted-foreground">Reaction</label>
-                          <select
-                            value={allergyForm.reaction}
-                            onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))}
-                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
-                          >
-                            <option value="">Select reaction</option>
-                            {REACTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="text-xs text-muted-foreground">Identified Date</label>
-                          <input
-                            type="date"
-                            value={allergyForm.identifiedDate}
-                            onChange={(e) => setAllergyForm((p) => ({ ...p, identifiedDate: e.target.value }))}
-                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+                            onChange={(v) => setAllergyForm((p) => ({ ...p, allergyCategory: v, substance: "" }))}
+                            options={[
+                              { value: "", label: "Select category" },
+                              ...ALLERGY_CATEGORIES.map((c) => ({ value: c, label: c })),
+                            ]}
                           />
                         </div>
                         <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Allergen <span className="text-destructive">*</span></label>
+                          <SearchableSelect
+                            value={allergyForm.substance}
+                            onChange={(v) => setAllergyForm((p) => ({ ...p, substance: v }))}
+                            disabled={!allergyForm.allergyCategory}
+                            options={[
+                              { value: "", label: "Select allergen" },
+                              ...(ALLERGENS_BY_CATEGORY[allergyForm.allergyCategory] ?? []).map((a) => ({ value: a, label: a })),
+                            ]}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Severity</label>
+                          <SearchableSelect
+                            value={allergyForm.severity}
+                            onChange={(v) => setAllergyForm((p) => ({ ...p, severity: v }))}
+                            options={[
+                              { value: "", label: "Select severity" },
+                              ...SEVERITIES.map((s) => ({ value: s, label: s })),
+                            ]}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Reaction</label>
+                          <SearchableSelect
+                            value={allergyForm.reaction}
+                            onChange={(v) => setAllergyForm((p) => ({ ...p, reaction: v }))}
+                            options={[
+                              { value: "", label: "Select reaction" },
+                              ...REACTIONS.map((r) => ({ value: r, label: r })),
+                            ]}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Identified Date</label>
+                          <div className="mt-1">
+                            <DatePicker
+                              value={allergyForm.identifiedDate}
+                              onChange={(v) => setAllergyForm((p) => ({ ...p, identifiedDate: v }))}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1">
                           <label className="text-xs text-muted-foreground">Status</label>
-                          <select
+                          <SearchableSelect
                             value={allergyForm.status}
-                            onChange={(e) => setAllergyForm((p) => ({ ...p, status: e.target.value }))}
-                            className="h-9 text-sm rounded-lg border border-border bg-background px-2"
-                          >
-                            {ALLERGY_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                          </select>
+                            onChange={(v) => setAllergyForm((p) => ({ ...p, status: v }))}
+                            options={ALLERGY_STATUSES.map((s) => ({ value: s, label: s }))}
+                          />
                         </div>
                       </div>
                       <div className="flex flex-col gap-1">
@@ -2873,18 +2868,14 @@ function DoctorWorkbenchInner() {
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <Share2 size={18} className="text-primary" /> Referral Module
                   </h2>
-                  <select
+                  <SearchableSelect
                     value={referralForm.targetSpecializationId}
-                    onChange={(e) => setReferralForm((p) => ({ ...p, targetSpecializationId: e.target.value }))}
-                    className="h-10 text-sm"
-                  >
-                    <option value="">Select target specialty</option>
-                    {specializations.map((s) => (
-                      <option key={s.specializationId} value={s.specializationId}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setReferralForm((p) => ({ ...p, targetSpecializationId: v }))}
+                    options={[
+                      { value: "", label: "Select target specialty" },
+                      ...specializations.map((s) => ({ value: String(s.specializationId), label: s.name })),
+                    ]}
+                  />
                   <div className="flex gap-3">
                     <label className="flex items-center gap-2 text-sm">
                       <input
@@ -3360,19 +3351,21 @@ function DoctorWorkbenchInner() {
                   <Upload size={12} /> Attach Document
                 </p>
                 <div className="flex flex-wrap gap-2 items-end">
-                  <select
-                    value={uploadDocType}
-                    onChange={(e) => setUploadDocType(e.target.value)}
-                    className="h-9 text-sm min-w-32"
-                  >
-                    <option>Report</option>
-                    <option>Lab Result</option>
-                    <option>Radiology Image</option>
-                    <option>Prescription</option>
-                    <option>Referral Letter</option>
-                    <option>Insurance</option>
-                    <option>Other</option>
-                  </select>
+                  <div>
+                    <SearchableSelect
+                      value={uploadDocType}
+                      onChange={setUploadDocType}
+                      options={[
+                        { value: "Report", label: "Report" },
+                        { value: "Lab Result", label: "Lab Result" },
+                        { value: "Radiology Image", label: "Radiology Image" },
+                        { value: "Prescription", label: "Prescription" },
+                        { value: "Referral Letter", label: "Referral Letter" },
+                        { value: "Insurance", label: "Insurance" },
+                        { value: "Other", label: "Other" },
+                      ]}
+                    />
+                  </div>
                   <label className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted cursor-pointer transition-colors">
                     <Upload size={13} />
                     {uploadDocFile ? uploadDocFile.name : "Choose file"}
@@ -3522,18 +3515,16 @@ function DoctorWorkbenchInner() {
           </p>
         </div>
         {isAdmin && (
-          <select
-            value={selectedDoctorId}
-            onChange={(e) => setSelectedDoctorId(e.target.value)}
-            className="h-10 w-48 shrink-0 text-sm"
-          >
-            <option value="">All doctors (system-wide)</option>
-            {assignedDoctors.map((d) => (
-              <option key={String(d.doctorId)} value={String(d.doctorId)}>
-                {d.userName} — {d.specializationName}
-              </option>
-            ))}
-          </select>
+          <div className="w-48 shrink-0">
+            <SearchableSelect
+              value={selectedDoctorId}
+              onChange={setSelectedDoctorId}
+              options={[
+                { value: "", label: "All doctors (system-wide)" },
+                ...assignedDoctors.map((d) => ({ value: String(d.doctorId), label: `${d.userName} — ${d.specializationName}` })),
+              ]}
+            />
+          </div>
         )}
       </div>
 

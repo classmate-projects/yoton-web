@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ShieldCheck, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { ComplianceDataService } from "@/services/complianceData.service";
+import SearchableSelect from "@/components/SearchableSelect";
 import { StaffFteType, PatientComplianceFlagType } from "@/types/complianceData.type";
 import { notifySaveStatus } from "@/lib/saveStatus";
 
@@ -236,17 +237,11 @@ export default function ComplianceDataPage() {
                 )}
 
                 {f.isDiabetes && (
-                  <select
+                  <SearchableSelect
                     value={diabetesDrafts[f.chronicConditionId] ?? f.diabetesType ?? ""}
-                    onChange={(e) => handleDiabetesTypeChange(f, e.target.value)}
-                    className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                  >
-                    {DIABETES_TYPE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => handleDiabetesTypeChange(f, v)}
+                    options={DIABETES_TYPE_OPTIONS}
+                  />
                 )}
               </div>
             ))}

@@ -13,6 +13,7 @@ import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { EmrPatientListItem } from "@/types/emr.type";
 import { ConfidentialNoteType } from "@/types/nursing.type";
+import SearchableSelect from "@/components/SearchableSelect";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -134,17 +135,15 @@ export default function ConfidentialNotesPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card p-6 flex flex-col gap-4">
           <h2 className="text-lg font-semibold text-foreground">{editingNoteId ? "Edit Confidential Note" : "New Confidential Note"}</h2>
-          <select
+          <SearchableSelect
             value={selectedPatientId}
-            onChange={(e) => setSelectedPatientId(e.target.value)}
+            onChange={setSelectedPatientId}
             disabled={!!editingNoteId}
-            className="h-10 text-sm disabled:opacity-60"
-          >
-            <option value="">Select patient...</option>
-            {patients.map((p) => (
-              <option key={p.opId} value={p.opId}>{p.name} ({p.opNumber || p.opId})</option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "Select patient..." },
+              ...patients.map((p) => ({ value: p.opId, label: `${p.name} (${p.opNumber || p.opId})` })),
+            ]}
+          />
           <RichTextEditor value={contentHtml} onChange={setContentHtml} placeholder="Confidential note..." />
           <div className="flex items-center gap-3">
             <button onClick={saveNote} disabled={saving} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">

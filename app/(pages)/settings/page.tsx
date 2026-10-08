@@ -24,9 +24,10 @@ import { backendAssetUrl } from "@/lib/backendAsset";
 import { resizeImageFile } from "@/lib/resizeImage";
 import { getAvatarColor } from "@/lib/avatarColor";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
-import { countryDetails } from "@/helpers/countyDetails";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import SearchableSelect from "@/components/SearchableSelect";
+import CountrySearchSelect from "@/components/CountrySearchSelect";
 import PasswordInput from "@/components/PasswordInput";
 import AvatarCropModal from "@/components/AvatarCropModal";
 import ToggleButton from "@/components/ToggleButton";
@@ -1011,20 +1012,13 @@ export default function SettingsPage() {
                   Country
                 </label>
                 <div className="flex items-center gap-3">
-                  <select
-                    value={country}
-                    onChange={(e) => handleCountryChange(e.target.value)}
-                    className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-                  >
-                    <option value="" disabled>
-                      Select country
-                    </option>
-                    {countryDetails.map((c) => (
-                      <option key={c.country} value={c.country}>
-                        {c.country}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="w-full max-w-xs">
+                    <CountrySearchSelect
+                      value={country}
+                      onChange={handleCountryChange}
+                      placeholder="Select country"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1033,17 +1027,13 @@ export default function SettingsPage() {
                   Currency
                 </label>
                 <div className="flex items-center gap-3">
-                  <select
-                    value={currencyCode}
-                    onChange={(e) => handleCurrencyChange(e.target.value)}
-                    className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-                  >
-                    {SUPPORTED_CURRENCIES.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="w-full max-w-xs">
+                    <SearchableSelect
+                      value={currencyCode}
+                      onChange={handleCurrencyChange}
+                      options={SUPPORTED_CURRENCIES.map((c) => ({ value: c.code, label: c.label }))}
+                    />
+                  </div>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {currencyIsManual
@@ -1501,21 +1491,16 @@ export default function SettingsPage() {
             </p>
 
             <label className="mb-1 block text-xs font-medium text-muted-foreground">Migrate staff to</label>
-            <select
-              value={migrateTargetId}
-              onChange={(e) => setMigrateTargetId(e.target.value)}
-              disabled={migrating}
-              className="mb-5 w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-            >
-              {branches
-                .filter((b) => b.branchId !== migrateModal.branch.branchId)
-                .map((b) => (
-                  <option key={b.branchId} value={b.branchId}>
-                    {b.name}
-                    {b.isMain ? " (Main)" : ""}
-                  </option>
-                ))}
-            </select>
+            <div className="mb-5">
+              <SearchableSelect
+                value={migrateTargetId}
+                onChange={setMigrateTargetId}
+                disabled={migrating}
+                options={branches
+                  .filter((b) => b.branchId !== migrateModal.branch.branchId)
+                  .map((b) => ({ value: b.branchId, label: b.name + (b.isMain ? " (Main)" : "") }))}
+              />
+            </div>
 
             {migrating && (
               <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">

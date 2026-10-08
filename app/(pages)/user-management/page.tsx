@@ -24,6 +24,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import axios from "axios";
 import SelectRole from "@/components/selectRole";
+import SearchableSelect from "@/components/SearchableSelect";
+import DatePicker from "@/components/DatePicker";
 import ToggleButton from "@/components/ToggleButton";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import SettingsIcon from "@/public/icons/SettingsIcon";
@@ -468,31 +470,24 @@ export default function UserManagement() {
               selectRole={false}
             />
 
-            <select
-              name="isActive"
-              id="isActive"
+            <SearchableSelect
               value={activeStatus}
-              onChange={(e) => setActiveStatus(e.target.value)}
-              className="border border-neutral-500 px-4 py-2 rounded-md outline-0">
-              <option value="all">All</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
+              onChange={setActiveStatus}
+              options={[
+                { value: "all", label: "All" },
+                { value: "active", label: "Active" },
+                { value: "inactive", label: "Inactive" },
+              ]}
+            />
 
-            <select
-              name="branch"
-              id="branch"
+            <SearchableSelect
               value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-              className="border border-neutral-500 px-4 py-2 rounded-md outline-0">
-              <option value="allBranch">All branches</option>
-              {branches.map((b) => (
-                <option key={b.branchId} value={b.branchId}>
-                  {b.name}
-                  {b.isMain ? " (Main)" : ""}
-                </option>
-              ))}
-            </select>
+              onChange={setBranchFilter}
+              options={[
+                { value: "allBranch", label: "All branches" },
+                ...branches.map((b) => ({ value: b.branchId, label: b.name + (b.isMain ? " (Main)" : "") })),
+              ]}
+            />
 
             <button
               type="button"
@@ -711,25 +706,25 @@ export default function UserManagement() {
             <div className="flex flex-col gap-3">
               <div>
                 <label className="text-sm font-semibold text-foreground/90">Last working date</label>
-                <input
-                  type="date"
-                  value={terminationDate}
-                  onChange={(e) => setTerminationDate(e.target.value)}
-                  className="h-10 text-sm w-full mt-1"
-                />
+                <div className="mt-1">
+                  <DatePicker
+                    value={terminationDate}
+                    onChange={setTerminationDate}
+                  />
+                </div>
               </div>
               <div>
                 <label className="text-sm font-semibold text-foreground/90">Reason</label>
-                <select
-                  value={terminationReason}
-                  onChange={(e) => setTerminationReason(e.target.value)}
-                  className="h-10 text-sm w-full mt-1"
-                >
-                  <option value="">Select a reason</option>
-                  {TERMINATION_REASONS.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={terminationReason}
+                    onChange={setTerminationReason}
+                    options={[
+                      { value: "", label: "Select a reason" },
+                      ...TERMINATION_REASONS,
+                    ]}
+                  />
+                </div>
               </div>
               {terminationReason === "Other" && (
                 <input

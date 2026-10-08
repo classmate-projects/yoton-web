@@ -46,6 +46,7 @@ import PasswordInput from "@/components/PasswordInput";
 import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
+import SearchableSelect from "@/components/SearchableSelect";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import FamilyHistorySection from "@/components/FamilyHistorySection";
 import PatientMedicalFormsSection from "@/components/medicalForms/PatientMedicalFormsSection";
@@ -810,17 +811,19 @@ function NurseWorkbenchInner() {
           />
         )}
         {field.key === "Temperature" && !isRefused && (
-          <select
-            value={triageForm.tempSite}
-            onChange={(e) => setTriageForm((prev) => ({ ...prev, tempSite: e.target.value }))}
-            className="text-xs mt-0.5"
-          >
-            <option value="">Site…</option>
-            <option value="Oral">Oral</option>
-            <option value="Axillary">Axillary</option>
-            <option value="Tympanic">Tympanic</option>
-            <option value="Rectal">Rectal</option>
-          </select>
+          <div className="mt-0.5">
+            <SearchableSelect
+              value={triageForm.tempSite}
+              onChange={(v) => setTriageForm((prev) => ({ ...prev, tempSite: v }))}
+              options={[
+                { value: "", label: "Site…" },
+                { value: "Oral", label: "Oral" },
+                { value: "Axillary", label: "Axillary" },
+                { value: "Tympanic", label: "Tympanic" },
+                { value: "Rectal", label: "Rectal" },
+              ]}
+            />
+          </div>
         )}
         {isRefused && (
           <input
@@ -1670,28 +1673,26 @@ function NurseWorkbenchInner() {
           )}
           {isAdmin && (
             <div className="flex items-center gap-2">
-              <select
-                value={selectedNurseId}
-                onChange={(e) => setSelectedNurseId(e.target.value)}
-                title="Nurse identity for recording vitals, injections, dressings, etc."
-                className="h-9 w-44 shrink-0 text-sm"
-              >
-                <option value="">Acting nurse…</option>
-                {nurses.map((n) => (
-                  <option key={n.id} value={n.id}>{n.name}</option>
-                ))}
-              </select>
-              <select
-                value={selectedDoctorId}
-                onChange={(e) => setSelectedDoctorId(e.target.value)}
-                title="Doctor to attribute allergy records to"
-                className="h-9 w-44 shrink-0 text-sm"
-              >
-                <option value="">Acting doctor (for allergies)…</option>
-                {assignedDoctors.map((d) => (
-                  <option key={String(d.doctorId)} value={String(d.doctorId)}>{d.userName}</option>
-                ))}
-              </select>
+              <div className="w-44 shrink-0">
+                <SearchableSelect
+                  value={selectedNurseId}
+                  onChange={setSelectedNurseId}
+                  options={[
+                    { value: "", label: "Acting nurse…" },
+                    ...nurses.map((n) => ({ value: n.id, label: n.name })),
+                  ]}
+                />
+              </div>
+              <div className="w-44 shrink-0">
+                <SearchableSelect
+                  value={selectedDoctorId}
+                  onChange={setSelectedDoctorId}
+                  options={[
+                    { value: "", label: "Acting doctor (for allergies)…" },
+                    ...assignedDoctors.map((d) => ({ value: String(d.doctorId), label: d.userName })),
+                  ]}
+                />
+              </div>
             </div>
           )}
           {encounterId && canEdit && (
@@ -2324,16 +2325,16 @@ function NurseWorkbenchInner() {
                     </div>
                     <div className="flex flex-col gap-1">
                       <label className="text-xs font-semibold text-muted-foreground">BMI screening exclusion (if any)</label>
-                      <select
+                      <SearchableSelect
                         value={vitalsForm.bmiExclusionReason}
-                        onChange={(e) => setVitalsForm((p) => ({ ...p, bmiExclusionReason: e.target.value }))}
-                        className="h-10 text-sm"
-                      >
-                        <option value="">None</option>
-                        <option value="Pregnant">Pregnant</option>
-                        <option value="PalliativeCare">Receiving palliative care</option>
-                        <option value="MedicalReason">Documented medical reason (urgent/emergent)</option>
-                      </select>
+                        onChange={(v) => setVitalsForm((p) => ({ ...p, bmiExclusionReason: v }))}
+                        options={[
+                          { value: "", label: "None" },
+                          { value: "Pregnant", label: "Pregnant" },
+                          { value: "PalliativeCare", label: "Receiving palliative care" },
+                          { value: "MedicalReason", label: "Documented medical reason (urgent/emergent)" },
+                        ]}
+                      />
                     </div>
                     <textarea placeholder="Notes..." value={vitalsForm.notes} onChange={(e) => setVitalsForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
                     <div className="flex items-center gap-3">
@@ -2498,13 +2499,19 @@ function NurseWorkbenchInner() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <input type="text" placeholder="Medicine name (e.g. Paracetamol)" value={injectionForm.medicineName} onChange={(e) => setInjectionForm((p) => ({ ...p, medicineName: e.target.value }))} className="h-10 text-sm" />
                       <input type="text" placeholder="Dose (e.g. 500mg)" value={injectionForm.dose} onChange={(e) => setInjectionForm((p) => ({ ...p, dose: e.target.value }))} className="h-10 text-sm" />
-                      <select value={injectionForm.route} onChange={(e) => setInjectionForm((p) => ({ ...p, route: e.target.value }))} className="h-10 text-sm sm:col-span-2">
-                        <option>Oral (PO)</option>
-                        <option>Intravenous (IV)</option>
-                        <option>Intramuscular (IM)</option>
-                        <option>Subcutaneous (SC)</option>
-                        <option>Topical</option>
-                      </select>
+                      <div className="sm:col-span-2">
+                        <SearchableSelect
+                          value={injectionForm.route}
+                          onChange={(v) => setInjectionForm((p) => ({ ...p, route: v }))}
+                          options={[
+                            { value: "Oral (PO)", label: "Oral (PO)" },
+                            { value: "Intravenous (IV)", label: "Intravenous (IV)" },
+                            { value: "Intramuscular (IM)", label: "Intramuscular (IM)" },
+                            { value: "Subcutaneous (SC)", label: "Subcutaneous (SC)" },
+                            { value: "Topical", label: "Topical" },
+                          ]}
+                        />
+                      </div>
                     </div>
                     <textarea placeholder="Notes..." value={injectionForm.notes} onChange={(e) => setInjectionForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
                     <div className="flex items-center gap-3">
@@ -2562,22 +2569,30 @@ function NurseWorkbenchInner() {
                 </h2>
                 {canEdit && (
                   <>
-                    <select value={dressingForm.woundType} onChange={(e) => setDressingForm((p) => ({ ...p, woundType: e.target.value }))} className="h-10 text-sm">
-                      <option value="">Select wound type...</option>
-                      <option>Surgical Incision</option>
-                      <option>Pressure Ulcer</option>
-                      <option>Laceration</option>
-                      <option>Diabetic Ulcer</option>
-                      <option>Burn</option>
-                    </select>
-                    <select value={dressingForm.dressingMaterial} onChange={(e) => setDressingForm((p) => ({ ...p, dressingMaterial: e.target.value }))} className="h-10 text-sm">
-                      <option value="">Select dressing material...</option>
-                      <option>Alginate Dressing</option>
-                      <option>Gauze</option>
-                      <option>Hydrocolloid</option>
-                      <option>Foam Dressing</option>
-                      <option>Transparent Film</option>
-                    </select>
+                    <SearchableSelect
+                      value={dressingForm.woundType}
+                      onChange={(v) => setDressingForm((p) => ({ ...p, woundType: v }))}
+                      options={[
+                        { value: "", label: "Select wound type..." },
+                        { value: "Surgical Incision", label: "Surgical Incision" },
+                        { value: "Pressure Ulcer", label: "Pressure Ulcer" },
+                        { value: "Laceration", label: "Laceration" },
+                        { value: "Diabetic Ulcer", label: "Diabetic Ulcer" },
+                        { value: "Burn", label: "Burn" },
+                      ]}
+                    />
+                    <SearchableSelect
+                      value={dressingForm.dressingMaterial}
+                      onChange={(v) => setDressingForm((p) => ({ ...p, dressingMaterial: v }))}
+                      options={[
+                        { value: "", label: "Select dressing material..." },
+                        { value: "Alginate Dressing", label: "Alginate Dressing" },
+                        { value: "Gauze", label: "Gauze" },
+                        { value: "Hydrocolloid", label: "Hydrocolloid" },
+                        { value: "Foam Dressing", label: "Foam Dressing" },
+                        { value: "Transparent Film", label: "Transparent Film" },
+                      ]}
+                    />
                     <div className="flex items-center gap-3">
                       <ToggleButton
                         checked={dressingForm.infectionSigns}
@@ -2631,11 +2646,15 @@ function NurseWorkbenchInner() {
                     <>
                       <div className="grid grid-cols-2 gap-3">
                         <input type="number" min="0" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
-                        <select value={sugarForm.type} onChange={(e) => setSugarForm((p) => ({ ...p, type: e.target.value }))} className="h-10 text-sm">
-                          <option>Random</option>
-                          <option>Fasting</option>
-                          <option>Post-Prandial</option>
-                        </select>
+                        <SearchableSelect
+                          value={sugarForm.type}
+                          onChange={(v) => setSugarForm((p) => ({ ...p, type: v }))}
+                          options={[
+                            { value: "Random", label: "Random" },
+                            { value: "Fasting", label: "Fasting" },
+                            { value: "Post-Prandial", label: "Post-Prandial" },
+                          ]}
+                        />
                       </div>
                       <textarea placeholder="Notes..." value={sugarForm.notes} onChange={(e) => setSugarForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
                       <div className="flex items-center gap-3">
@@ -2674,53 +2693,6 @@ function NurseWorkbenchInner() {
               </div>
             </div>
 
-            {/* IV Fluids */}
-            <div className="card p-6 flex flex-col gap-4">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Activity size={18} className="text-primary" /> IV Fluids
-                </h2>
-                {canEdit && (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <input type="text" placeholder="Fluid type (e.g. Normal Saline)" value={ivForm.fluidType} onChange={(e) => setIvForm((p) => ({ ...p, fluidType: e.target.value }))} className="h-10 text-sm sm:col-span-1" />
-                      <input type="number" min="0" placeholder="Volume (ml)" value={ivForm.volume} onChange={(e) => setIvForm((p) => ({ ...p, volume: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
-                      <input type="number" min="0" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
-                    </div>
-                    <textarea placeholder="Notes..." value={ivForm.notes} onChange={(e) => setIvForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                    <div className="flex items-center gap-3">
-                      <button onClick={() => saveIVFluids()} disabled={savingIv} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                        <Save size={15} /> {editingIvId ? "Save Changes" : "Save Entry"}
-                      </button>
-                      {editingIvId && (
-                        <button onClick={cancelEditIv} className="text-sm font-semibold text-muted-foreground hover:underline">
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {chart && chart.ivFluids.length > 0 && (
-                  <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
-                    {chart.ivFluids.slice(0, 5).map((f) => (
-                      <div key={f.ivFluidsTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
-                        <span className="font-medium">{f.fluidType} · {f.volume}ml @ {f.rate}ml/hr</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">{formatDateTime(f.createdAt)}</span>
-                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => startEditIv(f)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
-                              <Pencil size={12} />
-                            </button>
-                            <button onClick={() => removeIvRecord(f)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-            </div>
 
             {canEdit && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2739,69 +2711,65 @@ function NurseWorkbenchInner() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-muted-foreground">Allergy Category <span className="text-destructive">*</span></label>
-                      <select
+                      <SearchableSelect
                         value={allergyForm.allergyCategory}
-                        onChange={(e) => setAllergyForm((p) => ({ ...p, allergyCategory: e.target.value, substance: "" }))}
-                        className="h-10 text-sm"
-                      >
-                        <option value="">Select category</option>
-                        {withCurrentOption(ALLERGY_CATEGORIES, allergyForm.allergyCategory).map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-muted-foreground">Allergen <span className="text-destructive">*</span></label>
-                      <select
-                        value={allergyForm.substance}
-                        onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))}
-                        className="h-10 text-sm"
-                        disabled={!allergyForm.allergyCategory}
-                      >
-                        <option value="">Select allergen</option>
-                        {withCurrentOption(ALLERGENS_BY_CATEGORY[allergyForm.allergyCategory] ?? [], allergyForm.substance).map((a) => (
-                          <option key={a} value={a}>{a}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-muted-foreground">Severity</label>
-                      <select
-                        value={allergyForm.severity}
-                        onChange={(e) => setAllergyForm((p) => ({ ...p, severity: e.target.value }))}
-                        className="h-10 text-sm"
-                      >
-                        <option value="">Select severity</option>
-                        {withCurrentOption(SEVERITIES, allergyForm.severity).map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-muted-foreground">Reaction</label>
-                      <select
-                        value={allergyForm.reaction}
-                        onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))}
-                        className="h-10 text-sm"
-                      >
-                        <option value="">Select reaction</option>
-                        {withCurrentOption(REACTIONS, allergyForm.reaction).map((r) => <option key={r} value={r}>{r}</option>)}
-                      </select>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-muted-foreground">Identified Date</label>
-                      <input
-                        type="date"
-                        value={allergyForm.identifiedDate}
-                        onChange={(e) => setAllergyForm((p) => ({ ...p, identifiedDate: e.target.value }))}
-                        className="h-10 text-sm"
+                        onChange={(v) => setAllergyForm((p) => ({ ...p, allergyCategory: v, substance: "" }))}
+                        options={[
+                          { value: "", label: "Select category" },
+                          ...withCurrentOption(ALLERGY_CATEGORIES, allergyForm.allergyCategory).map((s) => ({ value: s, label: s })),
+                        ]}
                       />
                     </div>
                     <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Allergen <span className="text-destructive">*</span></label>
+                      <SearchableSelect
+                        value={allergyForm.substance}
+                        onChange={(v) => setAllergyForm((p) => ({ ...p, substance: v }))}
+                        disabled={!allergyForm.allergyCategory}
+                        options={[
+                          { value: "", label: "Select allergen" },
+                          ...withCurrentOption(ALLERGENS_BY_CATEGORY[allergyForm.allergyCategory] ?? [], allergyForm.substance).map((s) => ({ value: s, label: s })),
+                        ]}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Severity</label>
+                      <SearchableSelect
+                        value={allergyForm.severity}
+                        onChange={(v) => setAllergyForm((p) => ({ ...p, severity: v }))}
+                        options={[
+                          { value: "", label: "Select severity" },
+                          ...withCurrentOption(SEVERITIES, allergyForm.severity).map((s) => ({ value: s, label: s })),
+                        ]}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Reaction</label>
+                      <SearchableSelect
+                        value={allergyForm.reaction}
+                        onChange={(v) => setAllergyForm((p) => ({ ...p, reaction: v }))}
+                        options={[
+                          { value: "", label: "Select reaction" },
+                          ...withCurrentOption(REACTIONS, allergyForm.reaction).map((s) => ({ value: s, label: s })),
+                        ]}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Identified Date</label>
+                      <div className="mt-1">
+                        <DatePicker
+                          value={allergyForm.identifiedDate}
+                          onChange={(v) => setAllergyForm((p) => ({ ...p, identifiedDate: v }))}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
                       <label className="text-xs text-muted-foreground">Status</label>
-                      <select
+                      <SearchableSelect
                         value={allergyForm.status}
-                        onChange={(e) => setAllergyForm((p) => ({ ...p, status: e.target.value }))}
-                        className="h-10 text-sm"
-                      >
-                        {withCurrentOption(ALLERGY_STATUSES, allergyForm.status).map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                        onChange={(v) => setAllergyForm((p) => ({ ...p, status: v }))}
+                        options={withCurrentOption(ALLERGY_STATUSES, allergyForm.status).map((s) => ({ value: s, label: s }))}
+                      />
                     </div>
                   </div>
                   <div className="flex flex-col gap-1">
@@ -2832,11 +2800,11 @@ function NurseWorkbenchInner() {
                     <Flag size={18} className="text-primary" /> Special Remark
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <select value={remarkForm.remarkType} onChange={(e) => setRemarkForm((p) => ({ ...p, remarkType: e.target.value }))} className="h-10 text-sm">
-                      {REMARK_TYPES.map((type) => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      value={remarkForm.remarkType}
+                      onChange={(v) => setRemarkForm((p) => ({ ...p, remarkType: v }))}
+                      options={REMARK_TYPES.map((type) => ({ value: type, label: type }))}
+                    />
                     <input type="text" placeholder="Description" value={remarkForm.description} onChange={(e) => setRemarkForm((p) => ({ ...p, description: e.target.value }))} className="h-10 text-sm" />
                   </div>
                   <div className="flex items-center gap-3">
@@ -3016,6 +2984,53 @@ function NurseWorkbenchInner() {
                 )}
               </div>
 
+              {/* IV Fluids */}
+              <div className="card p-6 flex flex-col gap-4">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Activity size={18} className="text-primary" /> IV Fluids
+                </h2>
+                {canEdit && (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <input type="text" placeholder="Fluid type (e.g. Normal Saline)" value={ivForm.fluidType} onChange={(e) => setIvForm((p) => ({ ...p, fluidType: e.target.value }))} className="h-10 text-sm sm:col-span-1" />
+                      <input type="number" min="0" placeholder="Volume (ml)" value={ivForm.volume} onChange={(e) => setIvForm((p) => ({ ...p, volume: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
+                      <input type="number" min="0" placeholder="Rate (ml/hr)" value={ivForm.rate} onChange={(e) => setIvForm((p) => ({ ...p, rate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
+                    </div>
+                    <textarea placeholder="Notes..." value={ivForm.notes} onChange={(e) => setIvForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => saveIVFluids()} disabled={savingIv} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                        <Save size={15} /> {editingIvId ? "Save Changes" : "Save Entry"}
+                      </button>
+                      {editingIvId && (
+                        <button onClick={cancelEditIv} className="text-sm font-semibold text-muted-foreground hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+                {chart && chart.ivFluids.length > 0 && (
+                  <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
+                    {chart.ivFluids.slice(0, 5).map((f) => (
+                      <div key={f.ivFluidsTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                        <span className="font-medium">{f.fluidType} · {f.volume}ml @ {f.rate}ml/hr</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{formatDateTime(f.createdAt)}</span>
+                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => startEditIv(f)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => removeIvRecord(f)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Prescribed Medications — administer only, nurse cannot add/modify prescriptions */}
               <div className="card p-6 flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -3051,13 +3066,17 @@ function NurseWorkbenchInner() {
                           <div className="mt-2 flex flex-col gap-2 border-t border-border pt-2">
                             <div className="grid grid-cols-2 gap-2">
                               <input type="text" placeholder="Dose given" value={administerForm.doseGiven} onChange={(ev) => setAdministerForm((p) => ({ ...p, doseGiven: ev.target.value }))} className="h-9 text-sm" />
-                              <select value={administerForm.route} onChange={(ev) => setAdministerForm((p) => ({ ...p, route: ev.target.value }))} className="h-9 text-sm">
-                                <option>Oral (PO)</option>
-                                <option>Intravenous (IV)</option>
-                                <option>Intramuscular (IM)</option>
-                                <option>Subcutaneous (SC)</option>
-                                <option>Topical</option>
-                              </select>
+                              <SearchableSelect
+                                value={administerForm.route}
+                                onChange={(v) => setAdministerForm((p) => ({ ...p, route: v }))}
+                                options={[
+                                  { value: "Oral (PO)", label: "Oral (PO)" },
+                                  { value: "Intravenous (IV)", label: "Intravenous (IV)" },
+                                  { value: "Intramuscular (IM)", label: "Intramuscular (IM)" },
+                                  { value: "Subcutaneous (SC)", label: "Subcutaneous (SC)" },
+                                  { value: "Topical", label: "Topical" },
+                                ]}
+                              />
                             </div>
                             <input type="text" placeholder="Remarks (optional)" value={administerForm.remarks} onChange={(ev) => setAdministerForm((p) => ({ ...p, remarks: ev.target.value }))} className="h-9 text-sm" />
 
@@ -3066,16 +3085,14 @@ function NurseWorkbenchInner() {
                                 <p className="text-xs font-semibold text-destructive flex items-center gap-1">
                                   <ShieldAlert size={12} /> High-risk medication — a second nurse must witness this
                                 </p>
-                                <select
+                                <SearchableSelect
                                   value={administerForm.witnessUserId}
-                                  onChange={(ev) => setAdministerForm((p) => ({ ...p, witnessUserId: ev.target.value }))}
-                                  className="h-9 text-sm"
-                                >
-                                  <option value="">Select witnessing nurse</option>
-                                  {nurses.filter((n) => n.id !== currentUserId).map((n) => (
-                                    <option key={n.id} value={n.id}>{n.name}</option>
-                                  ))}
-                                </select>
+                                  onChange={(v) => setAdministerForm((p) => ({ ...p, witnessUserId: v }))}
+                                  options={[
+                                    { value: "", label: "Select witnessing nurse" },
+                                    ...nurses.filter((n) => n.id !== currentUserId).map((n) => ({ value: n.id, label: n.name })),
+                                  ]}
+                                />
                                 <PasswordInput
                                   placeholder="Witness's password"
                                   value={administerForm.witnessPassword}
@@ -3258,19 +3275,21 @@ function NurseWorkbenchInner() {
                   <Upload size={12} /> Attach Document
                 </p>
                 <div className="flex flex-wrap gap-2 items-end">
-                  <select
-                    value={uploadDocType}
-                    onChange={(e) => setUploadDocType(e.target.value)}
-                    className="h-9 text-sm min-w-32"
-                  >
-                    <option>Report</option>
-                    <option>Lab Result</option>
-                    <option>Radiology Image</option>
-                    <option>Prescription</option>
-                    <option>Referral Letter</option>
-                    <option>Insurance</option>
-                    <option>Other</option>
-                  </select>
+                  <div className="min-w-32">
+                    <SearchableSelect
+                      value={uploadDocType}
+                      onChange={setUploadDocType}
+                      options={[
+                        { value: "Report", label: "Report" },
+                        { value: "Lab Result", label: "Lab Result" },
+                        { value: "Radiology Image", label: "Radiology Image" },
+                        { value: "Prescription", label: "Prescription" },
+                        { value: "Referral Letter", label: "Referral Letter" },
+                        { value: "Insurance", label: "Insurance" },
+                        { value: "Other", label: "Other" },
+                      ]}
+                    />
+                  </div>
                   <label className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted cursor-pointer transition-colors">
                     <Upload size={13} />
                     {uploadDocFile ? uploadDocFile.name : "Choose file"}
@@ -3319,28 +3338,26 @@ function NurseWorkbenchInner() {
         </div>
         {isAdmin && (
           <div className="flex items-center gap-2">
-            <select
-              value={selectedNurseId}
-              onChange={(e) => setSelectedNurseId(e.target.value)}
-              title="Nurse identity for recording vitals, injections, dressings, etc."
-              className="h-9 w-48 shrink-0 text-sm"
-            >
-              <option value="">Acting nurse…</option>
-              {nurses.map((n) => (
-                <option key={n.id} value={n.id}>{n.name}</option>
-              ))}
-            </select>
-            <select
-              value={selectedDoctorId}
-              onChange={(e) => setSelectedDoctorId(e.target.value)}
-              title="Doctor to attribute allergy records to"
-              className="h-9 w-48 shrink-0 text-sm"
-            >
-              <option value="">Acting doctor (for allergies)…</option>
-              {assignedDoctors.map((d) => (
-                <option key={String(d.doctorId)} value={String(d.doctorId)}>{d.userName}</option>
-              ))}
-            </select>
+            <div className="w-48 shrink-0">
+              <SearchableSelect
+                value={selectedNurseId}
+                onChange={setSelectedNurseId}
+                options={[
+                  { value: "", label: "Acting nurse…" },
+                  ...nurses.map((n) => ({ value: n.id, label: n.name })),
+                ]}
+              />
+            </div>
+            <div className="w-48 shrink-0">
+              <SearchableSelect
+                value={selectedDoctorId}
+                onChange={setSelectedDoctorId}
+                options={[
+                  { value: "", label: "Acting doctor (for allergies)…" },
+                  ...assignedDoctors.map((d) => ({ value: String(d.doctorId), label: d.userName })),
+                ]}
+              />
+            </div>
           </div>
         )}
       </div>

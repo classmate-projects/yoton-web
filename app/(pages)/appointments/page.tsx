@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
+import SearchableSelect from "@/components/SearchableSelect";
 import PatientRegistrationModal from "@/components/PatientRegistrationModal";
 import { ReceptionService } from "@/services/reception.service";
 import { AuthService } from "@/services/auth.service";
@@ -1177,19 +1178,17 @@ export default function Appointments() {
           {(bookModalDepts.length > 0 || userDeptInfo) && (
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Department</label>
-              <select
+              <SearchableSelect
                 value={selectedDeptFilter}
-                onChange={(e) => setSelectedDeptFilter(e.target.value)}
-                className="h-10 rounded-xl border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:border-primary"
-              >
-                <option value="all">All departments</option>
-                {bookModalDepts.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-                {userDeptInfo && !bookModalDepts.some((d) => d.id === userDeptInfo.id) && (
-                  <option key={userDeptInfo.id} value={userDeptInfo.id}>{userDeptInfo.name}</option>
-                )}
-              </select>
+                onChange={setSelectedDeptFilter}
+                options={[
+                  { value: "all", label: "All departments" },
+                  ...bookModalDepts.map((d) => ({ value: d.id, label: d.name })),
+                  ...(userDeptInfo && !bookModalDepts.some((d) => d.id === userDeptInfo.id)
+                    ? [{ value: userDeptInfo.id, label: userDeptInfo.name }]
+                    : []),
+                ]}
+              />
             </div>
           )}
         </div>
@@ -1802,29 +1801,29 @@ export default function Appointments() {
 
             {/* Filters */}
             <div className="flex flex-col gap-3 p-5 pb-0 shrink-0 sm:flex-row">
-              <select
-                value={bookModalDeptFilter}
-                onChange={(e) => {
-                  setBookModalDeptFilter(e.target.value);
-                  setSelectedSpecializationId("all");
-                }}
-                className="h-10 flex-1 rounded-lg border border-border bg-muted px-3 text-sm text-foreground"
-              >
-                <option value="all">All departments</option>
-                {bookModalDepts.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-              <select
-                value={selectedSpecializationId}
-                onChange={(e) => setSelectedSpecializationId(e.target.value)}
-                className="h-10 flex-1 rounded-lg border border-border bg-muted px-3 text-sm text-foreground"
-              >
-                <option value="all">All specializations</option>
-                {bookModalSpecOptions.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+              <div className="flex-1">
+                <SearchableSelect
+                  value={bookModalDeptFilter}
+                  onChange={(v) => {
+                    setBookModalDeptFilter(v);
+                    setSelectedSpecializationId("all");
+                  }}
+                  options={[
+                    { value: "all", label: "All departments" },
+                    ...bookModalDepts.map((d) => ({ value: d.id, label: d.name })),
+                  ]}
+                />
+              </div>
+              <div className="flex-1">
+                <SearchableSelect
+                  value={selectedSpecializationId}
+                  onChange={setSelectedSpecializationId}
+                  options={[
+                    { value: "all", label: "All specializations" },
+                    ...bookModalSpecOptions.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                />
+              </div>
               <label className="relative flex-1">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
@@ -2425,36 +2424,32 @@ export default function Appointments() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Department</label>
-                  <select
+                  <SearchableSelect
                     value={editVisitDeptFilter}
-                    onChange={(e) => {
-                      setEditVisitDeptFilter(e.target.value);
+                    onChange={(v) => {
+                      setEditVisitDeptFilter(v);
                       setEditVisitSpecFilter("all");
                       setEditVisitSelectedDoctor(null);
                     }}
-                    className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="all">All departments</option>
-                    {editVisitDeptOptions.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: "all", label: "All departments" },
+                      ...editVisitDeptOptions.map((d) => ({ value: d.id, label: d.name })),
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Specialty</label>
-                  <select
+                  <SearchableSelect
                     value={editVisitSpecFilter}
-                    onChange={(e) => {
-                      setEditVisitSpecFilter(e.target.value);
+                    onChange={(v) => {
+                      setEditVisitSpecFilter(v);
                       setEditVisitSelectedDoctor(null);
                     }}
-                    className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="all">All specialties</option>
-                    {editVisitSpecOptions.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: "all", label: "All specialties" },
+                      ...editVisitSpecOptions.map((s) => ({ value: s.id, label: s.name })),
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -2634,36 +2629,32 @@ export default function Appointments() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Department</label>
-                  <select
+                  <SearchableSelect
                     value={editVisitDeptFilter}
-                    onChange={(e) => {
-                      setEditVisitDeptFilter(e.target.value);
+                    onChange={(v) => {
+                      setEditVisitDeptFilter(v);
                       setEditVisitSpecFilter("all");
                       setEditVisitSelectedDoctor(null);
                     }}
-                    className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="all">All departments</option>
-                    {editVisitDeptOptions.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: "all", label: "All departments" },
+                      ...editVisitDeptOptions.map((d) => ({ value: d.id, label: d.name })),
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Specialty</label>
-                  <select
+                  <SearchableSelect
                     value={editVisitSpecFilter}
-                    onChange={(e) => {
-                      setEditVisitSpecFilter(e.target.value);
+                    onChange={(v) => {
+                      setEditVisitSpecFilter(v);
                       setEditVisitSelectedDoctor(null);
                     }}
-                    className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="all">All specialties</option>
-                    {editVisitSpecOptions.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: "all", label: "All specialties" },
+                      ...editVisitSpecOptions.map((s) => ({ value: s.id, label: s.name })),
+                    ]}
+                  />
                 </div>
               </div>
 

@@ -25,6 +25,7 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import CountryCodeSelect from "@/components/CountryCodeSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 import ToggleButton from "@/components/ToggleButton";
 import { toDateInputValue } from "@/lib/date";
 import { isValidEmail } from "@/lib/validation";
@@ -720,19 +721,16 @@ export default function PatientEntryPage() {
               <label htmlFor="sex" className="font-semibold text-foreground/90">
                 Sex <span className="text-red-500">*</span>
               </label>
-              <select
-                id="sex"
-                name="sex"
+              <SearchableSelect
                 value={formData.sex}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="">Select Gender</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, sex: v }))}
+                options={[
+                  { value: "", label: "Select Gender" },
+                  { value: "Male", label: "Male" },
+                  { value: "Female", label: "Female" },
+                  { value: "Other", label: "Other" },
+                ]}
+              />
             </div>
 
             {/* Date of Birth */}
@@ -766,23 +764,14 @@ export default function PatientEntryPage() {
               >
                 Nationality <span className="text-red-500">*</span>
               </label>
-              <select
-                id="nationality"
-                name="nationality"
+              <SearchableSelect
                 value={formData.nationality}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="" disabled>
-                  Select Country
-                </option>
-                {countryDetails.map((country) => (
-                  <option key={country.country} value={country.country}>
-                    {country.country}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, nationality: v }))}
+                options={[
+                  { value: "", label: "Select Country" },
+                  ...countryDetails.map((country) => ({ value: country.country, label: country.country })),
+                ]}
+              />
             </div>
 
             {/* Father Name */}
@@ -831,20 +820,17 @@ export default function PatientEntryPage() {
               >
                 Marital Status <span className="text-red-500">*</span>
               </label>
-              <select
-                id="maritalStatus"
-                name="maritalStatus"
+              <SearchableSelect
                 value={formData.maritalStatus}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="">Select Status</option>
-                <option value="Single">Single</option>
-                <option value="Married">Married</option>
-                <option value="Divorced">Divorced</option>
-                <option value="Widowed">Widowed</option>
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, maritalStatus: v }))}
+                options={[
+                  { value: "", label: "Select Status" },
+                  { value: "Single", label: "Single" },
+                  { value: "Married", label: "Married" },
+                  { value: "Divorced", label: "Divorced" },
+                  { value: "Widowed", label: "Widowed" },
+                ]}
+              />
             </div>
 
             {/* Designation */}
@@ -1064,20 +1050,17 @@ export default function PatientEntryPage() {
               <label htmlFor="visaType" className="font-semibold text-foreground/90">
                 Visa Type <span className="text-red-500">*</span>
               </label>
-              <select
-                id="visaType"
-                name="visaType"
+              <SearchableSelect
                 value={formData.visaType}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="">Select Visa Type</option>
-                <option value="Residency">Residency</option>
-                <option value="Tourist">Tourist</option>
-                <option value="Business">Business</option>
-                <option value="Student">Student</option>
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, visaType: v }))}
+                options={[
+                  { value: "", label: "Select Visa Type" },
+                  { value: "Residency", label: "Residency" },
+                  { value: "Tourist", label: "Tourist" },
+                  { value: "Business", label: "Business" },
+                  { value: "Student", label: "Student" },
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -1098,18 +1081,15 @@ export default function PatientEntryPage() {
               >
                 Patient Type <span className="text-red-500">*</span>
               </label>
-              <select
-                id="patientType"
-                name="patientType"
+              <SearchableSelect
                 value={formData.patientType}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="Normal">Normal</option>
-                <option value="VIP">VIP</option>
-                <option value="Emergency">Emergency</option>
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, patientType: v }))}
+                options={[
+                  { value: "Normal", label: "Normal" },
+                  { value: "VIP", label: "VIP" },
+                  { value: "Emergency", label: "Emergency" },
+                ]}
+              />
             </div>
 
             {/* Checkboxes */}
@@ -1147,18 +1127,15 @@ export default function PatientEntryPage() {
               <label htmlFor="paymentType" className="font-semibold text-foreground/90">
                 Payment Type <span className="text-red-500">*</span>
               </label>
-              <select
-                id="paymentType"
-                name="paymentType"
+              <SearchableSelect
                 value={formData.paymentType}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="Cash">Cash</option>
-                <option value="Insurance">Insurance</option>
-                <option value="Corporate">Corporate</option>
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, paymentType: v }))}
+                options={[
+                  { value: "Cash", label: "Cash" },
+                  { value: "Insurance", label: "Insurance" },
+                  { value: "Corporate", label: "Corporate" },
+                ]}
+              />
             </div>
           </div>
 
@@ -1170,17 +1147,15 @@ export default function PatientEntryPage() {
                   <label htmlFor="eligibilityMode" className="font-semibold text-foreground/90">
                     Eligibility Mode
                   </label>
-                  <select
-                    id="eligibilityMode"
-                    name="eligibilityMode"
+                  <SearchableSelect
                     value={formData.eligibilityMode}
-                    onChange={handleInputChange}
-                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-                  >
-                    <option value="">Not Done</option>
-                    <option value="Online">Online</option>
-                    <option value="Manual">Manual</option>
-                  </select>
+                    onChange={(v) => setFormData((prev) => ({ ...prev, eligibilityMode: v }))}
+                    options={[
+                      { value: "", label: "Not Done" },
+                      { value: "Online", label: "Online" },
+                      { value: "Manual", label: "Manual" },
+                    ]}
+                  />
                 </div>
 
                 {/* Eligibility Checked Date */}
@@ -1227,19 +1202,14 @@ export default function PatientEntryPage() {
                   <label htmlFor="insuranceProvider" className="font-semibold text-foreground/90">
                     {formData.paymentType} Provider <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    id="insuranceProvider"
-                    name="insuranceProvider"
+                  <SearchableSelect
                     value={formData.insuranceProvider}
-                    onChange={handleInputChange}
-                    required
-                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-                  >
-                    <option value="">{isLoadingProviders ? "Loading..." : "Select Provider"}</option>
-                    {insuranceProviders.map((p) => (
-                      <option key={p.listItemId} value={p.name}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setFormData((prev) => ({ ...prev, insuranceProvider: v }))}
+                    options={[
+                      { value: "", label: isLoadingProviders ? "Loading..." : "Select Provider" },
+                      ...insuranceProviders.map((p) => ({ value: p.name, label: p.name })),
+                    ]}
+                  />
                 </div>
 
                 {/* Sub Insurance */}
@@ -1259,18 +1229,16 @@ export default function PatientEntryPage() {
                 {/* Network Type */}
                 <div className="flex flex-col gap-2">
                   <label htmlFor="networkType" className="font-semibold text-foreground/90">Network Type</label>
-                  <select
-                    id="networkType"
-                    name="networkType"
+                  <SearchableSelect
                     value={formData.networkType}
-                    onChange={handleInputChange}
-                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-                  >
-                    <option value="">Select Network Type</option>
-                    <option value="Open Network">Open Network</option>
-                    <option value="Restricted Network">Restricted Network</option>
-                    <option value="Copay Network">Copay Network</option>
-                  </select>
+                    onChange={(v) => setFormData((prev) => ({ ...prev, networkType: v }))}
+                    options={[
+                      { value: "", label: "Select Network Type" },
+                      { value: "Open Network", label: "Open Network" },
+                      { value: "Restricted Network", label: "Restricted Network" },
+                      { value: "Copay Network", label: "Copay Network" },
+                    ]}
+                  />
                 </div>
 
                 {/* Insurance/Corporate Card No */}
@@ -1642,79 +1610,56 @@ export default function PatientEntryPage() {
                       <label className="font-semibold text-foreground/90 text-sm">
                         Department
                       </label>
-                      <select
+                      <SearchableSelect
                         value={selectedDepartmentId}
-                        onChange={(e) => {
-                          setSelectedDepartmentId(e.target.value);
+                        onChange={(v) => {
+                          setSelectedDepartmentId(v);
                           setSelectedDoctorId("");
                           setDaySlots(null);
                           setSelectedSlot(null);
                         }}
-                        className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-                      >
-                        <option value="">
-                          {isLoadingSpecializations
-                            ? "Loading..."
-                            : "Select department"}
-                        </option>
-                        {consultDepartments.map((d) => (
-                          <option key={d.value} value={d.value}>
-                            {d.label}
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: isLoadingSpecializations ? "Loading..." : "Select department" },
+                          ...consultDepartments.map((d) => ({ value: d.value, label: d.label })),
+                        ]}
+                      />
                     </div>
 
                     <div className="flex flex-col gap-2">
                       <label className="font-semibold text-foreground/90 text-sm">
                         Specialty
                       </label>
-                      <select
+                      <SearchableSelect
                         value={selectedSpecializationId}
-                        onChange={(e) => {
-                          setSelectedSpecializationId(e.target.value);
+                        onChange={(v) => {
+                          setSelectedSpecializationId(v);
                           setSelectedDoctorId("");
                           setDaySlots(null);
                           setSelectedSlot(null);
                         }}
-                        className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-                      >
-                        <option value="">
-                          {isLoadingSpecializations
-                            ? "Loading..."
-                            : "Select specialty"}
-                        </option>
-                        {consultSpecializations.map((s) => (
-                          <option
-                            key={s.specializationId}
-                            value={s.specializationId}
-                          >
-                            {s.specializationName}
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: isLoadingSpecializations ? "Loading..." : "Select specialty" },
+                          ...consultSpecializations.map((s) => ({ value: String(s.specializationId), label: s.specializationName })),
+                        ]}
+                      />
                     </div>
 
                     <div className="flex flex-col gap-2">
                       <label className="font-semibold text-foreground/90 text-sm">
                         Doctor
                       </label>
-                      <select
+                      <SearchableSelect
                         value={selectedDoctorId}
-                        onChange={(e) => {
-                          setSelectedDoctorId(e.target.value);
+                        onChange={(v) => {
+                          setSelectedDoctorId(v);
                           setSelectedSlot(null);
                         }}
                         disabled={!selectedSpecializationId}
-                        className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card disabled:opacity-50"
-                      >
-                        <option value="">Select doctor</option>
-                        {doctorsForSpecialization.map((d) => (
-                          <option key={d.doctorId} value={d.doctorId}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: "Select doctor" },
+                          ...doctorsForSpecialization.map((d) => ({ value: String(d.doctorId), label: d.name })),
+                        ]}
+                      />
                     </div>
                   </div>
 

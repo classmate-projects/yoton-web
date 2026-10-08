@@ -10,6 +10,7 @@ import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmrButton from "@/components/EmrButton";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
+import SearchableSelect from "@/components/SearchableSelect";
 import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
@@ -439,17 +440,16 @@ export default function LaboratoryPage() {
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
-            <select
-              value={selectedNurseId}
-              onChange={(e) => setSelectedNurseId(e.target.value)}
-              title="Nurse identity for collecting samples"
-              className="h-9 w-48 shrink-0 text-sm"
-            >
-              <option value="">Acting nurse…</option>
-              {nurses.map((n) => (
-                <option key={n.id} value={n.id}>{n.name}</option>
-              ))}
-            </select>
+            <div className="w-48 shrink-0">
+              <SearchableSelect
+                value={selectedNurseId}
+                onChange={setSelectedNurseId}
+                options={[
+                  { value: "", label: "Acting nurse…" },
+                  ...nurses.map((n) => ({ value: n.id, label: n.name })),
+                ]}
+              />
+            </div>
           )}
           {!isNurse && (
             <button
@@ -541,18 +541,16 @@ export default function LaboratoryPage() {
 
               <div>
                 <label className="text-sm font-bold text-foreground/90">Ordering Doctor</label>
-                <select
-                  value={selectedDoctorId}
-                  onChange={(e) => setSelectedDoctorId(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                >
-                  <option value="">Not specified</option>
-                  {doctors.map((d) => (
-                    <option key={d.doctorId} value={d.doctorId}>
-                      {d.name} — {d.specializationName}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={selectedDoctorId}
+                    onChange={setSelectedDoctorId}
+                    options={[
+                      { value: "", label: "Not specified" },
+                      ...doctors.map((d) => ({ value: d.doctorId, label: `${d.name} — ${d.specializationName}` })),
+                    ]}
+                  />
+                </div>
               </div>
 
               <div>
@@ -583,25 +581,29 @@ export default function LaboratoryPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-bold text-foreground/90">Priority</label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  >
-                    <option value="Normal">Normal</option>
-                    <option value="Urgent">Urgent</option>
-                  </select>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      value={priority}
+                      onChange={setPriority}
+                      options={[
+                        { value: "Normal", label: "Normal" },
+                        { value: "Urgent", label: "Urgent" },
+                      ]}
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="text-sm font-bold text-foreground/90">Source</label>
-                  <select
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  >
-                    <option value="InHouse">In-house</option>
-                    <option value="External">External</option>
-                  </select>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      value={source}
+                      onChange={setSource}
+                      options={[
+                        { value: "InHouse", label: "In-house" },
+                        { value: "External", label: "External" },
+                      ]}
+                    />
+                  </div>
                 </div>
               </div>
 

@@ -10,6 +10,7 @@ import { MdAdd, MdWarning } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmrButton from "@/components/EmrButton";
 import DatePicker from "@/components/DatePicker";
+import SearchableSelect from "@/components/SearchableSelect";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { PharmacyService } from "@/services/pharmacy.service";
@@ -1015,16 +1016,18 @@ export default function PharmacyPage() {
                 onChange={(e) => setInvSearch(e.target.value)}
                 className="flex-1 min-w-52 h-10 text-sm"
               />
-              <select
-                value={invSource}
-                onChange={(e) => setInvSource(e.target.value as "" | "DDC" | "Riayati" | "none")}
-                className="h-10 text-sm"
-              >
-                <option value="">All sources</option>
-                <option value="DDC">DDC</option>
-                <option value="Riayati">Riayati</option>
-                <option value="none">Manually added</option>
-              </select>
+              <div className="h-10">
+                <SearchableSelect
+                  value={invSource}
+                  onChange={(v) => setInvSource(v as "" | "DDC" | "Riayati" | "none")}
+                  options={[
+                    { value: "", label: "All sources" },
+                    { value: "DDC", label: "DDC" },
+                    { value: "Riayati", label: "Riayati" },
+                    { value: "none", label: "Manually added" },
+                  ]}
+                />
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1245,18 +1248,16 @@ export default function PharmacyPage() {
 
               <div>
                 <label className="text-sm font-bold text-foreground/90">Prescribing Doctor</label>
-                <select
-                  value={selectedDoctorId}
-                  onChange={(e) => setSelectedDoctorId(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                >
-                  <option value="">Not specified</option>
-                  {doctors.map((d) => (
-                    <option key={d.doctorId} value={d.doctorId}>
-                      {d.name} — {d.specializationName}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={selectedDoctorId}
+                    onChange={setSelectedDoctorId}
+                    options={[
+                      { value: "", label: "Not specified" },
+                      ...doctors.map((d) => ({ value: d.doctorId, label: `${d.name} — ${d.specializationName}` })),
+                    ]}
+                  />
+                </div>
               </div>
 
               <div>
@@ -1264,19 +1265,16 @@ export default function PharmacyPage() {
                 <div className="flex flex-col gap-2 mt-1">
                   {items.map((item, index) => (
                     <div key={index} className="flex gap-2">
-                      <select
-                        required
-                        value={item.medicineId}
-                        onChange={(e) => updateItem(index, "medicineId", e.target.value)}
-                        className="flex-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
-                      >
-                        <option value="">Select medicine</option>
-                        {medicines.map((m) => (
-                          <option key={m.medicineId} value={m.medicineId}>
-                            {m.name} ({m.stock} in stock)
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex-1">
+                        <SearchableSelect
+                          value={item.medicineId}
+                          onChange={(v) => updateItem(index, "medicineId", v)}
+                          options={[
+                            { value: "", label: "Select medicine" },
+                            ...medicines.map((m) => ({ value: m.medicineId, label: `${m.name} (${m.stock} in stock)` })),
+                          ]}
+                        />
+                      </div>
                       <input
                         type="number"
                         min={1}
@@ -1285,15 +1283,13 @@ export default function PharmacyPage() {
                         onChange={(e) => updateItem(index, "quantity", e.target.value)}
                         className="w-20 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
                       />
-                      <select
-                        value={item.priority}
-                        onChange={(e) => updateItem(index, "priority", e.target.value)}
-                        className="w-28 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
-                      >
-                        {PRIORITIES.map((p) => (
-                          <option key={p} value={p}>{p}</option>
-                        ))}
-                      </select>
+                      <div className="w-28">
+                        <SearchableSelect
+                          value={item.priority}
+                          onChange={(v) => updateItem(index, "priority", v)}
+                          options={PRIORITIES.map((p) => ({ value: p, label: p }))}
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => removeItemRow(index)}
@@ -1516,16 +1512,16 @@ export default function PharmacyPage() {
                 </label>
               </div>
               {collectedBy === "Nurse" && (
-                <select
-                  value={collectorUserId}
-                  onChange={(e) => setCollectorUserId(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                >
-                  <option value="">Select nurse</option>
-                  {nurses.map((n) => (
-                    <option key={n.id} value={n.id}>{n.name}</option>
-                  ))}
-                </select>
+                <div>
+                  <SearchableSelect
+                    value={collectorUserId}
+                    onChange={setCollectorUserId}
+                    options={[
+                      { value: "", label: "Select nurse" },
+                      ...nurses.map((n) => ({ value: n.id, label: n.name })),
+                    ]}
+                  />
+                </div>
               )}
             </div>
 
@@ -1571,16 +1567,16 @@ export default function PharmacyPage() {
                 </label>
               </div>
               {medCollectedBy === "Nurse" && (
-                <select
-                  value={medCollectorUserId}
-                  onChange={(e) => setMedCollectorUserId(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                >
-                  <option value="">Select nurse</option>
-                  {nurses.map((n) => (
-                    <option key={n.id} value={n.id}>{n.name}</option>
-                  ))}
-                </select>
+                <div>
+                  <SearchableSelect
+                    value={medCollectorUserId}
+                    onChange={setMedCollectorUserId}
+                    options={[
+                      { value: "", label: "Select nurse" },
+                      ...nurses.map((n) => ({ value: n.id, label: n.name })),
+                    ]}
+                  />
+                </div>
               )}
             </div>
 
@@ -1671,22 +1667,22 @@ export default function PharmacyPage() {
                 </ul>
 
                 <div className="flex gap-2">
-                  <select
-                    value={addAlternativeId}
-                    onChange={(e) => setAddAlternativeId(e.target.value)}
-                    className="flex-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
-                  >
-                    <option value="">Select a medicine to link...</option>
-                    {medicines
-                      .filter(
-                        (m) =>
-                          m.medicineId !== alternativesTarget.medicineId &&
-                          !alternativesList.some((a) => a.medicineId === m.medicineId)
-                      )
-                      .map((m) => (
-                        <option key={m.medicineId} value={m.medicineId}>{m.name}</option>
-                      ))}
-                  </select>
+                  <div className="flex-1">
+                    <SearchableSelect
+                      value={addAlternativeId}
+                      onChange={setAddAlternativeId}
+                      options={[
+                        { value: "", label: "Select a medicine to link..." },
+                        ...medicines
+                          .filter(
+                            (m) =>
+                              m.medicineId !== alternativesTarget.medicineId &&
+                              !alternativesList.some((a) => a.medicineId === m.medicineId)
+                          )
+                          .map((m) => ({ value: m.medicineId, label: m.name })),
+                      ]}
+                    />
+                  </div>
                   <button
                     onClick={handleAddAlternative}
                     disabled={!addAlternativeId || savingAlternative}

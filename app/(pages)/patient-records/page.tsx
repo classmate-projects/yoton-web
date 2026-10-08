@@ -1294,15 +1294,17 @@ export default function PatientRecordsPage() {
                     <>
                       <div>
                         <label className="block text-xs font-semibold text-muted-foreground mb-1">Payment Type</label>
-                        <select
-                          value={insuranceForm.paymentType}
-                          onChange={(e) => setInsuranceForm((p) => ({ ...p, paymentType: e.target.value }))}
-                          className="w-full h-10 text-sm"
-                        >
-                          <option value="Cash">Cash</option>
-                          <option value="Insurance">Insurance</option>
-                          <option value="Corporate">Corporate</option>
-                        </select>
+                        <div>
+                          <SearchableSelect
+                            value={insuranceForm.paymentType}
+                            onChange={(v) => setInsuranceForm((p) => ({ ...p, paymentType: v }))}
+                            options={[
+                              { value: "Cash", label: "Cash" },
+                              { value: "Insurance", label: "Insurance" },
+                              { value: "Corporate", label: "Corporate" },
+                            ]}
+                          />
+                        </div>
                       </div>
 
                       {isInsuranceOrCorporate && (
@@ -1311,17 +1313,16 @@ export default function PatientRecordsPage() {
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">
                               {insuranceForm.paymentType} Provider <span className="text-red-500">*</span>
                             </label>
-                            <select
-                              value={insuranceForm.insuranceProvider}
-                              onChange={(e) => setInsuranceForm((p) => ({ ...p, insuranceProvider: e.target.value }))}
-                              required
-                              className="w-full h-10 text-sm"
-                            >
-                              <option value="">{isLoadingInsuranceProviders ? "Loading..." : "Select Provider"}</option>
-                              {insuranceProviders.map((p) => (
-                                <option key={p.listItemId} value={p.name}>{p.name}</option>
-                              ))}
-                            </select>
+                            <div>
+                              <SearchableSelect
+                                value={insuranceForm.insuranceProvider}
+                                onChange={(v) => setInsuranceForm((p) => ({ ...p, insuranceProvider: v }))}
+                                options={[
+                                  { value: "", label: isLoadingInsuranceProviders ? "Loading..." : "Select Provider" },
+                                  ...insuranceProviders.map((p) => ({ value: p.name, label: p.name })),
+                                ]}
+                              />
+                            </div>
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">Sub Insurance</label>
@@ -1335,16 +1336,18 @@ export default function PatientRecordsPage() {
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">Network Type</label>
-                            <select
-                              value={insuranceForm.networkType}
-                              onChange={(e) => setInsuranceForm((p) => ({ ...p, networkType: e.target.value }))}
-                              className="w-full h-10 text-sm"
-                            >
-                              <option value="">Select Network Type</option>
-                              <option value="Open Network">Open Network</option>
-                              <option value="Restricted Network">Restricted Network</option>
-                              <option value="Copay Network">Copay Network</option>
-                            </select>
+                            <div>
+                              <SearchableSelect
+                                value={insuranceForm.networkType}
+                                onChange={(v) => setInsuranceForm((p) => ({ ...p, networkType: v }))}
+                                options={[
+                                  { value: "", label: "Select Network Type" },
+                                  { value: "Open Network", label: "Open Network" },
+                                  { value: "Restricted Network", label: "Restricted Network" },
+                                  { value: "Copay Network", label: "Copay Network" },
+                                ]}
+                              />
+                            </div>
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">
@@ -1505,17 +1508,13 @@ export default function PatientRecordsPage() {
                 <label className="block text-sm font-semibold text-foreground/90 mb-2">
                   Document type
                 </label>
-                <select
-                  value={documentType}
-                  onChange={(e) => setDocumentType(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-blue-500 text-foreground"
-                >
-                  {DOCUMENT_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
+                <div>
+                  <SearchableSelect
+                    value={documentType}
+                    onChange={setDocumentType}
+                    options={DOCUMENT_TYPES.map((type) => ({ value: type, label: type }))}
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-foreground/90 mb-2">

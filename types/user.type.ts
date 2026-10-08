@@ -103,5 +103,5 @@ export interface UserAssignedDoctorCreateType {
     SpecializationId: string;
     LicenseNumber: string;
     ExperienceYears: number;
-    ConsultationFee: number;
+    ConsultationServiceId?: string;
 }

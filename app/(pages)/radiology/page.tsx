@@ -8,6 +8,7 @@ import { Pencil, ScanLine, Settings, Trash2, Undo2, X } from "lucide-react";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload, MdOutlineImage } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import SearchableSelect from "@/components/SearchableSelect";
 import EmrButton from "@/components/EmrButton";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
@@ -434,18 +435,16 @@ export default function RadiologyPage() {
 
               <div>
                 <label className="text-sm font-bold text-foreground/90">Ordering Doctor</label>
-                <select
-                  value={selectedDoctorId}
-                  onChange={(e) => setSelectedDoctorId(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                >
-                  <option value="">Not specified</option>
-                  {doctors.map((d) => (
-                    <option key={d.doctorId} value={d.doctorId}>
-                      {d.name} — {d.specializationName}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={selectedDoctorId}
+                    onChange={setSelectedDoctorId}
+                    options={[
+                      { value: "", label: "Not specified" },
+                      ...doctors.map((d) => ({ value: d.doctorId, label: `${d.name} — ${d.specializationName}` })),
+                    ]}
+                  />
+                </div>
               </div>
 
               <div>
@@ -463,25 +462,29 @@ export default function RadiologyPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-bold text-foreground/90">Priority</label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  >
-                    <option value="Normal">Normal</option>
-                    <option value="Urgent">Urgent</option>
-                  </select>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      value={priority}
+                      onChange={setPriority}
+                      options={[
+                        { value: "Normal", label: "Normal" },
+                        { value: "Urgent", label: "Urgent" },
+                      ]}
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="text-sm font-bold text-foreground/90">Source</label>
-                  <select
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  >
-                    <option value="InHouse">In-house</option>
-                    <option value="External">External</option>
-                  </select>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      value={source}
+                      onChange={setSource}
+                      options={[
+                        { value: "InHouse", label: "In-house" },
+                        { value: "External", label: "External" },
+                      ]}
+                    />
+                  </div>
                 </div>
               </div>
 

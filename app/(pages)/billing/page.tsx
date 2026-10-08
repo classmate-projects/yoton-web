@@ -10,6 +10,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import EmrButton from "@/components/EmrButton";
 import { BillingService } from "@/services/billing.service";
 import { ReceptionService } from "@/services/reception.service";
+import SearchableSelect from "@/components/SearchableSelect";
 import { BillingSummaryType, BillType, ChargeableItemType } from "@/types/billing.type";
 import { PatientListItemType } from "@/types/appointment.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
@@ -655,15 +656,15 @@ function BillingPageInner() {
                 </form>
 
                 <div className="flex gap-2">
-                  <select
+                  <SearchableSelect
                     value={payMethod}
-                    onChange={(e) => setPayMethod(e.target.value)}
-                    className="p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
-                  >
-                    <option value="Cash">Cash</option>
-                    <option value="Card">Card</option>
-                    <option value="Insurance">Insurance</option>
-                  </select>
+                    onChange={setPayMethod}
+                    options={[
+                      { value: "Cash", label: "Cash" },
+                      { value: "Card", label: "Card" },
+                      { value: "Insurance", label: "Insurance" },
+                    ]}
+                  />
                   <button
                     onClick={handlePay}
                     disabled={isPaying || detailBill.items.length === 0}
