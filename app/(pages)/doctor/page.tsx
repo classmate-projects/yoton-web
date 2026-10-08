@@ -1568,13 +1568,6 @@ function DoctorWorkbenchInner() {
   if (selectedPatientId) {
     return (
       <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
-        <button
-          onClick={backToWorkbench}
-          className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary mb-6"
-        >
-          <ArrowLeft size={16} /> Back to workbench
-        </button>
-
         {isLoadingSummary || !summary ? (
           <LoadingSpinner />
         ) : (
