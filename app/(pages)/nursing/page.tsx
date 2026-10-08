@@ -1647,7 +1647,12 @@ function NurseWorkbenchInner() {
     return (
       <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
         <div className="flex items-center justify-between mb-6 gap-4">
-          <div />
+          <button
+            onClick={backToWorkbench}
+            className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors"
+          >
+            <ArrowLeft size={16} /> Back to patients
+          </button>
           {isDoctor && (
             <span className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
               <Lock size={12} /> Read-only view

@@ -12,6 +12,8 @@ import {
   CalendarClock,
   CalendarPlus,
   Check,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
   FileText,
   FlaskConical,
@@ -126,6 +128,7 @@ function DoctorWorkbenchInner() {
   const [dashboard, setDashboard] = useState<DoctorDashboardSummaryType | null>(null);
   const [schedule, setSchedule] = useState<TodayScheduleItemType[]>([]);
   const [scheduleDate, setScheduleDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [scheduleSearch, setScheduleSearch] = useState("");
   const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
   const [scheduleNow, setScheduleNow] = useState(() => Date.now());
   const [activeCases, setActiveCases] = useState<ActiveCaseItemType[]>([]);
@@ -138,6 +141,7 @@ function DoctorWorkbenchInner() {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [summary, setSummary] = useState<PatientSummaryType | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [rosExpanded, setRosExpanded] = useState(false);
   const [patientAlertText, setPatientAlertText] = useState("");
   const [isSavingAlert, setIsSavingAlert] = useState(false);
   const [patientWarningModal, setPatientWarningModal] = useState<{ allergies: AllergyType[]; alertText: string } | null>(null);
@@ -1568,6 +1572,12 @@ function DoctorWorkbenchInner() {
   if (selectedPatientId) {
     return (
       <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
+        <button
+          onClick={backToWorkbench}
+          className="mb-5 flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors"
+        >
+          <ArrowLeft size={16} /> Back to patients
+        </button>
         {isLoadingSummary || !summary ? (
           <LoadingSpinner />
         ) : (
@@ -1723,96 +1733,203 @@ function DoctorWorkbenchInner() {
               </div>
             </div>
 
-            {/* Patient Alerts — doctor-authored flag that persists across all visits and
-                is visible to all staff. Saved on blur so the doctor can type freely. */}
-            <div className="card px-5 py-4 border-l-4 border-l-red-500">
-              <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide flex items-center gap-1.5 mb-2">
-                <AlertTriangle size={13} /> Patient Alerts
-              </p>
-              <textarea
-                value={patientAlertText}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setPatientAlertText(v);
-                  if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
-                  alertTimerRef.current = setTimeout(() => void savePatientAlert(v), 1200);
-                }}
-                onBlur={(e) => void savePatientAlert(e.target.value)}
-                placeholder="Enter any clinical alerts visible to all staff — e.g. 'Patient is claustrophobic', 'Known drug seeker'..."
-                rows={3}
-                className="w-full text-sm resize-y"
-              />
-              {isSavingAlert && (
-                <p className="text-xs text-muted-foreground mt-1">Saving…</p>
-              )}
-            </div>
-
-            {/* Medical History — three persistent free-text fields auto-saved 1.2 s after
-                the last keystroke, same pattern as Patient Alerts. All three are sent
-                together in one PATCH so a single blur on any field saves them all. */}
-            <div className="card px-5 py-4">
-              <p className="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
-                <ClipboardList size={13} className="text-primary" /> Medical History
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="flex flex-col gap-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Past Medical History</p>
-                  <textarea
-                    value={pastMedicalHistory}
-                    rows={3}
-                    className="w-full text-sm resize-y"
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setPastMedicalHistory(v);
-                      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-                      historyTimerRef.current = setTimeout(() => void saveMedicalHistory(v, pastSurgicalHistory, pastTreatmentHistory), 1200);
-                    }}
-                    onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Past Surgical History</p>
-                  <textarea
-                    value={pastSurgicalHistory}
-                    rows={3}
-                    className="w-full text-sm resize-y"
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setPastSurgicalHistory(v);
-                      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-                      historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, v, pastTreatmentHistory), 1200);
-                    }}
-                    onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Past Treatment History</p>
-                  <textarea
-                    value={pastTreatmentHistory}
-                    rows={3}
-                    className="w-full text-sm resize-y"
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setPastTreatmentHistory(v);
-                      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-                      historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, v), 1200);
-                    }}
-                    onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
-                  />
-                </div>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {/* Patient Alerts — doctor-authored flag that persists across all visits and
+                  is visible to all staff. Saved on blur so the doctor can type freely. */}
+              <div className="card px-5 py-4 border-l-4 border-l-red-500">
+                <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide flex items-center gap-1.5 mb-2">
+                  <AlertTriangle size={13} /> Patient Alerts
+                </p>
+                <textarea
+                  value={patientAlertText}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPatientAlertText(v);
+                    if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
+                    alertTimerRef.current = setTimeout(() => void savePatientAlert(v), 1200);
+                  }}
+                  onBlur={(e) => void savePatientAlert(e.target.value)}
+                  placeholder="Enter any clinical alerts visible to all staff — e.g. 'Patient is claustrophobic', 'Known drug seeker'..."
+                  rows={3}
+                  className="w-full text-sm resize-y"
+                />
+                {isSavingAlert && (
+                  <p className="text-xs text-muted-foreground mt-1">Saving…</p>
+                )}
               </div>
-              {isSavingHistory && (
-                <p className="text-xs text-muted-foreground mt-2">Saving…</p>
-              )}
+
+              {/* Nurse Entries — this patient's nurse-recorded remarks/notes/examination,
+                  surfaced here instead of a separate Nurse Workbench module (removed from the
+                  doctor's sidebar - see helpers/sidebaritems.ts). Read-only, same data the
+                  nurse enters via NursingController.GetPatientChart. */}
+              <div className="card p-5 flex flex-col gap-4">
+                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <StickyNote size={16} className="text-primary" /> Nurse Entries
+                </h2>
+
+                {vitalsHistory.length === 0 && nurseSpecialRemarks.length === 0 && nurseNotes.length === 0 && nurseExaminationNotes.length === 0 && (
+                  <p className="text-sm text-muted-foreground italic">No nurse entries recorded for this patient yet.</p>
+                )}
+
+                {vitalsHistory.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                      <HeartPulse size={13} /> Vitals
+                    </p>
+                    <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+                      {vitalsHistory.map((v, i) => (
+                        <div key={i} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${v.source === "Triage" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"}`}>
+                              {v.source}
+                            </span>
+                            <span className="text-xs text-muted-foreground">{v.recordedByName ?? "Nurse"} · {formatDateTime(v.recordedAt)}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                            {v.temperature != null && <span className="text-muted-foreground">Temp: <span className="font-semibold text-foreground">{v.temperature}°C</span></span>}
+                            {v.heartRate != null && <span className="text-muted-foreground">HR: <span className="font-semibold text-foreground">{v.heartRate} BPM</span></span>}
+                            {v.systolic != null && v.diastolic != null && <span className="text-muted-foreground">BP: <span className="font-semibold text-foreground">{v.systolic}/{v.diastolic} mmHg</span></span>}
+                            {v.respiratory != null && <span className="text-muted-foreground">Resp: <span className="font-semibold text-foreground">{v.respiratory} bpm</span></span>}
+                            {v.oxygenSaturation != null && <span className="text-muted-foreground">O2: <span className="font-semibold text-foreground">{v.oxygenSaturation}%</span></span>}
+                            {v.bloodSugar != null && <span className="text-muted-foreground">Sugar: <span className="font-semibold text-foreground">{v.bloodSugar} mmol/L</span></span>}
+                            {v.heightCm != null && <span className="text-muted-foreground">Ht: <span className="font-semibold text-foreground">{v.heightCm} cm</span></span>}
+                            {v.weightKg != null && <span className="text-muted-foreground">Wt: <span className="font-semibold text-foreground">{v.weightKg} kg</span></span>}
+                            {v.bmi != null && <span className="text-muted-foreground">BMI: <span className="font-semibold text-foreground">{v.bmi.toFixed(1)}</span></span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {vitalsHistory.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowVitalsHistory(true)}
+                        className="self-start text-xs font-semibold text-primary hover:underline flex items-center gap-1"
+                      >
+                        <History size={12} /> View trend graph
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {nurseSpecialRemarks.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                      <AlertTriangle size={13} /> Special Remarks
+                    </p>
+                    {nurseSpecialRemarks.map((r) => (
+                      <div key={r.specialRemarkId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
+                        <p className="text-foreground">
+                          <span className="font-semibold">{r.remarkType}:</span> {r.description}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">{formatDateTime(r.createdAt)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {nurseNotes.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                      <StickyNote size={13} /> Nurse Notes
+                    </p>
+                    {nurseNotes.map((n) => (
+                      <div key={n.nurseNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                        <div className="prose prose-sm max-w-none text-foreground" dangerouslySetInnerHTML={{ __html: n.contentHtml }} />
+                        <p className="text-xs text-muted-foreground mt-1">{n.nurseName ?? "Nurse"} · {formatDateTime(n.createdAt)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {nurseExaminationNotes.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                      <NotebookPen size={13} /> Examination Notes
+                    </p>
+                    {nurseExaminationNotes.map((e) => (
+                      <div key={e.examinationNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm flex flex-col gap-1">
+                        {e.generalAppearance && (
+                          <p><span className="font-semibold">General appearance:</span> {e.generalAppearance}</p>
+                        )}
+                        <p><span className="font-semibold">Pain level:</span> {e.painLevel}/10</p>
+                        {e.mobility && <p><span className="font-semibold">Mobility:</span> {e.mobility}</p>}
+                        {e.clinicalChecks && <p><span className="font-semibold">Clinical checks:</span> {e.clinicalChecks}</p>}
+                        <p className="text-xs text-muted-foreground mt-1">{e.nurseName ?? "Nurse"} · {formatDateTime(e.createdAt)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <FamilyHistorySection
-              patientId={selectedPatientId}
-              familyHistory={summary.familyHistory}
-              doctorId={doctorIdParam}
-              requireAttribution={requireDoctorSelected}
-              onSaved={async () => { await fetchSummary(selectedPatientId); }}
-            />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {/* Medical History — three persistent free-text fields auto-saved 1.2 s after
+                  the last keystroke, same pattern as Patient Alerts. All three are sent
+                  together in one PATCH so a single blur on any field saves them all. */}
+              <div className="card px-5 py-4">
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
+                  <ClipboardList size={13} className="text-primary" /> Medical History
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Past Medical History</p>
+                    <textarea
+                      value={pastMedicalHistory}
+                      rows={3}
+                      className="w-full text-sm resize-y"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPastMedicalHistory(v);
+                        if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(v, pastSurgicalHistory, pastTreatmentHistory), 1200);
+                      }}
+                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Past Surgical History</p>
+                    <textarea
+                      value={pastSurgicalHistory}
+                      rows={3}
+                      className="w-full text-sm resize-y"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPastSurgicalHistory(v);
+                        if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, v, pastTreatmentHistory), 1200);
+                      }}
+                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Past Treatment History</p>
+                    <textarea
+                      value={pastTreatmentHistory}
+                      rows={3}
+                      className="w-full text-sm resize-y"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPastTreatmentHistory(v);
+                        if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, v), 1200);
+                      }}
+                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
+                    />
+                  </div>
+                </div>
+                {isSavingHistory && (
+                  <p className="text-xs text-muted-foreground mt-2">Saving…</p>
+                )}
+              </div>
+
+              <FamilyHistorySection
+                patientId={selectedPatientId}
+                familyHistory={summary.familyHistory}
+                doctorId={doctorIdParam}
+                requireAttribution={requireDoctorSelected}
+                onSaved={async () => { await fetchSummary(selectedPatientId); }}
+              />
+            </div>
 
             {/* Latest Vitals — merged from Triage (nurse's intake reading) and VitalsRecord
                 (nurse's ongoing readings), read-only here so the doctor has it in view while
@@ -1864,109 +1981,6 @@ function DoctorWorkbenchInner() {
                 </button>
               </div>
             )}
-
-            {/* Nurse Entries — this patient's nurse-recorded remarks/notes/examination,
-                surfaced here instead of a separate Nurse Workbench module (removed from the
-                doctor's sidebar - see helpers/sidebaritems.ts). Read-only, same data the
-                nurse enters via NursingController.GetPatientChart. */}
-            <div className="card p-5 flex flex-col gap-4">
-              <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                <StickyNote size={16} className="text-primary" /> Nurse Entries
-              </h2>
-
-              {vitalsHistory.length === 0 && nurseSpecialRemarks.length === 0 && nurseNotes.length === 0 && nurseExaminationNotes.length === 0 && (
-                <p className="text-sm text-muted-foreground italic">No nurse entries recorded for this patient yet.</p>
-              )}
-
-              {vitalsHistory.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                    <HeartPulse size={13} /> Vitals
-                  </p>
-                  <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
-                    {vitalsHistory.map((v, i) => (
-                      <div key={i} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${v.source === "Triage" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"}`}>
-                            {v.source}
-                          </span>
-                          <span className="text-xs text-muted-foreground">{v.recordedByName ?? "Nurse"} · {formatDateTime(v.recordedAt)}</span>
-                        </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-                          {v.temperature != null && <span className="text-muted-foreground">Temp: <span className="font-semibold text-foreground">{v.temperature}°C</span></span>}
-                          {v.heartRate != null && <span className="text-muted-foreground">HR: <span className="font-semibold text-foreground">{v.heartRate} BPM</span></span>}
-                          {v.systolic != null && v.diastolic != null && <span className="text-muted-foreground">BP: <span className="font-semibold text-foreground">{v.systolic}/{v.diastolic} mmHg</span></span>}
-                          {v.respiratory != null && <span className="text-muted-foreground">Resp: <span className="font-semibold text-foreground">{v.respiratory} bpm</span></span>}
-                          {v.oxygenSaturation != null && <span className="text-muted-foreground">O2: <span className="font-semibold text-foreground">{v.oxygenSaturation}%</span></span>}
-                          {v.bloodSugar != null && <span className="text-muted-foreground">Sugar: <span className="font-semibold text-foreground">{v.bloodSugar} mmol/L</span></span>}
-                          {v.heightCm != null && <span className="text-muted-foreground">Ht: <span className="font-semibold text-foreground">{v.heightCm} cm</span></span>}
-                          {v.weightKg != null && <span className="text-muted-foreground">Wt: <span className="font-semibold text-foreground">{v.weightKg} kg</span></span>}
-                          {v.bmi != null && <span className="text-muted-foreground">BMI: <span className="font-semibold text-foreground">{v.bmi.toFixed(1)}</span></span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {vitalsHistory.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowVitalsHistory(true)}
-                      className="self-start text-xs font-semibold text-primary hover:underline flex items-center gap-1"
-                    >
-                      <History size={12} /> View trend graph
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {nurseSpecialRemarks.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                    <AlertTriangle size={13} /> Special Remarks
-                  </p>
-                  {nurseSpecialRemarks.map((r) => (
-                    <div key={r.specialRemarkId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
-                      <p className="text-foreground">
-                        <span className="font-semibold">{r.remarkType}:</span> {r.description}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">{formatDateTime(r.createdAt)}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {nurseNotes.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                    <StickyNote size={13} /> Nurse Notes
-                  </p>
-                  {nurseNotes.map((n) => (
-                    <div key={n.nurseNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
-                      <div className="prose prose-sm max-w-none text-foreground" dangerouslySetInnerHTML={{ __html: n.contentHtml }} />
-                      <p className="text-xs text-muted-foreground mt-1">{n.nurseName ?? "Nurse"} · {formatDateTime(n.createdAt)}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {nurseExaminationNotes.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                    <NotebookPen size={13} /> Examination Notes
-                  </p>
-                  {nurseExaminationNotes.map((e) => (
-                    <div key={e.examinationNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm flex flex-col gap-1">
-                      {e.generalAppearance && (
-                        <p><span className="font-semibold">General appearance:</span> {e.generalAppearance}</p>
-                      )}
-                      <p><span className="font-semibold">Pain level:</span> {e.painLevel}/10</p>
-                      {e.mobility && <p><span className="font-semibold">Mobility:</span> {e.mobility}</p>}
-                      {e.clinicalChecks && <p><span className="font-semibold">Clinical checks:</span> {e.clinicalChecks}</p>}
-                      <p className="text-xs text-muted-foreground mt-1">{e.nurseName ?? "Nurse"} · {formatDateTime(e.createdAt)}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
 
             {/* Drug allergy banner — summarizes what's already on file; the Allergies
                 section further down is where new ones get added. */}
@@ -2022,96 +2036,137 @@ function DoctorWorkbenchInner() {
                     </div>
                   )}
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Chief complaint</label>
-                    <input
-                      type="text"
-                      placeholder="Patient's primary reason for the visit..."
-                      value={encounterForm.chiefComplaint}
-                      onChange={(e) => setEncounterForm((p) => ({ ...p, chiefComplaint: e.target.value }))}
-                      disabled={isCompletedEncounter && !isAdmin}
-                      className="h-10 text-sm disabled:opacity-60"
-                    />
-                  </div>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    {/* Left column */}
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Chief complaint</label>
+                        <textarea
+                          rows={1}
+                          placeholder="Patient's primary reason for the visit..."
+                          value={encounterForm.chiefComplaint}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, chiefComplaint: e.target.value }))}
+                          onInput={(e) => {
+                            const el = e.currentTarget;
+                            el.style.height = "auto";
+                            el.style.height = `${el.scrollHeight}px`;
+                          }}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="text-sm disabled:opacity-60 resize-none overflow-hidden"
+                          style={{ minHeight: "2.5rem" }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 flex-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Examination notes</label>
+                        <textarea
+                          placeholder="Doctor's examination notes..."
+                          value={encounterForm.examinationNotes}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, examinationNotes: e.target.value }))}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="w-full min-h-16 text-sm disabled:opacity-60"
+                        />
+                      </div>
+                    </div>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Examination notes</label>
-                    <textarea
-                      placeholder="Doctor's examination notes..."
-                      value={encounterForm.examinationNotes}
-                      onChange={(e) => setEncounterForm((p) => ({ ...p, examinationNotes: e.target.value }))}
-                      disabled={isCompletedEncounter && !isAdmin}
-                      className="w-full min-h-16 text-sm disabled:opacity-60"
-                    />
+                    {/* Right column */}
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Clinical examination</label>
+                        <textarea
+                          placeholder="Clinical examination findings..."
+                          value={encounterForm.clinicalExamination}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, clinicalExamination: e.target.value }))}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="w-full min-h-16 text-sm disabled:opacity-60"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Planned procedures</label>
+                        <textarea
+                          placeholder="Planned procedures..."
+                          value={encounterForm.plannedProcedures}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, plannedProcedures: e.target.value }))}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="w-full min-h-16 text-sm disabled:opacity-60"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div>
-                    <p className="text-sm font-semibold text-foreground/90 flex items-center gap-2 mb-3">
-                      <ClipboardList size={16} className="text-primary" /> Review of Systems
-                    </p>
-                    <ReviewOfSystemsPanel
-                      value={encounterForm}
-                      onChange={(key, value) => setEncounterForm((p) => ({ ...p, [key]: value }))}
-                      disabled={isCompletedEncounter && !isAdmin}
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Clinical examination</label>
-                    <textarea
-                      placeholder="Clinical examination findings..."
-                      value={encounterForm.clinicalExamination}
-                      onChange={(e) => setEncounterForm((p) => ({ ...p, clinicalExamination: e.target.value }))}
-                      disabled={isCompletedEncounter && !isAdmin}
-                      className="w-full min-h-16 text-sm disabled:opacity-60"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Planned procedures</label>
-                    <textarea
-                      placeholder="Planned procedures..."
-                      value={encounterForm.plannedProcedures}
-                      onChange={(e) => setEncounterForm((p) => ({ ...p, plannedProcedures: e.target.value }))}
-                      disabled={isCompletedEncounter && !isAdmin}
-                      className="w-full min-h-16 text-sm disabled:opacity-60"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Current Management Plan</label>
-                    {!encounterForm.currentManagementPlan && (isCompletedEncounter && !isAdmin) ? (
-                      <p className="text-sm text-muted-foreground italic">No records found.</p>
-                    ) : (
-                      <textarea
-                        placeholder="Current (immediate) management plan..."
-                        value={encounterForm.currentManagementPlan}
-                        onChange={(e) => setEncounterForm((p) => ({ ...p, currentManagementPlan: e.target.value }))}
+                    <button
+                      type="button"
+                      onClick={() => setRosExpanded((v) => !v)}
+                      aria-expanded={rosExpanded}
+                      className="flex items-center gap-3 mb-3 px-4 py-2 rounded-lg border border-border bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer text-left"
+                    >
+                      {rosExpanded
+                        ? <ChevronDown size={15} className="text-muted-foreground shrink-0" />
+                        : <ChevronRight size={15} className="text-muted-foreground shrink-0" />}
+                      <ClipboardList size={15} className="text-primary shrink-0" />
+                      <span className="text-sm font-semibold text-foreground/90">Review of Systems</span>
+                      {(() => {
+                        const rosFilled = [
+                          encounterForm.rosConstitutional, encounterForm.rosEyeEarNoseMouthThroat,
+                          encounterForm.rosCardiovascular, encounterForm.rosRespiratory,
+                          encounterForm.rosGastroenterology, encounterForm.rosGenitourinary,
+                          encounterForm.rosMusculoskeletal, encounterForm.rosNeurological,
+                          encounterForm.rosPsychiatric, encounterForm.rosEndocrine,
+                          encounterForm.rosHematologic, encounterForm.rosAllergicImmunologic,
+                          encounterForm.rosIntegumentary,
+                        ].filter(Boolean).length;
+                        return rosFilled > 0 ? (
+                          <span className="text-xs text-muted-foreground">{rosFilled} / 13 systems noted</span>
+                        ) : !rosExpanded ? (
+                          <span className="text-xs text-muted-foreground italic">Click to expand</span>
+                        ) : null;
+                      })()}
+                    </button>
+                    {rosExpanded && (
+                      <ReviewOfSystemsPanel
+                        value={encounterForm}
+                        onChange={(key, value) => setEncounterForm((p) => ({ ...p, [key]: value }))}
                         disabled={isCompletedEncounter && !isAdmin}
-                        className="w-full min-h-24 text-sm disabled:opacity-60"
                       />
                     )}
-                    {summary.latestEncounter?.updatedAt && encounterForm.currentManagementPlan && (
-                      <p className="text-xs text-muted-foreground">Last updated: {formatDateTime(summary.latestEncounter.updatedAt)}</p>
-                    )}
                   </div>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Future Management Plan</label>
-                    {!encounterForm.futureManagementPlan && (isCompletedEncounter && !isAdmin) ? (
-                      <p className="text-sm text-muted-foreground italic">No records found.</p>
-                    ) : (
-                      <textarea
-                        placeholder="Future management plan / follow-up plan..."
-                        value={encounterForm.futureManagementPlan}
-                        onChange={(e) => setEncounterForm((p) => ({ ...p, futureManagementPlan: e.target.value }))}
-                        disabled={isCompletedEncounter && !isAdmin}
-                        className="w-full min-h-24 text-sm disabled:opacity-60"
-                      />
-                    )}
-                    {summary.latestEncounter?.updatedAt && encounterForm.futureManagementPlan && (
-                      <p className="text-xs text-muted-foreground">Last updated: {formatDateTime(summary.latestEncounter.updatedAt)}</p>
-                    )}
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Current Management Plan</label>
+                      {!encounterForm.currentManagementPlan && (isCompletedEncounter && !isAdmin) ? (
+                        <p className="text-sm text-muted-foreground italic">No records found.</p>
+                      ) : (
+                        <textarea
+                          placeholder="Current (immediate) management plan..."
+                          value={encounterForm.currentManagementPlan}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, currentManagementPlan: e.target.value }))}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="w-full min-h-24 text-sm disabled:opacity-60"
+                        />
+                      )}
+                      {summary.latestEncounter?.updatedAt && encounterForm.currentManagementPlan && (
+                        <p className="text-xs text-muted-foreground">Last updated: {formatDateTime(summary.latestEncounter.updatedAt)}</p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Future Management Plan</label>
+                      {!encounterForm.futureManagementPlan && (isCompletedEncounter && !isAdmin) ? (
+                        <p className="text-sm text-muted-foreground italic">No records found.</p>
+                      ) : (
+                        <textarea
+                          placeholder="Future management plan / follow-up plan..."
+                          value={encounterForm.futureManagementPlan}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, futureManagementPlan: e.target.value }))}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="w-full min-h-24 text-sm disabled:opacity-60"
+                        />
+                      )}
+                      {summary.latestEncounter?.updatedAt && encounterForm.futureManagementPlan && (
+                        <p className="text-xs text-muted-foreground">Last updated: {formatDateTime(summary.latestEncounter.updatedAt)}</p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex gap-3 flex-wrap">
@@ -2367,140 +2422,11 @@ function DoctorWorkbenchInner() {
                   </div>
                 </div>
 
-                {/* Medical history */}
+                {/* Allergies & Sensitivities */}
                 <div className="card p-6 flex flex-col gap-4">
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <HeartPulse size={18} className="text-primary" /> Medical History
+                    <HeartPulse size={18} className="text-primary" /> Allergies &amp; Sensitivities
                   </h2>
-                  <div className="flex flex-wrap gap-3">
-                    {summary.chronicConditions.length > 0 ? (
-                      summary.chronicConditions.map((c) => (
-                        <div
-                          key={c.chronicConditionId}
-                          className="group rounded-lg border border-border bg-muted/30 px-3 py-2 min-w-48"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-sm text-foreground">{c.name}</span>
-                            <span className="rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
-                              {c.status}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between mt-1">
-                            <p className="text-xs text-muted-foreground">
-                              Diagnosed {c.diagnosedYear ?? "—"}
-                            </p>
-                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => startEditCondition(c)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
-                                <Pencil size={12} />
-                              </button>
-                              <button onClick={() => removeCondition(c)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </div>
-                          {c.correctedFrom && (
-                            <CorrectedFromNote>
-                              <p>
-                                Previous: {c.correctedFrom.name}
-                                {c.correctedFrom.diagnosedYear ? ` · diagnosed ${c.correctedFrom.diagnosedYear}` : ""}
-                                {` · ${c.correctedFrom.status}`}
-                                {c.correctedFrom.diabetesType ? ` · ${c.correctedFrom.diabetesType}` : ""}
-                              </p>
-                            </CorrectedFromNote>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No chronic conditions recorded.</p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2 items-end border-t border-border pt-4">
-                    <input
-                      type="text"
-                      placeholder="Condition name"
-                      value={conditionForm.name}
-                      onChange={(e) => setConditionForm((p) => ({ ...p, name: e.target.value }))}
-                      className="h-10 text-sm flex-1 min-w-40"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Year"
-                      value={conditionForm.diagnosedYear}
-                      onChange={(e) => setConditionForm((p) => ({ ...p, diagnosedYear: e.target.value }))}
-                      className="h-10 text-sm w-24"
-                    />
-                    <select
-                      value={conditionForm.status}
-                      onChange={(e) => setConditionForm((p) => ({ ...p, status: e.target.value }))}
-                      className="h-10 text-sm"
-                    >
-                      <option value="Managed">Managed</option>
-                      <option value="Active">Active</option>
-                    </select>
-                    <button
-                      onClick={addCondition}
-                      className="flex items-center gap-1 rounded-lg border border-primary/30 px-3 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
-                    >
-                      <Plus size={14} /> {editingConditionId ? "Save Correction" : "Add Condition"}
-                    </button>
-                    {editingConditionId && (
-                      <button onClick={cancelEditCondition} className="text-sm font-semibold text-muted-foreground hover:underline">
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-
-                  {(isDiabetesCondition || isHypertensionCondition) && (
-                    <div className="flex flex-wrap items-end gap-3 -mt-2 rounded-lg bg-muted/30 p-3">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs text-muted-foreground">Exact diagnosis date</label>
-                        <input
-                          type="date"
-                          value={conditionForm.diagnosisDate}
-                          onChange={(e) => setConditionForm((p) => ({ ...p, diagnosisDate: e.target.value }))}
-                          className="h-9 text-sm"
-                        />
-                      </div>
-                      {isDiabetesCondition && (
-                        <>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs text-muted-foreground">Diabetes type</label>
-                            <select
-                              value={conditionForm.diabetesType}
-                              onChange={(e) => setConditionForm((p) => ({ ...p, diabetesType: e.target.value }))}
-                              className="h-9 text-sm"
-                            >
-                              <option value="">Unspecified</option>
-                              <option value="Type1">Type 1</option>
-                              <option value="Type2">Type 2</option>
-                              <option value="Gestational">Gestational</option>
-                              <option value="SteroidInduced">Steroid-Induced</option>
-                              <option value="Other">Other</option>
-                            </select>
-                          </div>
-                          <label className="flex items-center gap-2 text-sm">
-                            <ToggleButton
-                              checked={conditionForm.hasPcos}
-                              onChange={(checked) => setConditionForm((p) => ({ ...p, hasPcos: checked }))}
-                            />
-                            Polycystic ovaries
-                          </label>
-                        </>
-                      )}
-                      {isHypertensionCondition && (
-                        <label className="flex items-center gap-2 text-sm">
-                          <ToggleButton
-                            checked={conditionForm.hasEsrd}
-                            onChange={(checked) => setConditionForm((p) => ({ ...p, hasEsrd: checked }))}
-                          />
-                          End-stage renal disease
-                        </label>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="border-t border-border pt-4 flex flex-col gap-3">
-                    <p className="text-sm font-semibold text-foreground/90">Allergies / Sensitivities</p>
                     <div className="flex flex-col gap-2">
                       {summary.allergies.length > 0 ? (
                         <div className="overflow-x-auto">
@@ -2660,7 +2586,6 @@ function DoctorWorkbenchInner() {
                         )}
                       </div>
                     </div>
-                  </div>
                 </div>
 
                 {/* Medications */}
@@ -3707,14 +3632,26 @@ function DoctorWorkbenchInner() {
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <CalendarClock size={18} className="text-primary" /> My Schedules
                 </h2>
-                <div className="w-44">
-                  <DatePicker
-                    value={scheduleDate}
-                    onChange={(val) => setScheduleDate(val)}
-                    dateFormat="dd/MM/yyyy"
-                    placeholder="Pick a date"
-                    className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-muted px-3 text-sm text-foreground transition-all focus-within:border-primary focus-within:outline-none"
-                  />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="relative w-48">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search by name..."
+                      value={scheduleSearch}
+                      onChange={(e) => setScheduleSearch(e.target.value)}
+                      className="w-full h-9 pl-8 text-sm rounded-lg border border-border bg-muted px-3 text-foreground"
+                    />
+                  </div>
+                  <div className="w-44">
+                    <DatePicker
+                      value={scheduleDate}
+                      onChange={(val) => setScheduleDate(val)}
+                      dateFormat="dd/MM/yyyy"
+                      placeholder="Pick a date"
+                      className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-muted px-3 text-sm text-foreground transition-all focus-within:border-primary focus-within:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -3734,8 +3671,12 @@ function DoctorWorkbenchInner() {
                       </tr>
                     </thead>
                     <tbody>
-                      {schedule.length > 0 ? (
-                        schedule.map((item) => (
+                      {(() => {
+                        const filtered = scheduleSearch.trim()
+                          ? schedule.filter((s) => s.patientName?.toLowerCase().includes(scheduleSearch.toLowerCase()))
+                          : schedule;
+                        return filtered.length > 0 ? (
+                        filtered.map((item) => (
                           <tr key={item.appointmentId}>
                             <td className="font-semibold">{item.patientName}</td>
                             <td className="whitespace-nowrap">{new Date(item.appointmentDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
@@ -3780,10 +3721,11 @@ function DoctorWorkbenchInner() {
                       ) : (
                         <tr>
                           <td colSpan={7} className="text-center text-muted-foreground py-8">
-                            No appointments on this date.
+                            {scheduleSearch.trim() ? "No patients match your search." : "No appointments on this date."}
                           </td>
                         </tr>
-                      )}
+                      );
+                      })()}
                     </tbody>
                   </table>
                 )}

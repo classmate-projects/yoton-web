@@ -155,64 +155,64 @@ export default function FamilyHistorySection({ patientId, familyHistory, doctorI
         <p className="text-xs font-semibold text-foreground/70 uppercase tracking-wide">
           {editingId ? "Correct Family History Entry" : "Add Family History"}
         </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">Relation <span className="text-destructive">*</span></label>
-            <select
-              value={form.relation}
-              onChange={(e) => setForm((p) => ({ ...p, relation: e.target.value }))}
-              className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+        <div className="flex items-end gap-3">
+          <div className="flex-1 grid grid-cols-4 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Relation <span className="text-destructive">*</span></label>
+              <select
+                value={form.relation}
+                onChange={(e) => setForm((p) => ({ ...p, relation: e.target.value }))}
+                className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+              >
+                <option value="">--Select--</option>
+                {relations.map((r) => <option key={r.listItemId} value={r.name}>{r.name}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">History <span className="text-destructive">*</span></label>
+              <select
+                value={form.history}
+                onChange={(e) => setForm((p) => ({ ...p, history: e.target.value }))}
+                className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+              >
+                <option value="">--Select--</option>
+                {conditions.map((c) => <option key={c.listItemId} value={c.name}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Remarks</label>
+              <input
+                type="text"
+                value={form.remarks}
+                onChange={(e) => setForm((p) => ({ ...p, remarks: e.target.value }))}
+                className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Status <span className="text-destructive">*</span></label>
+              <select
+                value={form.status}
+                onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
+                className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+              >
+                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={save}
+              disabled={isSaving}
+              className="flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 whitespace-nowrap"
             >
-              <option value="">--Select--</option>
-              {relations.map((r) => <option key={r.listItemId} value={r.name}>{r.name}</option>)}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">History <span className="text-destructive">*</span></label>
-            <select
-              value={form.history}
-              onChange={(e) => setForm((p) => ({ ...p, history: e.target.value }))}
-              className="h-9 text-sm rounded-lg border border-border bg-background px-2"
-            >
-              <option value="">--Select--</option>
-              {conditions.map((c) => <option key={c.listItemId} value={c.name}>{c.name}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">Remarks</label>
-            <textarea
-              rows={2}
-              value={form.remarks}
-              onChange={(e) => setForm((p) => ({ ...p, remarks: e.target.value }))}
-              className="text-sm rounded-lg border border-border bg-background px-2 py-1.5 resize-none"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">Status <span className="text-destructive">*</span></label>
-            <select
-              value={form.status}
-              onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
-              className="h-9 text-sm rounded-lg border border-border bg-background px-2"
-            >
-              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={save}
-            disabled={isSaving}
-            className="flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-          >
-            {isSaving ? "Saving…" : editingId ? "Save Correction" : "+ Add"}
-          </button>
-          {editingId && (
-            <button onClick={cancelEdit} className="text-sm font-semibold text-muted-foreground hover:underline">
-              Cancel
+              {isSaving ? "Saving…" : editingId ? "Save Correction" : "+ Add"}
             </button>
-          )}
+            {editingId && (
+              <button onClick={cancelEdit} className="text-sm font-semibold text-muted-foreground hover:underline whitespace-nowrap">
+                Cancel
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
