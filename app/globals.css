@@ -353,20 +353,3 @@ label.required::after {
 .animate-section-flash {
   animation: section-flash 0.8s ease-in-out infinite;
 }
-
-/* Gentle bob for empty-state illustrations (components/EmptyState.tsx). Off for users
-   who've asked the OS for reduced motion. */
-@keyframes empty-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-}
-
-.animate-empty-float {
-  animation: empty-float 4s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-empty-float {
-    animation: none;
-  }
-}
