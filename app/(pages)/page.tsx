@@ -236,6 +236,7 @@ export default function Home() {
                 data={buildWeeklySeries(weeklyAppointments)}
                 color="var(--primary)"
                 emptyMessage="No appointments in the last 7 days"
+                emptyIllustration="visits"
               />
             )}
           </div>
@@ -278,6 +279,7 @@ export default function Home() {
               color="#059669"
               formatValue={(v) => `$${v.toLocaleString()}`}
               emptyMessage="No billing activity recorded yet"
+              emptyIllustration="billing"
             />
           )}
         </div>

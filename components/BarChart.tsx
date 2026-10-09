@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import EmptyState from "@/components/EmptyState";
+import type { IllustrationName } from "@/components/illustrations";
 
 export interface BarChartPoint {
   label: string;
@@ -13,6 +15,7 @@ interface BarChartProps {
   color: string;
   formatValue?: (value: number) => string;
   emptyMessage?: string;
+  emptyIllustration?: IllustrationName;
 }
 
 const niceMax = (value: number) => {
@@ -23,15 +26,22 @@ const niceMax = (value: number) => {
   return step * magnitude;
 };
 
-export default function BarChart({ data, color, formatValue = (v) => v.toLocaleString(), emptyMessage = "No data yet" }: BarChartProps) {
+export default function BarChart({
+  data,
+  color,
+  formatValue = (v) => v.toLocaleString(),
+  emptyMessage = "No data yet",
+  emptyIllustration = "chart",
+}: BarChartProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const hasData = data.length > 0 && data.some((d) => d.value > 0);
 
   if (!hasData) {
     return (
-      <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">
-        {emptyMessage}
+      // Same h-56 as the chart itself, so the card doesn't change height when data arrives.
+      <div className="h-56 flex items-center justify-center">
+        <EmptyState size="compact" illustration={emptyIllustration} title={emptyMessage} />
       </div>
     );
   }

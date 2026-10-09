@@ -47,7 +47,7 @@ import PasswordInput from "@/components/PasswordInput";
 import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
-import SearchableSelect from "@/components/SearchableSelect";
+import SearchableSelect, { standaloneSelectClass } from "@/components/SearchableSelect";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import FamilyHistorySection from "@/components/FamilyHistorySection";
 import PatientMedicalFormsSection from "@/components/medicalForms/PatientMedicalFormsSection";
@@ -1674,20 +1674,22 @@ function NurseWorkbenchInner() {
           )}
           {isAdmin && (
             <div className="flex items-center gap-2">
-              <div className="w-44 shrink-0">
+              <div className="w-48 shrink-0">
                 <SearchableSelect
                   value={selectedNurseId}
                   onChange={setSelectedNurseId}
+                  className={standaloneSelectClass}
                   options={[
                     { value: "", label: "Acting nurse…" },
                     ...nurses.map((n) => ({ value: n.id, label: n.name })),
                   ]}
                 />
               </div>
-              <div className="w-44 shrink-0">
+              <div className="w-48 shrink-0">
                 <SearchableSelect
                   value={selectedDoctorId}
                   onChange={setSelectedDoctorId}
+                  className={standaloneSelectClass}
                   options={[
                     { value: "", label: "Acting doctor (for allergies)…" },
                     ...assignedDoctors.map((d) => ({ value: String(d.doctorId), label: d.userName })),
@@ -3338,23 +3340,33 @@ function NurseWorkbenchInner() {
           </p>
         </div>
         {isAdmin && (
-          <div className="flex items-center gap-2">
-            <div className="w-48 shrink-0">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-56 shrink-0">
+              <label htmlFor="workbench-acting-nurse" className="mb-1 block text-xs font-semibold text-muted-foreground">
+                Acting nurse
+              </label>
               <SearchableSelect
+                id="workbench-acting-nurse"
                 value={selectedNurseId}
                 onChange={setSelectedNurseId}
+                className={standaloneSelectClass}
                 options={[
-                  { value: "", label: "Acting nurse…" },
+                  { value: "", label: "Select nurse…" },
                   ...nurses.map((n) => ({ value: n.id, label: n.name })),
                 ]}
               />
             </div>
-            <div className="w-48 shrink-0">
+            <div className="w-56 shrink-0">
+              <label htmlFor="workbench-acting-doctor" className="mb-1 block text-xs font-semibold text-muted-foreground">
+                Acting doctor (for allergies)
+              </label>
               <SearchableSelect
+                id="workbench-acting-doctor"
                 value={selectedDoctorId}
                 onChange={setSelectedDoctorId}
+                className={standaloneSelectClass}
                 options={[
-                  { value: "", label: "Acting doctor (for allergies)…" },
+                  { value: "", label: "Select doctor…" },
                   ...assignedDoctors.map((d) => ({ value: String(d.doctorId), label: d.userName })),
                 ]}
               />

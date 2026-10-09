@@ -40,7 +40,7 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import DatePicker from "@/components/DatePicker";
-import SearchableSelect from "@/components/SearchableSelect";
+import SearchableSelect, { standaloneSelectClass } from "@/components/SearchableSelect";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
 import OrderedItemsList from "@/components/orders/OrderedItemsList";
@@ -3516,10 +3516,15 @@ function DoctorWorkbenchInner() {
           </p>
         </div>
         {isAdmin && (
-          <div className="w-48 shrink-0">
+          <div className="w-48 sm:w-72 shrink-0">
+            <label htmlFor="workbench-doctor" className="mb-1 block text-xs font-semibold text-muted-foreground">
+              Doctor
+            </label>
             <SearchableSelect
+              id="workbench-doctor"
               value={selectedDoctorId}
               onChange={setSelectedDoctorId}
+              className={standaloneSelectClass}
               options={[
                 { value: "", label: "All doctors (system-wide)" },
                 ...assignedDoctors.map((d) => ({ value: String(d.doctorId), label: `${d.userName} — ${d.specializationName}` })),

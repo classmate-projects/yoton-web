@@ -4,6 +4,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { MdExpandMore } from "react-icons/md";
 
+// Trigger style for a SearchableSelect that stands on its own (e.g. a page-header picker)
+// rather than inside a form field that already draws the box - the default trigger is
+// borderless, which on its own reads as plain text instead of a dropdown. Pass as className.
+export const standaloneSelectClass =
+  "flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 text-left text-sm text-foreground shadow-sm transition-colors hover:border-primary/60 hover:bg-muted/40 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20";
+
 export interface SearchableSelectOption {
   value: string;
   label: string;

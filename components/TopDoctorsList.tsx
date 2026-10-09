@@ -1,6 +1,7 @@
 "use client";
 
 import { TopDoctor } from "@/types/dashboard.type";
+import EmptyState from "@/components/EmptyState";
 
 interface TopDoctorsListProps {
   doctors: TopDoctor[];
@@ -9,8 +10,8 @@ interface TopDoctorsListProps {
 export default function TopDoctorsList({ doctors }: TopDoctorsListProps) {
   if (doctors.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-sm text-muted-foreground py-10">
-        No appointment activity yet
+      <div className="h-full flex items-center justify-center">
+        <EmptyState size="compact" illustration="users" title="No appointment activity yet" />
       </div>
     );
   }
