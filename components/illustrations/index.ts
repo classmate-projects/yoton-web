@@ -9,6 +9,7 @@ import FeedbackIllustration from "./FeedbackIllustration";
 import HygieneIllustration from "./HygieneIllustration";
 import IncidentIllustration from "./IncidentIllustration";
 import LabIllustration from "./LabIllustration";
+import MedicationHistoryIllustration from "./MedicationHistoryIllustration";
 import MessagesIllustration from "./MessagesIllustration";
 import NotesIllustration from "./NotesIllustration";
 import PatientsIllustration from "./PatientsIllustration";
@@ -31,6 +32,7 @@ export const illustrations = {
   lab: LabIllustration,
   radiology: RadiologyIllustration,
   pharmacy: PharmacyIllustration,
+  medicationHistory: MedicationHistoryIllustration,
   billing: BillingIllustration,
   building: BuildingIllustration,
   users: UsersIllustration,

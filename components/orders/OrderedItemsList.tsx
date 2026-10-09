@@ -5,6 +5,8 @@ import { ClipboardCheck, FlaskConical, Lock, ScanLine, Settings } from "lucide-r
 import { LabRequestType } from "@/types/lab.type";
 import { RadiologyRequestType } from "@/types/radiology.type";
 import { TreatmentType } from "@/types/treatment.type";
+import EmptyState from "@/components/EmptyState";
+import type { IllustrationName } from "@/components/illustrations";
 
 interface OrderedItemsListProps {
   labRequests: LabRequestType[];
@@ -14,6 +16,8 @@ interface OrderedItemsListProps {
   onOpenRadiology: (item: RadiologyRequestType) => void;
   onOpenTreatment: (item: TreatmentType) => void;
   emptyMessage?: string;
+  // Picture for the empty state - e.g. "lab" where only investigations are listed.
+  emptyIllustration?: IllustrationName;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -40,10 +44,11 @@ export default function OrderedItemsList({
   onOpenLab,
   onOpenRadiology,
   onOpenTreatment,
-  emptyMessage = "Nothing ordered yet.",
+  emptyMessage = "Nothing ordered yet",
+  emptyIllustration = "clipboard",
 }: OrderedItemsListProps) {
   const isEmpty = labRequests.length === 0 && radiologyRequests.length === 0 && treatments.length === 0;
-  if (isEmpty) return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
+  if (isEmpty) return <EmptyState size="compact" illustration={emptyIllustration} title={emptyMessage} />;
 
   return (
     <div className="flex flex-col gap-4">

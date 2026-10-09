@@ -139,7 +139,11 @@ export default function PageLayout({
             <AutoSaveIndicator />
             <CheckInHeaderWidget />
           </header>
-        <div className="flex-1 min-w-0 min-h-0 overflow-auto">
+        {/* outline-none: Chromium makes scroll containers focusable, and Next.js moves focus
+            into the new page after navigation - so after a keyboard login (Enter) the browser
+            drew its focus ring around this whole content area until the next click. It's a
+            scroll area, not a control, so it doesn't need one. */}
+        <div className="flex-1 min-w-0 min-h-0 overflow-auto outline-none">
           {status === "denied" ? <AccessDenied /> : children}
         </div>
       </div>
