@@ -9,7 +9,6 @@ import { Pencil, Pill, Trash2 } from "lucide-react";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdWarning } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import EmrButton from "@/components/EmrButton";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
@@ -970,7 +969,6 @@ export default function PharmacyPage() {
                               ) : (
                                 <span className="text-xs text-muted-foreground">—</span>
                               )}
-                              <EmrButton patientId={rx.patientId} patientName={rx.patientName} />
                             </div>
                             {rx.correctedFrom && (
                               <CorrectedFromNote>

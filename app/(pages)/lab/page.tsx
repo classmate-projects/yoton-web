@@ -9,7 +9,6 @@ import { FlaskConical, Pencil, Settings, Trash2, Undo2 } from "lucide-react";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import EmrButton from "@/components/EmrButton";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import SearchableSelect from "@/components/SearchableSelect";
 import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
@@ -781,7 +780,6 @@ export default function LaboratoryPage() {
                   <button onClick={() => setViewingLabConfig(r)} title="Configuration" className="p-1.5 hover:bg-primary/10 rounded-full text-muted-foreground hover:text-primary cursor-pointer">
                     <Settings size={14} />
                   </button>
-                  <EmrButton patientId={r.patientId} patientName={r.patientName} />
                 </div>
 
                 {r.correctedFrom && (

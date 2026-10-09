@@ -54,7 +54,6 @@ import OrderedItemsList from "@/components/orders/OrderedItemsList";
 import TreatmentConfigModal from "@/components/orders/TreatmentConfigModal";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
-import EmrButton from "@/components/EmrButton";
 import { EmrService } from "@/services/emr.service";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { NursingService } from "@/services/nursing.service";
@@ -414,6 +413,23 @@ function NurseWorkbenchInner() {
     }
   };
 
+  // Re-fetch the patient list when the nurse changes the date filter — the backend scopes
+  // results to that calendar day so past patients (Completed visits) become visible.
+  // Skipped on the very first mount (dateFilterChanged.current stays false until the nurse
+  // actually touches the picker) so fetchWorkbench's initial load is not duplicated.
+  const [isLoadingPatientsByDate, setIsLoadingPatientsByDate] = useState(false);
+  const dateFilterChanged = useRef(false);
+  useEffect(() => {
+    if (!checkedAuth) return;
+    if (!dateFilterChanged.current) { dateFilterChanged.current = true; return; }
+    setIsLoadingPatientsByDate(true);
+    EmrService.getPatients(undefined, dateFilter || undefined)
+      .then((res) => setPatients(res.data || []))
+      .catch(() => toast.error("Failed to load patients for the selected date"))
+      .finally(() => setIsLoadingPatientsByDate(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFilter, checkedAuth]);
+
   useEffect(() => {
     if (!checkedAuth) return;
     fetchWorkbench();
@@ -580,6 +596,7 @@ function NurseWorkbenchInner() {
       setChart(null);
       setEncounterId(null);
       setCurrentVisitId(null);
+      setDateFilter("");
       fetchWorkbench();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -615,6 +632,7 @@ function NurseWorkbenchInner() {
     setChart(null);
     setEncounterId(null);
     setCurrentVisitId(null);
+    setDateFilter("");
     fetchWorkbench();
     if (patientIdParam) router.push(pathname);
   };
@@ -1639,19 +1657,19 @@ function NurseWorkbenchInner() {
     }
   };
 
-  const filteredPatients = patients.filter((p) => {
-    const matchesSearch =
-      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.opNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.opId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase());
-    // dateFilter is a plain "YYYY-MM-DD" from <input type="date"> - parsed as local midnight,
-    // matching how lastAppointmentDate (which can be a future scheduled visit, not just a
-    // past one - see EmrController.GetPatients) is compared below by calendar day.
-    const matchesDate =
-      !dateFilter || (!!p.lastAppointmentDate && isSameLocalDay(new Date(p.lastAppointmentDate), new Date(`${dateFilter}T00:00:00`)));
-    return matchesSearch && matchesDate;
-  });
+  // Date filtering is handled server-side (EmrController.GetPatients accepts a ?date= param
+  // and scopes results to that calendar day). Client-side we only apply the search term.
+  const filteredPatients = patients.filter((p) =>
+    !searchTerm ||
+    p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.opNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.opId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const patientWorkQueue = workQueue.filter((item) => item.patientId === selectedPatientId);
+  const pendingMedicationCount = patientWorkQueue.filter((item) => item.itemType === "Medication").length;
+  const pendingInvestigationCount = patientWorkQueue.filter((item) => item.itemType === "LabSample" || item.itemType === "RadiologySample").length;
 
   if (!checkedAuth) {
     return (
@@ -1894,11 +1912,11 @@ function NurseWorkbenchInner() {
               <div className="flex border-b border-border">
                 <button
                   onClick={() => setMedHistoryTab("current")}
-                  className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
+                  className={`relative px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
                     medHistoryTab === "current"
                       ? "border-primary text-primary"
                       : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
+                  } ${pendingMedicationCount > 0 ? "animate-pulse" : ""}`}
                 >
                   Current Medications
                   {summary.currentMedications.length > 0 && (
@@ -2966,7 +2984,7 @@ function NurseWorkbenchInner() {
               {/* Lab/Radiology orders — read-only here (sample collection happens on the Lab
                   workbench itself); shows the doctor's configuration for reviewing. */}
               <div className="card p-6 flex flex-col gap-4">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <h2 className={`text-lg font-semibold text-foreground flex items-center gap-2 ${pendingInvestigationCount > 0 ? "animate-pulse" : ""}`}>
                   <FlaskConical size={18} className="text-primary" /> Investigations
                 </h2>
                 {summary ? (
@@ -3419,9 +3437,6 @@ function NurseWorkbenchInner() {
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-semibold text-sm text-foreground truncate">{p.patientName || "Unknown patient"}</p>
                       <div className="flex items-center gap-1 shrink-0">
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <EmrButton patientId={p.patientId} patientName={p.patientName} />
-                        </div>
                         <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 font-semibold">
                           {p.visitType === "WalkIn" ? "Walk-in" : "Appointment"}
                         </span>
@@ -3513,7 +3528,15 @@ function NurseWorkbenchInner() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPatients.length > 0 ? (
+                    {isLoadingPatientsByDate ? (
+                      [...Array(4)].map((_, i) => (
+                        <tr key={i}>
+                          {[...Array(5)].map((_, j) => (
+                            <td key={j}><div className="h-4 animate-pulse rounded bg-muted/50" /></td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : filteredPatients.length > 0 ? (
                       filteredPatients.slice(monitoringPage * PAGE_SIZE, (monitoringPage + 1) * PAGE_SIZE).map((p) => (
                         <tr key={p.opId}>
                           <td className="font-mono text-xs">{p.opNumber || p.opId}</td>
@@ -3541,7 +3564,6 @@ function NurseWorkbenchInner() {
                               >
                                 Open Chart
                               </button>
-                              <EmrButton patientId={p.opId} patientName={p.name} />
                             </div>
                           </td>
                         </tr>
@@ -3600,7 +3622,6 @@ function NurseWorkbenchInner() {
                           <p className="text-xs text-muted-foreground">{item.patientName || "Unknown patient"}</p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <EmrButton patientId={item.patientId} patientName={item.patientName} />
                           <span className="rounded-full bg-amber-100 text-amber-700 text-xs px-2 py-0.5 font-semibold">
                             {item.priority && item.priority !== "Normal" && item.priority !== "Routine" ? item.priority : item.itemType}
                           </span>

@@ -124,7 +124,13 @@ export const ENDPOINTS = {
         GET_EMPLOYMENT_HISTORY: (id: string) => `/api/user/${id}/employment-history`,
     },
     EMR: {
-        GET_PATIENTS: (doctorId?: string) => `/api/emr/patients${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        GET_PATIENTS: (doctorId?: string, date?: string) => {
+            const p = new URLSearchParams();
+            if (doctorId) p.set("doctorId", doctorId);
+            if (date) p.set("date", date);
+            const qs = p.toString();
+            return `/api/emr/patients${qs ? `?${qs}` : ""}`;
+        },
         GET_PATIENT_SUMMARY: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPDATE_PATIENT_ALERT: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/alert${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPDATE_MEDICAL_HISTORY: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/medical-history${doctorId ? `?doctorId=${doctorId}` : ""}`,

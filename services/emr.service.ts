@@ -16,8 +16,8 @@ import {
 } from "@/types/emr.type";
 
 export const EmrService = {
-  getPatients: async (doctorId?: string) => {
-    const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENTS(doctorId));
+  getPatients: async (doctorId?: string, date?: string) => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENTS(doctorId, date));
     return data;
   },
   getPatientSummary: async (patientId: string, doctorId?: string) => {
