@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 // Universal back-navigation for the PWA shell.
@@ -9,6 +9,7 @@ import { ArrowLeft } from "lucide-react";
 export default function BackButton({ homePath = "/" }: { homePath?: string }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   // `homePath` is this role's actual landing page - "/" for most roles, but
   // whatever firstAllowedRoute resolved to for a role without dashboard access
@@ -16,7 +17,10 @@ export default function BackButton({ homePath = "/" }: { homePath?: string }) {
   // tree - there is no page "above" it to go back to (and login/register-company,
   // the only pages that could still be behind it in browser history, must never be
   // reachable once signed in). Disable rather than risk landing on either.
-  const isRoot = pathname === homePath;
+  // usePathname() never includes query params, so also check searchParams: if any
+  // are present (e.g. ?patientId=xxx in the doctor workbench), the user is in a
+  // sub-view of the home page, not the root itself, and back should be enabled.
+  const isRoot = pathname === homePath && !searchParams.toString();
 
   const handleBack = () => {
     if (isRoot) return;

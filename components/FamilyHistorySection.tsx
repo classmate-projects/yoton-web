@@ -10,6 +10,7 @@ import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { FamilyHistoryType } from "@/types/emr.type";
 import { ListItemType } from "@/types/configList.type";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
+import SearchableSelect, { standaloneSelectClass } from "@/components/SearchableSelect";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -159,25 +160,23 @@ export default function FamilyHistorySection({ patientId, familyHistory, doctorI
           <div className="flex-1 grid grid-cols-4 gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground">Relation <span className="text-destructive">*</span></label>
-              <select
+              <SearchableSelect
                 value={form.relation}
-                onChange={(e) => setForm((p) => ({ ...p, relation: e.target.value }))}
-                className="h-9 text-sm rounded-lg border border-border bg-background px-2"
-              >
-                <option value="">--Select--</option>
-                {relations.map((r) => <option key={r.listItemId} value={r.name}>{r.name}</option>)}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, relation: v }))}
+                options={relations.map((r) => ({ value: r.name, label: r.name }))}
+                placeholder="--Select--"
+                className={standaloneSelectClass + " h-9 text-sm"}
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground">History <span className="text-destructive">*</span></label>
-              <select
+              <SearchableSelect
                 value={form.history}
-                onChange={(e) => setForm((p) => ({ ...p, history: e.target.value }))}
-                className="h-9 text-sm rounded-lg border border-border bg-background px-2"
-              >
-                <option value="">--Select--</option>
-                {conditions.map((c) => <option key={c.listItemId} value={c.name}>{c.name}</option>)}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, history: v }))}
+                options={conditions.map((c) => ({ value: c.name, label: c.name }))}
+                placeholder="--Select--"
+                className={standaloneSelectClass + " h-9 text-sm"}
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground">Remarks</label>
@@ -190,13 +189,12 @@ export default function FamilyHistorySection({ patientId, familyHistory, doctorI
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground">Status <span className="text-destructive">*</span></label>
-              <select
+              <SearchableSelect
                 value={form.status}
-                onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
-                className="h-9 text-sm rounded-lg border border-border bg-background px-2"
-              >
-                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, status: v }))}
+                options={STATUSES.map((s) => ({ value: s, label: s }))}
+                className={standaloneSelectClass + " h-9 text-sm"}
+              />
             </div>
           </div>
           <div className="flex items-center gap-2">

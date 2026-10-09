@@ -89,6 +89,8 @@ export const ENDPOINTS = {
             `/api/reception/patient/${patientId}/emr/encounter/${encounterId}`,
         REVERT_CHECKIN: (id: string) => `/api/reception/visit/${id}/revert-checkin`,
         UPDATE_APPOINTMENT: (id: string) => `/api/reception/appointment/${id}`,
+        GET_PATIENT_DOCUMENTS: (patientId: string) => `/api/reception/patient/${patientId}/documents`,
+        DELETE_PATIENT_DOCUMENT: (patientId: string, docId: string) => `/api/reception/patient/${patientId}/document/${docId}`,
     },
     ROLE: {
         GET: `/api/role/get-all`,

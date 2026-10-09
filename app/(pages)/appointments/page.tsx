@@ -15,14 +15,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Eye,
   GraduationCap,
   HelpCircle,
   ListChecks,
+  Paperclip,
   Pencil,
   RefreshCw,
   RotateCcw,
   Search,
   Stethoscope,
+  Trash2,
+  Upload,
   UserCheck,
   Users,
   X,
@@ -31,6 +35,7 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
+import { backendAssetUrl } from "@/lib/backendAsset";
 import PatientRegistrationModal from "@/components/PatientRegistrationModal";
 import { ReceptionService } from "@/services/reception.service";
 import { AuthService } from "@/services/auth.service";
@@ -258,6 +263,87 @@ export default function Appointments() {
 
   // ---------------- Revert registration ----------------
   const [revertingVisitId, setRevertingVisitId] = useState<string | null>(null);
+
+  // ---------------- Attachments modal ----------------
+  type PatientDocItem = {
+    patientDocumentId: string;
+    documentType: string;
+    filePath: string | null;
+    createdAt: string;
+    visitId: string | null;
+  };
+  const DOC_TYPE_LABELS: Record<string, string> = {
+    ExternalLabReport: "External Lab Report",
+    ExternalRadiologyReport: "External Radiology Report",
+    InsuranceEligibility: "Insurance Eligibility",
+    Other: "Other",
+  };
+  const PREVIEWABLE_EXTS = ["jpg", "jpeg", "png", "gif", "webp", "pdf"];
+  const [attachmentPatient, setAttachmentPatient] = useState<{ id: string; name: string } | null>(null);
+  const [patientDocs, setPatientDocs] = useState<PatientDocItem[]>([]);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [docUploadType, setDocUploadType] = useState("Other");
+  const [docUploadFile, setDocUploadFile] = useState<File | null>(null);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+
+  const openAttachments = async (patientId: string, patientName: string) => {
+    setAttachmentPatient({ id: patientId, name: patientName });
+    setPatientDocs([]);
+    setDocUploadFile(null);
+    setDocUploadType("Other");
+    setIsLoadingDocs(true);
+    try {
+      const res = await ReceptionService.getPatientDocuments(patientId);
+      setPatientDocs(res.data ?? []);
+    } catch {
+      toast.error("Failed to load attachments");
+    } finally {
+      setIsLoadingDocs(false);
+    }
+  };
+
+  const refreshDocs = async (patientId: string) => {
+    try {
+      const res = await ReceptionService.getPatientDocuments(patientId);
+      setPatientDocs(res.data ?? []);
+    } catch {
+      // leave stale list rather than wiping it on a refresh failure
+    }
+  };
+
+  const handleUploadDoc = async () => {
+    if (!attachmentPatient || !docUploadFile) return;
+    setIsUploadingDoc(true);
+    try {
+      await ReceptionService.uploadDocument(attachmentPatient.id, { documentType: docUploadType, file: docUploadFile });
+      // Re-fetch via GET so every document in state has the same camelCase shape
+      // as the list endpoint — the upload returns the raw EF entity which may not
+      // match (PascalCase PatientDocumentId vs camelCase patientDocumentId).
+      await refreshDocs(attachmentPatient.id);
+      setDocUploadFile(null);
+      toast.success("Document uploaded");
+    } catch {
+      toast.error("Upload failed");
+    } finally {
+      setIsUploadingDoc(false);
+    }
+  };
+
+  const handleDeleteDoc = async (doc: PatientDocItem) => {
+    if (!attachmentPatient) return;
+    setDeletingDocId(doc.patientDocumentId);
+    try {
+      await ReceptionService.deletePatientDocument(attachmentPatient.id, doc.patientDocumentId);
+      setPatientDocs((prev) => prev.filter((d) => d.patientDocumentId !== doc.patientDocumentId));
+      toast.success("Document deleted");
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg ?? "Failed to delete document");
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
 
   // ---------------- Overlap booking (add a 2nd / 3rd patient to an already-booked slot) ----------------
   const [overlapSlot, setOverlapSlot] = useState<DoctorDaySlotsType["slots"][number] | null>(null);
@@ -1499,6 +1585,16 @@ export default function Appointments() {
                             <Pencil size={12} />
                             Edit
                           </button>
+                          {apt.patientId && (
+                            <button
+                              onClick={() => openAttachments(apt.patientId!, apt.patientName ?? "Patient")}
+                              title="Attachments"
+                              className="flex items-center gap-1 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted cursor-pointer"
+                            >
+                              <Paperclip size={12} />
+                              Attach
+                            </button>
+                          )}
                           {apt.status === "Pending" ? (
                             <span className="text-xs text-muted-foreground">Confirm first</span>
                           ) : (
@@ -1645,30 +1741,42 @@ export default function Appointments() {
                             : visitStatusBadge("CheckedIn")}
                         </td>
                         <td className="py-2.5">
-                          {(() => {
-                            const isLocked = (apt.visitStatus != null && apt.visitStatus !== "CheckedIn") || apt.hasEncounter;
-                            return (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {apt.patientId && (
                               <button
-                                onClick={() => {
-                                  if (isLocked) {
-                                    toast.error("Doctor has already started the encounter at this time. Kindly contact the doctor.");
-                                  } else {
-                                    handleRevertCheckIn(apt);
-                                  }
-                                }}
-                                disabled={revertingVisitId === apt.visitId}
-                                title={isLocked ? "Cannot revert — encounter in progress" : "Revert registration"}
-                                className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium cursor-pointer transition-colors ${
-                                  isLocked
-                                    ? "border-border bg-muted/30 text-muted-foreground opacity-50"
-                                    : "border-orange-500/30 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"
-                                } disabled:opacity-50`}
+                                onClick={() => openAttachments(apt.patientId!, apt.patientName ?? "Patient")}
+                                title="Attachments"
+                                className="flex items-center gap-1 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted cursor-pointer"
                               >
-                                <RotateCcw size={12} />
-                                {revertingVisitId === apt.visitId ? "Reverting…" : "Revert"}
+                                <Paperclip size={12} />
+                                Attach
                               </button>
-                            );
-                          })()}
+                            )}
+                            {(() => {
+                              const isLocked = (apt.visitStatus != null && apt.visitStatus !== "CheckedIn") || apt.hasEncounter;
+                              return (
+                                <button
+                                  onClick={() => {
+                                    if (isLocked) {
+                                      toast.error("Doctor has already started the encounter at this time. Kindly contact the doctor.");
+                                    } else {
+                                      handleRevertCheckIn(apt);
+                                    }
+                                  }}
+                                  disabled={revertingVisitId === apt.visitId}
+                                  title={isLocked ? "Cannot revert — encounter in progress" : "Revert registration"}
+                                  className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium cursor-pointer transition-colors ${
+                                    isLocked
+                                      ? "border-border bg-muted/30 text-muted-foreground opacity-50"
+                                      : "border-orange-500/30 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"
+                                  } disabled:opacity-50`}
+                                >
+                                  <RotateCcw size={12} />
+                                  {revertingVisitId === apt.visitId ? "Reverting…" : "Revert"}
+                                </button>
+                              );
+                            })()}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2808,6 +2916,123 @@ export default function Appointments() {
         slotDisplayTime={bookingSlot ? format(new Date(bookingSlot.start), "dd MMM yyyy, h:mm a") : ""}
         specializations={specializations}
       />
+
+      {/* ---- Attachments modal ---- */}
+      {attachmentPatient && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col border border-border">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+              <div>
+                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <Paperclip size={16} className="text-primary" /> Attachments
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{attachmentPatient.name}</p>
+              </div>
+              <button
+                onClick={() => setAttachmentPatient(null)}
+                className="p-1.5 rounded-full hover:bg-muted transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Document list */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-2">
+              {isLoadingDocs ? (
+                <div className="flex justify-center py-8"><LoadingSpinner /></div>
+              ) : patientDocs.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No documents attached yet.</p>
+              ) : (
+                patientDocs.map((doc) => {
+                  const fileUrl = backendAssetUrl(doc.filePath);
+                  const ext = doc.filePath?.split(".").pop()?.toLowerCase() ?? "";
+                  const canPreview = PREVIEWABLE_EXTS.includes(ext);
+                  return (
+                    <div key={doc.patientDocumentId} className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 px-3 py-2.5">
+                      <Paperclip size={14} className="shrink-0 text-muted-foreground" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {DOC_TYPE_LABELS[doc.documentType] ?? doc.documentType}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(doc.createdAt), "dd MMM yyyy, h:mm a")}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {fileUrl && canPreview && (
+                          <a
+                            href={fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="View"
+                            className="flex items-center justify-center h-7 w-7 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+                          >
+                            <Eye size={13} />
+                          </a>
+                        )}
+                        {fileUrl && !canPreview && (
+                          <a
+                            href={fileUrl}
+                            download
+                            title="Download"
+                            className="flex items-center justify-center h-7 w-7 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+                          >
+                            <Eye size={13} />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => handleDeleteDoc(doc)}
+                          disabled={deletingDocId === doc.patientDocumentId}
+                          title="Delete"
+                          className="flex items-center justify-center h-7 w-7 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Upload form */}
+            <div className="border-t border-border px-5 py-4 shrink-0 flex flex-col gap-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add document</p>
+              <div className="flex items-center gap-2">
+                <select
+                  value={docUploadType}
+                  onChange={(e) => setDocUploadType(e.target.value)}
+                  className="h-9 flex-1 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {Object.entries(DOC_TYPE_LABELS).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="flex-1 flex items-center gap-2 h-9 rounded-lg border border-dashed border-border bg-muted/30 hover:bg-muted/50 px-3 text-sm text-muted-foreground cursor-pointer transition-colors">
+                  <Upload size={14} />
+                  <span className="truncate">{docUploadFile ? docUploadFile.name : "Choose file…"}</span>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                    className="hidden"
+                    onChange={(e) => setDocUploadFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+                <button
+                  onClick={handleUploadDoc}
+                  disabled={!docUploadFile || isUploadingDoc}
+                  className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                >
+                  {isUploadingDoc ? "Uploading…" : "Upload"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

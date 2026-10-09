@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { Menu } from "lucide-react";
@@ -133,7 +133,9 @@ export default function PageLayout({
               <Menu className="h-6 w-6" />
             </button>
             <Image src={logo} alt="Yoton" priority className="lg:hidden h-8 w-auto" />
-            <BackButton homePath={homeRoute} />
+            <Suspense fallback={<div className="h-10 w-10 shrink-0" />}>
+              <BackButton homePath={homeRoute} />
+            </Suspense>
             <DailyStatsBar variant="inline" />
             <div className="flex-1" />
             <AutoSaveIndicator />

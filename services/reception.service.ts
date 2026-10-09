@@ -190,5 +190,13 @@ export const ReceptionService = {
         const { data } = await api.put(ENDPOINTS.RECEPTION.UPDATE_APPOINTMENT(appointmentId), payload);
         return data;
     },
+    getPatientDocuments: async (patientId: string) => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_PATIENT_DOCUMENTS(patientId));
+        return data;
+    },
+    deletePatientDocument: async (patientId: string, docId: string) => {
+        const { data } = await api.delete(ENDPOINTS.RECEPTION.DELETE_PATIENT_DOCUMENT(patientId, docId));
+        return data;
+    },
 
 }

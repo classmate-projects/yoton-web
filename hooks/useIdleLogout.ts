@@ -24,6 +24,10 @@ export function useIdleLogout() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const warningActiveRef = useRef(false);
+  // Tracks the real wall-clock time of the last user activity so every check can compute
+  // actual elapsed time via Date.now() instead of relying on setTimeout/setInterval tick
+  // counts, which Chrome throttles heavily in background/hidden tabs.
+  const lastActivityTimeRef = useRef<number>(Date.now());
   const [warningSecondsLeft, setWarningSecondsLeft] = useState<number | null>(null);
 
   const resetTimerRef = useRef<() => void>(() => {});
@@ -45,16 +49,38 @@ export function useIdleLogout() {
       router.push("/login");
     };
 
+    const getRemainingSeconds = () => {
+      const minutes = getUserDetail()?.idleTimeoutMinutes;
+      if (!minutes || minutes <= 0) return 0;
+      const totalMs = minutes * 60 * 1000;
+      return Math.ceil((totalMs - (Date.now() - lastActivityTimeRef.current)) / 1000);
+    };
+
     const startWarning = () => {
+      const remainingSeconds = getRemainingSeconds();
+
+      // If the computer slept or the tab was backgrounded long enough that the full
+      // idle window has already elapsed, log out immediately instead of showing a
+      // stale 30-second countdown — the user was actually away for longer than allowed.
+      if (remainingSeconds <= 0) {
+        handleIdleTimeout();
+        return;
+      }
+
       warningActiveRef.current = true;
-      let seconds = WARNING_SECONDS;
-      setWarningSecondsLeft(seconds);
+      // Clamp to WARNING_SECONDS in case of minor drift; base it on real elapsed time
+      // not on a fixed constant so the initial display is always accurate.
+      setWarningSecondsLeft(Math.min(WARNING_SECONDS, remainingSeconds));
+
       intervalRef.current = setInterval(() => {
-        seconds -= 1;
-        if (seconds <= 0) {
+        // Re-derive from wall clock each tick so Chrome's background-tab throttling
+        // (which fires intervals less frequently) can't cause the displayed countdown
+        // to drift from reality.
+        const secs = getRemainingSeconds();
+        if (secs <= 0) {
           handleIdleTimeout();
         } else {
-          setWarningSecondsLeft(seconds);
+          setWarningSecondsLeft(Math.min(WARNING_SECONDS, secs));
         }
       }, 1000);
     };
@@ -63,6 +89,7 @@ export function useIdleLogout() {
       // Once the warning modal is up, only the explicit "Stay signed in" action (which
       // calls this same function) should restart the clock - see the guard's own caller.
       if (warningActiveRef.current) return;
+      lastActivityTimeRef.current = Date.now();
       clearAll();
       const minutes = getUserDetail()?.idleTimeoutMinutes;
       if (!minutes || minutes <= 0) return;
@@ -72,8 +99,24 @@ export function useIdleLogout() {
     };
     resetTimerRef.current = resetTimer;
 
+    // When the tab becomes visible again (user switches back from another app/tab),
+    // immediately recalculate remaining time rather than waiting for the next interval
+    // tick. This ensures the displayed countdown is accurate on return and that a fully-
+    // elapsed session is terminated immediately even if timers were throttled.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!warningActiveRef.current) return;
+      const secs = getRemainingSeconds();
+      if (secs <= 0) {
+        handleIdleTimeout();
+      } else {
+        setWarningSecondsLeft(Math.min(WARNING_SECONDS, secs));
+      }
+    };
+
     resetTimer();
     ACTIVITY_EVENTS.forEach((event) => window.addEventListener(event, resetTimer, { passive: true }));
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     // If an admin changes the idle timeout in Settings mid-session, their own tab picks up
     // the new duration immediately instead of waiting for a reload/re-login.
     const unsubscribe = onUserDetailChange(resetTimer);
@@ -81,6 +124,7 @@ export function useIdleLogout() {
     return () => {
       clearAll();
       ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, resetTimer));
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
