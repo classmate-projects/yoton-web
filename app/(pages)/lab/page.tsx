@@ -663,193 +663,138 @@ export default function LaboratoryPage() {
         </div>
       )}
 
-      <div className="card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className="text-foreground/90">Patient</th>
-                <th className="text-foreground/90">Test</th>
-                <th className="text-foreground/90">Doctor</th>
-                <th className="text-foreground/90">Priority</th>
-                <th className="text-foreground/90">Requested</th>
-                <th className="text-foreground/90">Status</th>
-                <th className="text-center text-foreground/90">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={7} className="py-16 text-center">
-                    <LoadingSpinner />
-                  </td>
-                </tr>
-              ) : requests.length > 0 ? (
-                requests.map((r) => {
-                  const nextStatus = STATUS_FLOW[STATUS_FLOW.indexOf(r.status) + 1];
-                  return (
-                    <tr key={r.labRequestId} className="hover:bg-muted/30 transition-colors">
-                      <td className="font-semibold text-foreground">{r.patientName}</td>
-                      <td className="text-foreground/80">
-                        {r.testType}
-                        {r.resultValues.length > 0 && (
-                          <div className="mt-1 flex flex-col gap-0.5">
-                            {r.resultValues.map((v, i) => (
-                              <span
-                                key={i}
-                                className={`text-[11px] ${v.isAbnormal ? "font-semibold text-red-600" : "text-muted-foreground"}`}
-                              >
-                                {v.parameterName}: {v.value}
-                                {v.unit ? ` ${v.unit}` : ""}
-                                {v.isAbnormal ? " ⚠" : ""}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                      <td className="text-foreground/80">{r.doctorName}</td>
-                      <td>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            r.priority === "Urgent"
-                              ? "bg-destructive/10 text-destructive"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {r.priority}
-                        </span>
-                      </td>
-                      <td className="text-foreground/70 text-sm">{formatDateTime(r.requestedDate)}</td>
-                      <td>
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(r.status)}`}>
-                          {r.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap justify-center items-center gap-2">
-                          {(isNurse || isAdmin) && r.status === "Requested" && (
-                            <button
-                              onClick={() => collectSample(r.labRequestId)}
-                              disabled={collectingId === r.labRequestId}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-50"
-                            >
-                              Collect Sample
-                            </button>
-                          )}
-                          {(isNurse || isAdmin) && r.sampleCollectedByName && (
-                            <button
-                              onClick={() => setBarcodeLabId(r.labRequestId)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
-                            >
-                              {r.printCount > 0 ? "Reprint Barcode" : "Barcode"}
-                            </button>
-                          )}
-                          {!isNurse && nextStatus && (
-                            <button
-                              onClick={() => advanceStatus(r)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
-                            >
-                              Mark {nextStatus}
-                            </button>
-                          )}
-                          {!isNurse && r.listItemId && (
-                            <button
-                              onClick={() => openResultEntry(r)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer"
-                            >
-                              Enter Results
-                            </button>
-                          )}
-                          {!isNurse && (
-                            <label
-                              title="Upload result file"
-                              className={`p-1.5 rounded-full transition-all cursor-pointer ${
-                                uploadingId === r.labRequestId ? "opacity-50" : "hover:bg-primary/10"
-                              }`}
-                            >
-                              <MdOutlineFileUpload size={18} className="text-primary" />
-                              <input
-                                type="file"
-                                className="hidden"
-                                disabled={uploadingId === r.labRequestId}
-                                onChange={(e) => handleUploadResult(r, e.target.files?.[0])}
-                              />
-                            </label>
-                          )}
-                          {r.hasResultFile && (
-                            <button
-                              onClick={() => viewReport(r.resultFilePath)}
-                              className="text-[11px] font-semibold text-primary hover:underline"
-                            >
-                              View Report
-                            </button>
-                          )}
-                          {!isNurse && r.status !== "Completed" && r.status !== "Delivered" && (
-                            <>
-                              <button
-                                onClick={() => openEditModal(r)}
-                                title="Correct request"
-                                className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer"
-                              >
-                                <Pencil size={14} />
-                              </button>
-                              <button
-                                onClick={() => removeLabRequest(r)}
-                                title="Delete request"
-                                className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </>
-                          )}
-                          {!isNurse && r.status !== "Requested" && r.status !== "Completed" && r.status !== "Delivered" && (
-                            <button
-                              onClick={() => revertLabRequest(r.labRequestId)}
-                              disabled={revertingId === r.labRequestId}
-                              title="Revert to Requested — hand editing back to the doctor"
-                              className="p-1.5 hover:bg-muted rounded-full text-muted-foreground cursor-pointer disabled:opacity-50"
-                            >
-                              <Undo2 size={14} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setViewingLabConfig(r)}
-                            title="Configuration"
-                            className="p-1.5 hover:bg-primary/10 rounded-full text-muted-foreground hover:text-primary cursor-pointer"
-                          >
-                            <Settings size={14} />
-                          </button>
-                          <EmrButton patientId={r.patientId} patientName={r.patientName} />
-                        </div>
-                        {r.correctedFrom && (
-                          <CorrectedFromNote>
-                            <div>
-                              Previous: {r.correctedFrom.testType ?? "—"} · qty {r.correctedFrom.quantity} ·{" "}
-                              {r.correctedFrom.priority}
-                              {r.correctedFrom.remarks ? ` · ${r.correctedFrom.remarks}` : ""}
-                            </div>
-                            <div>Requested {formatDateTime(r.correctedFrom.requestedDate)}</div>
-                          </CorrectedFromNote>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={7}>
-                    <EmptyState
-                      illustration="lab"
-                      title="No lab requests found"
-                      description="Tests ordered by doctors will show up here for processing."
-                    />
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {isLoading ? (
+        <div className="card py-16 flex justify-center">
+          <LoadingSpinner />
         </div>
-      </div>
+      ) : requests.length === 0 ? (
+        <div className="card py-16 text-center text-muted-foreground">No lab requests found.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {requests.map((r) => {
+            const nextStatus = STATUS_FLOW[STATUS_FLOW.indexOf(r.status) + 1];
+            return (
+              <div key={r.labRequestId} className="card p-4 flex flex-col gap-3">
+                {/* Header: patient + badges */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground truncate">{r.patientName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{r.doctorName}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      r.priority === "Urgent" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
+                    }`}>
+                      {r.priority}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadgeClass(r.status)}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Test name + result values */}
+                <div>
+                  <p className="text-sm text-foreground/80 font-medium leading-snug">{r.testType}</p>
+                  {r.resultValues.length > 0 && (
+                    <div className="mt-1.5 flex flex-col gap-0.5">
+                      {r.resultValues.map((v, i) => (
+                        <span key={i} className={`text-[11px] ${v.isAbnormal ? "font-semibold text-red-600" : "text-muted-foreground"}`}>
+                          {v.parameterName}: {v.value}{v.unit ? ` ${v.unit}` : ""}{v.isAbnormal ? " ⚠" : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Requested date */}
+                <p className="text-xs text-muted-foreground">{formatDateTime(r.requestedDate)}</p>
+
+                {/* Primary action buttons */}
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                  {(isNurse || isAdmin) && r.status === "Requested" && (
+                    <button
+                      onClick={() => collectSample(r.labRequestId)}
+                      disabled={collectingId === r.labRequestId}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {collectingId === r.labRequestId ? "Collecting..." : "Mark Sample Collected"}
+                    </button>
+                  )}
+                  {(isNurse || isAdmin) && r.sampleCollectedByName && (
+                    <button
+                      onClick={() => setBarcodeLabId(r.labRequestId)}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
+                    >
+                      {r.printCount > 0 ? "Reprint Barcode" : "Barcode"}
+                    </button>
+                  )}
+                  {!isNurse && nextStatus && (
+                    <button
+                      onClick={() => advanceStatus(r)}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                    >
+                      Mark {nextStatus}
+                    </button>
+                  )}
+                  {!isNurse && r.listItemId && (
+                    <button
+                      onClick={() => openResultEntry(r)}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                    >
+                      Enter Results
+                    </button>
+                  )}
+                  {r.hasResultFile && (
+                    <button
+                      onClick={() => viewReport(r.resultFilePath)}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-primary hover:bg-muted transition-colors cursor-pointer"
+                    >
+                      View Report
+                    </button>
+                  )}
+                </div>
+
+                {/* Icon actions row */}
+                <div className="flex items-center gap-1">
+                  {!isNurse && (
+                    <label title="Upload result file" className={`p-1.5 rounded-full transition-all cursor-pointer ${uploadingId === r.labRequestId ? "opacity-50" : "hover:bg-primary/10"}`}>
+                      <MdOutlineFileUpload size={16} className="text-primary" />
+                      <input type="file" className="hidden" disabled={uploadingId === r.labRequestId} onChange={(e) => handleUploadResult(r, e.target.files?.[0])} />
+                    </label>
+                  )}
+                  {!isNurse && r.status !== "Requested" && r.status !== "Completed" && r.status !== "Delivered" && (
+                    <button onClick={() => revertLabRequest(r.labRequestId)} disabled={revertingId === r.labRequestId} title="Revert to Requested" className="p-1.5 hover:bg-muted rounded-full text-muted-foreground cursor-pointer disabled:opacity-50">
+                      <Undo2 size={14} />
+                    </button>
+                  )}
+                  {!isNurse && r.status !== "Completed" && r.status !== "Delivered" && (
+                    <>
+                      <button onClick={() => openEditModal(r)} title="Correct request" className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer">
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={() => removeLabRequest(r)} title="Delete request" className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer">
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => setViewingLabConfig(r)} title="Configuration" className="p-1.5 hover:bg-primary/10 rounded-full text-muted-foreground hover:text-primary cursor-pointer">
+                    <Settings size={14} />
+                  </button>
+                  <EmrButton patientId={r.patientId} patientName={r.patientName} />
+                </div>
+
+                {r.correctedFrom && (
+                  <CorrectedFromNote>
+                    <div>Previous: {r.correctedFrom.testType ?? "—"} · qty {r.correctedFrom.quantity} · {r.correctedFrom.priority}{r.correctedFrom.remarks ? ` · ${r.correctedFrom.remarks}` : ""}</div>
+                    <div>Requested {formatDateTime(r.correctedFrom.requestedDate)}</div>
+                  </CorrectedFromNote>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {resultEntryTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
