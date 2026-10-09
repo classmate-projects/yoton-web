@@ -10,6 +10,7 @@ import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { FamilyHistoryType } from "@/types/emr.type";
 import { ListItemType } from "@/types/configList.type";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
+import EmptyState from "@/components/EmptyState";
 import SearchableSelect, { standaloneSelectClass } from "@/components/SearchableSelect";
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -258,7 +259,7 @@ export default function FamilyHistorySection({ patientId, familyHistory, doctorI
           </table>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">No family history recorded.</p>
+        <EmptyState size="compact" illustration="users" title="No family history recorded" />
       )}
     </div>
   );

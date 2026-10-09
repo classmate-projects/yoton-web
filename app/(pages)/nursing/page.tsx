@@ -19,7 +19,6 @@ import {
   Download,
   Droplets,
   FileText,
-  FileX,
   Flag,
   FlaskConical,
   HeartPulse,
@@ -1970,7 +1969,7 @@ function NurseWorkbenchInner() {
                       </table>
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No active medications.</p>
+                    <EmptyState size="compact" illustration="pharmacy" title="No active medications" />
                   )}
                 </div>
               )}
@@ -2005,7 +2004,7 @@ function NurseWorkbenchInner() {
                       </table>
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No medication history recorded.</p>
+                    <EmptyState size="compact" illustration="medicationHistory" title="No medication history recorded" />
                   )}
                 </div>
               )}
@@ -2264,7 +2263,7 @@ function NurseWorkbenchInner() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">None recorded.</p>
+                    <EmptyState size="compact" illustration="vitals" title="No chronic conditions recorded" />
                   )}
                 </div>
               </div>
@@ -2960,7 +2959,7 @@ function NurseWorkbenchInner() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No treatments ordered.</p>
+                  <EmptyState size="compact" illustration="clipboard" title="No treatments ordered" />
                 )}
               </div>
 
@@ -2979,11 +2978,12 @@ function NurseWorkbenchInner() {
                       onOpenLab={(item) => setViewingLabRequest(item)}
                       onOpenRadiology={(item) => setViewingRadiologyRequest(item)}
                       onOpenTreatment={() => {}}
-                      emptyMessage="No investigations ordered."
+                      emptyMessage="No investigations ordered"
+                      emptyIllustration="lab"
                     />
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No investigations ordered.</p>
+                  <EmptyState size="compact" illustration="lab" title="No investigations ordered" />
                 )}
               </div>
 
@@ -3129,7 +3129,7 @@ function NurseWorkbenchInner() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No active prescriptions.</p>
+                  <EmptyState size="compact" illustration="pharmacy" title="No active prescriptions" />
                 )}
               </div>
             </div>
@@ -3201,10 +3201,7 @@ function NurseWorkbenchInner() {
               {/* Body */}
               <div className="overflow-y-auto flex-1 p-5">
                 {documents.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
-                    <FileX size={40} className="opacity-30" />
-                    <p className="text-sm">No documents available for this patient yet.</p>
-                  </div>
+                  <EmptyState illustration="documents" title="No documents available for this patient yet" />
                 ) : (
                   <div className="flex flex-col gap-2">
                     {documents.map((d) => {

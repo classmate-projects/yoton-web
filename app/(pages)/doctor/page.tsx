@@ -2759,7 +2759,7 @@ function DoctorWorkbenchInner() {
                           </table>
                         </div>
                       ) : (
-                        <p className="text-sm text-muted-foreground">No active medications.</p>
+                        <EmptyState size="compact" illustration="pharmacy" title="No active medications" />
                       )}
                     </div>
 
@@ -2801,7 +2801,7 @@ function DoctorWorkbenchInner() {
                           </table>
                         </div>
                       ) : (
-                        <p className="text-sm text-muted-foreground">No medication history recorded.</p>
+                        <EmptyState size="compact" illustration="medicationHistory" title="No medication history recorded" />
                       )}
                     </div>
                   </div>
