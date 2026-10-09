@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { Pencil, Plus, Smile, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { PatientSatisfactionService } from "@/services/patientSatisfaction.service";
@@ -293,7 +294,11 @@ export default function PatientSatisfactionPage() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : responses.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No responses logged yet.</p>
+        <EmptyState
+          illustration="feedback"
+          title="No responses logged yet"
+          description="Patient satisfaction responses will be listed here."
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {responses.map((r) => (

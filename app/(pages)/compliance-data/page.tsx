@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { ShieldCheck, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { ComplianceDataService } from "@/services/complianceData.service";
@@ -147,7 +148,7 @@ export default function ComplianceDataPage() {
             <Loader2 className="animate-spin" size={20} />
           </div>
         ) : staff.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No active staff found.</p>
+          <EmptyState illustration="users" title="No active staff found" />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -210,7 +211,7 @@ export default function ComplianceDataPage() {
             <Loader2 className="animate-spin" size={20} />
           </div>
         ) : filteredFlags.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No hypertension or diabetes records found.</p>
+          <EmptyState illustration="chart" title="No hypertension or diabetes records found" />
         ) : (
           <div className="flex flex-col gap-3">
             {filteredFlags.map((f) => (

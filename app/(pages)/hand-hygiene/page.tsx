@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { Droplets, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { HandHygieneService } from "@/services/handHygiene.service";
@@ -260,7 +261,11 @@ export default function HandHygienePage() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : sessions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No audit sessions recorded yet.</p>
+        <EmptyState
+          illustration="hygiene"
+          title="No audit sessions recorded yet"
+          description="Hand hygiene observation sessions will be listed here."
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {sessions.map((s) => (

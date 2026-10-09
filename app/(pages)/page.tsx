@@ -64,14 +64,14 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass }: { title: st
   const textClass = colorClass.split(" ")[1];
 
   return (
-    <div className="card group hover:ring-2 hover:ring-primary transition-all duration-300">
+    <div className="card">
       <div className="p-6">
         <div className="flex justify-between items-start mb-4">
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">{title}</p>
             <h3 className="text-3xl font-bold tracking-tight">{value}</h3>
           </div>
-          <div className={`p-3 rounded-2xl ${textClass} bg-current/10 transition-transform group-hover:scale-110 duration-300`}>
+          <div className={`p-3 rounded-2xl ${textClass} bg-current/10`}>
             <Icon size={24} className={textClass} />
           </div>
         </div>

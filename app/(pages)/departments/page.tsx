@@ -1,6 +1,7 @@
 "use client";
 
 import ToggleButton from "@/components/ToggleButton";
+import EmptyState from "@/components/EmptyState";
 import BuildingIcon from "@/public/icons/BuildingIcon";
 import { MdAdd, MdExpandMore, MdExpandLess } from "react-icons/md";
 import React, { FormEvent, useEffect, useState } from "react";
@@ -546,11 +547,12 @@ export default function DepartmentsPage() {
                 })
               ) : (
                 <tr>
-                  <td
-                    colSpan={4}
-                    className="py-16 text-center text-muted-foreground"
-                  >
-                    No departments found.
+                  <td colSpan={4}>
+                    <EmptyState
+                      illustration="building"
+                      title="No departments found"
+                      description="Departments you add will be listed here."
+                    />
                   </td>
                 </tr>
               )}

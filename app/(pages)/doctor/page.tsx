@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, Suspense } from "react";
+import EmptyState from "@/components/EmptyState";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -3753,8 +3754,12 @@ function DoctorWorkbenchInner() {
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={7} className="text-center text-muted-foreground py-8">
-                            {scheduleSearch.trim() ? "No patients match your search." : "No appointments on this date."}
+                          <td colSpan={7}>
+                            {scheduleSearch.trim() ? (
+                              <EmptyState size="compact" illustration="search" title="No patients match your search" />
+                            ) : (
+                              <EmptyState size="compact" illustration="visits" title="No appointments on this date" />
+                            )}
                           </td>
                         </tr>
                       );
@@ -3782,7 +3787,7 @@ function DoctorWorkbenchInner() {
                     </button>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">No open cases.</p>
+                  <EmptyState size="compact" illustration="clipboard" title="No open cases" />
                 )}
               </div>
             </div>
@@ -3844,8 +3849,8 @@ function DoctorWorkbenchInner() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="text-center text-muted-foreground py-8">
-                        No patients found.
+                      <td colSpan={6}>
+                        <EmptyState size="compact" illustration="patients" title="No patients found" />
                       </td>
                     </tr>
                   )}

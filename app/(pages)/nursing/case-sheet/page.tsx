@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import axios from "axios";
 import { toast } from "sonner";
 import { FileText, Search } from "lucide-react";
@@ -94,8 +95,8 @@ export default function ElectronicMedicalRecordPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="text-center text-muted-foreground py-8">
-                      No patients found.
+                    <td colSpan={4}>
+                      <EmptyState size="compact" illustration="patients" title="No patients found" />
                     </td>
                   </tr>
                 )}

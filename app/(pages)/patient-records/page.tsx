@@ -8,9 +8,10 @@ import { useEffect, useMemo, useState } from "react";
 import { MdContacts, MdOutlinePersonAddAlt1, MdOutlineUploadFile, MdOutlineMailOutline, MdOutlineEdit } from "react-icons/md";
 import { CalendarDays, Clock, ClipboardList, Loader2, Stethoscope, X } from "lucide-react";
 import PatientEmrModal from "@/components/PatientEmrModal";
-import { format } from "date-fns";
+import { format, isValid, parseISO } from "date-fns";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import EmptyState from "@/components/EmptyState";
 import PasswordInput from "@/components/PasswordInput";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
@@ -58,6 +59,13 @@ const emptyInsuranceForm = {
 
 type PatientListMode = "register" | "visit" | "referral";
 const PATIENTS_PAGE_SIZE = 50;
+
+// Formats a "yyyy-MM-dd" filter value as a local date; "—" if the field is cleared/invalid,
+// since date-fns' format() throws on an Invalid Date.
+const formatFilterDate = (value: string, pattern: string) => {
+  const d = parseISO(value);
+  return isValid(d) ? format(d, pattern) : "—";
+};
 
 // Shared by both list modes - VisitListItemType extends PatientGetAllType, so this one
 // predicate covers both without needing a second copy. "Mobile Number" = phone; "MRN" =
@@ -642,7 +650,7 @@ export default function PatientRecordsPage() {
 
   // Register List row actions — operate on the patient record itself.
   const renderRegisterActions = (patient: PatientGetAllType) => (
-    <div className="flex items-center justify-center gap-1">
+    <div className="flex w-full items-center justify-evenly gap-1">
       <Link
         href={`/patient-entry?edit=${patient.opId}`}
         className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer inline-flex"
@@ -843,7 +851,16 @@ export default function PatientRecordsPage() {
           <div className="flex items-center justify-center py-20"><LoadingSpinner /></div>
         ) : listMode === "register" ? (
           pagedPatients.length === 0 ? (
-            <p className="py-16 text-center text-muted-foreground text-sm">No patients found.</p>
+            <EmptyState
+              illustration="patients"
+              title={searchTerm.trim() ? "No matching patients" : "No patients registered yet"}
+              description={
+                searchTerm.trim()
+                  ? `Nothing matches "${searchTerm.trim()}". Try a name, OP number, phone or national ID.`
+                  : "Registered patients will show up here."
+              }
+              action={searchTerm.trim() ? { label: "Clear search", onClick: () => setSearchTerm("") } : undefined}
+            />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {pagedPatients.map((patient) => {
@@ -856,27 +873,27 @@ export default function PatientRecordsPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-foreground truncate">{patient.name}</p>
-                        <span className="font-mono text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                        <span className="inline-block max-w-full truncate align-bottom font-mono text-[13px] text-foreground bg-muted px-1.5 py-0.5 rounded">
                           {patient.opNumber || patient.opId}
                         </span>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                    <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
                       {patient.email && (
                         <div className="flex items-center gap-2 truncate">
-                          <MdOutlineMailOutline size={13} className="shrink-0 text-muted-foreground/60" />
+                          <MdOutlineMailOutline size={15} className="shrink-0 text-muted-foreground/60" />
                           <span className="truncate">{patient.email}</span>
                         </div>
                       )}
                       {patient.phone && (
                         <div className="flex items-center gap-2">
-                          <MdContacts size={13} className="shrink-0 text-muted-foreground/60" />
+                          <MdContacts size={15} className="shrink-0 text-muted-foreground/60" />
                           <span>{patient.phone}</span>
                         </div>
                       )}
                       {patient.address && (
                         <div className="flex items-center gap-2 truncate">
-                          <svg className="shrink-0 text-muted-foreground/60" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                          <svg className="shrink-0 text-muted-foreground/60" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
                           <span className="truncate">{patient.address}</span>
                         </div>
                       )}
@@ -891,7 +908,24 @@ export default function PatientRecordsPage() {
           )
         ) : listMode === "visit" ? (
           pagedVisits.length === 0 ? (
-            <p className="py-16 text-center text-muted-foreground text-sm">No visits found for the selected date range.</p>
+            <EmptyState
+              illustration="visits"
+              title={searchTerm.trim() ? "No matching visits" : "No visits in this period"}
+              description={
+                searchTerm.trim()
+                  ? `No visit between ${formatFilterDate(fromDate, "dd MMM")} and ${formatFilterDate(toDate, "dd MMM yyyy")} matches "${searchTerm.trim()}".`
+                  : fromDate === toDate
+                  ? `No patients have checked in on ${formatFilterDate(fromDate, "dd MMM yyyy")}.`
+                  : `No patients checked in between ${formatFilterDate(fromDate, "dd MMM")} and ${formatFilterDate(toDate, "dd MMM yyyy")}.`
+              }
+              action={
+                searchTerm.trim()
+                  ? { label: "Clear search", onClick: () => setSearchTerm("") }
+                  : fromDate !== todayValue || toDate !== todayValue
+                  ? { label: "Show today's visits", onClick: () => { setFromDate(todayValue); setToDate(todayValue); } }
+                  : undefined
+              }
+            />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {pagedVisits.map((visit) => {
@@ -910,27 +944,27 @@ export default function PatientRecordsPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-foreground truncate">{visit.name}</p>
-                        <span className="font-mono text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                        <span className="inline-block max-w-full truncate align-bottom font-mono text-[13px] text-foreground bg-muted px-1.5 py-0.5 rounded">
                           {visit.opNumber || visit.opId}
                         </span>
                       </div>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
                         {visit.status}
                       </span>
                     </div>
-                    <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                    <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
                       {visit.phone && (
                         <div className="flex items-center gap-2">
-                          <MdContacts size={13} className="shrink-0 text-muted-foreground/60" />
+                          <MdContacts size={15} className="shrink-0 text-muted-foreground/60" />
                           <span>{visit.phone}</span>
                         </div>
                       )}
                       <div className="flex items-center gap-2">
-                        <CalendarDays size={13} className="shrink-0 text-muted-foreground/60" />
+                        <CalendarDays size={15} className="shrink-0 text-muted-foreground/60" />
                         <span>{format(new Date(visit.checkedInAt), "dd MMM yyyy")}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Clock size={13} className="shrink-0 text-muted-foreground/60" />
+                        <Clock size={15} className="shrink-0 text-muted-foreground/60" />
                         <span>
                           {visit.visitType === "WalkIn" ? "Walk-in" : visit.visitType === "Referral" ? "Referral" : "Appointment"}
                         </span>
@@ -967,7 +1001,22 @@ export default function PatientRecordsPage() {
             </div>
 
             {pagedReferrals.length === 0 ? (
-              <p className="py-16 text-center text-muted-foreground text-sm">No pending referrals.</p>
+              <EmptyState
+                illustration="referrals"
+                title={referralSearchTerm.trim() ? "No matching referrals" : "No pending referrals"}
+                description={
+                  referralSearchTerm.trim()
+                    ? `Nothing matches "${referralSearchTerm.trim()}".`
+                    : "Referrals from doctors that still need a visit registered will appear here."
+                }
+                action={
+                  referralSearchTerm.trim()
+                    ? { label: "Clear search", onClick: () => setReferralSearchTerm("") }
+                    : !showExternalReferrals && pendingReferrals.some((r) => !!r.externalFacility)
+                    ? { label: "Show external referrals", onClick: () => setShowExternalReferrals(true) }
+                    : undefined
+                }
+              />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {pagedReferrals.map((r) => {
@@ -984,30 +1033,30 @@ export default function PatientRecordsPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-foreground truncate">{r.patientName ?? "—"}</p>
-                          <span className="font-mono text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          <span className="inline-block max-w-full truncate align-bottom font-mono text-[13px] text-foreground bg-muted px-1.5 py-0.5 rounded">
                             {r.patientOpNumber ?? "—"}
                           </span>
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${r.priority === "Urgent" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : "bg-muted text-muted-foreground"}`}>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${r.priority === "Urgent" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : "bg-muted text-muted-foreground"}`}>
                             {r.priority}
                           </span>
                           {isExternal && (
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                               External
                             </span>
                           )}
                         </div>
                       </div>
-                      <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                      <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
                         {r.patientPhone && (
                           <div className="flex items-center gap-2">
-                            <MdContacts size={13} className="shrink-0 text-muted-foreground/60" />
+                            <MdContacts size={15} className="shrink-0 text-muted-foreground/60" />
                             <span>{r.patientPhone}</span>
                           </div>
                         )}
                         <div className="flex items-center gap-2">
-                          <Stethoscope size={13} className="shrink-0 text-muted-foreground/60" />
+                          <Stethoscope size={15} className="shrink-0 text-muted-foreground/60" />
                           <span className="truncate">
                             {r.targetSpecializationName ?? "—"}
                             {r.cancerSiteName && <span className="ml-1">({r.cancerSiteName})</span>}
@@ -1015,16 +1064,16 @@ export default function PatientRecordsPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <CalendarDays size={13} className="shrink-0 text-muted-foreground/60" />
+                          <CalendarDays size={15} className="shrink-0 text-muted-foreground/60" />
                           <span>{format(new Date(r.createdAt), "dd MMM yyyy")}</span>
                         </div>
                       </div>
                       <div className="pt-2 border-t border-border mt-auto">
                         {isExternal ? (
-                          <p className="text-center text-xs text-muted-foreground py-1">Referred to external facility</p>
+                          <p className="text-center text-sm text-muted-foreground py-1">Referred to external facility</p>
                         ) : isRegistered ? (
-                          <div className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-xs font-semibold text-green-700 dark:text-green-400">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                          <div className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm font-semibold text-green-700 dark:text-green-400">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
                             In Queue
                           </div>
                         ) : (
@@ -1040,9 +1089,9 @@ export default function PatientRecordsPage() {
                                 address: "",
                               });
                             }}
-                            className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+                            className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
                           >
-                            <Stethoscope size={13} /> Register Visit
+                            <Stethoscope size={15} /> Register Visit
                           </button>
                         )}
                       </div>

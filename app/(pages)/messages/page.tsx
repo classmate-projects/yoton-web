@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
 import { MessageCircle, Paperclip, Search, Send, Smile, X, Reply as ReplyIcon, FileText } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -441,9 +442,12 @@ export default function MessagesPage() {
                 <LoadingSpinner />
               </div>
             ) : tabConversations.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-10 px-4">
-                No conversations yet — start one above.
-              </p>
+              <EmptyState
+                size="compact"
+                illustration="messages"
+                title="No conversations yet"
+                description="Start one above."
+              />
             ) : (
               tabConversations.map((c) => (
                 <button
@@ -477,8 +481,12 @@ export default function MessagesPage() {
         {/* Thread */}
         <div className="hidden sm:flex flex-1 flex-col min-w-0 min-h-0">
           {!activeConversation ? (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-              Select a conversation to start messaging.
+            <div className="flex-1 flex items-center justify-center">
+              <EmptyState
+                illustration="messages"
+                title="No conversation selected"
+                description="Pick a conversation from the list to start messaging."
+              />
             </div>
           ) : (
             <>

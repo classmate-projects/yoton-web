@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { Pencil, Plus, RotateCcw, ShieldAlert, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { StaffExposureService } from "@/services/staffExposure.service";
@@ -467,7 +468,11 @@ export default function StaffExposurePage() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : incidents.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No exposure incidents reported yet.</p>
+        <EmptyState
+          illustration="incident"
+          title="No exposure incidents reported yet"
+          description="Staff exposure incidents that are reported will be listed here."
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {incidents.map((i) => (

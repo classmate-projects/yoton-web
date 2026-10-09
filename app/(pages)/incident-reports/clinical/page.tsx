@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { AlertTriangle, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { ClinicalIncidentService } from "@/services/clinicalIncident.service";
@@ -719,7 +720,11 @@ export default function ClinicalIncidentsPage() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : reports.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No incident reports filed yet.</p>
+        <EmptyState
+          illustration="incident"
+          title="No incident reports filed yet"
+          description="Clinical incidents that are reported will be listed here."
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {reports.map((r) => (

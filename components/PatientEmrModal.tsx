@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { format } from "date-fns";
 import { ArrowLeft, Download, Eye, Printer, X } from "lucide-react";
 import { toast } from "sonner";
@@ -461,9 +462,11 @@ export default function PatientEmrModal({ patientId, patientName, isOpen, onClos
                 {isLoadingTiles ? (
                   <div className="flex items-center justify-center py-20"><LoadingSpinner /></div>
                 ) : tiles.length === 0 ? (
-                  <p className="py-16 text-center text-muted-foreground text-sm">
-                    No visits found in the selected date range.
-                  </p>
+                  <EmptyState
+                    illustration="visits"
+                    title="No visits in this period"
+                    description="Try widening the date range."
+                  />
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {tiles.map((tile) => (

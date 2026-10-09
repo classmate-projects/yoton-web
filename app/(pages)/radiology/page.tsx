@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -719,8 +720,12 @@ export default function RadiologyPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-muted-foreground">
-                    No radiology requests found.
+                  <td colSpan={7}>
+                    <EmptyState
+                      illustration="radiology"
+                      title="No radiology requests found"
+                      description="Imaging ordered by doctors will show up here for processing."
+                    />
                   </td>
                 </tr>
               )}

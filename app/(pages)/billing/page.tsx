@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, Suspense } from "react";
+import EmptyState from "@/components/EmptyState";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -427,8 +428,12 @@ function BillingPageInner() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-muted-foreground">
-                    No bills found.
+                  <td colSpan={5}>
+                    <EmptyState
+                      illustration="billing"
+                      title="No bills found"
+                      description="Bills will appear here once patients are charged for a visit."
+                    />
                   </td>
                 </tr>
               )}

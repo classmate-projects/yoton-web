@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { Download, FileSpreadsheet, FlaskConical, Plus, Settings, Trash2, Upload, X } from "lucide-react";
@@ -699,8 +700,12 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={columnCount} className="py-16 text-center text-muted-foreground">
-                  {debouncedSearch ? `No ${itemLabel} matches "${debouncedSearch}".` : `No items in ${itemLabel} yet.`}
+                <td colSpan={columnCount}>
+                  {debouncedSearch ? (
+                    <EmptyState illustration="search" title="No matches" description={`No ${itemLabel} matches "${debouncedSearch}".`} />
+                  ) : (
+                    <EmptyState illustration="clipboard" title={`No items in ${itemLabel} yet`} />
+                  )}
                 </td>
               </tr>
             ) : (

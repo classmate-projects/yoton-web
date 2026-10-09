@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { FileSpreadsheet, Upload } from "lucide-react";
@@ -349,8 +350,12 @@ export default function MedicineCatalogManager() {
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-16 text-center text-muted-foreground">
-                  {debouncedSearch ? `No medications match "${debouncedSearch}".` : "No medications uploaded yet."}
+                <td colSpan={6}>
+                  {debouncedSearch ? (
+                    <EmptyState illustration="search" title="No matching medications" description={`Nothing matches "${debouncedSearch}".`} />
+                  ) : (
+                    <EmptyState illustration="pharmacy" title="No medications uploaded yet" />
+                  )}
                 </td>
               </tr>
             ) : (

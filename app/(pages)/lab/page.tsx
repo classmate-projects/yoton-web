@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -836,8 +837,12 @@ export default function LaboratoryPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-muted-foreground">
-                    No lab requests found.
+                  <td colSpan={7}>
+                    <EmptyState
+                      illustration="lab"
+                      title="No lab requests found"
+                      description="Tests ordered by doctors will show up here for processing."
+                    />
                   </td>
                 </tr>
               )}

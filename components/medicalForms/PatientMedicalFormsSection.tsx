@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import axios from "axios";
 import { toast } from "sonner";
 import { AlertTriangle, ClipboardList, Pencil, Plus, Printer, RefreshCw, Search, Send, X } from "lucide-react";
@@ -337,9 +338,11 @@ export default function PatientMedicalFormsSection({
           )}
 
           {filteredSavedForms.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {savedForms.length === 0 ? "No medical forms saved for this patient yet." : "No saved forms match your search."}
-            </p>
+            savedForms.length === 0 ? (
+              <EmptyState size="compact" illustration="documents" title="No medical forms saved for this patient yet" />
+            ) : (
+              <EmptyState size="compact" illustration="search" title="No saved forms match your search" />
+            )
           ) : (
             <div className="flex flex-col gap-2 border-t border-border pt-3">
               {filteredSavedForms.map((f) => (

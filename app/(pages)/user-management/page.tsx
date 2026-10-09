@@ -19,6 +19,7 @@ interface getAllResponse {
 }
 
 import Link from "next/link";
+import EmptyState from "@/components/EmptyState";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -571,7 +572,9 @@ export default function UserManagement() {
             </div>
           ))
         ) : (
-          <div className="card col-span-full py-20 text-center text-gray-600">No users found</div>
+          <div className="card col-span-full">
+            <EmptyState illustration="users" title="No users found" description="Staff accounts you register will appear here." />
+          </div>
         )}
       </div>
 

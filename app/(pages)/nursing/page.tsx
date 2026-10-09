@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, Suspense } from "react";
+import EmptyState from "@/components/EmptyState";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -3538,8 +3539,8 @@ function NurseWorkbenchInner() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5} className="text-center text-muted-foreground py-8">
-                          No patients found.
+                        <td colSpan={5}>
+                          <EmptyState size="compact" illustration="patients" title="No patients found" />
                         </td>
                       </tr>
                     )}
@@ -3615,7 +3616,7 @@ function NurseWorkbenchInner() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">No pending work. Great job!</p>
+                  <EmptyState size="compact" illustration="done" title="No pending work. Great job!" />
                 )}
               </div>
               {workQueue.length > PAGE_SIZE && (

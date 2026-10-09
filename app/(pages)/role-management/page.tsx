@@ -1,6 +1,7 @@
 "use client";
 
 import LoadingSpinner from "@/components/LoadingSpinner";
+import EmptyState from "@/components/EmptyState";
 import ToggleButton from "@/components/ToggleButton";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
@@ -353,7 +354,11 @@ export default function RoleManagementPage() {
             </div>
           ) : roles.length === 0 ? (
             <div className="h-80 flex justify-center items-center">
-              <p className="text-gray-500">No roles configured.</p>
+              <EmptyState
+                illustration="roles"
+                title="No roles configured"
+                description="Roles control which modules each staff member can access."
+              />
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 content-start h-[60dvh] overflow-y-scroll">

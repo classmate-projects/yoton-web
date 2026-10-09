@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
 import axios from "axios";
 import { notifySaveStatus } from "@/lib/saveStatus";
@@ -1211,7 +1212,7 @@ export default function SettingsPage() {
                 <Loader2 className="animate-spin" size={20} />
               </div>
             ) : branches.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No branches yet.</p>
+              <EmptyState size="compact" illustration="building" title="No branches yet" />
             ) : (
               <ul className="flex flex-col gap-2">
                 {branches.map((b) => {

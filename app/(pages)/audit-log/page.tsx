@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { ScrollText, Loader2, Eye, X, ChevronLeft, ChevronRight, History } from "lucide-react";
 import { toast } from "sonner";
 import DatePicker from "@/components/DatePicker";
@@ -286,7 +287,11 @@ export default function AuditLogPage() {
             <Loader2 className="animate-spin" size={24} />
           </div>
         ) : logs.length === 0 ? (
-          <p className="p-6 text-sm text-muted-foreground">No audit log entries match these filters.</p>
+          <EmptyState
+            illustration="clipboard"
+            title="No audit log entries"
+            description="Nothing matches these filters. Try a wider date range or fewer filters."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

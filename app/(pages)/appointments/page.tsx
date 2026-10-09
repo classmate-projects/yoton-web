@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import axios from "axios";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -1216,11 +1217,15 @@ export default function Appointments() {
           {isLoadingFollowUps ? (
             <LoadingSpinner />
           ) : filteredPendingFollowUps.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {pendingFollowUps.length === 0
-                ? "No follow-ups awaiting confirmation."
-                : "No follow-ups in the selected date range."}
-            </p>
+            <EmptyState
+              illustration="visits"
+              title={pendingFollowUps.length === 0 ? "No follow-ups awaiting confirmation" : "No follow-ups in this period"}
+              description={
+                pendingFollowUps.length === 0
+                  ? "Follow-ups booked by doctors will appear here for confirmation."
+                  : "Try widening the date range."
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1296,11 +1301,15 @@ export default function Appointments() {
           {isLoadingRequests ? (
             <LoadingSpinner />
           ) : filteredAppointmentRequests.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {appointmentRequests.length === 0
-                ? "No pending requests from the mobile app."
-                : "No requests in the selected date range."}
-            </p>
+            <EmptyState
+              illustration="messages"
+              title={appointmentRequests.length === 0 ? "No pending requests" : "No requests in this period"}
+              description={
+                appointmentRequests.length === 0
+                  ? "Appointment requests patients send from the mobile app will appear here."
+                  : "Try widening the date range."
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1406,7 +1415,7 @@ export default function Appointments() {
           {isLoadingTodayQueue ? (
             <LoadingSpinner />
           ) : todayAppointmentQueue.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No pending appointments for today.</p>
+            <EmptyState size="compact" illustration="visits" title="No pending appointments for today" />
           ) : (() => {
             const byDept = selectedDeptFilter === "all"
               ? todayAppointmentQueue
@@ -1422,7 +1431,7 @@ export default function Appointments() {
                 )
               : byDept;
             if (filtered.length === 0)
-              return <p className="text-sm text-muted-foreground">No results match your search.</p>;
+              return <EmptyState size="compact" illustration="search" title="No results match your search" />;
             return (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1557,7 +1566,7 @@ export default function Appointments() {
             // Right panel shows only registered patients
             const registered = byDept.filter((a) => a.alreadyRegistered);
             if (registered.length === 0)
-              return <p className="text-sm text-muted-foreground">No patients have been registered for this date yet.</p>;
+              return <EmptyState size="compact" illustration="patients" title="No patients registered for this date yet" />;
             const filtered = term
               ? registered.filter(
                   (a) =>
@@ -1568,7 +1577,7 @@ export default function Appointments() {
                 )
               : registered;
             if (filtered.length === 0)
-              return <p className="text-sm text-muted-foreground">No results match your search.</p>;
+              return <EmptyState size="compact" illustration="search" title="No results match your search" />;
             return (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

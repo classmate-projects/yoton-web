@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -182,7 +183,7 @@ export default function ConfidentialNotesPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No confidential notes yet.</p>
+            <EmptyState illustration="notes" title="No confidential notes yet" />
           )}
         </div>
       </div>

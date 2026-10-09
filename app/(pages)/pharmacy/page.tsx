@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -756,7 +757,13 @@ export default function PharmacyPage() {
                   <LoadingSpinner />
                 </div>
               ) : medicationGroups.length === 0 ? (
-                <div className="card py-16 text-center text-muted-foreground">No doctor orders found.</div>
+                <div className="card">
+                  <EmptyState
+                    illustration="pharmacy"
+                    title="No doctor orders found"
+                    description="Medication orders from doctors will appear here to be dispensed."
+                  />
+                </div>
               ) : (
                 medicationGroups.map((group) => {
                   const eligibility = group.items[0];
@@ -990,8 +997,12 @@ export default function PharmacyPage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center text-muted-foreground">
-                        No prescriptions found.
+                      <td colSpan={7}>
+                        <EmptyState
+                          illustration="documents"
+                          title="No prescriptions found"
+                          description="Prescriptions written by doctors will be listed here."
+                        />
                       </td>
                     </tr>
                   )}
@@ -1141,8 +1152,20 @@ export default function PharmacyPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center text-muted-foreground">
-                        {invDebouncedSearch ? `No medicines match "${invDebouncedSearch}".` : "No medicines found."}
+                      <td colSpan={7}>
+                        {invDebouncedSearch ? (
+                          <EmptyState
+                            illustration="search"
+                            title="No matching medicines"
+                            description={`Nothing in stock matches "${invDebouncedSearch}".`}
+                          />
+                        ) : (
+                          <EmptyState
+                            illustration="pharmacy"
+                            title="No medicines found"
+                            description="Medicines added to inventory will be listed here."
+                          />
+                        )}
                       </td>
                     </tr>
                   )}
