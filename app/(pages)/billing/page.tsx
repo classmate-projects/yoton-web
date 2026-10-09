@@ -375,72 +375,45 @@ function BillingPageInner() {
         ))}
       </div>
 
-      <div className="card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className="text-foreground/90">Patient</th>
-                <th className="text-foreground/90">Net Amount</th>
-                <th className="text-foreground/90">Created</th>
-                <th className="text-foreground/90">Status</th>
-                <th className="text-center text-foreground/90">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={5} className="py-16 text-center">
-                    <LoadingSpinner />
-                  </td>
-                </tr>
-              ) : bills.length > 0 ? (
-                bills.map((bill) => (
-                  <tr key={bill.billId} className="hover:bg-muted/30 transition-colors">
-                    <td className="font-semibold text-foreground">{bill.patientName}</td>
-                    <td className="text-foreground font-semibold">{currency(bill.netAmount)}</td>
-                    <td className="text-foreground/70 text-sm">{formatDateTime(bill.createdAt)}</td>
-                    <td>
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(bill.status)}`}>
-                        {bill.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="flex justify-center items-center gap-2">
-                        <button
-                          onClick={() => setDetailBill(bill)}
-                          className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
-                        >
-                          Manage
-                        </button>
-                        {bill.status === "Pending" && (
-                          <button
-                            onClick={() => handleCancelBill(bill)}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                        )}
-                        <EmrButton patientId={bill.patientId} patientName={bill.patientName} />
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5}>
-                    <EmptyState
-                      illustration="billing"
-                      title="No bills found"
-                      description="Bills will appear here once patients are charged for a visit."
-                    />
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {isLoading ? (
+        <div className="py-16 flex justify-center"><LoadingSpinner /></div>
+      ) : bills.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {bills.map((bill) => (
+            <div key={bill.billId} className="card p-5 flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-semibold text-foreground truncate">{bill.patientName}</p>
+                <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadgeClass(bill.status)}`}>
+                  {bill.status}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xl font-bold text-foreground">{currency(bill.netAmount)}</span>
+                <span className="text-xs text-muted-foreground">{formatDateTime(bill.createdAt)}</span>
+              </div>
+              <div className="flex items-center gap-2 pt-1 border-t border-border">
+                <button
+                  onClick={() => setDetailBill(bill)}
+                  className="flex-1 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                >
+                  Manage
+                </button>
+                {bill.status === "Pending" && (
+                  <button
+                    onClick={() => handleCancelBill(bill)}
+                    className="flex-1 py-1.5 text-xs font-semibold rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <EmrButton patientId={bill.patientId} patientName={bill.patientName} />
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
+      ) : (
+        <p className="py-16 text-center text-sm text-muted-foreground">No bills found.</p>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">

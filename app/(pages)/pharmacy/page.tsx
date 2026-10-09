@@ -803,84 +803,77 @@ export default function PharmacyPage() {
                         Print Prescription
                       </button>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr>
-                            <th className="text-foreground/90">Drug</th>
-                            <th className="text-foreground/90">Dosage</th>
-                            <th className="text-foreground/90">Frequency</th>
-                            <th className="text-foreground/90">Route</th>
-                            <th className="text-foreground/90">Price</th>
-                            <th className="text-foreground/90">Status</th>
-                            <th className="text-center text-foreground/90">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {group.items.map((item) => (
-                            <tr key={item.medicationId} className="hover:bg-muted/30 transition-colors">
-                              <td className="font-semibold text-foreground">
-                                {item.drugName}
-                                {item.alternatives.length > 0 && (
-                                  <p className="text-xs font-normal text-muted-foreground">
-                                    Alt: {item.alternatives.map((a) => `${a.name} (${a.stock})`).join(", ")}
-                                  </p>
-                                )}
-                              </td>
-                              <td className="text-foreground/80">
-                                {item.dosage ? `${item.dosage}${item.dosageUnit ? ` ${item.dosageUnit}` : ""}` : "—"}
-                              </td>
-                              <td className="text-foreground/80">{item.frequency || "—"}</td>
-                              <td className="text-foreground/80">{item.route || "—"}</td>
-                              <td className="text-foreground/80">
-                                {item.unitPrice != null ? currency(item.unitPrice) : "—"}
-                              </td>
-                              <td>
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                    item.dispenseStatus === "Dispensed"
-                                      ? "bg-emerald-500/10 text-emerald-500"
-                                      : item.dispenseStatus === "Prepared"
-                                      ? "bg-blue-500/10 text-blue-500"
-                                      : "bg-amber-500/10 text-amber-500"
-                                  }`}
-                                >
-                                  {item.dispenseStatus}
-                                </span>
-                              </td>
-                              <td>
-                                <div className="flex justify-center gap-2">
-                                  {item.dispenseStatus === "Pending" && (
-                                    <button
-                                      onClick={() => handlePrepare(item.medicationId)}
-                                      disabled={preparingId === item.medicationId}
-                                      className="px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-60"
-                                    >
-                                      {preparingId === item.medicationId ? "Preparing..." : "Mark Prepared"}
-                                    </button>
-                                  )}
-                                  {item.dispenseStatus === "Prepared" && (
-                                    <button
-                                      onClick={() => openMedDispenseModal(item)}
-                                      className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer"
-                                    >
-                                      Dispense
-                                    </button>
-                                  )}
-                                  {item.dispenseStatus !== "Pending" && (
-                                    <button
-                                      onClick={() => openLabelPrint(item)}
-                                      className="px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
-                                    >
-                                      Print Label
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 p-4">
+                      {group.items.map((item) => (
+                        <div key={item.medicationId} className="rounded-xl border border-border bg-muted/20 p-4 flex flex-col gap-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-foreground truncate">{item.drugName}</p>
+                              {item.alternatives.length > 0 && (
+                                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                                  Alt: {item.alternatives.map((a) => `${a.name} (${a.stock})`).join(", ")}
+                                </p>
+                              )}
+                            </div>
+                            <span className={`shrink-0 px-2 py-1 rounded-full text-xs font-semibold ${
+                              item.dispenseStatus === "Dispensed"
+                                ? "bg-emerald-500/10 text-emerald-500"
+                                : item.dispenseStatus === "Prepared"
+                                ? "bg-blue-500/10 text-blue-500"
+                                : "bg-amber-500/10 text-amber-500"
+                            }`}>
+                              {item.dispenseStatus}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Dosage</p>
+                              <p className="text-foreground/80">{item.dosage ? `${item.dosage}${item.dosageUnit ? ` ${item.dosageUnit}` : ""}` : "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Frequency</p>
+                              <p className="text-foreground/80">{item.frequency || "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Route</p>
+                              <p className="text-foreground/80">{item.route || "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Price</p>
+                              <p className="text-foreground/80">{item.unitPrice != null ? currency(item.unitPrice) : "—"}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-2 border-t border-border">
+                            {item.dispenseStatus === "Pending" && (
+                              <button
+                                onClick={() => handlePrepare(item.medicationId)}
+                                disabled={preparingId === item.medicationId}
+                                className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-60"
+                              >
+                                {preparingId === item.medicationId ? "Preparing..." : "Mark Prepared"}
+                              </button>
+                            )}
+                            {item.dispenseStatus === "Prepared" && (
+                              <button
+                                onClick={() => openMedDispenseModal(item)}
+                                className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer"
+                              >
+                                Dispense
+                              </button>
+                            )}
+                            {item.dispenseStatus !== "Pending" && (
+                              <button
+                                onClick={() => openLabelPrint(item)}
+                                className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
+                              >
+                                Print Label
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                   );
