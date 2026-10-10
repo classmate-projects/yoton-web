@@ -353,3 +353,12 @@ label.required::after {
 .animate-section-flash {
   animation: section-flash 0.8s ease-in-out infinite;
 }
+
+@keyframes pending-glow {
+  0%, 100% { outline: 2px solid rgba(239, 68, 68, 0.6); outline-offset: 0px; }
+  50% { outline: 2.5px solid rgba(239, 68, 68, 1); outline-offset: 1px; }
+}
+
+.animate-pending-glow {
+  animation: pending-glow 1.6s ease-in-out infinite;
+}

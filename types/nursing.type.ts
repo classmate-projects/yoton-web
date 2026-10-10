@@ -22,6 +22,23 @@ export interface NursingTaskType {
   completedAt: string | null;
 }
 
+export type VitalsVitalField =
+  | "Systolic"
+  | "Diastolic"
+  | "HeartRate"
+  | "Temperature"
+  | "RespiratoryRate"
+  | "OxygenSaturation"
+  | "HeightCm"
+  | "WeightKg";
+
+export interface VitalsRefusalType {
+  vitalField: string;
+  reason: string;
+  refusedAt: string;
+  nurseName: string | null;
+}
+
 export interface VitalsType {
   vitalsRecordId: string;
   encounterId: string | null;
@@ -46,6 +63,7 @@ export interface VitalsType {
   isCritical: boolean;
   correctedFromId: string | null;
   correctedFrom: VitalsType | null;
+  refusals: VitalsRefusalType[];
 }
 
 // One normalized reading from GET .../vitals-history - merges VitalsRecord's own
@@ -330,6 +348,7 @@ export interface VitalsPayload {
   supplementalOxygen?: boolean;
   bmiExclusionReason?: string;
   notes?: string;
+  refusals?: { vitalField: string; reason: string }[];
   nurseId?: string;
   // Required only if the encounter has already been closed (sent to the doctor) - the API
   // returns 423 with requiresPassword:true when this is missing, so the caller can prompt.

@@ -85,6 +85,7 @@ import {
   TriageVitalField,
   TriagePayload,
   VitalsType,
+  VitalsVitalField,
   InjectionType,
   DressingType,
   BloodSugarType,
@@ -871,6 +872,8 @@ function NurseWorkbenchInner() {
     supplementalOxygen: false,
     bmiExclusionReason: "",
     notes: "",
+    bloodSugarLevel: "",
+    bloodSugarType: "Random",
   });
   const [savingVitals, setSavingVitals] = useState(false);
   // Set while correcting an existing vitals row (reuses the same form/button as adding a
@@ -879,6 +882,19 @@ function NurseWorkbenchInner() {
   // linked row - so this only changes which endpoint saveVitals calls, not what it sends.
   const [editingVitalsId, setEditingVitalsId] = useState<string | null>(null);
   const [vitalsView, setVitalsView] = useState<"table" | "trend">("table");
+  const [vitalsRefusals, setVitalsRefusals] = useState<Partial<Record<VitalsVitalField, string>>>({});
+
+  const toggleVitalsRefusal = (field: VitalsVitalField) => {
+    setVitalsRefusals((prev) => {
+      if (field in prev) {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      }
+      return { ...prev, [field]: "" };
+    });
+  };
+
   // Read-only mirror of the doctor workbench's Medication Tracking tabs - nurses can see
   // current and past medications here but add/correct/discontinue stays doctor-only.
   const [medHistoryTab, setMedHistoryTab] = useState<"current" | "history">("current");
@@ -935,8 +951,16 @@ function NurseWorkbenchInner() {
 
   const saveVitals = async (passwordOverride?: string): Promise<boolean> => {
     if (!encounterId) return false;
-    if (!vitalsForm.systolic || !vitalsForm.diastolic || !vitalsForm.heartRate) {
-      toast.error("Blood pressure and heart rate are required");
+    const systolicRefused = "Systolic" in vitalsRefusals;
+    const diastolicRefused = "Diastolic" in vitalsRefusals;
+    const heartRateRefused = "HeartRate" in vitalsRefusals;
+    if ((!vitalsForm.systolic && !systolicRefused) || (!vitalsForm.diastolic && !diastolicRefused) || (!vitalsForm.heartRate && !heartRateRefused)) {
+      toast.error("Blood pressure and heart rate are required (or mark as refused)");
+      return false;
+    }
+    const missingReason = Object.entries(vitalsRefusals).find(([, reason]) => !reason?.trim());
+    if (missingReason) {
+      toast.error("Enter a reason for every refused vital before saving.");
       return false;
     }
     if (!requireNurseSelected()) return false;
@@ -945,9 +969,9 @@ function NurseWorkbenchInner() {
       setSavingVitals(true);
       const payload = {
         encounterId,
-        systolic: Number(vitalsForm.systolic),
-        diastolic: Number(vitalsForm.diastolic),
-        heartRate: Number(vitalsForm.heartRate),
+        systolic: systolicRefused ? 0 : Number(vitalsForm.systolic),
+        diastolic: diastolicRefused ? 0 : Number(vitalsForm.diastolic),
+        heartRate: heartRateRefused ? 0 : Number(vitalsForm.heartRate),
         temperature: Number(vitalsForm.temperature || 0),
         respiratoryRate: Number(vitalsForm.respiratoryRate || 0),
         oxygenSaturation: Number(vitalsForm.oxygenSaturation || 0),
@@ -959,6 +983,7 @@ function NurseWorkbenchInner() {
         notes: vitalsForm.notes.trim() || undefined,
         nurseId: isAdmin ? selectedNurseId : undefined,
         password: passwordOverride,
+        refusals: Object.entries(vitalsRefusals).map(([vitalField, reason]) => ({ vitalField, reason: reason ?? "" })),
       };
       if (editingVitalsId) {
         await NursingService.updateVitals(editingVitalsId, payload);
@@ -967,8 +992,22 @@ function NurseWorkbenchInner() {
         await NursingService.saveVitals(payload);
         toast.success("Vitals recorded");
       }
+      if (!editingVitalsId && vitalsForm.bloodSugarLevel) {
+        try {
+          await NursingService.saveBloodSugar({
+            encounterId,
+            sugarLevel: Number(vitalsForm.bloodSugarLevel),
+            type: vitalsForm.bloodSugarType,
+            nurseId: isAdmin ? selectedNurseId : undefined,
+            password: passwordOverride,
+          });
+        } catch {
+          toast.error("Vitals saved but blood sugar failed to record");
+        }
+      }
       notifySaveStatus("saved");
-      setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, bmiExclusionReason: "", notes: "" });
+      setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, bmiExclusionReason: "", notes: "", bloodSugarLevel: "", bloodSugarType: "Random" });
+      setVitalsRefusals({});
       setEditingVitalsId(null);
       await refreshChart();
       return true;
@@ -984,25 +1023,32 @@ function NurseWorkbenchInner() {
 
   const startEditVitals = (v: VitalsType) => {
     setEditingVitalsId(v.vitalsRecordId);
+    const refusedFields = Object.fromEntries(
+      (v.refusals ?? []).map((r) => [r.vitalField as VitalsVitalField, r.reason])
+    ) as Partial<Record<VitalsVitalField, string>>;
+    setVitalsRefusals(refusedFields);
     setVitalsForm({
-      systolic: String(v.systolic ?? ""),
-      diastolic: String(v.diastolic ?? ""),
-      heartRate: String(v.heartRate ?? ""),
-      temperature: String(v.temperature ?? ""),
-      respiratoryRate: String(v.respiratoryRate ?? ""),
-      oxygenSaturation: String(v.oxygenSaturation ?? ""),
-      heightCm: v.heightCm ? String(v.heightCm) : "",
-      weightKg: v.weightKg ? String(v.weightKg) : "",
+      systolic: refusedFields["Systolic"] !== undefined ? "" : String(v.systolic ?? ""),
+      diastolic: refusedFields["Diastolic"] !== undefined ? "" : String(v.diastolic ?? ""),
+      heartRate: refusedFields["HeartRate"] !== undefined ? "" : String(v.heartRate ?? ""),
+      temperature: refusedFields["Temperature"] !== undefined ? "" : String(v.temperature ?? ""),
+      respiratoryRate: refusedFields["RespiratoryRate"] !== undefined ? "" : String(v.respiratoryRate ?? ""),
+      oxygenSaturation: refusedFields["OxygenSaturation"] !== undefined ? "" : String(v.oxygenSaturation ?? ""),
+      heightCm: refusedFields["HeightCm"] !== undefined ? "" : (v.heightCm ? String(v.heightCm) : ""),
+      weightKg: refusedFields["WeightKg"] !== undefined ? "" : (v.weightKg ? String(v.weightKg) : ""),
       consciousnessLevel: v.consciousnessLevel || "Alert",
       supplementalOxygen: v.supplementalOxygen,
       bmiExclusionReason: v.bmiExclusionReason || "",
       notes: v.notes || "",
+      bloodSugarLevel: "",
+      bloodSugarType: "Random",
     });
   };
 
   const cancelEditVitals = () => {
     setEditingVitalsId(null);
-    setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, bmiExclusionReason: "", notes: "" });
+    setVitalsForm({ systolic: "", diastolic: "", heartRate: "", temperature: "", respiratoryRate: "", oxygenSaturation: "", heightCm: "", weightKg: "", consciousnessLevel: "Alert", supplementalOxygen: false, bmiExclusionReason: "", notes: "", bloodSugarLevel: "", bloodSugarType: "Random" });
+    setVitalsRefusals({});
   };
 
   const removeVitalsRecord = async (v: VitalsType, passwordOverride?: string): Promise<boolean> => {
@@ -1904,7 +1950,7 @@ function NurseWorkbenchInner() {
                 above. Actually administering a dose is a separate, always-visible action
                 further down ("Prescribed Medications") - this is reference only, so no
                 add/correct/discontinue controls here. */}
-            <div className="card p-6 flex flex-col gap-4">
+            <div className={`card p-6 flex flex-col gap-4 ${pendingMedicationCount > 0 ? "animate-pending-glow" : ""}`}>
               <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <Pill size={18} className="text-primary" /> Medication History
               </h2>
@@ -1916,7 +1962,7 @@ function NurseWorkbenchInner() {
                     medHistoryTab === "current"
                       ? "border-primary text-primary"
                       : "border-transparent text-muted-foreground hover:text-foreground"
-                  } ${pendingMedicationCount > 0 ? "animate-pulse" : ""}`}
+                  }`}
                 >
                   Current Medications
                   {summary.currentMedications.length > 0 && (
@@ -2294,53 +2340,100 @@ function NurseWorkbenchInner() {
                 {canEdit && (
                   <>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {/* Systolic */}
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-semibold text-muted-foreground">Blood Pressure — Systolic <span className="text-destructive">*</span></label>
-                        <input type="number" min="0" placeholder="e.g. 120 mmHg" value={vitalsForm.systolic} onChange={(e) => setVitalsForm((p) => ({ ...p, systolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-semibold text-muted-foreground">BP — Systolic <span className="text-destructive">*</span></label>
+                          <button type="button" tabIndex={-1} onClick={() => toggleVitalsRefusal("Systolic")} title={"Systolic" in vitalsRefusals ? "Patient refused — click to undo" : "Mark patient refused"} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${"Systolic" in vitalsRefusals ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}><Ban size={16} /></button>
+                        </div>
+                        <input type="number" min="0" placeholder="e.g. 120 mmHg" disabled={"Systolic" in vitalsRefusals} value={vitalsForm.systolic} onChange={(e) => setVitalsForm((p) => ({ ...p, systolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full disabled:opacity-50 disabled:cursor-not-allowed" />
+                        {"Systolic" in vitalsRefusals && <input type="text" required placeholder="Refusal reason (required)" value={vitalsRefusals["Systolic"] ?? ""} onChange={(e) => setVitalsRefusals((p) => ({ ...p, Systolic: e.target.value }))} className="text-xs border-red-300 focus:border-red-400" />}
                       </div>
+                      {/* Diastolic */}
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-semibold text-muted-foreground">Blood Pressure — Diastolic <span className="text-destructive">*</span></label>
-                        <input type="number" min="0" placeholder="e.g. 80 mmHg" value={vitalsForm.diastolic} onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-semibold text-muted-foreground">BP — Diastolic <span className="text-destructive">*</span></label>
+                          <button type="button" tabIndex={-1} onClick={() => toggleVitalsRefusal("Diastolic")} title={"Diastolic" in vitalsRefusals ? "Patient refused — click to undo" : "Mark patient refused"} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${"Diastolic" in vitalsRefusals ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}><Ban size={16} /></button>
+                        </div>
+                        <input type="number" min="0" placeholder="e.g. 80 mmHg" disabled={"Diastolic" in vitalsRefusals} value={vitalsForm.diastolic} onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full disabled:opacity-50 disabled:cursor-not-allowed" />
+                        {"Diastolic" in vitalsRefusals && <input type="text" required placeholder="Refusal reason (required)" value={vitalsRefusals["Diastolic"] ?? ""} onChange={(e) => setVitalsRefusals((p) => ({ ...p, Diastolic: e.target.value }))} className="text-xs border-red-300 focus:border-red-400" />}
                       </div>
+                      {/* Heart Rate */}
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-semibold text-muted-foreground">Heart Rate / Pulse <span className="text-destructive">*</span></label>
-                        <input type="number" min="0" placeholder="e.g. 72 bpm" value={vitalsForm.heartRate} onChange={(e) => setVitalsForm((p) => ({ ...p, heartRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-semibold text-muted-foreground">Heart Rate / Pulse <span className="text-destructive">*</span></label>
+                          <button type="button" tabIndex={-1} onClick={() => toggleVitalsRefusal("HeartRate")} title={"HeartRate" in vitalsRefusals ? "Patient refused — click to undo" : "Mark patient refused"} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${"HeartRate" in vitalsRefusals ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}><Ban size={16} /></button>
+                        </div>
+                        <input type="number" min="0" placeholder="e.g. 72 bpm" disabled={"HeartRate" in vitalsRefusals} value={vitalsForm.heartRate} onChange={(e) => setVitalsForm((p) => ({ ...p, heartRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full disabled:opacity-50 disabled:cursor-not-allowed" />
+                        {"HeartRate" in vitalsRefusals && <input type="text" required placeholder="Refusal reason (required)" value={vitalsRefusals["HeartRate"] ?? ""} onChange={(e) => setVitalsRefusals((p) => ({ ...p, HeartRate: e.target.value }))} className="text-xs border-red-300 focus:border-red-400" />}
                       </div>
+                      {/* Temperature */}
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-semibold text-muted-foreground">Temperature</label>
-                        <input type="number" step="0.1" min="0" placeholder="e.g. 37.0 °C" value={vitalsForm.temperature} onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-semibold text-muted-foreground">Temperature</label>
+                          <button type="button" tabIndex={-1} onClick={() => toggleVitalsRefusal("Temperature")} title={"Temperature" in vitalsRefusals ? "Patient refused — click to undo" : "Mark patient refused"} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${"Temperature" in vitalsRefusals ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}><Ban size={16} /></button>
+                        </div>
+                        <input type="number" step="0.1" min="0" placeholder="e.g. 37.0 °C" disabled={"Temperature" in vitalsRefusals} value={vitalsForm.temperature} onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full disabled:opacity-50 disabled:cursor-not-allowed" />
+                        {"Temperature" in vitalsRefusals && <input type="text" required placeholder="Refusal reason (required)" value={vitalsRefusals["Temperature"] ?? ""} onChange={(e) => setVitalsRefusals((p) => ({ ...p, Temperature: e.target.value }))} className="text-xs border-red-300 focus:border-red-400" />}
                       </div>
+                      {/* Respiratory Rate */}
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-semibold text-muted-foreground">Respiratory Rate</label>
-                        <input type="number" min="0" placeholder="e.g. 16 br/min" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm((p) => ({ ...p, respiratoryRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-semibold text-muted-foreground">Respiratory Rate</label>
+                          <button type="button" tabIndex={-1} onClick={() => toggleVitalsRefusal("RespiratoryRate")} title={"RespiratoryRate" in vitalsRefusals ? "Patient refused — click to undo" : "Mark patient refused"} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${"RespiratoryRate" in vitalsRefusals ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}><Ban size={16} /></button>
+                        </div>
+                        <input type="number" min="0" placeholder="e.g. 16 br/min" disabled={"RespiratoryRate" in vitalsRefusals} value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm((p) => ({ ...p, respiratoryRate: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full disabled:opacity-50 disabled:cursor-not-allowed" />
+                        {"RespiratoryRate" in vitalsRefusals && <input type="text" required placeholder="Refusal reason (required)" value={vitalsRefusals["RespiratoryRate"] ?? ""} onChange={(e) => setVitalsRefusals((p) => ({ ...p, RespiratoryRate: e.target.value }))} className="text-xs border-red-300 focus:border-red-400" />}
                       </div>
+                      {/* Oxygen Saturation */}
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-semibold text-muted-foreground">Oxygen Saturation (SpO2)</label>
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-semibold text-muted-foreground">Oxygen Saturation (SpO2)</label>
+                          <button type="button" tabIndex={-1} onClick={() => toggleVitalsRefusal("OxygenSaturation")} title={"OxygenSaturation" in vitalsRefusals ? "Patient refused — click to undo" : "Mark patient refused"} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${"OxygenSaturation" in vitalsRefusals ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}><Ban size={16} /></button>
+                        </div>
                         <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          placeholder="e.g. 98 %"
+                          type="number" min="0" max="100" placeholder="e.g. 98 %"
+                          disabled={"OxygenSaturation" in vitalsRefusals}
                           value={vitalsForm.oxygenSaturation}
                           onChange={(e) => {
                             let v = e.target.value.replace(/-/g, "");
                             if (v !== "" && Number(v) > 100) v = "100";
                             setVitalsForm((p) => ({ ...p, oxygenSaturation: v }));
                           }}
-                          className="h-10 text-sm w-full"
+                          className="h-10 text-sm w-full disabled:opacity-50 disabled:cursor-not-allowed"
                         />
+                        {"OxygenSaturation" in vitalsRefusals && <input type="text" required placeholder="Refusal reason (required)" value={vitalsRefusals["OxygenSaturation"] ?? ""} onChange={(e) => setVitalsRefusals((p) => ({ ...p, OxygenSaturation: e.target.value }))} className="text-xs border-red-300 focus:border-red-400" />}
                       </div>
+                      {/* Height */}
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-semibold text-muted-foreground">Height</label>
-                        <input type="number" step="0.1" min="0" placeholder="e.g. 170 cm" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm((p) => ({ ...p, heightCm: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-semibold text-muted-foreground">Height</label>
+                          <button type="button" tabIndex={-1} onClick={() => toggleVitalsRefusal("HeightCm")} title={"HeightCm" in vitalsRefusals ? "Patient refused — click to undo" : "Mark patient refused"} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${"HeightCm" in vitalsRefusals ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}><Ban size={16} /></button>
+                        </div>
+                        <input type="number" step="0.1" min="0" placeholder="e.g. 170 cm" disabled={"HeightCm" in vitalsRefusals} value={vitalsForm.heightCm} onChange={(e) => setVitalsForm((p) => ({ ...p, heightCm: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full disabled:opacity-50 disabled:cursor-not-allowed" />
+                        {"HeightCm" in vitalsRefusals && <input type="text" required placeholder="Refusal reason (required)" value={vitalsRefusals["HeightCm"] ?? ""} onChange={(e) => setVitalsRefusals((p) => ({ ...p, HeightCm: e.target.value }))} className="text-xs border-red-300 focus:border-red-400" />}
                       </div>
+                      {/* Weight */}
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-semibold text-muted-foreground">Weight</label>
-                        <input type="number" step="0.1" min="0" placeholder="e.g. 70 kg" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm((p) => ({ ...p, weightKg: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-semibold text-muted-foreground">Weight</label>
+                          <button type="button" tabIndex={-1} onClick={() => toggleVitalsRefusal("WeightKg")} title={"WeightKg" in vitalsRefusals ? "Patient refused — click to undo" : "Mark patient refused"} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer ${"WeightKg" in vitalsRefusals ? "bg-red-100 text-red-600 dark:bg-red-950/40" : "text-muted-foreground hover:bg-muted"}`}><Ban size={16} /></button>
+                        </div>
+                        <input type="number" step="0.1" min="0" placeholder="e.g. 70 kg" disabled={"WeightKg" in vitalsRefusals} value={vitalsForm.weightKg} onChange={(e) => setVitalsForm((p) => ({ ...p, weightKg: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full disabled:opacity-50 disabled:cursor-not-allowed" />
+                        {"WeightKg" in vitalsRefusals && <input type="text" required placeholder="Refusal reason (required)" value={vitalsRefusals["WeightKg"] ?? ""} onChange={(e) => setVitalsRefusals((p) => ({ ...p, WeightKg: e.target.value }))} className="text-xs border-red-300 focus:border-red-400" />}
                       </div>
                       <div className="flex flex-col gap-1">
                         <label className="text-xs font-semibold text-muted-foreground">BMI (auto-calculated)</label>
                         <input type="text" readOnly disabled placeholder="kg/m²" value={liveBmi ?? ""} className="h-10 text-sm w-full" />
+                      </div>
+                      {/* Blood Sugar */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Blood Sugar</label>
+                        <input type="number" min="0" placeholder="mg/dL" value={vitalsForm.bloodSugarLevel} onChange={(e) => setVitalsForm((p) => ({ ...p, bloodSugarLevel: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm w-full" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Blood Sugar Type</label>
+                        <SearchableSelect value={vitalsForm.bloodSugarType} onChange={(v) => setVitalsForm((p) => ({ ...p, bloodSugarType: v }))} options={[{ value: "Random", label: "Random" }, { value: "Fasting", label: "Fasting" }, { value: "Post-Prandial", label: "Post-Prandial" }]} />
                       </div>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -2505,6 +2598,47 @@ function NurseWorkbenchInner() {
                     )}
                   </div>
                 )}
+
+                {/* Blood Sugar history */}
+                {(editingSugarId || (chart && chart.bloodSugarChecks.length > 0)) && (
+                  <div className="border-t border-border pt-4 flex flex-col gap-3">
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <Droplets size={15} className="text-primary" /> Blood Sugar History
+                    </h3>
+                    {editingSugarId && canEdit && (
+                      <>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input type="number" min="0" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
+                          <SearchableSelect value={sugarForm.type} onChange={(v) => setSugarForm((p) => ({ ...p, type: v }))} options={[{ value: "Random", label: "Random" }, { value: "Fasting", label: "Fasting" }, { value: "Post-Prandial", label: "Post-Prandial" }]} />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => saveBloodSugar()} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                            <Save size={15} /> Save Changes
+                          </button>
+                          <button onClick={cancelEditSugar} className="text-sm font-semibold text-muted-foreground hover:underline">Cancel</button>
+                        </div>
+                      </>
+                    )}
+                    {chart && chart.bloodSugarChecks.length > 0 && (
+                      <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto">
+                        {chart.bloodSugarChecks.slice(0, 5).map((s) => (
+                          <div key={s.bloodSugarTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                            <span className="font-medium">{s.sugarLevel} mg/dL · {s.type}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</span>
+                              {canEdit && (
+                                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => startEditSugar(s)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary"><Pencil size={12} /></button>
+                                  <button onClick={() => removeSugarRecord(s)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive"><Trash2 size={12} /></button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2657,59 +2791,6 @@ function NurseWorkbenchInner() {
                   </div>
                 )}
 
-                {/* Blood Sugar — merged into Vital Signs card */}
-                <div className="border-t border-border pt-4 flex flex-col gap-3">
-                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <Droplets size={15} className="text-primary" /> Blood Sugar
-                  </h3>
-                  {canEdit && (
-                    <>
-                      <div className="grid grid-cols-2 gap-3">
-                        <input type="number" min="0" placeholder="Sugar (mg/dL)" value={sugarForm.sugarLevel} onChange={(e) => setSugarForm((p) => ({ ...p, sugarLevel: e.target.value.replace(/-/g, "") }))} className="h-10 text-sm" />
-                        <SearchableSelect
-                          value={sugarForm.type}
-                          onChange={(v) => setSugarForm((p) => ({ ...p, type: v }))}
-                          options={[
-                            { value: "Random", label: "Random" },
-                            { value: "Fasting", label: "Fasting" },
-                            { value: "Post-Prandial", label: "Post-Prandial" },
-                          ]}
-                        />
-                      </div>
-                      <textarea placeholder="Notes..." value={sugarForm.notes} onChange={(e) => setSugarForm((p) => ({ ...p, notes: e.target.value }))} className="w-full min-h-14 text-sm" />
-                      <div className="flex items-center gap-3">
-                        <button onClick={() => saveBloodSugar()} disabled={savingSugar} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                          <Save size={15} /> {editingSugarId ? "Save Changes" : "Save Entry"}
-                        </button>
-                        {editingSugarId && (
-                          <button onClick={cancelEditSugar} className="text-sm font-semibold text-muted-foreground hover:underline">
-                            Cancel
-                          </button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                  {chart && chart.bloodSugarChecks.length > 0 && (
-                    <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
-                      {chart.bloodSugarChecks.slice(0, 5).map((s) => (
-                        <div key={s.bloodSugarTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
-                          <span className="font-medium">{s.sugarLevel} mg/dL · {s.type}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</span>
-                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => startEditSugar(s)} title="Edit" className="p-1 hover:bg-primary/10 rounded-full text-primary">
-                                <Pencil size={12} />
-                              </button>
-                              <button onClick={() => removeSugarRecord(s)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
 
@@ -2983,8 +3064,8 @@ function NurseWorkbenchInner() {
 
               {/* Lab/Radiology orders — read-only here (sample collection happens on the Lab
                   workbench itself); shows the doctor's configuration for reviewing. */}
-              <div className="card p-6 flex flex-col gap-4">
-                <h2 className={`text-lg font-semibold text-foreground flex items-center gap-2 ${pendingInvestigationCount > 0 ? "animate-pulse" : ""}`}>
+              <div className={`card p-6 flex flex-col gap-4 ${pendingInvestigationCount > 0 ? "animate-pending-glow" : ""}`}>
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <FlaskConical size={18} className="text-primary" /> Investigations
                 </h2>
                 {summary ? (

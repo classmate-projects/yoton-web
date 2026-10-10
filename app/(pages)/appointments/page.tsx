@@ -223,8 +223,8 @@ export default function Appointments() {
 
   // ---------------- Appointment Registration (walk-in desk: find today's appointment, register the visit) ----------------
   type ScheduledAppointmentItem = {
-    appointmentId: string;
-    appointmentDate: string;
+    appointmentId: string | null;
+    appointmentDate: string | null;
     status: string;
     patientId: string | null;
     patientName: string | null;
@@ -553,7 +553,7 @@ export default function Appointments() {
       const res = await ReceptionService.getScheduledAppointments(todayValue);
       const appts = (res.items ?? []).filter((a: ScheduledAppointmentItem) => !a.isWalkIn && !a.alreadyRegistered);
       appts.sort((a: ScheduledAppointmentItem, b: ScheduledAppointmentItem) =>
-        new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime()
+        new Date(a.appointmentDate ?? 0).getTime() - new Date(b.appointmentDate ?? 0).getTime()
       );
       setTodayAppointmentQueue(appts);
     } catch {
@@ -715,7 +715,7 @@ export default function Appointments() {
     setEditingQueueAppointment(apt);
     setEditVisitDoctorSearch("");
     setEditVisitSelectedDoctor(null);
-    setEditVisitDate(new Date(apt.appointmentDate));
+    setEditVisitDate(apt.appointmentDate ? new Date(apt.appointmentDate) : new Date());
     setEditVisitDaySlots(null);
     setEditVisitSelectedSlot(null);
     setEditVisitNotes(apt.notes ?? "");
@@ -735,7 +735,7 @@ export default function Appointments() {
   };
 
   const handleSaveEditAppointment = async () => {
-    if (!editingQueueAppointment || !editVisitSelectedDoctor || !editVisitSelectedSlot) {
+    if (!editingQueueAppointment || !editVisitSelectedDoctor || !editVisitSelectedSlot || !editingQueueAppointment.appointmentId) {
       toast.warning("Please select a doctor and an available time slot");
       return;
     }
@@ -1535,13 +1535,13 @@ export default function Appointments() {
                     <tr key={apt.appointmentId} className="border-b border-border last:border-0">
                       <td className="py-2.5 pr-4 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-muted-foreground">{format(new Date(apt.appointmentDate), "h:mm a")}</span>
+                          <span className="text-muted-foreground">{apt.appointmentDate ? format(new Date(apt.appointmentDate), "h:mm a") : "—"}</span>
                           {/* Appointment info tooltip */}
                           <div className="relative group/aptip">
                             <HelpCircle size={13} className="text-primary/60 cursor-help" />
                             <div className="pointer-events-none invisible group-hover/aptip:visible absolute left-0 top-full mt-1.5 z-50 w-52 rounded-lg bg-popover border border-border shadow-lg p-2.5 text-xs text-foreground">
                               <p className="font-semibold mb-1">Appointment details</p>
-                              <p className="text-muted-foreground">Time: {format(new Date(apt.appointmentDate), "h:mm a")}</p>
+                              <p className="text-muted-foreground">Time: {apt.appointmentDate ? format(new Date(apt.appointmentDate), "h:mm a") : "—"}</p>
                               {apt.doctorName && <p className="text-muted-foreground">Doctor: {apt.doctorName}</p>}
                               {apt.specializationName && <p className="text-muted-foreground">Specialty: {apt.specializationName}</p>}
                               {apt.urgencyLevel === "Urgent" && <p className="text-red-400 font-medium mt-1">⚠ Urgent</p>}
@@ -1597,16 +1597,16 @@ export default function Appointments() {
                           )}
                           {apt.status === "Pending" ? (
                             <span className="text-xs text-muted-foreground">Confirm first</span>
-                          ) : (
+                          ) : apt.appointmentId ? (
                             <button
-                              onClick={() => handleRegister(apt.appointmentId)}
+                              onClick={() => handleRegister(apt.appointmentId!)}
                               disabled={registeringId === apt.appointmentId}
                               className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
                             >
                               <UserCheck size={13} />
                               {registeringId === apt.appointmentId ? "Registering…" : "Register"}
                             </button>
-                          )}
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -1689,22 +1689,26 @@ export default function Appointments() {
                   </thead>
                   <tbody>
                     {filtered.map((apt) => (
-                      <tr key={apt.appointmentId} className="border-b border-border last:border-0">
+                      <tr key={apt.appointmentId ?? apt.visitId ?? apt.patientId} className="border-b border-border last:border-0">
                         <td className="py-2.5 pr-4 whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-muted-foreground">{format(new Date(apt.appointmentDate), "h:mm a")}</span>
-                            {/* Appointment detail tooltip */}
+                            {apt.appointmentDate
+                              ? <span className="text-muted-foreground">{format(new Date(apt.appointmentDate), "h:mm a")}</span>
+                              : <span className="text-muted-foreground text-xs italic">Walk-in</span>}
+                            {/* Appointment detail tooltip — only for appointment-based entries */}
+                            {apt.appointmentId && (
                             <div className="relative group/regtip">
                               <HelpCircle size={13} className="text-primary/60 cursor-help" />
                               <div className="pointer-events-none invisible group-hover/regtip:visible absolute left-0 top-full mt-1.5 z-50 w-52 rounded-lg bg-popover border border-border shadow-lg p-2.5 text-xs text-foreground">
                                 <p className="font-semibold mb-1">Appointment details</p>
-                                <p className="text-muted-foreground">Booked for: {format(new Date(apt.appointmentDate), "h:mm a")}</p>
+                                <p className="text-muted-foreground">Booked for: {format(new Date(apt.appointmentDate!), "h:mm a")}</p>
                                 {apt.doctorName && <p className="text-muted-foreground">Doctor: {apt.doctorName}</p>}
                                 {apt.specializationName && <p className="text-muted-foreground">Specialty: {apt.specializationName}</p>}
                                 {apt.urgencyLevel === "Urgent" && <p className="text-red-400 font-medium mt-1">⚠ Urgent</p>}
                                 {apt.notes && <p className="text-muted-foreground mt-1 italic">"{apt.notes}"</p>}
                               </div>
                             </div>
+                            )}
                           </div>
                         </td>
                         <td className="py-2.5 pr-4">
