@@ -12,7 +12,7 @@ import { notifySaveStatus } from "@/lib/saveStatus";
 import { ClinicalIncidentCategory, ClinicalIncidentCreatePayload, ClinicalIncidentType } from "@/types/clinicalIncident.type";
 import { PatientListItemType } from "@/types/appointment.type";
 import { DepartmentTypes } from "@/types/department.type";
-import { SearchableSelect } from "@/components/SearchableSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 
 const CATEGORIES: { value: ClinicalIncidentCategory; label: string }[] = [
   { value: "SentinelEvent", label: "Sentinel Event" },

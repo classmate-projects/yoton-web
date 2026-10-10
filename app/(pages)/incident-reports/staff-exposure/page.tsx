@@ -11,7 +11,7 @@ import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { StaffExposureCreatePayload, StaffExposureType } from "@/types/staffExposure.type";
 import { DepartmentTypes } from "@/types/department.type";
-import { SearchableSelect } from "@/components/SearchableSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 
 interface StaffOption {
   id: string;

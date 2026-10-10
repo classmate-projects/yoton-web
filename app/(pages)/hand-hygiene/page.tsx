@@ -202,7 +202,7 @@ export default function HandHygienePage() {
           {observations.map((o, index) => (
             <div key={index} className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-center">
               <SearchableSelect
-                value={o.professionalCode}
+                value={o.professionalCode ?? ""}
                 onChange={(v) => updateObservation(index, "professionalCode", v)}
                 options={[
                   { value: "", label: "Professional" },
@@ -210,7 +210,7 @@ export default function HandHygienePage() {
                 ]}
               />
               <SearchableSelect
-                value={o.indicationCode}
+                value={o.indicationCode ?? ""}
                 onChange={(v) => updateObservation(index, "indicationCode", v)}
                 options={[
                   { value: "", label: "Moment/indication" },
@@ -218,7 +218,7 @@ export default function HandHygienePage() {
                 ]}
               />
               <SearchableSelect
-                value={o.actionCode}
+                value={o.actionCode ?? ""}
                 onChange={(v) => updateObservation(index, "actionCode", v)}
                 options={[
                   { value: "", label: "Action" },

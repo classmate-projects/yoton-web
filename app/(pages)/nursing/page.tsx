@@ -312,6 +312,7 @@ function NurseWorkbenchInner() {
   const [workQueuePage, setWorkQueuePage] = useState(0);
 
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const pendingScrollSection = useRef<string | null>(null);
   const [summary, setSummary] = useState<PatientSummaryType | null>(null);
   const [chart, setChart] = useState<NursingChartType | null>(null);
   const [encounterId, setEncounterId] = useState<string | null>(null);
@@ -583,6 +584,18 @@ function NurseWorkbenchInner() {
       setIsLoadingChart(false);
     }
   };
+
+  // After the chart finishes loading, scroll to the section the work-queue click requested.
+  useEffect(() => {
+    if (isLoadingChart) return;
+    const sectionId = pendingScrollSection.current;
+    if (!sectionId) return;
+    pendingScrollSection.current = null;
+    // Brief timeout lets React finish painting the newly-shown patient screen.
+    setTimeout(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+  }, [isLoadingChart]);
 
   // Arriving from the reception visit queue (?patientId=&visitId=) opens that patient's
   // chart directly instead of landing on the workbench list.
@@ -1704,18 +1717,23 @@ function NurseWorkbenchInner() {
   };
 
   // Date filtering is handled server-side (EmrController.GetPatients accepts a ?date= param
-  // and scopes results to that calendar day). Client-side we only apply the search term.
+  // and scopes results to that calendar day). Client-side we only apply the search term and
+  // exclude patients still in the Untouched list (nurse hasn't opened their chart yet) so
+  // they don't appear in both sections at once.
+  const untouchedPatientIds = new Set(untouchedPatients.map((p) => p.patientId).filter(Boolean));
   const filteredPatients = patients.filter((p) =>
-    !searchTerm ||
+    !untouchedPatientIds.has(p.opId) &&
+    (!searchTerm ||
     p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.opNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.opId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase())
+    p.assignedDoctorName?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const patientWorkQueue = workQueue.filter((item) => item.patientId === selectedPatientId);
   const pendingMedicationCount = patientWorkQueue.filter((item) => item.itemType === "Medication").length;
   const pendingInvestigationCount = patientWorkQueue.filter((item) => item.itemType === "LabSample" || item.itemType === "RadiologySample").length;
+  const pendingTreatmentCount = patientWorkQueue.filter((item) => item.itemType === "Treatment").length;
 
   if (!checkedAuth) {
     return (
@@ -1950,7 +1968,7 @@ function NurseWorkbenchInner() {
                 above. Actually administering a dose is a separate, always-visible action
                 further down ("Prescribed Medications") - this is reference only, so no
                 add/correct/discontinue controls here. */}
-            <div className={`card p-6 flex flex-col gap-4 ${pendingMedicationCount > 0 ? "animate-pending-glow" : ""}`}>
+            <div className="card p-6 flex flex-col gap-4">
               <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <Pill size={18} className="text-primary" /> Medication History
               </h2>
@@ -2644,7 +2662,7 @@ function NurseWorkbenchInner() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Medication Administration */}
-              <div className="card p-6 flex flex-col gap-4">
+              <div id="section-medication-admin" className="card p-6 flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Syringe size={18} className="text-primary" /> Medication Administration
                 </h2>
@@ -2984,7 +3002,7 @@ function NurseWorkbenchInner() {
                   editing), Marks it Done, or Reverts a start back to Pending to hand editing
                   back to the doctor. Gear icon opens the same config popup the doctor uses,
                   read-only here. */}
-              <div className="card p-6 flex flex-col gap-4">
+              <div className={`card p-6 flex flex-col gap-4 ${pendingTreatmentCount > 0 ? "animate-pending-glow" : ""}`}>
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <ClipboardCheck size={18} className="text-primary" /> Doctor&apos;s Treatments
                 </h2>
@@ -3064,7 +3082,7 @@ function NurseWorkbenchInner() {
 
               {/* Lab/Radiology orders — read-only here (sample collection happens on the Lab
                   workbench itself); shows the doctor's configuration for reviewing. */}
-              <div className={`card p-6 flex flex-col gap-4 ${pendingInvestigationCount > 0 ? "animate-pending-glow" : ""}`}>
+              <div id="section-investigations" className={`card p-6 flex flex-col gap-4 ${pendingInvestigationCount > 0 ? "animate-pending-glow" : ""}`}>
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <FlaskConical size={18} className="text-primary" /> Investigations
                 </h2>
@@ -3134,7 +3152,7 @@ function NurseWorkbenchInner() {
               </div>
 
               {/* Prescribed Medications — administer only, nurse cannot add/modify prescriptions */}
-              <div className="card p-6 flex flex-col gap-4">
+              <div id="section-prescribed-medications" className={`card p-6 flex flex-col gap-4 ${pendingMedicationCount > 0 ? "animate-pending-glow" : ""}`}>
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Pill size={18} className="text-primary" /> Prescribed Medications
                 </h2>
@@ -3695,7 +3713,18 @@ function NurseWorkbenchInner() {
                     <div
                       key={`${item.itemType}-${item.sourceId}`}
                       className="rounded-lg border border-border bg-muted/30 px-3 py-2 cursor-pointer hover:bg-muted/50"
-                      onClick={() => item.patientId && openPatient(item.patientId)}
+                      onClick={() => {
+                        if (!item.patientId) return;
+                        const sectionMap: Record<string, string> = {
+                          Medication: "section-prescribed-medications",
+                          Task: "section-medication-admin",
+                          LabSample: "section-investigations",
+                          RadiologySample: "section-investigations",
+                          Treatment: "section-prescribed-medications",
+                        };
+                        pendingScrollSection.current = sectionMap[item.itemType] ?? null;
+                        openPatient(item.patientId);
+                      }}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
