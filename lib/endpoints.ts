@@ -124,10 +124,12 @@ export const ENDPOINTS = {
         GET_EMPLOYMENT_HISTORY: (id: string) => `/api/user/${id}/employment-history`,
     },
     EMR: {
-        GET_PATIENTS: (doctorId?: string, date?: string) => {
+        GET_DEPARTMENTS: `/api/emr/departments`,
+        GET_PATIENTS: (doctorId?: string, date?: string, department?: string) => {
             const p = new URLSearchParams();
             if (doctorId) p.set("doctorId", doctorId);
             if (date) p.set("date", date);
+            if (department) p.set("department", department);
             const qs = p.toString();
             return `/api/emr/patients${qs ? `?${qs}` : ""}`;
         },

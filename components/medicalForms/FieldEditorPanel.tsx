@@ -17,6 +17,7 @@ const FONT_SIZES = [
 
 const CHOICE_TYPES = new Set(["checkbox", "radio", "dropdown"]);
 const SCORABLE_TYPES = new Set(["checkbox", "radio", "dropdown", "text", "number"]);
+const REPEATABLE_TYPES = new Set(["text", "textarea", "number", "date", "datetime", "dropdown"]);
 
 // Formatting + scoring controls for whichever field is currently selected on the builder
 // canvas - every field type shares the same formatting block; options/scoring only render
@@ -155,15 +156,28 @@ export default function FieldEditorPanel({
       )}
 
       {!["heading", "subheading", "paragraph", "group"].includes(field.type) && (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={field.required}
-            onChange={(e) => onChange({ ...field, required: e.target.checked })}
-            className="h-4 w-4"
-          />
-          Required
-        </label>
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={field.required}
+              onChange={(e) => onChange({ ...field, required: e.target.checked })}
+              className="h-4 w-4"
+            />
+            Required
+          </label>
+          {REPEATABLE_TYPES.has(field.type) && (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={field.repeatable ?? false}
+                onChange={(e) => onChange({ ...field, repeatable: e.target.checked })}
+                className="h-4 w-4"
+              />
+              Repeatable
+            </label>
+          )}
+        </div>
       )}
 
       {/* ---------------- Choices (checkbox/radio/dropdown) ---------------- */}

@@ -157,6 +157,7 @@ function DoctorWorkbenchInner() {
   const [pastMedicalHistory, setPastMedicalHistory] = useState("");
   const [pastSurgicalHistory, setPastSurgicalHistory] = useState("");
   const [pastTreatmentHistory, setPastTreatmentHistory] = useState("");
+  const [socialHistory, setSocialHistory] = useState("");
   const [isSavingHistory, setIsSavingHistory] = useState(false);
   const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Date.now() can't be called during render (React treats it as impure) - computed instead
@@ -355,6 +356,7 @@ function DoctorWorkbenchInner() {
       setPastMedicalHistory(res.data?.pastMedicalHistory ?? "");
       setPastSurgicalHistory(res.data?.pastSurgicalHistory ?? "");
       setPastTreatmentHistory(res.data?.pastTreatmentHistory ?? "");
+      setSocialHistory(res.data?.socialHistory ?? "");
       return res.data ?? null;
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load patient summary"));
@@ -363,6 +365,7 @@ function DoctorWorkbenchInner() {
       setPastMedicalHistory("");
       setPastSurgicalHistory("");
       setPastTreatmentHistory("");
+      setSocialHistory("");
       return null;
     } finally {
       setIsLoadingSummary(false);
@@ -439,6 +442,7 @@ function DoctorWorkbenchInner() {
     setPastMedicalHistory("");
     setPastSurgicalHistory("");
     setPastTreatmentHistory("");
+    setSocialHistory("");
     setPatientWarningModal(null);
     setShowDocumentsModal(false);
     setQuickNotes([]);
@@ -468,6 +472,7 @@ function DoctorWorkbenchInner() {
       setPastMedicalHistory("");
       setPastSurgicalHistory("");
       setPastTreatmentHistory("");
+      setSocialHistory("");
       setPatientWarningModal(null);
       setShowDocumentsModal(false);
       setQuickNotes([]);
@@ -928,7 +933,7 @@ function DoctorWorkbenchInner() {
 
   // ---------------- MEDICAL HISTORY ----------------
 
-  const saveMedicalHistory = async (medical: string, surgical: string, treatment: string) => {
+  const saveMedicalHistory = async (medical: string, surgical: string, treatment: string, social: string) => {
     if (!selectedPatientId) return;
     if (historyTimerRef.current) { clearTimeout(historyTimerRef.current); historyTimerRef.current = null; }
     setIsSavingHistory(true);
@@ -939,6 +944,7 @@ function DoctorWorkbenchInner() {
           pastMedicalHistory: medical.trim() || null,
           pastSurgicalHistory: surgical.trim() || null,
           pastTreatmentHistory: treatment.trim() || null,
+          socialHistory: social.trim() || null,
         },
         doctorIdParam
       );
@@ -1975,9 +1981,9 @@ function DoctorWorkbenchInner() {
                         const v = e.target.value;
                         setPastMedicalHistory(v);
                         if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(v, pastSurgicalHistory, pastTreatmentHistory), 1200);
+                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(v, pastSurgicalHistory, pastTreatmentHistory, socialHistory), 1200);
                       }}
-                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
+                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, socialHistory)}
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -1990,9 +1996,9 @@ function DoctorWorkbenchInner() {
                         const v = e.target.value;
                         setPastSurgicalHistory(v);
                         if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, v, pastTreatmentHistory), 1200);
+                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, v, pastTreatmentHistory, socialHistory), 1200);
                       }}
-                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
+                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, socialHistory)}
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -2005,9 +2011,25 @@ function DoctorWorkbenchInner() {
                         const v = e.target.value;
                         setPastTreatmentHistory(v);
                         if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, v), 1200);
+                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, v, socialHistory), 1200);
                       }}
-                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory)}
+                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, socialHistory)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Social History</p>
+                    <textarea
+                      value={socialHistory}
+                      rows={3}
+                      className="w-full text-sm resize-y"
+                      placeholder="Smoking, alcohol, occupation, exercise…"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSocialHistory(v);
+                        if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, v), 1200);
+                      }}
+                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, socialHistory)}
                     />
                   </div>
                 </div>

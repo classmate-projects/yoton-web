@@ -211,7 +211,7 @@ export default function SearchableSelect({
         aria-expanded={open}
         className={`${
           className ||
-          "flex h-11 w-full items-center justify-between gap-1 px-3 text-left capitalize text-foreground transition-colors hover:bg-muted"
+          "flex h-10 w-full items-center justify-between gap-1 rounded-lg border border-border bg-background px-3 text-left capitalize text-foreground transition-colors hover:border-primary/60"
         } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
       >
         <span className={`truncate ${selected ? "" : "text-muted-foreground"}`}>

@@ -163,6 +163,41 @@ function FieldBlock({
     case "date":
     case "datetime": {
       const inputType = field.type === "datetime" ? "datetime-local" : field.type;
+      if (field.repeatable) {
+        const entries = Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+        const items = entries.length === 0 ? [""] : entries;
+        const update = (i: number, v: string) => { const n = [...items]; n[i] = v; onChange(n); };
+        const add = () => onChange([...items, ""]);
+        const remove = (i: number) => { const n = items.filter((_, idx) => idx !== i); onChange(n.length === 0 ? [""] : n); };
+        return (
+          <div style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
+            <FieldLabel field={field} abnormal={abnormal} />
+            {items.map((entry, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  type={inputType}
+                  disabled={disabled}
+                  placeholder={field.placeholder}
+                  value={entry}
+                  onChange={(e) => update(i, e.target.value)}
+                  className={`h-11 flex-1 text-base disabled:cursor-default disabled:opacity-100 disabled:bg-muted/40 ${className}`}
+                />
+                {!disabled && items.length > 1 && (
+                  <button type="button" onClick={() => remove(i)} className="shrink-0 text-muted-foreground hover:text-red-600">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+            {!disabled && (
+              <button type="button" onClick={add}
+                className="flex w-fit items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary">
+                <Plus size={14} /> Add
+              </button>
+            )}
+          </div>
+        );
+      }
       return (
         <label style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
           <FieldLabel field={field} abnormal={abnormal} />
@@ -179,7 +214,42 @@ function FieldBlock({
       );
     }
 
-    case "textarea":
+    case "textarea": {
+      if (field.repeatable) {
+        const entries = Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+        const items = entries.length === 0 ? [""] : entries;
+        const update = (i: number, v: string) => { const n = [...items]; n[i] = v; onChange(n); };
+        const add = () => onChange([...items, ""]);
+        const remove = (i: number) => { const n = items.filter((_, idx) => idx !== i); onChange(n.length === 0 ? [""] : n); };
+        return (
+          <div style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
+            <FieldLabel field={field} abnormal={abnormal} />
+            {items.map((entry, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <textarea
+                  disabled={disabled}
+                  placeholder={field.placeholder}
+                  rows={3}
+                  value={entry}
+                  onChange={(e) => update(i, e.target.value)}
+                  className={`flex-1 text-base disabled:cursor-default disabled:opacity-100 disabled:bg-muted/40 ${className}`}
+                />
+                {!disabled && items.length > 1 && (
+                  <button type="button" onClick={() => remove(i)} className="mt-1 shrink-0 text-muted-foreground hover:text-red-600">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+            {!disabled && (
+              <button type="button" onClick={add}
+                className="flex w-fit items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary">
+                <Plus size={14} /> Add
+              </button>
+            )}
+          </div>
+        );
+      }
       return (
         <label style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
           <FieldLabel field={field} abnormal={abnormal} />
@@ -194,8 +264,47 @@ function FieldBlock({
           />
         </label>
       );
+    }
 
-    case "dropdown":
+    case "dropdown": {
+      if (field.repeatable) {
+        const entries = Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+        const items = entries.length === 0 ? [""] : entries;
+        const update = (i: number, v: string) => { const n = [...items]; n[i] = v; onChange(n); };
+        const add = () => onChange([...items, ""]);
+        const remove = (i: number) => { const n = items.filter((_, idx) => idx !== i); onChange(n.length === 0 ? [""] : n); };
+        return (
+          <div style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
+            <FieldLabel field={field} abnormal={abnormal} />
+            {items.map((entry, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <select
+                  disabled={disabled}
+                  value={entry}
+                  onChange={(e) => update(i, e.target.value)}
+                  className={`h-11 flex-1 text-base disabled:cursor-default disabled:opacity-100 disabled:bg-muted/40 ${className}`}
+                >
+                  <option value="">Select...</option>
+                  {(field.options ?? []).map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+                {!disabled && items.length > 1 && (
+                  <button type="button" onClick={() => remove(i)} className="shrink-0 text-muted-foreground hover:text-red-600">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+            {!disabled && (
+              <button type="button" onClick={add}
+                className="flex w-fit items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary">
+                <Plus size={14} /> Add
+              </button>
+            )}
+          </div>
+        );
+      }
       return (
         <label style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
           <FieldLabel field={field} abnormal={abnormal} />
@@ -215,10 +324,11 @@ function FieldBlock({
           </select>
         </label>
       );
+    }
 
     case "radio":
       return (
-        <fieldset style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
+        <div role="group" style={style} className={`flex min-w-0 flex-col gap-1.5 ${abnormalClass}`}>
           <FieldLabel field={field} abnormal={abnormal} />
           <div className="flex flex-col gap-2">
             {(field.options ?? []).map((option) => (
@@ -236,7 +346,7 @@ function FieldBlock({
               </label>
             ))}
           </div>
-        </fieldset>
+        </div>
       );
 
     case "checkbox": {
@@ -246,7 +356,7 @@ function FieldBlock({
         onChange(next);
       };
       return (
-        <fieldset style={style} className={`flex flex-col gap-1.5 ${abnormalClass}`}>
+        <div role="group" style={style} className={`flex min-w-0 flex-col gap-1.5 ${abnormalClass}`}>
           <FieldLabel field={field} abnormal={abnormal} />
           <div className="flex flex-col gap-2">
             {(field.options ?? []).map((option) => (
@@ -262,7 +372,7 @@ function FieldBlock({
               </label>
             ))}
           </div>
-        </fieldset>
+        </div>
       );
     }
 
@@ -282,7 +392,7 @@ function FieldBlock({
       const removeRow = (rowIndex: number) => onChange(rows.filter((_, i) => i !== rowIndex));
 
       return (
-        <fieldset style={style} className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        <div role="group" style={style} className="flex min-w-0 flex-col gap-3 rounded-lg border border-border p-4">
           <FieldLabel field={field} />
           {rows.length === 0 && disabled && <p className="text-sm text-muted-foreground">None recorded.</p>}
           {rows.map((row, rowIndex) => (
@@ -317,7 +427,7 @@ function FieldBlock({
               <Plus size={14} /> Add row
             </button>
           )}
-        </fieldset>
+        </div>
       );
     }
 

@@ -376,6 +376,7 @@ export interface AdministerMedicationPayload {
   route?: string;
   remarks?: string;
   nurseId?: string;
+  nursePassword?: string;
   witnessUserId?: string;
   witnessPassword?: string;
 }

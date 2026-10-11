@@ -238,6 +238,7 @@ export interface PatientSummaryType {
   pastMedicalHistory: string | null;
   pastSurgicalHistory: string | null;
   pastTreatmentHistory: string | null;
+  socialHistory: string | null;
   chronicConditions: ChronicConditionType[];
   allergies: AllergyType[];
   familyHistory: FamilyHistoryType[];

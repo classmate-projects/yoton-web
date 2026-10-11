@@ -16,8 +16,12 @@ import {
 } from "@/types/emr.type";
 
 export const EmrService = {
-  getPatients: async (doctorId?: string, date?: string) => {
-    const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENTS(doctorId, date));
+  getDepartments: async () => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_DEPARTMENTS);
+    return data;
+  },
+  getPatients: async (doctorId?: string, date?: string, department?: string) => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENTS(doctorId, date, department));
     return data;
   },
   getPatientSummary: async (patientId: string, doctorId?: string, visitId?: string) => {
@@ -30,7 +34,7 @@ export const EmrService = {
   },
   updateMedicalHistory: async (
     patientId: string,
-    payload: { pastMedicalHistory: string | null; pastSurgicalHistory: string | null; pastTreatmentHistory: string | null },
+    payload: { pastMedicalHistory: string | null; pastSurgicalHistory: string | null; pastTreatmentHistory: string | null; socialHistory: string | null },
     doctorId?: string
   ) => {
     const { data } = await api.patch(ENDPOINTS.EMR.UPDATE_MEDICAL_HISTORY(patientId, doctorId), payload);

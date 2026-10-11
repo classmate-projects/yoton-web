@@ -93,6 +93,10 @@ export interface MedicalFormField {
   // preview (see ImageAnnotationCanvas's resize handle). Unset means natural size (capped to
   // its container's width).
   imageWidth?: number;
+  // When true, the end user can add multiple instances of this field at fill time without
+  // admin intervention. Only meaningful for input types: text, textarea, number, date,
+  // datetime, dropdown. Value stored as string[] (one entry per instance) instead of string.
+  repeatable?: boolean;
 }
 
 // The top-level field tree is an ordered list of rows, each holding 1+ fields rendered side
