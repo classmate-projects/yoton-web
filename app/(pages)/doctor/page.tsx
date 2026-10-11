@@ -1793,6 +1793,19 @@ function DoctorWorkbenchInner() {
 
                 {/* Badges */}
                 <div className="flex flex-col items-end gap-2 shrink-0">
+                  {/* Allergy indicator — click to re-open the allergy/alert modal */}
+                  {summary.allergies.length > 0 && (
+                    <button
+                      onClick={() => setPatientWarningModal({ allergies: summary.allergies, alertText: summary.patientAlert ?? "" })}
+                      className="flex items-center gap-1.5 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 px-3 py-1.5 text-xs font-semibold text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                    >
+                      <AlertTriangle size={13} />
+                      Known Allergies
+                      <span className="rounded-full bg-red-600 text-white px-1.5 py-0.5 text-[10px] font-bold">
+                        {summary.allergies.length}
+                      </span>
+                    </button>
+                  )}
                   {/* Documents button — always visible so doctors can access attachments at any time */}
                   <button
                     onClick={() => setShowDocumentsModal(true)}
@@ -1869,10 +1882,8 @@ function DoctorWorkbenchInner() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {/* Patient Alerts — doctor-authored flag that persists across all visits and
-                  is visible to all staff. Saved on blur so the doctor can type freely. */}
-              <div className="card px-5 py-4 border-l-4 border-l-red-500">
+            <div className="card px-5 py-4 border-l-4 border-l-red-500 flex flex-col gap-3">
+              <div>
                 <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide flex items-center gap-1.5 mb-2">
                   <AlertTriangle size={13} /> Patient Alerts
                 </p>
@@ -1894,108 +1905,22 @@ function DoctorWorkbenchInner() {
                 )}
               </div>
 
-              {/* Nurse Entries — this patient's nurse-recorded remarks/notes/examination,
-                  surfaced here instead of a separate Nurse Workbench module (removed from the
-                  doctor's sidebar - see helpers/sidebaritems.ts). Read-only, same data the
-                  nurse enters via NursingController.GetPatientChart. */}
-              <div className="card p-5 flex flex-col gap-4">
-                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <StickyNote size={16} className="text-primary" /> Nurse Entries
-                </h2>
-
-                {vitalsHistory.length === 0 && nurseSpecialRemarks.length === 0 && nurseNotes.length === 0 && nurseExaminationNotes.length === 0 && (
-                  <p className="text-sm text-muted-foreground italic">No nurse entries recorded for this patient yet.</p>
-                )}
-
-                {vitalsHistory.length > 0 && (
-                  <div className="flex flex-col gap-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <HeartPulse size={13} /> Vitals
-                    </p>
-                    <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
-                      {vitalsHistory.map((v, i) => (
-                        <div key={i} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${v.source === "Triage" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"}`}>
-                              {v.source}
-                            </span>
-                            <span className="text-xs text-muted-foreground">{v.recordedByName ?? "Nurse"} · {formatDateTime(v.recordedAt)}</span>
-                          </div>
-                          <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-                            {v.temperature != null && <span className="text-muted-foreground">Temp: <span className="font-semibold text-foreground">{v.temperature}°C</span></span>}
-                            {v.heartRate != null && <span className="text-muted-foreground">HR: <span className="font-semibold text-foreground">{v.heartRate} BPM</span></span>}
-                            {v.systolic != null && v.diastolic != null && <span className="text-muted-foreground">BP: <span className="font-semibold text-foreground">{v.systolic}/{v.diastolic} mmHg</span></span>}
-                            {v.respiratory != null && <span className="text-muted-foreground">Resp: <span className="font-semibold text-foreground">{v.respiratory} bpm</span></span>}
-                            {v.oxygenSaturation != null && <span className="text-muted-foreground">O2: <span className="font-semibold text-foreground">{v.oxygenSaturation}%</span></span>}
-                            {v.bloodSugar != null && <span className="text-muted-foreground">Sugar: <span className="font-semibold text-foreground">{v.bloodSugar} mmol/L</span></span>}
-                            {v.heightCm != null && <span className="text-muted-foreground">Ht: <span className="font-semibold text-foreground">{v.heightCm} cm</span></span>}
-                            {v.weightKg != null && <span className="text-muted-foreground">Wt: <span className="font-semibold text-foreground">{v.weightKg} kg</span></span>}
-                            {v.bmi != null && <span className="text-muted-foreground">BMI: <span className="font-semibold text-foreground">{v.bmi.toFixed(1)}</span></span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {vitalsHistory.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowVitalsHistory(true)}
-                        className="self-start text-xs font-semibold text-primary hover:underline flex items-center gap-1"
-                      >
-                        <History size={12} /> View trend graph
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {nurseSpecialRemarks.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <AlertTriangle size={13} /> Special Remarks
-                    </p>
+              {nurseSpecialRemarks.length > 0 && (
+                <div className="border-t border-border pt-3 flex flex-col gap-1.5">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <AlertTriangle size={13} /> Special Remarks
+                  </p>
+                  <div className="flex flex-wrap gap-2">
                     {nurseSpecialRemarks.map((r) => (
-                      <div key={r.specialRemarkId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
-                        <p className="text-foreground">
-                          <span className="font-semibold">{r.remarkType}:</span> {r.description}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">{formatDateTime(r.createdAt)}</p>
+                      <div key={r.specialRemarkId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 px-3 py-1.5 text-sm">
+                        <span className="font-semibold text-amber-800 dark:text-amber-300">{r.remarkType}:</span>{" "}
+                        <span className="text-foreground">{r.description}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{formatDateTime(r.createdAt)}</span>
                       </div>
                     ))}
                   </div>
-                )}
-
-                {nurseNotes.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <StickyNote size={13} /> Nurse Notes
-                    </p>
-                    {nurseNotes.map((n) => (
-                      <div key={n.nurseNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
-                        <div className="prose prose-sm max-w-none text-foreground" dangerouslySetInnerHTML={{ __html: n.contentHtml }} />
-                        <p className="text-xs text-muted-foreground mt-1">{n.nurseName ?? "Nurse"} · {formatDateTime(n.createdAt)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {nurseExaminationNotes.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <NotebookPen size={13} /> Examination Notes
-                    </p>
-                    {nurseExaminationNotes.map((e) => (
-                      <div key={e.examinationNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm flex flex-col gap-1">
-                        {e.generalAppearance && (
-                          <p><span className="font-semibold">General appearance:</span> {e.generalAppearance}</p>
-                        )}
-                        <p><span className="font-semibold">Pain level:</span> {e.painLevel}/10</p>
-                        {e.mobility && <p><span className="font-semibold">Mobility:</span> {e.mobility}</p>}
-                        {e.clinicalChecks && <p><span className="font-semibold">Clinical checks:</span> {e.clinicalChecks}</p>}
-                        <p className="text-xs text-muted-foreground mt-1">{e.nurseName ?? "Nurse"} · {formatDateTime(e.createdAt)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -2083,25 +2008,7 @@ function DoctorWorkbenchInner() {
               />
             </div>
 
-            {/* Drug allergy banner — summarizes what's already on file; the Allergies
-                section further down is where new ones get added. */}
-            {summary.allergies.length > 0 && (
-              <div className="rounded-lg border border-red-300 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 px-4 py-2.5 flex flex-wrap items-center gap-2 text-sm">
-                <AlertTriangle size={16} className="text-red-600 dark:text-red-400 shrink-0" />
-                <span className="font-bold text-red-700 dark:text-red-400">Drug Allergy:</span>
-                {summary.allergies.map((a) => (
-                  <span
-                    key={a.patientAllergyId}
-                    className="rounded-full bg-red-100 dark:bg-red-900/40 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:text-red-400"
-                  >
-                    {a.substance}
-                    {a.reaction ? ` — ${a.reaction}` : ""}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 flex flex-col gap-6">
                 {/* Chief complaint / examination notes / review of systems / clinical exam */}
                 <div className="card p-6 flex flex-col gap-4">
@@ -2533,53 +2440,63 @@ function DoctorWorkbenchInner() {
                   </h2>
                     <div className="flex flex-col gap-2">
                       {summary.allergies.length > 0 ? (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-xs border-collapse">
-                            <thead>
-                              <tr className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400">
-                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Category</th>
-                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Allergen</th>
-                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Severity</th>
-                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Reaction</th>
-                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Identified</th>
-                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900">Status</th>
-                                <th className="text-left px-2 py-1.5 font-semibold border border-red-200 dark:border-red-900 w-14"></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {summary.allergies.map((a) => (
-                                <tr key={a.patientAllergyId} className="group hover:bg-red-50/50 dark:hover:bg-red-950/10">
-                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50 text-foreground/80">{a.allergyCategory || "—"}</td>
-                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50 font-medium text-red-700 dark:text-red-400">{a.substance}</td>
-                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50">
-                                    {a.severity ? (
-                                      <span className={`inline-block rounded px-1.5 py-0.5 font-medium ${
-                                        a.severity === "Life-threatening" ? "bg-red-200 dark:bg-red-900 text-red-800 dark:text-red-200" :
-                                        a.severity === "Severe" ? "bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300" :
-                                        a.severity === "Moderate" ? "bg-yellow-100 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300" :
-                                        "bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300"
-                                      }`}>{a.severity}</span>
-                                    ) : "—"}
-                                  </td>
-                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50 text-foreground/80">{a.reaction || "—"}</td>
-                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50 text-foreground/80">{a.identifiedDate || "—"}</td>
-                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50 text-foreground/80">{a.status || "Active"}</td>
-                                  <td className="px-2 py-1.5 border border-red-100 dark:border-red-900/50">
-                                    <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
-                                        <Pencil size={11} />
-                                      </button>
-                                      <button onClick={() => removeAllergy(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
-                                        <Trash2 size={11} />
-                                      </button>
-                                    </span>
-                                  </td>
+                        <div className="flex flex-col gap-2">
+                          <div className="overflow-x-auto rounded-xl border border-red-200 dark:border-red-900/60">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400">
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Category</th>
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Allergen</th>
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Severity</th>
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Reaction</th>
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Identified</th>
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Status</th>
+                                  <th className="w-14 px-4 py-3"></th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody className="divide-y divide-red-100 dark:divide-red-900/40">
+                                {summary.allergies.map((a) => (
+                                  <tr key={a.patientAllergyId} className="group bg-card hover:bg-red-50/60 dark:hover:bg-red-950/20 transition-colors">
+                                    <td className="px-4 py-3 text-foreground/70">{a.allergyCategory || "—"}</td>
+                                    <td className="px-4 py-3">
+                                      <span className="font-semibold text-red-700 dark:text-red-400">{a.substance}</span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {a.severity ? (
+                                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                                          a.severity === "Life-threatening" ? "bg-red-100 dark:bg-red-900/60 text-red-800 dark:text-red-200" :
+                                          a.severity === "Severe"           ? "bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300" :
+                                          a.severity === "Moderate"         ? "bg-yellow-100 dark:bg-yellow-950/60 text-yellow-700 dark:text-yellow-300" :
+                                                                              "bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300"
+                                        }`}>{a.severity}</span>
+                                      ) : <span className="text-muted-foreground">—</span>}
+                                    </td>
+                                    <td className="px-4 py-3 text-foreground/70">{a.reaction || "—"}</td>
+                                    <td className="px-4 py-3 text-foreground/70">{a.identifiedDate || "—"}</td>
+                                    <td className="px-4 py-3">
+                                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                                        a.status === "Resolved" ? "bg-muted text-muted-foreground" :
+                                        a.status === "Inactive" ? "bg-muted text-muted-foreground" :
+                                        "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300"
+                                      }`}>{a.status || "Active"}</span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => startEditAllergy(a)} title="Correct" className="rounded-full p-1 hover:bg-red-100 dark:hover:bg-red-900/40 text-muted-foreground hover:text-foreground">
+                                          <Pencil size={12} />
+                                        </button>
+                                        <button onClick={() => removeAllergy(a)} title="Delete" className="rounded-full p-1 hover:bg-red-100 dark:hover:bg-red-900/40 text-muted-foreground hover:text-red-600">
+                                          <Trash2 size={12} />
+                                        </button>
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                           {summary.allergies.some((a) => a.correctedFrom) && (
-                            <div className="mt-1 flex flex-col gap-0.5">
+                            <div className="flex flex-col gap-0.5">
                               {summary.allergies.filter((a) => a.correctedFrom).map((a) => (
                                 <CorrectedFromNote key={a.patientAllergyId}>
                                   <p>Previous ({a.substance}): {a.correctedFrom!.substance}{a.correctedFrom!.reaction ? ` · reaction: ${a.correctedFrom!.reaction}` : ""}</p>

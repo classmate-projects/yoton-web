@@ -1098,10 +1098,44 @@ function NurseWorkbenchInner() {
     }
   };
 
+  // Generic admin-password confirmation modal used by every guarded delete below.
+  const [adminDeleteModal, setAdminDeleteModal] = useState<{
+    recordedBy: string;
+    onConfirm: (pw: string) => Promise<boolean>;
+    password: string;
+    submitting: boolean;
+  } | null>(null);
+
+  // Shared guard applied to every delete action in the workbench:
+  //  - A nurse who didn't enter the record sees an info toast and is blocked.
+  //  - Admin always gets a password-confirmation modal before the delete goes through.
+  //  - The owner nurse gets the standard quick-confirm toast.
+  const guardedDelete = (
+    ownerId: string | null | undefined,
+    ownerName: string | null | undefined,
+    onOwnerConfirm: () => void,
+    onAdminConfirm: (pw: string) => Promise<boolean>
+  ) => {
+    if (!isAdmin && ownerId && ownerId !== currentUserId) {
+      toast.info(
+        `This record was entered by ${ownerName ?? "another nurse"}. Please ask them or an admin to remove it.`,
+        { duration: 6000 }
+      );
+      return;
+    }
+    if (isAdmin) {
+      setAdminDeleteModal({ recordedBy: ownerName ?? "a nurse", onConfirm: onAdminConfirm, password: "", submitting: false });
+      return;
+    }
+    onOwnerConfirm();
+  };
+
   const confirmRemoveVitals = (v: VitalsType) => {
-    confirmDeleteToast(
-      <span>Delete this vitals record?</span>,
-      () => removeVitalsRecord(v)
+    guardedDelete(
+      v.nurseId,
+      v.nurseName,
+      () => confirmDeleteToast(<span>Delete this vitals record?</span>, () => removeVitalsRecord(v)),
+      (pw) => removeVitalsRecord(v, pw)
     );
   };
 
@@ -1192,7 +1226,12 @@ function NurseWorkbenchInner() {
   };
 
   const confirmRemoveInjection = (i: InjectionType) => {
-    confirmDeleteToast(<span>Delete this medication administration record?</span>, () => removeInjectionRecord(i));
+    guardedDelete(
+      i.nurseId,
+      i.nurseName,
+      () => confirmDeleteToast(<span>Delete this medication administration record?</span>, () => removeInjectionRecord(i)),
+      (pw) => removeInjectionRecord(i, pw)
+    );
   };
 
   // ---------------- WOUND CARE FORM ----------------
@@ -1257,15 +1296,24 @@ function NurseWorkbenchInner() {
   };
 
   const removeDressingRecord = (d: DressingType) => {
-    confirmDeleteToast(<span>Delete this wound care entry?</span>, async () => {
+    const task = chart?.tasks.find(t => t.nursingTaskId === d.nursingTaskId);
+    const doDelete = async (): Promise<boolean> => {
       try {
         await NursingService.removeDressing(d.dressingTaskId);
         toast.success("Wound care entry removed");
         await refreshChart();
+        return true;
       } catch (error) {
         toast.error(errorMessage(error, "Failed to remove wound care entry"));
+        return false;
       }
-    });
+    };
+    guardedDelete(
+      task?.nurseId,
+      task?.nurseName,
+      () => confirmDeleteToast(<span>Delete this wound care entry?</span>, doDelete),
+      (_pw) => doDelete()
+    );
   };
 
   // ---------------- BLOOD SUGAR FORM ----------------
@@ -1359,15 +1407,24 @@ function NurseWorkbenchInner() {
   };
 
   const removeSugarRecord = (b: BloodSugarType) => {
-    confirmDeleteToast(<span>Delete this blood sugar reading?</span>, async () => {
+    const task = chart?.tasks.find(t => t.nursingTaskId === b.nursingTaskId);
+    const doDelete = async (): Promise<boolean> => {
       try {
         await NursingService.removeBloodSugar(b.bloodSugarTaskId);
         toast.success("Blood sugar reading removed");
         await refreshChart();
+        return true;
       } catch (error) {
         toast.error(errorMessage(error, "Failed to remove blood sugar reading"));
+        return false;
       }
-    });
+    };
+    guardedDelete(
+      task?.nurseId,
+      task?.nurseName,
+      () => confirmDeleteToast(<span>Delete this blood sugar reading?</span>, doDelete),
+      (_pw) => doDelete()
+    );
   };
 
   // ---------------- IV FLUIDS FORM ----------------
@@ -1427,15 +1484,24 @@ function NurseWorkbenchInner() {
   };
 
   const removeIvRecord = (f: IVFluidsType) => {
-    confirmDeleteToast(<span>Delete this IV fluids entry?</span>, async () => {
+    const task = chart?.tasks.find(t => t.nursingTaskId === f.nursingTaskId);
+    const doDelete = async (): Promise<boolean> => {
       try {
         await NursingService.removeIVFluids(f.ivFluidsTaskId);
         toast.success("IV fluids entry removed");
         await refreshChart();
+        return true;
       } catch (error) {
         toast.error(errorMessage(error, "Failed to remove IV fluids entry"));
+        return false;
       }
-    });
+    };
+    guardedDelete(
+      task?.nurseId,
+      task?.nurseName,
+      () => confirmDeleteToast(<span>Delete this IV fluids entry?</span>, doDelete),
+      (_pw) => doDelete()
+    );
   };
 
   // ---------------- ALLERGY FORM ----------------
@@ -1616,15 +1682,23 @@ function NurseWorkbenchInner() {
   };
 
   const removeSpecialRemark = (r: SpecialRemarkType) => {
-    confirmDeleteToast(<span>Delete this special remark?</span>, async () => {
+    const doDelete = async (): Promise<boolean> => {
       try {
         await NursingService.removeSpecialRemark(r.specialRemarkId);
         toast.success("Special remark removed");
         await refreshChart();
+        return true;
       } catch (error) {
         toast.error(errorMessage(error, "Failed to remove special remark"));
+        return false;
       }
-    });
+    };
+    guardedDelete(
+      r.recordedByUserId,
+      null,
+      () => confirmDeleteToast(<span>Delete this special remark?</span>, doDelete),
+      (_pw) => doDelete()
+    );
   };
 
   // ---------------- NURSE NOTES (rich text + confidential toggle) ----------------
@@ -1688,15 +1762,23 @@ function NurseWorkbenchInner() {
   };
 
   const removeNurseNote = (n: NurseNoteType) => {
-    confirmDeleteToast(<span>Delete this nurse note?</span>, async () => {
+    const doDelete = async (): Promise<boolean> => {
       try {
         await NursingService.removeNote(n.nurseNoteId);
         toast.success("Nurse note removed");
         await refreshChart();
+        return true;
       } catch (error) {
         toast.error(errorMessage(error, "Failed to remove note"));
+        return false;
       }
-    });
+    };
+    guardedDelete(
+      n.nurseId,
+      n.nurseName,
+      () => confirmDeleteToast(<span>Delete this nurse note?</span>, doDelete),
+      (_pw) => doDelete()
+    );
   };
 
   // ---------------- TREATMENTS (doctor-ordered; nurse Starts, Marks Done, or Reverts a
@@ -3326,6 +3408,61 @@ function NurseWorkbenchInner() {
                   className="w-full bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-semibold py-2.5 rounded-lg transition-colors"
                 >
                   {submittingEncounterLock ? "Verifying..." : "Confirm & Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Admin delete confirmation — requires password before an admin removes any nurse's record */}
+        {adminDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+            <div className="card w-full max-w-sm rounded-xl border border-border p-6 shadow-2xl mx-4">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle size={18} className="text-destructive shrink-0" />
+                <h2 className="text-lg font-semibold text-foreground">Confirm Deletion</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mt-1 mb-1">
+                This record was entered by <span className="font-semibold text-foreground">{adminDeleteModal.recordedBy}</span>.
+              </p>
+              <p className="text-sm text-muted-foreground mb-4">
+                Enter your admin password to confirm this deletion.
+              </p>
+              <PasswordInput
+                autoFocus
+                autoComplete="new-password"
+                value={adminDeleteModal.password}
+                onChange={(e) => setAdminDeleteModal((m) => m ? { ...m, password: e.target.value } : m)}
+                onKeyDown={async (e) => {
+                  if (e.key === "Enter" && adminDeleteModal.password.trim()) {
+                    setAdminDeleteModal((m) => m ? { ...m, submitting: true } : m);
+                    const ok = await adminDeleteModal.onConfirm(adminDeleteModal.password);
+                    if (ok) setAdminDeleteModal(null);
+                    else setAdminDeleteModal((m) => m ? { ...m, submitting: false } : m);
+                  }
+                }}
+                placeholder="Your admin password"
+              />
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setAdminDeleteModal(null)}
+                  className="w-1/3 border border-border text-muted-foreground font-semibold py-2.5 rounded-lg hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={adminDeleteModal.submitting || !adminDeleteModal.password.trim()}
+                  onClick={async () => {
+                    setAdminDeleteModal((m) => m ? { ...m, submitting: true } : m);
+                    const ok = await adminDeleteModal.onConfirm(adminDeleteModal.password);
+                    if (ok) setAdminDeleteModal(null);
+                    else setAdminDeleteModal((m) => m ? { ...m, submitting: false } : m);
+                  }}
+                  className="w-full bg-destructive hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg transition-colors"
+                >
+                  {adminDeleteModal.submitting ? "Deleting..." : "Confirm Delete"}
                 </button>
               </div>
             </div>

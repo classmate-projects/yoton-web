@@ -106,6 +106,7 @@ export interface SpecialRemarkType {
   remarkType: string;
   description: string;
   recordedByRole: string | null;
+  recordedByUserId?: string | null;
   createdAt: string;
 }
 
