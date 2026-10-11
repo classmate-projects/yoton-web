@@ -2019,6 +2019,33 @@ function NurseWorkbenchInner() {
                 </div>
               </div>
 
+              {/* Latest Vitals — compact strip in the header */}
+              {chart && chart.vitals.length > 0 && (() => {
+                const lv = chart.vitals[0];
+                return (
+                  <div className="border-t border-border/50 pt-3 mt-1 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm">
+                    <span className="flex items-center gap-1.5 font-semibold text-foreground/90 shrink-0">
+                      <HeartPulse size={15} className="text-primary" /> Latest Vitals
+                      <span className="font-normal text-xs text-muted-foreground">({formatDateTime(lv.recordedAt)})</span>
+                    </span>
+                    {[
+                      ["Height", lv.heightCm ? `${lv.heightCm} cm` : null],
+                      ["Weight", lv.weightKg ? `${lv.weightKg} kg` : null],
+                      ["BMI", lv.bmi ? lv.bmi.toFixed(1) : null],
+                      ["Temp", lv.temperature ? `${lv.temperature}°C` : null],
+                      ["HR", lv.heartRate ? `${lv.heartRate} BPM` : null],
+                      ["B.P", lv.systolic && lv.diastolic ? `${lv.systolic}/${lv.diastolic} mmHg` : null],
+                      ["Resp", lv.respiratoryRate ? `${lv.respiratoryRate} bpm` : null],
+                      ["O2 Sat", lv.oxygenSaturation ? `${lv.oxygenSaturation}%` : null],
+                    ].filter(([, v]) => v).map(([label, value]) => (
+                      <span key={label} className="text-muted-foreground">
+                        {label}: <span className="font-semibold text-foreground">{value}</span>
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Medical History - read-only here; only the doctor workbench can edit it
                   (EmrController.UpdateMedicalHistory is doctor/admin-only). Always shown,
                   not gated on having data (unlike allergies/remarks above), so the section

@@ -1831,6 +1831,42 @@ function DoctorWorkbenchInner() {
                   )}
                 </div>
               </div>
+
+              {/* Latest Vitals — compact strip inside the header card */}
+              {latestVitals && (
+                <div className="border-t border-border/50 pt-3 mt-1 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm">
+                  <span className="flex items-center gap-1.5 font-semibold text-foreground/90 shrink-0">
+                    <HeartPulse size={15} className="text-primary" /> Latest Vitals
+                    <span className="font-normal text-xs text-muted-foreground">
+                      ({latestVitals.source === "Triage" ? "Triage" : "Nursing"} · {formatDateTime(latestVitals.recordedAt)})
+                    </span>
+                  </span>
+                  {[
+                    ["Height", latestVitals.heightCm ? `${latestVitals.heightCm} cm` : null],
+                    ["Weight", latestVitals.weightKg ? `${latestVitals.weightKg} kg` : null],
+                    ["BMI", latestVitals.bmi ? latestVitals.bmi.toFixed(1) : null],
+                    ["Temp", latestVitals.temperature ? `${latestVitals.temperature}°C` : null],
+                    ["HR", latestVitals.heartRate ? `${latestVitals.heartRate} BPM` : null],
+                    ["B.P", latestVitals.systolic && latestVitals.diastolic ? `${latestVitals.systolic}/${latestVitals.diastolic} mmHg` : null],
+                    ["B.P (M)", latestVitals.systolic && latestVitals.diastolic ? `${Math.round(latestVitals.diastolic + (latestVitals.systolic - latestVitals.diastolic) / 3)} mmHg` : null],
+                    ["Resp", latestVitals.respiratory ? `${latestVitals.respiratory} bpm` : null],
+                    ["O2 Sat", latestVitals.oxygenSaturation ? `${latestVitals.oxygenSaturation}%` : null],
+                    ["Blood sugar", latestVitals.bloodSugar ? `${latestVitals.bloodSugar} mmol/L` : null],
+                  ].filter(([, v]) => v).map(([label, value]) => (
+                    <span key={label} className="text-muted-foreground">
+                      {label}: <span className="font-semibold text-foreground">{value}</span>
+                    </span>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setShowVitalsHistory(true)}
+                    title="View vitals history"
+                    className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline cursor-pointer shrink-0"
+                  >
+                    <History size={14} /> History
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -2046,57 +2082,6 @@ function DoctorWorkbenchInner() {
                 onSaved={async () => { await fetchSummary(selectedPatientId); }}
               />
             </div>
-
-            {/* Latest Vitals — merged from Triage (nurse's intake reading) and VitalsRecord
-                (nurse's ongoing readings), read-only here so the doctor has it in view while
-                prescribing/ordering without leaving the workbench. History icon opens the
-                full timeline + trend graph (see the modal below). */}
-            {latestVitals && (
-              <div className="card px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-                <span className="flex items-center gap-1.5 font-semibold text-foreground/90">
-                  <HeartPulse size={16} className="text-primary" /> Latest Vitals
-                  <span className="font-normal text-xs text-muted-foreground">
-                    ({latestVitals.source === "Triage" ? "Triage" : "Nursing"} · {formatDateTime(latestVitals.recordedAt)})
-                  </span>
-                </span>
-                {[
-                  ["Height", latestVitals.heightCm ? `${latestVitals.heightCm} cm` : null],
-                  ["Weight", latestVitals.weightKg ? `${latestVitals.weightKg} kg` : null],
-                  ["BMI", latestVitals.bmi ? latestVitals.bmi.toFixed(1) : null],
-                  ["Temp", latestVitals.temperature ? `${latestVitals.temperature}°C` : null],
-                  ["Heart rate", latestVitals.heartRate ? `${latestVitals.heartRate} BPM` : null],
-                  [
-                    "B.P",
-                    latestVitals.systolic && latestVitals.diastolic
-                      ? `${latestVitals.systolic}/${latestVitals.diastolic} mmHg`
-                      : null,
-                  ],
-                  [
-                    "B.P (M)",
-                    latestVitals.systolic && latestVitals.diastolic
-                      ? `${Math.round(latestVitals.diastolic + (latestVitals.systolic - latestVitals.diastolic) / 3)} mmHg`
-                      : null,
-                  ],
-                  ["Respiratory", latestVitals.respiratory ? `${latestVitals.respiratory} bpm` : null],
-                  ["O2 Sat", latestVitals.oxygenSaturation ? `${latestVitals.oxygenSaturation}%` : null],
-                  ["Blood sugar", latestVitals.bloodSugar ? `${latestVitals.bloodSugar} mmol/L` : null],
-                ]
-                  .filter(([, value]) => value)
-                  .map(([label, value]) => (
-                    <span key={label} className="text-muted-foreground">
-                      {label}: <span className="font-semibold text-foreground">{value}</span>
-                    </span>
-                  ))}
-                <button
-                  type="button"
-                  onClick={() => setShowVitalsHistory(true)}
-                  title="View vitals history"
-                  className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline cursor-pointer"
-                >
-                  <History size={14} /> History
-                </button>
-              </div>
-            )}
 
             {/* Drug allergy banner — summarizes what's already on file; the Allergies
                 section further down is where new ones get added. */}
