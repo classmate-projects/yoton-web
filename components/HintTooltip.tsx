@@ -40,11 +40,11 @@ export default function HintTooltip({ text }: HintTooltipProps) {
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="fixed z-[9999] w-56 -translate-x-1/2 -translate-y-full rounded-lg border border-border bg-popover px-2.5 py-2 text-xs text-muted-foreground shadow-md pointer-events-none"
+            className="fixed z-[9999] w-56 -translate-x-1/2 -translate-y-full rounded-lg bg-gray-800 dark:bg-gray-900 px-2.5 py-2 text-xs text-white shadow-xl pointer-events-none"
             style={{ top: coords.top, left: coords.left }}
           >
             {text}
-            <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-border" />
+            <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-800 dark:border-t-gray-900" />
           </div>,
           document.body
         )}
