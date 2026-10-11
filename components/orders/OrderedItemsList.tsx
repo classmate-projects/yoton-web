@@ -16,8 +16,8 @@ interface OrderedItemsListProps {
   onOpenRadiology: (item: RadiologyRequestType) => void;
   onOpenTreatment: (item: TreatmentType) => void;
   emptyMessage?: string;
-  // Picture for the empty state - e.g. "lab" where only investigations are listed.
   emptyIllustration?: IllustrationName;
+  itemClassName?: string;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -46,6 +46,7 @@ export default function OrderedItemsList({
   onOpenTreatment,
   emptyMessage = "Nothing ordered yet",
   emptyIllustration = "clipboard",
+  itemClassName,
 }: OrderedItemsListProps) {
   const isEmpty = labRequests.length === 0 && radiologyRequests.length === 0 && treatments.length === 0;
   if (isEmpty) return <EmptyState size="compact" illustration={emptyIllustration} title={emptyMessage} />;
@@ -61,6 +62,7 @@ export default function OrderedItemsList({
               status={l.status}
               locked={l.locked}
               onOpen={() => onOpenLab(l)}
+              className={itemClassName}
             />
           ))}
         </OrderGroup>
@@ -74,6 +76,7 @@ export default function OrderedItemsList({
               status={r.status}
               locked={r.locked}
               onOpen={() => onOpenRadiology(r)}
+              className={itemClassName}
             />
           ))}
         </OrderGroup>
@@ -87,6 +90,7 @@ export default function OrderedItemsList({
               status={t.status}
               locked={t.locked}
               onOpen={() => onOpenTreatment(t)}
+              className={itemClassName}
               badges={[
                 ...(t.isPackage ? [{ text: "Package", className: "bg-blue-100 text-blue-700" }] : []),
                 ...(t.isBillingPending ? [{ text: "Billing pending", className: "bg-purple-100 text-purple-700" }] : []),
@@ -116,15 +120,17 @@ function OrderRow({
   locked,
   onOpen,
   badges = [],
+  className,
 }: {
   name: string;
   status: string;
   locked?: boolean;
   onOpen: () => void;
   badges?: { text: string; className: string }[];
+  className?: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+    <div className={`flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm${className ? ` ${className}` : ""}`}>
       <div className="min-w-0">
         <p className="truncate font-medium text-foreground">{name}</p>
         {badges.length > 0 && (

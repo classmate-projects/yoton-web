@@ -19,6 +19,9 @@ import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
 import { useSessionRevokedListener } from "@/hooks/useSessionRevokedListener";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { matchRoute, isRouteAllowed, getHomeRoute } from "@/lib/routeAccess";
+import { CurrentEncounterProvider } from "@/lib/currentEncounterContext";
+import OrderSetPanel from "@/components/orderSet/OrderSetPanel";
+import { ClipboardList } from "lucide-react";
 
 export default function PageLayout({
   children,
@@ -37,6 +40,8 @@ export default function PageLayout({
   // the off-canvas Sidebar and the Sidebar closes itself on navigation.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showCheckInPrompt, setShowCheckInPrompt] = useState(false);
+  const [showOrderSets, setShowOrderSets] = useState(false);
+  const [isDoctor, setIsDoctor] = useState(false);
 
   // null = still checking, so we never flash a page the role can't see (or
   // bounce off the redirect target) before the check lands.
@@ -63,6 +68,7 @@ export default function PageLayout({
       }
 
       setHomeRoute(getHomeRoute(role, allowedModules));
+      setIsDoctor(role === "admin" || allowedModules.includes("/doctor"));
 
       const match = matchRoute(pathname);
 
@@ -120,6 +126,7 @@ export default function PageLayout({
   }
 
   return (
+    <CurrentEncounterProvider>
     <div className="h-screen flex flex-row overflow-hidden">
       <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
       <div className="flex-1 min-w-0 flex flex-col min-h-0">
@@ -139,6 +146,17 @@ export default function PageLayout({
             <DailyStatsBar variant="inline" />
             <div className="flex-1" />
             <AutoSaveIndicator />
+            {isDoctor && (
+              <button
+                type="button"
+                onClick={() => setShowOrderSets(true)}
+                title="Order Sets"
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/60 hover:text-primary"
+              >
+                <ClipboardList size={15} />
+                <span className="hidden sm:inline">Order Sets</span>
+              </button>
+            )}
             <CheckInHeaderWidget />
           </header>
         {/* outline-none: Chromium makes scroll containers focusable, and Next.js moves focus
@@ -158,6 +176,8 @@ export default function PageLayout({
       {warningSecondsLeft !== null && (
         <SessionTimeoutModal secondsLeft={warningSecondsLeft} onStayLoggedIn={stayLoggedIn} />
       )}
+      {showOrderSets && <OrderSetPanel onClose={() => setShowOrderSets(false)} />}
     </div>
+    </CurrentEncounterProvider>
   );
 }

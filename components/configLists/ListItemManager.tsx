@@ -46,7 +46,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   const [form, setForm] = useState({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isProcedure = listType === "Procedure";
-  const columnCount = isProcedure ? 8 : 5;
+  const columnCount = isProcedure ? 7 : 4;
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
@@ -501,13 +501,6 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
             onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
             className="h-10 text-sm"
           />
-          <input
-            type="number"
-            placeholder="Sort order"
-            value={form.sortOrder}
-            onChange={(e) => setForm((p) => ({ ...p, sortOrder: e.target.value }))}
-            className="h-10 text-sm"
-          />
           {isProcedure && (
             <>
               <input
@@ -686,7 +679,6 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
               {isProcedure && <th>Department</th>}
               {isProcedure && <th>Category</th>}
               {isProcedure && <th>Cash Price</th>}
-              <th>Sort Order</th>
               <th className="text-center">Active</th>
               <th className="text-center">Action</th>
             </tr>
@@ -753,14 +745,6 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                         />
                       </td>
                     )}
-                    <td>
-                      <input
-                        type="number"
-                        value={editForm.sortOrder}
-                        onChange={(e) => setEditForm((p) => ({ ...p, sortOrder: e.target.value }))}
-                        className="h-9 text-sm w-20"
-                      />
-                    </td>
                     <td className="text-center text-muted-foreground text-xs">—</td>
                     <td className="text-center">
                       <div className="flex justify-center items-center gap-2">
@@ -800,7 +784,6 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                       </td>
                     )}
                     {isProcedure && <td>{item.cashPrice != null ? item.cashPrice : "—"}</td>}
-                    <td>{item.sortOrder}</td>
                     <td className="text-center">
                       <div className="flex justify-center">
                         <ToggleButton checked={item.isActive} onChange={() => toggleActive(item)} />

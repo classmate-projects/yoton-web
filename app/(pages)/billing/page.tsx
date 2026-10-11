@@ -68,6 +68,10 @@ function BillingPageInner() {
   const [isLoadingChargeable, setIsLoadingChargeable] = useState(false);
   const [addingSourceId, setAddingSourceId] = useState<string | null>(null);
 
+  // The signed-in user's personal billing discount limit (set by admin in User Management).
+  // Null means no personal cap.
+  const [userDiscountPercent, setUserDiscountPercent] = useState<number | null>(null);
+
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
@@ -77,6 +81,7 @@ function BillingPageInner() {
       router.replace("/");
       return;
     }
+    setUserDiscountPercent(detail.userDiscountPercent ?? null);
     setCheckedAuth(true);
   }, [router]);
 
@@ -210,6 +215,15 @@ function BillingPageInner() {
     if (!selectedPatient) {
       toast.warning("Please select a patient");
       return;
+    }
+
+    // Client-side discount privilege check when chargeable items give us a gross total.
+    if (userDiscountPercent !== null && chargeableItems.length > 0) {
+      const grossTotal = chargeableItems.reduce((sum, i) => sum + (i.suggestedAmount ?? 0), 0);
+      if (grossTotal > 0 && discount > grossTotal * userDiscountPercent / 100) {
+        toast.error(`You have only ${userDiscountPercent}% billing discount privilege.`);
+        return;
+      }
     }
 
     notifySaveStatus("saving");
@@ -482,7 +496,12 @@ function BillingPageInner() {
 
               <div className="flex gap-4">
                 <div className="w-full">
-                  <label className="text-sm font-bold text-foreground/90">Discount</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-foreground/90">Discount</label>
+                    {userDiscountPercent !== null && (
+                      <span className="text-xs text-muted-foreground">Your limit: {userDiscountPercent}%</span>
+                    )}
+                  </div>
                   <input
                     type="number"
                     min={0}

@@ -33,6 +33,10 @@ export interface CurrentUserDetail {
     // pulses until the user checks in and the daily prompt cannot be dismissed without
     // checking in. Absent/false means check-in is optional.
     staffCheckInRequired?: boolean;
+    // This user's own personal billing discount limit (%), set by the admin in User Management.
+    // Null means no personal cap. Stored here so the billing page can validate without an
+    // extra API call — populated from the login/Me response field userDiscountPercent.
+    userDiscountPercent?: number | null;
 }
 
 export interface UserType {
@@ -63,6 +67,7 @@ export interface UserCreateType {
     // branch exists - see UserController's branch validation.
     branchId?: string;
     hireDate?: string;
+    maxDiscountPercent?: number | null;
 }
 
 
@@ -80,6 +85,7 @@ export interface UserUpdateType {
     hireDate?: string;
     // Only rehashed/applied server-side when non-empty - leave unset to keep the current password.
     password?: string;
+    maxDiscountPercent?: number | null;
 }
 
 export interface TerminateUserPayload {

@@ -131,7 +131,13 @@ export const ENDPOINTS = {
             const qs = p.toString();
             return `/api/emr/patients${qs ? `?${qs}` : ""}`;
         },
-        GET_PATIENT_SUMMARY: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        GET_PATIENT_SUMMARY: (patientId: string, doctorId?: string, visitId?: string) => {
+            const qs = new URLSearchParams();
+            if (doctorId) qs.set("doctorId", doctorId);
+            if (visitId) qs.set("visitId", visitId);
+            const s = qs.toString();
+            return `/api/emr/patient/${patientId}/summary${s ? `?${s}` : ""}`;
+        },
         UPDATE_PATIENT_ALERT: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/alert${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPDATE_MEDICAL_HISTORY: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/medical-history${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_INSURANCE_COVERAGE: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/insurance-coverage${doctorId ? `?doctorId=${doctorId}` : ""}`,
@@ -140,7 +146,13 @@ export const ENDPOINTS = {
         GET_ACTIVE_CASES: (doctorId?: string) => `/api/emr/active-cases${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPSERT_ENCOUNTER: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/encounter${doctorId ? `?doctorId=${doctorId}` : ""}`,
         FINISH_ENCOUNTER: (encounterId: string, doctorId?: string) => `/api/emr/encounter/${encounterId}/finish${doctorId ? `?doctorId=${doctorId}` : ""}`,
-        RELEASE_VISIT: (visitId: string, doctorId?: string) => `/api/emr/visit/${visitId}/release${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        RELEASE_VISIT: (visitId: string, doctorId?: string, password?: string) => {
+          const params = new URLSearchParams();
+          if (doctorId) params.set("doctorId", doctorId);
+          if (password) params.set("password", password);
+          const qs = params.toString();
+          return `/api/emr/visit/${visitId}/release${qs ? `?${qs}` : ""}`;
+        },
         ADD_CHRONIC_CONDITION: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/chronic-condition${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPDATE_CHRONIC_CONDITION: (chronicConditionId: string, doctorId?: string) => `/api/emr/chronic-condition/${chronicConditionId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
         REMOVE_CHRONIC_CONDITION: (chronicConditionId: string, doctorId?: string) => `/api/emr/chronic-condition/${chronicConditionId}${doctorId ? `?doctorId=${doctorId}` : ""}`,

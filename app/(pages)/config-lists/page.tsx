@@ -10,7 +10,7 @@ import { ConfigListType } from "@/types/configList.type";
 // Medicine catalog is its own dedicated model (see PharmacyController) - but it's curated
 // here, admin-only, for the same reason Procedure's bulk upload lives here: catalog curation
 // is an admin/IT job, distinct from Pharmacy's day-to-day stock/dispensing work.
-type TabValue = ConfigListType | "Medication";
+type TabValue = ConfigListType | "Medication" | "FamilyHistory";
 
 const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
   {
@@ -33,8 +33,7 @@ const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
   { value: "InsuranceProvider", label: "Insurance Provider", hint: "Selectable at patient registration when Payment Type is Insurance or Corporate" },
   { value: "DrugType", label: "Drug Type", hint: "Tablet, Syrup, Injection, Cream — selectable when prescribing on the doctor workbench" },
   { value: "CancerSite", label: "Cancer Site", hint: "Selectable on an urgent suspected-cancer referral in the doctor workbench" },
-  { value: "FamilyRelation", label: "Family History - Relation", hint: "The \"Relation\" dropdown on the Family History section (doctor and nurse workbenches) - e.g. Father, Mother, Sibling" },
-  { value: "FamilyHistoryCondition", label: "Family History - Condition", hint: "The \"History\" dropdown on the Family History section (doctor and nurse workbenches) - the condition recorded against that relative" },
+  { value: "FamilyHistory", label: "Family History", hint: "The Relation and Condition dropdowns on the Family History section (doctor and nurse workbenches) — managed together here." },
 ];
 
 export default function ConfigListsPage() {
@@ -74,6 +73,11 @@ export default function ConfigListsPage() {
 
       {listType === "Medication" ? (
         <MedicineCatalogManager key={listType} />
+      ) : listType === "FamilyHistory" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <ListItemManager listType="FamilyRelation" itemLabel="Relation" />
+          <ListItemManager listType="FamilyHistoryCondition" itemLabel="Condition" />
+        </div>
       ) : (
         <ListItemManager key={listType} listType={listType} itemLabel={activeType.label} />
       )}

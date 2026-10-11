@@ -42,6 +42,7 @@ function UserRegistrationForm() {
   const [nationality, setNationality] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [hireDate, setHireDate] = useState("");
+  const [maxDiscountPercent, setMaxDiscountPercent] = useState<string>("");
   const [departments, setDepartments] = useState<DepartmentTypes[]>([]);
   // Defaults to the signed-in admin's own branch (edit mode overwrites this from the loaded
   // user a moment later anyway, so defaulting unconditionally here is harmless for that path).
@@ -164,6 +165,7 @@ function UserRegistrationForm() {
           setNationality(user.nationality || "");
           setDepartmentId(user.departmentId || "");
           setBranchId(user.branchId || "");
+          setMaxDiscountPercent(user.maxDiscountPercent != null ? String(user.maxDiscountPercent) : "");
         }
       } catch (error) {
         console.error("Error loading user edit data from sessionStorage:", error);
@@ -283,6 +285,7 @@ function UserRegistrationForm() {
         specializationId: role === "doctor" ? selectedSpecialization : undefined,
         branchId: branchId || undefined,
         hireDate: hireDate || undefined,
+        maxDiscountPercent: maxDiscountPercent !== "" ? Number(maxDiscountPercent) : null,
       }
 
       const data = await UserService.create(payload)
@@ -359,6 +362,7 @@ function UserRegistrationForm() {
         branchId: branchId || undefined,
         hireDate: hireDate || undefined,
         password: password || undefined,
+        maxDiscountPercent: maxDiscountPercent !== "" ? Number(maxDiscountPercent) : null,
       }
 
       if (!userId) return;
@@ -606,6 +610,23 @@ function UserRegistrationForm() {
                 </div>
               </div>
 
+              <div className="w-full">
+                <label htmlFor="maxDiscountPercent" className="font-bold text-sm">Billing Discount Privilege (%)</label>
+                <input
+                  type="number"
+                  id="maxDiscountPercent"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  placeholder="e.g. 10 (leave blank for no personal limit)"
+                  value={maxDiscountPercent}
+                  onChange={(e) => setMaxDiscountPercent(e.target.value)}
+                  className="outline-0 p-4 rounded-xl w-full mt-2"
+                  style={{ background: "var(--color-highlight)", border: "1px solid var(--color-border)" }}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Maximum discount % this user may apply during billing. Leave blank for no personal cap.</p>
+              </div>
+
               <div className="w-full flex flex-col gap-2">
                 <label htmlFor="isActive" className="font-bold text-sm">Status</label>
                 <div className="flex items-center gap-3 bg-neutral-100/50 p-4 rounded-xl border border-neutral-200 w-fit">
@@ -825,6 +846,23 @@ function UserRegistrationForm() {
                     placeholder="DD-MM-YYYY"
                   />
                 </div>
+              </div>
+
+              <div className="w-full">
+                <label htmlFor="maxDiscountPercentCreate" className="font-bold text-sm">Billing Discount Privilege (%)</label>
+                <input
+                  type="number"
+                  id="maxDiscountPercentCreate"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  placeholder="e.g. 10 (leave blank for no personal limit)"
+                  value={maxDiscountPercent}
+                  onChange={(e) => setMaxDiscountPercent(e.target.value)}
+                  className="outline-0 p-4 rounded-xl w-full mt-2"
+                  style={{ background: "var(--color-highlight)", border: "1px solid var(--color-border)" }}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Maximum discount % this user may apply during billing. Leave blank for no personal cap.</p>
               </div>
             </div>
           )}

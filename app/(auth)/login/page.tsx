@@ -148,6 +148,7 @@ export default function LoginPage() {
           departmentId: data.body.departmentId ?? null,
           departmentName: data.body.departmentName ?? null,
           staffCheckInRequired: data.body.staffCheckInRequired ?? false,
+          userDiscountPercent: data.body.userDiscountPercent ?? null,
         }),
       );
 

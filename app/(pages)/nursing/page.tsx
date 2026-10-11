@@ -49,6 +49,7 @@ import DatePicker from "@/components/DatePicker";
 import SearchableSelect, { standaloneSelectClass } from "@/components/SearchableSelect";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import FamilyHistorySection from "@/components/FamilyHistorySection";
+import HistoryDrawer from "@/components/HistoryDrawer";
 import PatientMedicalFormsSection from "@/components/medicalForms/PatientMedicalFormsSection";
 import OrderedItemsList from "@/components/orders/OrderedItemsList";
 import TreatmentConfigModal from "@/components/orders/TreatmentConfigModal";
@@ -556,7 +557,7 @@ function NurseWorkbenchInner() {
       // rather than failing the whole patient-open with a raw 400 if none is picked yet.
       const canStartEncounter = !isAdmin || !!selectedNurseId;
       const [summaryRes, chartRes, encounterRes] = await Promise.all([
-        EmrService.getPatientSummary(patientId),
+        EmrService.getPatientSummary(patientId, undefined, resolvedVisitId),
         NursingService.getPatientChart(patientId),
         canStartEncounter
           ? NursingService.ensureActiveEncounter(patientId, {
@@ -1085,6 +1086,22 @@ function NurseWorkbenchInner() {
     );
   };
 
+  // ---------------- HISTORY DRAWERS (nurse workbench) ----------------
+  const [showInjectionHistory, setShowInjectionHistory] = useState(false);
+  const [showDressingHistory, setShowDressingHistory] = useState(false);
+  const [showIvHistory, setShowIvHistory] = useState(false);
+  const [showVitalsHistoryDrawer, setShowVitalsHistoryDrawer] = useState(false);
+
+  // Task-to-encounterId lookup built from chart.tasks — used to decide if a dressing/IV
+  // record belongs to the current active encounter or a past one.
+  const taskEncounterMap = chart
+    ? Object.fromEntries(chart.tasks.filter(t => t.nursingTaskId && t.encounterId).map(t => [t.nursingTaskId!, t.encounterId!]))
+    : {};
+  const pastInjections = chart?.injections.filter(i => i.encounterId !== chart.activeEncounterId) ?? [];
+  const pastDressings = chart?.dressings.filter(d => !d.nursingTaskId || taskEncounterMap[d.nursingTaskId] !== chart?.activeEncounterId) ?? [];
+  const pastIvFluids = chart?.ivFluids.filter(f => !f.nursingTaskId || taskEncounterMap[f.nursingTaskId] !== chart?.activeEncounterId) ?? [];
+  const pastVitals = chart?.vitals.filter(v => v.encounterId !== chart.activeEncounterId) ?? [];
+
   // ---------------- MEDICATION ADMINISTRATION FORM ----------------
   const [injectionForm, setInjectionForm] = useState({ medicineName: "", dose: "", route: "Oral (PO)", notes: "" });
   const [savingInjection, setSavingInjection] = useState(false);
@@ -1450,7 +1467,7 @@ function NurseWorkbenchInner() {
       notifySaveStatus("saved");
       setAllergyForm(emptyAllergyForm);
       setEditingAllergyId(null);
-      const res = await EmrService.getPatientSummary(selectedPatientId);
+      const res = await EmrService.getPatientSummary(selectedPatientId, undefined, currentVisitId ?? undefined);
       setSummary(res.data);
     } catch (error) {
       notifySaveStatus("error");
@@ -1488,7 +1505,7 @@ function NurseWorkbenchInner() {
         try {
           await EmrService.removeAllergy(a.patientAllergyId, isAdmin ? selectedDoctorId : undefined);
           toast.success("Allergy removed");
-          const res = await EmrService.getPatientSummary(selectedPatientId);
+          const res = await EmrService.getPatientSummary(selectedPatientId, undefined, currentVisitId ?? undefined);
           setSummary(res.data);
         } catch (error) {
           toast.error(errorMessage(error, "Failed to remove allergy"));
@@ -1706,7 +1723,7 @@ function NurseWorkbenchInner() {
       setAdministeringMedicationId(null);
       setAdministerForm({ doseGiven: "", route: "Oral (PO)", remarks: "", witnessUserId: "", witnessPassword: "" });
       if (selectedPatientId) {
-        const res = await EmrService.getPatientSummary(selectedPatientId);
+        const res = await EmrService.getPatientSummary(selectedPatientId, undefined, currentVisitId ?? undefined);
         setSummary(res.data);
       }
     } catch (error) {
@@ -2098,7 +2115,7 @@ function NurseWorkbenchInner() {
               doctorId={isAdmin ? selectedDoctorId : undefined}
               requireAttribution={requireDoctorSelectedForAllergy}
               onSaved={async () => {
-                const res = await EmrService.getPatientSummary(selectedPatientId);
+                const res = await EmrService.getPatientSummary(selectedPatientId, undefined, currentVisitId ?? undefined);
                 setSummary(res.data);
               }}
             />
@@ -2352,9 +2369,18 @@ function NurseWorkbenchInner() {
 
               {/* Vital Signs */}
               <div className="card p-6 flex flex-col gap-4 lg:col-span-2">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Thermometer size={18} className="text-primary" /> Vital Signs
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Thermometer size={18} className="text-primary" /> Vital Signs
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowVitalsHistoryDrawer(true)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted"
+                  >
+                    <Clock size={13} /> History
+                  </button>
+                </div>
                 {canEdit && (
                   <>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -2451,7 +2477,7 @@ function NurseWorkbenchInner() {
                       </div>
                       <div className="flex flex-col gap-1">
                         <label className="text-xs font-semibold text-muted-foreground">Blood Sugar Type</label>
-                        <SearchableSelect value={vitalsForm.bloodSugarType} onChange={(v) => setVitalsForm((p) => ({ ...p, bloodSugarType: v }))} options={[{ value: "Random", label: "Random" }, { value: "Fasting", label: "Fasting" }, { value: "Post-Prandial", label: "Post-Prandial" }]} />
+                        <SearchableSelect value={vitalsForm.bloodSugarType} onChange={(v) => setVitalsForm((p) => ({ ...p, bloodSugarType: v }))} options={[{ value: "Random", label: "Random" }, { value: "Fasting", label: "Fasting" }, { value: "Post-Prandial", label: "Post-Prandial" }]} className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 text-left text-sm text-foreground transition-colors hover:border-primary/60" />
                       </div>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -2529,7 +2555,7 @@ function NurseWorkbenchInner() {
                           </thead>
                           <tbody>
                             {chart.vitals.slice(0, 5).map((v) => (
-                              <tr key={v.vitalsRecordId}>
+                              <tr key={v.vitalsRecordId} className="italic">
                                 <td className="text-xs">
                                   {formatDateTime(v.recordedAt)}
                                   {v.correctedFrom && (
@@ -2663,9 +2689,18 @@ function NurseWorkbenchInner() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Medication Administration */}
               <div id="section-medication-admin" className="card p-6 flex flex-col gap-4">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Syringe size={18} className="text-primary" /> Medication Administration
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Syringe size={18} className="text-primary" /> Medication Administration
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowInjectionHistory(true)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted"
+                  >
+                    <Clock size={13} /> History
+                  </button>
+                </div>
                 {canEdit && (
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2702,7 +2737,7 @@ function NurseWorkbenchInner() {
                 {chart && chart.injections.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
                     {chart.injections.slice(0, 5).map((i) => (
-                      <div key={i.injectionRecordId} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div key={i.injectionRecordId} className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm italic">
                         <div className="group flex items-center justify-between">
                           <span className="font-medium">{i.medicineName} · {i.dose} · {i.route}</span>
                           <div className="flex items-center gap-2">
@@ -2736,9 +2771,18 @@ function NurseWorkbenchInner() {
 
               {/* Wound Care */}
               <div className="card p-6 flex flex-col gap-4">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Bandage size={18} className="text-primary" /> Wound Care
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Bandage size={18} className="text-primary" /> Wound Care
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowDressingHistory(true)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted"
+                  >
+                    <Clock size={13} /> History
+                  </button>
+                </div>
                 {canEdit && (
                   <>
                     <SearchableSelect
@@ -2789,7 +2833,7 @@ function NurseWorkbenchInner() {
                 {chart && chart.dressings.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
                     {chart.dressings.slice(0, 5).map((d) => (
-                      <div key={d.dressingTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div key={d.dressingTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm italic">
                         <span className="font-medium">{d.woundType} · {d.dressingMaterial}</span>
                         <div className="flex items-center gap-2">
                           <span className={`text-xs ${d.infectionSigns ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>
@@ -3106,9 +3150,18 @@ function NurseWorkbenchInner() {
 
               {/* IV Fluids */}
               <div className="card p-6 flex flex-col gap-4">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Activity size={18} className="text-primary" /> IV Fluids
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Activity size={18} className="text-primary" /> IV Fluids
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowIvHistory(true)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted"
+                  >
+                    <Clock size={13} /> History
+                  </button>
+                </div>
                 {canEdit && (
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -3132,7 +3185,7 @@ function NurseWorkbenchInner() {
                 {chart && chart.ivFluids.length > 0 && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-32 overflow-y-auto">
                     {chart.ivFluids.slice(0, 5).map((f) => (
-                      <div key={f.ivFluidsTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm">
+                      <div key={f.ivFluidsTaskId} className="group flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm italic">
                         <span className="font-medium">{f.fluidType} · {f.volume}ml @ {f.rate}ml/hr</span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">{formatDateTime(f.createdAt)}</span>
@@ -3437,6 +3490,147 @@ function NurseWorkbenchInner() {
           </div>
         )}
         </div>
+
+      {/* Vitals History Drawer */}
+      <HistoryDrawer
+        open={showVitalsHistoryDrawer}
+        onClose={() => setShowVitalsHistoryDrawer(false)}
+        title="Vital Signs History"
+        subtitle="Past encounters"
+      >
+        {pastVitals.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No past vital signs recorded.</p>
+        ) : (
+          pastVitals.map((v) => (
+            <div key={v.vitalsRecordId} className="rounded-lg border border-border p-3 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-foreground">
+                  BP {v.systolic}/{v.diastolic} mmHg · HR {v.heartRate} bpm
+                </span>
+                <span className="text-xs text-muted-foreground shrink-0">{new Date(v.recordedAt).toLocaleDateString()}</span>
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                {v.temperature > 0 && <span>Temp {v.temperature}°C</span>}
+                {v.oxygenSaturation > 0 && <span>SpO₂ {v.oxygenSaturation}%</span>}
+                {v.respiratoryRate > 0 && <span>RR {v.respiratoryRate}/min</span>}
+                {v.weightKg > 0 && <span>Wt {v.weightKg} kg</span>}
+              </div>
+            </div>
+          ))
+        )}
+      </HistoryDrawer>
+
+      {/* Medication Administration History Drawer */}
+      <HistoryDrawer
+        open={showInjectionHistory}
+        onClose={() => setShowInjectionHistory(false)}
+        title="Medication Administration History"
+        subtitle="Past encounters — click Use to pre-fill the form"
+      >
+        {pastInjections.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No past medication records.</p>
+        ) : (
+          pastInjections.map((inj) => (
+            <div key={inj.injectionRecordId} className="rounded-lg border border-border p-3 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="text-sm font-medium text-foreground truncate">{inj.medicineName}</span>
+                  <span className="text-xs text-muted-foreground">{inj.dose} · {inj.route}</span>
+                  {inj.notes && <span className="text-xs text-muted-foreground">{inj.notes}</span>}
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0">{new Date(inj.givenAt).toLocaleDateString()}</span>
+              </div>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInjectionForm({ medicineName: inj.medicineName, dose: inj.dose, route: inj.route, notes: inj.notes ?? "" });
+                    setShowInjectionHistory(false);
+                  }}
+                  className="self-end text-xs font-medium text-primary hover:underline"
+                >
+                  Use
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </HistoryDrawer>
+
+      {/* Wound Care History Drawer */}
+      <HistoryDrawer
+        open={showDressingHistory}
+        onClose={() => setShowDressingHistory(false)}
+        title="Wound Care History"
+        subtitle="Past encounters — click Use to pre-fill the form"
+      >
+        {pastDressings.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No past wound care records.</p>
+        ) : (
+          pastDressings.map((d) => (
+            <div key={d.dressingTaskId} className="rounded-lg border border-border p-3 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="text-sm font-medium text-foreground">{d.woundType || "—"}</span>
+                  <span className="text-xs text-muted-foreground">{d.dressingMaterial || "—"}{d.infectionSigns ? " · Infection signs present" : ""}</span>
+                  {d.notes && <span className="text-xs text-muted-foreground">{d.notes}</span>}
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0">{new Date(d.createdAt).toLocaleDateString()}</span>
+              </div>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDressingForm({ woundType: d.woundType ?? "", dressingMaterial: d.dressingMaterial ?? "", infectionSigns: d.infectionSigns, notes: d.notes ?? "" });
+                    setShowDressingHistory(false);
+                  }}
+                  className="self-end text-xs font-medium text-primary hover:underline"
+                >
+                  Use
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </HistoryDrawer>
+
+      {/* IV Fluids History Drawer */}
+      <HistoryDrawer
+        open={showIvHistory}
+        onClose={() => setShowIvHistory(false)}
+        title="IV Fluids History"
+        subtitle="Past encounters — click Use to pre-fill the form"
+      >
+        {pastIvFluids.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No past IV fluid records.</p>
+        ) : (
+          pastIvFluids.map((f) => (
+            <div key={f.ivFluidsTaskId} className="rounded-lg border border-border p-3 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="text-sm font-medium text-foreground">{f.fluidType || "—"}</span>
+                  <span className="text-xs text-muted-foreground">{f.volume} mL · {f.rate} mL/hr</span>
+                  {f.notes && <span className="text-xs text-muted-foreground">{f.notes}</span>}
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0">{new Date(f.createdAt).toLocaleDateString()}</span>
+              </div>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIvForm({ fluidType: f.fluidType ?? "", volume: String(f.volume), rate: String(f.rate), notes: f.notes ?? "" });
+                    setShowIvHistory(false);
+                  }}
+                  className="self-end text-xs font-medium text-primary hover:underline"
+                >
+                  Use
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </HistoryDrawer>
+
       </div>
     );
   }

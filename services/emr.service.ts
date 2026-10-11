@@ -20,8 +20,8 @@ export const EmrService = {
     const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENTS(doctorId, date));
     return data;
   },
-  getPatientSummary: async (patientId: string, doctorId?: string) => {
-    const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENT_SUMMARY(patientId, doctorId));
+  getPatientSummary: async (patientId: string, doctorId?: string, visitId?: string) => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENT_SUMMARY(patientId, doctorId, visitId));
     return data;
   },
   updatePatientAlert: async (patientId: string, alert: string | null, doctorId?: string) => {
@@ -60,8 +60,8 @@ export const EmrService = {
     const { data } = await api.put(ENDPOINTS.EMR.FINISH_ENCOUNTER(encounterId, doctorId));
     return data;
   },
-  releaseVisit: async (visitId: string, doctorId?: string) => {
-    const { data } = await api.post(ENDPOINTS.EMR.RELEASE_VISIT(visitId, doctorId));
+  releaseVisit: async (visitId: string, doctorId?: string, password?: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.RELEASE_VISIT(visitId, doctorId, password));
     return data;
   },
   proposeEncounterCorrection: async (patientId: string, encounterId: string, payload: ProposeEncounterCorrectionPayload) => {
@@ -223,6 +223,14 @@ export const EmrService = {
   },
   getConfidentialNotes: async (patientId?: string) => {
     const { data } = await api.get(ENDPOINTS.EMR.GET_CONFIDENTIAL_NOTES(patientId));
+    return data;
+  },
+  getDiagnosisHistory: async (patientId: string, excludeEncounterId?: string, doctorId?: string) => {
+    const params = new URLSearchParams();
+    if (excludeEncounterId) params.set("excludeEncounterId", excludeEncounterId);
+    if (doctorId) params.set("doctorId", doctorId);
+    const qs = params.toString();
+    const { data } = await api.get(`/api/emr/patient/${patientId}/diagnosis-history${qs ? `?${qs}` : ""}`);
     return data;
   },
   addDiagnosis: async (patientId: string, payload: AddDiagnosisPayload, doctorId?: string) => {

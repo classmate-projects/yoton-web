@@ -19,6 +19,10 @@ interface MedicationOrderPanelProps {
   // mirrors how the doctor page's other add-forms double as their own edit form.
   editingMedication?: MedicationType | null;
   onCancelEdit?: () => void;
+  // Pre-fills the form from a historical medication but stays in "create new" mode
+  // (no correction/update — a fresh prescription is created on submit).
+  prefillFromHistory?: MedicationType | null;
+  onClearPrefill?: () => void;
 }
 
 interface TaperingStepForm {
@@ -46,7 +50,7 @@ function buildInstructionsPreview(dosage: string, dosageUnit: string, route: str
 // Inline "Prescribe Medications" panel on the doctor workbench — always in flow next to
 // Order Investigation, not a popup. Replaced the old MedicationOrderModal for consistency
 // with how investigation ordering already worked.
-export default function MedicationOrderPanel({ onSubmit, editingMedication, onCancelEdit }: MedicationOrderPanelProps) {
+export default function MedicationOrderPanel({ onSubmit, editingMedication, onCancelEdit, prefillFromHistory, onClearPrefill }: MedicationOrderPanelProps) {
   const [drugName, setDrugName] = useState("");
   const [medicineId, setMedicineId] = useState<string | undefined>(undefined);
   const [drugType, setDrugType] = useState("");
@@ -144,6 +148,31 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingMedication?.medicationId]);
 
+  // Pre-fill from history without entering edit mode — creates a new prescription.
+  useEffect(() => {
+    if (!prefillFromHistory) return;
+    setDrugName(prefillFromHistory.drugName);
+    setMedicineId(prefillFromHistory.medicineId ?? undefined);
+    setDrugType(prefillFromHistory.drugType ?? "");
+    setDosage(prefillFromHistory.dosage ?? "");
+    setDosageUnit(prefillFromHistory.dosageUnit ?? "");
+    setFrequency(prefillFromHistory.frequency ?? "");
+    setMealTiming(prefillFromHistory.mealTiming ?? "");
+    setOrderType(prefillFromHistory.orderType ?? "");
+    setRoute(prefillFromHistory.route ?? "");
+    setDurationDays(prefillFromHistory.durationDays ? String(prefillFromHistory.durationDays) : "");
+    setTotalQuantity(prefillFromHistory.totalQuantity ? String(prefillFromHistory.totalQuantity) : "");
+    setStartDate(toDateInputValue(new Date()));
+    setPlannedEndDate("");
+    setInstructions(prefillFromHistory.instructions ?? "");
+    setInstructionsTouched(!!prefillFromHistory.instructions);
+    setRefillCount(String(prefillFromHistory.refillCount ?? 0));
+    setPrnReason(prefillFromHistory.prnReason ?? "");
+    setRequiresCounselling(prefillFromHistory.requiresCounselling);
+    setTaperingSteps([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillFromHistory?.medicationId]);
+
   const resetForm = () => {
     setDrugName("");
     setMedicineId(undefined);
@@ -220,6 +249,13 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
       <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
         <Pill size={18} className="text-primary" /> Prescribe Medication
       </h2>
+
+      {prefillFromHistory && (
+        <div className="flex items-center justify-between rounded-lg bg-primary/10 border border-primary/30 px-3 py-2 text-xs">
+          <span className="text-primary font-medium">Pre-filled from history: {prefillFromHistory.drugName}</span>
+          <button onClick={onClearPrefill} className="text-primary hover:underline font-semibold">Clear</button>
+        </div>
+      )}
 
       <div className="flex flex-col gap-1">
         <label className="text-xs font-semibold text-muted-foreground">Drug name</label>

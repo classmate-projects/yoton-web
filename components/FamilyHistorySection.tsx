@@ -181,11 +181,10 @@ export default function FamilyHistorySection({ patientId, familyHistory, doctorI
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground">Remarks</label>
-              <input
-                type="text"
+              <textarea
                 value={form.remarks}
                 onChange={(e) => setForm((p) => ({ ...p, remarks: e.target.value }))}
-                className="h-9 text-sm rounded-lg border border-border bg-background px-2"
+                className="min-h-16 text-sm rounded-lg border border-border bg-background px-2 py-1.5 resize-none"
               />
             </div>
             <div className="flex flex-col gap-1">

@@ -62,9 +62,12 @@ import CorrectedFromNote from "@/components/CorrectedFromNote";
 import FamilyHistorySection from "@/components/FamilyHistorySection";
 import DentalChartSection from "@/components/dental/DentalChartSection";
 import { getUserDetail } from "@/lib/userDetail";
+import { useCurrentEncounter } from "@/lib/currentEncounterContext";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import PatientEmrModal from "@/components/PatientEmrModal";
+import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
+import HistoryDrawer from "@/components/HistoryDrawer";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
 import { SpecializationService } from "@/services/specialization.service";
@@ -118,6 +121,7 @@ function DoctorWorkbenchInner() {
   const searchParams = useSearchParams();
   const visitIdParam = searchParams.get("visitId") || undefined;
   const initialPatientIdParam = searchParams.get("patientId") || undefined;
+  const { setCurrentEncounter } = useCurrentEncounter();
 
   const [activeVisitId, setActiveVisitId] = useState<string | undefined>(visitIdParam);
   const [role, setRole] = useState<string | null>(null);
@@ -324,12 +328,13 @@ function DoctorWorkbenchInner() {
     setActiveVisitId(visitId != null ? visitId : undefined);
     setSelectedPatientId(patientId);
     const [loadedSummary] = await Promise.all([
-      fetchSummary(patientId),
+      fetchSummary(patientId, visitId ?? undefined),
       fetchQuickNotes(patientId),
       fetchDocuments(patientId),
       fetchConfidentialNotes(patientId),
       fetchLatestVitals(patientId),
     ]);
+    setCurrentEncounter(patientId, loadedSummary?.latestEncounter?.encounterId ?? null, visitId ?? null);
     const hasAlert = loadedSummary?.patientAlert?.trim();
     const hasAllergies = (loadedSummary?.allergies?.length ?? 0) > 0;
     if (hasAlert || hasAllergies) {
@@ -340,10 +345,10 @@ function DoctorWorkbenchInner() {
     }
   };
 
-  const fetchSummary = async (patientId: string): Promise<PatientSummaryType | null> => {
+  const fetchSummary = async (patientId: string, overrideVisitId?: string): Promise<PatientSummaryType | null> => {
     try {
       setIsLoadingSummary(true);
-      const res = await EmrService.getPatientSummary(patientId, doctorIdParam);
+      const res = await EmrService.getPatientSummary(patientId, doctorIdParam, overrideVisitId ?? activeVisitId);
       setSummary(res.data);
       setPatientAlertText(res.data?.patientAlert ?? "");
       setPastMedicalHistory(res.data?.pastMedicalHistory ?? "");
@@ -427,6 +432,7 @@ function DoctorWorkbenchInner() {
     }
     setActiveVisitId(undefined);
     setSelectedPatientId(null);
+    setCurrentEncounter(null, null, null);
     setSummary(null);
     setPatientAlertText("");
     setPastMedicalHistory("");
@@ -455,6 +461,7 @@ function DoctorWorkbenchInner() {
       // URL params were cleared by the browser back button — return to workbench.
       setActiveVisitId(undefined);
       setSelectedPatientId(null);
+      setCurrentEncounter(null, null, null);
       setSummary(null);
       setPatientAlertText("");
       setPastMedicalHistory("");
@@ -612,16 +619,14 @@ function DoctorWorkbenchInner() {
 
   const revertEncounterForm = () => setEncounterForm(encounterFormSnapshot);
 
-  const releasePatient = async () => {
+  const releasePatient = async (password: string) => {
     if (!activeVisitId) return;
+    setIsReleasingPatient(true);
     try {
-      setIsReleasingPatient(true);
-      await EmrService.releaseVisit(activeVisitId, doctorIdParam);
+      await EmrService.releaseVisit(activeVisitId, doctorIdParam, password);
       toast.success("Patient released and returned to appointment queue.");
       setShowReleaseConfirm(false);
       await backToWorkbench();
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to release patient"));
     } finally {
       setIsReleasingPatient(false);
     }
@@ -1283,6 +1288,32 @@ function DoctorWorkbenchInner() {
         }
       }
     );
+  };
+
+  // ---------------- HISTORY DRAWERS ----------------
+  const [showDiagnosisHistory, setShowDiagnosisHistory] = useState(false);
+  const [showMedHistory, setShowMedHistory] = useState(false);
+  const [showOrderHistory, setShowOrderHistory] = useState(false);
+  const [diagnosisHistory, setDiagnosisHistory] = useState<{ encounterDiagnosisId: string; listItemId: string | null; diagnosisCode: string | null; diagnosisName: string; encounterDate: string | null }[]>([]);
+  const [isDiagnosisHistoryLoading, setIsDiagnosisHistoryLoading] = useState(false);
+  const [prefillMedication, setPrefillMedication] = useState<MedicationType | null>(null);
+
+  const openDiagnosisHistory = async () => {
+    if (!selectedPatientId) return;
+    setShowDiagnosisHistory(true);
+    setIsDiagnosisHistoryLoading(true);
+    try {
+      const res = await EmrService.getDiagnosisHistory(
+        selectedPatientId,
+        summary?.latestEncounter?.encounterId,
+        doctorIdParam
+      );
+      setDiagnosisHistory(res.data || []);
+    } catch {
+      toast.error("Failed to load diagnosis history");
+    } finally {
+      setIsDiagnosisHistoryLoading(false);
+    }
   };
 
   // ---------------- DIAGNOSIS ----------------
@@ -2398,15 +2429,20 @@ function DoctorWorkbenchInner() {
                 {/* Diagnosis — search from the admin-managed diagnosis catalog; first one
                     added becomes primary, others secondary, primary can be reassigned. */}
                 <div className="card p-6 flex flex-col gap-3">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <ClipboardList size={18} className="text-primary" /> Diagnosis
-                  </h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <ClipboardList size={18} className="text-primary" /> Diagnosis
+                    </h2>
+                    <button onClick={openDiagnosisHistory} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                      <History size={13} /> History
+                    </button>
+                  </div>
                   {summary.diagnoses.length > 0 ? (
                     <div className="flex flex-col gap-1.5">
                       {summary.diagnoses.map((d) => (
                         <div
                           key={d.encounterDiagnosisId}
-                          className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
+                          className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm italic"
                         >
                           <div className="flex items-center gap-2">
                             {d.isPrimary && (
@@ -2646,9 +2682,14 @@ function DoctorWorkbenchInner() {
 
                 {/* Medications */}
                 <div className="card p-6 flex flex-col gap-4">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Pill size={18} className="text-primary" /> Medication Tracking
-                  </h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <Pill size={18} className="text-primary" /> Medication Tracking
+                    </h2>
+                    <button onClick={() => setShowMedHistory(true)} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                      <History size={13} /> History
+                    </button>
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-border">
                     {/* Current Medications */}
@@ -2697,7 +2738,7 @@ function DoctorWorkbenchInner() {
                             </thead>
                             <tbody>
                               {summary.currentMedications.map((m) => (
-                                <tr key={m.medicationId}>
+                                <tr key={m.medicationId} className="italic">
                                   <td className="font-semibold">
                                     {m.drugName}
                                     {m.isDiscontinued && (
@@ -2821,6 +2862,8 @@ function DoctorWorkbenchInner() {
                   onSubmit={addMedication}
                   editingMedication={editingMedication}
                   onCancelEdit={() => setEditingMedication(null)}
+                  prefillFromHistory={prefillMedication}
+                  onClearPrefill={() => setPrefillMedication(null)}
                 />
 
                 {/* Unified ordering - Lab, Radiology and Treatment all placed from one CPT-
@@ -2829,9 +2872,14 @@ function DoctorWorkbenchInner() {
                     create it (see components/orders/) - locked once the owning team has
                     started processing it, or the visit's finalized. */}
                 <div className="card p-6 flex flex-col gap-3">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <FlaskConical size={18} className="text-primary" /> Investigations &amp; Treatments
-                  </h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <FlaskConical size={18} className="text-primary" /> Investigations &amp; Treatments
+                    </h2>
+                    <button onClick={() => setShowOrderHistory(true)} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                      <History size={13} /> History
+                    </button>
+                  </div>
                   <CatalogSearchInput
                     placeholder="Search by CPT code or procedure name..."
                     fetchOptions={async (search) => {
@@ -2861,6 +2909,7 @@ function DoctorWorkbenchInner() {
                     onOpenLab={(item) => setOrderingModal({ mode: "edit-lab", item })}
                     onOpenRadiology={(item) => setOrderingModal({ mode: "edit-radiology", item })}
                     onOpenTreatment={(item) => setOrderingModal({ mode: "edit-treatment", item })}
+                    itemClassName="italic"
                   />
                 </div>
 
@@ -3132,6 +3181,107 @@ function DoctorWorkbenchInner() {
           <VitalsHistoryModal entries={vitalsHistory} onClose={() => setShowVitalsHistory(false)} />
         )}
 
+        {/* Diagnosis History Drawer */}
+        <HistoryDrawer
+          open={showDiagnosisHistory}
+          onClose={() => setShowDiagnosisHistory(false)}
+          title="Diagnosis History"
+          subtitle="Past diagnoses from previous visits — click Re-add to add to the current encounter."
+        >
+          {isDiagnosisHistoryLoading ? (
+            <div className="flex justify-center py-8"><LoadingSpinner /></div>
+          ) : diagnosisHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No past diagnoses found.</p>
+          ) : (
+            diagnosisHistory.map((d) => (
+              <div key={d.encounterDiagnosisId} className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="font-medium text-foreground truncate">{d.diagnosisName}</span>
+                  {d.diagnosisCode && <span className="text-xs text-muted-foreground">{d.diagnosisCode}</span>}
+                  {d.encounterDate && <span className="text-xs text-muted-foreground">{new Date(d.encounterDate).toLocaleDateString()}</span>}
+                </div>
+                {d.listItemId && (
+                  <button
+                    onClick={async () => { await addDiagnosis(d.listItemId!); setShowDiagnosisHistory(false); }}
+                    className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    Re-add
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </HistoryDrawer>
+
+        {/* Medication History Drawer */}
+        <HistoryDrawer
+          open={showMedHistory}
+          onClose={() => setShowMedHistory(false)}
+          title="Medication History"
+          subtitle="Past prescriptions — click Re-prescribe to pre-fill the prescription form."
+        >
+          {summary && summary.medicationHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No medication history found.</p>
+          ) : (
+            (summary?.medicationHistory ?? []).map((m) => (
+              <div key={m.medicationId} className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="font-medium text-foreground">{m.drugName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {[m.dosage && `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}`, m.frequency, m.route].filter(Boolean).join(" · ")}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{new Date(m.startedAt).toLocaleDateString()} · {m.status}</span>
+                </div>
+                <button
+                  onClick={() => { setPrefillMedication(m); setShowMedHistory(false); }}
+                  className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                >
+                  Re-prescribe
+                </button>
+              </div>
+            ))
+          )}
+        </HistoryDrawer>
+
+        {/* Orders History Drawer */}
+        <HistoryDrawer
+          open={showOrderHistory}
+          onClose={() => setShowOrderHistory(false)}
+          title="Investigation & Treatment History"
+          subtitle="Past lab, radiology, and treatment orders from all visits."
+        >
+          {summary && (summary.labRequests.length + summary.radiologyRequests.length + summary.treatments.length) === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No past orders found.</p>
+          ) : (
+            <>
+              {(summary?.labRequests ?? []).map((l) => (
+                <div key={l.labRequestId} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className="flex items-center gap-1.5"><span className="rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5">LAB</span><span className="font-medium truncate">{l.testType}</span></div>
+                    <span className="text-xs text-muted-foreground">{new Date(l.requestedDate).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+              {(summary?.radiologyRequests ?? []).map((r) => (
+                <div key={r.radiologyRequestId} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className="flex items-center gap-1.5"><span className="rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold px-1.5 py-0.5">XRAY</span><span className="font-medium truncate">{r.scanType}</span></div>
+                    <span className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+              {(summary?.treatments ?? []).map((t) => (
+                <div key={t.treatmentId} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className="flex items-center gap-1.5"><span className="rounded-full bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5">TRT</span><span className="font-medium truncate">{t.description}</span></div>
+                    <span className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </HistoryDrawer>
+
         {/* Unified ordering config popups - one open at a time, driven by orderingModal's
             mode. "create" branches on the picked catalog item's own OrderCategory; "edit-*"
             reopens the same popup pre-filled from the already-placed order, locked per
@@ -3399,30 +3549,15 @@ function DoctorWorkbenchInner() {
 
         {/* Release Patient confirmation modal */}
         {showReleaseConfirm && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-card w-full max-w-sm rounded-2xl border border-border shadow-2xl p-6 flex flex-col gap-4">
-              <h3 className="text-base font-semibold text-foreground">Release Patient?</h3>
-              <p className="text-sm text-muted-foreground">
-                This will void any unsaved encounter data for this visit and return the patient to the appointment queue. Reception can re-register them when ready.
-              </p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setShowReleaseConfirm(false)}
-                  disabled={isReleasingPatient}
-                  className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={releasePatient}
-                  disabled={isReleasingPatient}
-                  className="px-4 py-2 rounded-lg bg-destructive text-sm font-semibold text-destructive-foreground hover:opacity-90 disabled:opacity-50"
-                >
-                  {isReleasingPatient ? "Releasing..." : "Yes, Release"}
-                </button>
-              </div>
-            </div>
-          </div>
+          <AdminPasswordConfirm
+            title="Release Patient?"
+            description="This will void any unsaved encounter data and return the patient to the appointment queue. Enter your password to confirm."
+            confirmLabel="Yes, Release"
+            confirmingLabel="Releasing..."
+            passwordPlaceholder="Your password"
+            onCancel={() => setShowReleaseConfirm(false)}
+            onConfirm={releasePatient}
+          />
         )}
 
         {/* Patient warning modal — shown once on file open when allergies or alert exist */}
