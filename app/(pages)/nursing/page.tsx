@@ -41,6 +41,7 @@ import {
   X,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import HintTooltip from "@/components/HintTooltip";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import PasswordInput from "@/components/PasswordInput";
 import RichTextEditor from "@/components/RichTextEditor";
@@ -3762,10 +3763,10 @@ function NurseWorkbenchInner() {
 
           {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard icon={<Users size={18} />} label="Patients Under Care" value={dashboard?.patientsUnderCare ?? 0} />
-            <StatCard icon={<ClipboardList size={18} />} label="Pending Tasks" value={dashboard?.pendingTasks ?? 0} />
-            <StatCard icon={<AlertTriangle size={18} />} label="Critical Alerts" value={dashboard?.criticalAlerts ?? 0} accent />
-            <StatCard icon={<CheckCircle2 size={18} />} label="Completed Today" value={dashboard?.completedToday ?? 0} />
+            <StatCard icon={<Users size={18} />} label="Patients Under Care" value={dashboard?.patientsUnderCare ?? 0} hint="Total patients currently in your ward or care area with an active admission." />
+            <StatCard icon={<ClipboardList size={18} />} label="Pending Tasks" value={dashboard?.pendingTasks ?? 0} hint="Nursing tasks (vitals, medications, procedures) assigned to you that are not yet completed." />
+            <StatCard icon={<AlertTriangle size={18} />} label="Critical Alerts" value={dashboard?.criticalAlerts ?? 0} accent hint="Patients with critical vitals readings or urgent nursing flags requiring immediate action." />
+            <StatCard icon={<CheckCircle2 size={18} />} label="Completed Today" value={dashboard?.completedToday ?? 0} hint="Nursing tasks you have successfully completed since the start of today's shift." />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -4057,17 +4058,22 @@ function StatCard({
   label,
   value,
   accent,
+  hint,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   accent?: boolean;
+  hint?: string;
 }) {
   return (
     <div className="card p-4 flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
-        <span className={accent && value > 0 ? "text-red-600" : "text-primary"}>{icon}</span>
+        <div className="flex items-center gap-1.5">
+          {hint && <HintTooltip text={hint} />}
+          <span className={accent && value > 0 ? "text-red-600" : "text-primary"}>{icon}</span>
+        </div>
       </div>
       <p className={`text-2xl font-semibold ${accent && value > 0 ? "text-red-600" : "text-foreground"}`}>
         {value}

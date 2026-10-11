@@ -177,7 +177,7 @@ export default function OrderSetPanel({ onClose }: Props) {
           </div>
 
           {/* Body */}
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
             {view.type === "list" && (
               <div className="flex flex-col h-full">
                 {/* Create bar */}

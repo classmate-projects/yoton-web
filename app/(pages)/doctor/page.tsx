@@ -62,6 +62,7 @@ import CorrectedFromNote from "@/components/CorrectedFromNote";
 import FamilyHistorySection from "@/components/FamilyHistorySection";
 import DentalChartSection from "@/components/dental/DentalChartSection";
 import { getUserDetail } from "@/lib/userDetail";
+import HintTooltip from "@/components/HintTooltip";
 import { useCurrentEncounter } from "@/lib/currentEncounterContext";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
@@ -3793,11 +3794,11 @@ function DoctorWorkbenchInner() {
 
           {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <StatCard icon={<Users size={18} />} label="Patients Under Care" value={dashboard?.patientsUnderCare ?? 0} />
-            <StatCard icon={<Activity size={18} />} label="Active Cases" value={dashboard?.activeCases ?? 0} />
-            <StatCard icon={<CalendarClock size={18} />} label="Today's Appointments" value={dashboard?.todaysAppointments ?? 0} />
-            <StatCard icon={<FileText size={18} />} label="Pending Reports" value={dashboard?.pendingReports ?? 0} />
-            <StatCard icon={<AlertTriangle size={18} />} label="Urgent Items" value={dashboard?.urgentItems ?? 0} accent />
+            <StatCard icon={<Users size={18} />} label="Patients Under Care" value={dashboard?.patientsUnderCare ?? 0} hint="Total patients currently assigned to you with an open encounter." />
+            <StatCard icon={<Activity size={18} />} label="Active Cases" value={dashboard?.activeCases ?? 0} hint="Patients with an ongoing case that has not yet been closed or discharged." />
+            <StatCard icon={<CalendarClock size={18} />} label="Today's Appointments" value={dashboard?.todaysAppointments ?? 0} hint="Number of appointments scheduled for today across all your patients." />
+            <StatCard icon={<FileText size={18} />} label="Pending Reports" value={dashboard?.pendingReports ?? 0} hint="Lab and radiology results that have been completed but not yet reviewed by you." />
+            <StatCard icon={<AlertTriangle size={18} />} label="Urgent Items" value={dashboard?.urgentItems ?? 0} accent hint="High-priority tasks or alerts flagged for your immediate attention." />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -4053,17 +4054,22 @@ function StatCard({
   label,
   value,
   accent,
+  hint,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   accent?: boolean;
+  hint?: string;
 }) {
   return (
     <div className="card p-4 flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
-        <span className={accent && value > 0 ? "text-red-600" : "text-primary"}>{icon}</span>
+        <div className="flex items-center gap-1.5">
+          {hint && <HintTooltip text={hint} />}
+          <span className={accent && value > 0 ? "text-red-600" : "text-primary"}>{icon}</span>
+        </div>
       </div>
       <p className={`text-2xl font-semibold ${accent && value > 0 ? "text-red-600" : "text-foreground"}`}>
         {value}

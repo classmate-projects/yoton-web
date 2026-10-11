@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import { MdPayment, MdAdd } from "react-icons/md";
+import HintTooltip from "@/components/HintTooltip";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { BillingService } from "@/services/billing.service";
@@ -351,26 +352,18 @@ function BillingPageInner() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-        <div className="card p-5">
-          <p className="text-sm text-muted-foreground">Pending Bills</p>
+        <BillingStatCard label="Pending Bills" hint="Number of invoices that have been created but not yet paid by the patient.">
           <p className="text-3xl font-bold text-foreground mt-1">{summary?.pendingCount ?? "—"}</p>
-        </div>
-        <div className="card p-5">
-          <p className="text-sm text-muted-foreground">Pending Amount</p>
-          <p className="text-3xl font-bold text-destructive mt-1">
-            {summary ? currency(summary.pendingAmount) : "—"}
-          </p>
-        </div>
-        <div className="card p-5">
-          <p className="text-sm text-muted-foreground">Paid Today</p>
+        </BillingStatCard>
+        <BillingStatCard label="Pending Amount" hint="Total outstanding balance across all unpaid bills. This is the amount still owed to the clinic.">
+          <p className="text-3xl font-bold text-destructive mt-1">{summary ? currency(summary.pendingAmount) : "—"}</p>
+        </BillingStatCard>
+        <BillingStatCard label="Paid Today" hint="Number of bills that were fully settled today, regardless of when they were originally created.">
           <p className="text-3xl font-bold text-emerald-500 mt-1">{summary?.paidToday ?? "—"}</p>
-        </div>
-        <div className="card p-5">
-          <p className="text-sm text-muted-foreground">Revenue Today</p>
-          <p className="text-3xl font-bold text-primary mt-1">
-            {summary ? currency(summary.revenueToday) : "—"}
-          </p>
-        </div>
+        </BillingStatCard>
+        <BillingStatCard label="Revenue Today" hint="Total amount collected from all payments received today, including partial and full payments.">
+          <p className="text-3xl font-bold text-primary mt-1">{summary ? currency(summary.revenueToday) : "—"}</p>
+        </BillingStatCard>
       </div>
 
       {/* Filter tabs */}
@@ -680,6 +673,18 @@ function BillingPageInner() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function BillingStatCard({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <HintTooltip text={hint} />
+      </div>
+      {children}
     </div>
   );
 }

@@ -54,7 +54,7 @@ export default function OrderSetEditor({ orderSetId, orderSetName, initialItems,
   const tabItems = items.filter((i) => i.itemType === tab);
 
   return (
-    <div className="flex flex-col h-full min-h-[540px]">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
         <button onClick={onBack} className="rounded-lg p-1.5 hover:bg-accent transition-colors">
