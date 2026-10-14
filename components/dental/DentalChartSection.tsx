@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { Save, RefreshCw, X } from "lucide-react";
 import SurfaceBox from "./SurfaceBox";
@@ -40,82 +40,304 @@ function toothShape(n: string): ToothShape {
   return TOOTH_SHAPE_MAP[n] ?? "incisor";
 }
 
-// ─── Anatomical crown/root SVG ────────────────────────────────────────────────
-// Renders a photorealistic-style buccal (side) view of a tooth with filled
-// ivory enamel gradient on the crown and dentin gradient on the root(s).
+// ─── High-quality anatomical buccal-view SVG ─────────────────────────────────
+// Renders a clinically accurate buccal (side) view of each tooth class with:
+//   • Per-shape anatomically distinct crown profiles
+//   • Realistic root anatomy (bifurcated premolar, trifurcated molar)
+//   • Multi-layer gradients for convincing 3D depth
+//   • Pulp chamber + canal outline, incisal translucency, groove details
+//   • Drop-shadow for depth
+// Coordinate system: crown at y=0 (incisal/occlusal), root apex at y=totalH.
+// For lower teeth the caller wraps in a CSS scale(-1) so no coordinate change needed.
 function ToothAnatomySVG({ shape, isUpper, w = 40 }: { shape: ToothShape; isUpper: boolean; w?: number }) {
-  const crownH = w * 0.65;
-  const rootH  = w * 0.85;
-  const totalH = crownH + rootH;
-  // 8 unique IDs (4 shapes × upper/lower); last-writer-wins is fine because
-  // all instances of the same shape produce identical gradient definitions.
-  const gid = `ta-${shape[0]}${isUpper ? "u" : "l"}`;
+  const cH  = w * 0.72;   // crown height
+  const rH  = w * 0.95;   // root zone height
+  const tH  = cH + rH;    // total SVG height
 
-  const crownPaths: Record<ToothShape, string> = {
-    incisor:  `M${w*.22},0 L${w*.78},0 Q${w*.82},${crownH*.12} ${w*.76},${crownH} L${w*.24},${crownH} Q${w*.18},${crownH*.12} ${w*.22},0Z`,
-    canine:   `M${w*.24},0 L${w*.76},0 L${w*.7},${crownH*.55} L${w*.5},${crownH} L${w*.3},${crownH*.55}Z`,
-    premolar: `M${w*.13},0 Q${w*.34},${crownH*.2} ${w*.5},0 Q${w*.66},${crownH*.2} ${w*.87},0 L${w*.84},${crownH} L${w*.16},${crownH}Z`,
-    molar:    `M${w*.04},0 Q${w*.24},${crownH*.22} ${w*.5},0 Q${w*.76},${crownH*.22} ${w*.96},0 L${w*.92},${crownH} L${w*.08},${crownH}Z`,
+  const flip      = !isUpper;
+  const translateY = flip ? tH : 0;
+  const scaleY     = flip ? -1 : 1;
+
+  // Shared gradient IDs per shape (last-writer-wins for identical defs)
+  const gid = `ta-${shape[0]}`;
+
+  // ── Crown paths (buccal view, crown-top = y=0) ──────────────────────────────
+  // Each path is shaped to match the typical buccal silhouette of that tooth class.
+  const crown: Record<ToothShape, string> = {
+    // Incisor: wide trapezoidal crown; incisal edge flat with slight mamelon bumps;
+    //          mesial surface nearly vertical, distal slightly curved.
+    incisor: [
+      `M${w*.24},0`,
+      `Q${w*.38},${-cH*.04} ${w*.5},0`,   // incisal edge mesial hump (mamelon)
+      `Q${w*.62},${-cH*.04} ${w*.76},0`,  // incisal edge distal hump
+      `Q${w*.84},${cH*.06}  ${w*.82},${cH*.45}`,   // distal surface
+      `Q${w*.80},${cH}      ${w*.5},${cH}`,         // distal-cervical curve to mid
+      `Q${w*.20},${cH}      ${w*.18},${cH*.45}`,    // mesial-cervical
+      `Q${w*.16},${cH*.06}  ${w*.24},0 Z`,
+    ].join(" "),
+
+    // Canine: pentagonal; prominent sharp cusp tip; long mesial slope, shorter distal;
+    //         maximum convexity at cervical third.
+    canine: [
+      `M${w*.26},0`,
+      `L${w*.74},0`,
+      `Q${w*.88},${cH*.12} ${w*.78},${cH*.52}`,  // distal slope
+      `Q${w*.72},${cH}     ${w*.5},${cH}`,
+      `Q${w*.28},${cH}     ${w*.22},${cH*.52}`,   // mesial slope
+      `Q${w*.12},${cH*.12} ${w*.26},0 Z`,
+    ].join(" "),
+
+    // Premolar: two-cusp crown; buccal cusp higher (left), lingual cusp lower (right);
+    //           buccal groove runs from between cusps downward.
+    premolar: [
+      `M${w*.16},0`,
+      `Q${w*.30},${-cH*.06} ${w*.38},0`,          // buccal cusp tip
+      `L${w*.5},${cH*.18}`,                         // buccal groove depth
+      `Q${w*.60},${-cH*.02} ${w*.72},${cH*.08}`,  // lingual cusp (shorter)
+      `Q${w*.86},${cH*.22} ${w*.84},${cH*.5}`,
+      `Q${w*.80},${cH}     ${w*.5},${cH}`,
+      `Q${w*.20},${cH}     ${w*.16},${cH*.5}`,
+      `Q${w*.14},${cH*.22} ${w*.16},0 Z`,
+    ].join(" "),
+
+    // Molar: broad multi-cusp crown; 2–3 buccal cusps separated by buccal grooves;
+    //        strong cervical convexity; wide at occlusal, slight taper at cervical.
+    molar: [
+      `M${w*.06},0`,
+      `Q${w*.22},${-cH*.08} ${w*.36},0`,          // mesio-buccal cusp
+      `L${w*.44},${cH*.15}`,                        // buccal groove
+      `Q${w*.58},${-cH*.05} ${w*.72},${cH*.04}`,  // disto-buccal cusp
+      `Q${w*.92},${cH*.14} ${w*.92},${cH*.38}`,
+      `Q${w*.90},${cH}     ${w*.5},${cH}`,
+      `Q${w*.10},${cH}     ${w*.08},${cH*.38}`,
+      `Q${w*.06},${cH*.14} ${w*.06},0 Z`,
+    ].join(" "),
   };
 
-  const rootPath: Record<ToothShape, string> = {
-    incisor:  `M${w*.3},${crownH} L${w*.7},${crownH} Q${w*.68},${totalH*.72} ${w*.5},${totalH} Q${w*.32},${totalH*.72} ${w*.3},${crownH}Z`,
-    canine:   `M${w*.28},${crownH} L${w*.72},${crownH} Q${w*.69},${totalH*.78} ${w*.5},${totalH} Q${w*.31},${totalH*.78} ${w*.28},${crownH}Z`,
-    premolar: `M${w*.22},${crownH} L${w*.78},${crownH} Q${w*.74},${crownH+rootH*.38} ${w*.64},${crownH+rootH*.52} Q${w*.59},${totalH} ${w*.5},${totalH-rootH*.04} Q${w*.41},${totalH} ${w*.36},${crownH+rootH*.52} Q${w*.26},${crownH+rootH*.38} ${w*.22},${crownH}Z`,
-    molar:    `M${w*.08},${crownH} L${w*.92},${crownH} L${w*.86},${crownH+rootH*.43} Q${w*.73},${totalH} ${w*.63},${totalH-rootH*.07} Q${w*.56},${totalH} ${w*.5},${totalH-rootH*.03} Q${w*.44},${totalH} ${w*.37},${totalH-rootH*.07} Q${w*.27},${totalH} ${w*.14},${crownH+rootH*.43}Z`,
+  // ── Root paths ───────────────────────────────────────────────────────────────
+  // Incisor/canine: single tapered root with slight distal curvature.
+  // Premolar:       bifurcated — mesial root (buccal) + distal root (lingual).
+  // Molar:          two buccal roots visible (trifurcated hint).
+  const roots: Record<ToothShape, React.ReactNode> = {
+    incisor: (
+      <path
+        d={[
+          `M${w*.28},${cH}`,
+          `Q${w*.68},${cH}    ${w*.72},${cH}`,
+          `Q${w*.70},${cH+rH*.55} ${w*.54},${tH}`,   // apex (slight distal lean)
+          `Q${w*.46},${tH}   ${w*.30},${tH}`,
+          `Q${w*.24},${cH+rH*.55} ${w*.28},${cH} Z`,
+        ].join(" ")}
+        fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.8}
+      />
+    ),
+    canine: (
+      <path
+        d={[
+          `M${w*.26},${cH}`,
+          `L${w*.74},${cH}`,
+          `Q${w*.74},${cH+rH*.60} ${w*.56},${tH}`,   // long apex
+          `Q${w*.44},${tH}   ${w*.30},${tH}`,
+          `Q${w*.22},${cH+rH*.60} ${w*.26},${cH} Z`,
+        ].join(" ")}
+        fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.8}
+      />
+    ),
+    premolar: (
+      <>
+        {/* Buccal (left) root */}
+        <path
+          d={[
+            `M${w*.16},${cH}`,
+            `L${w*.50},${cH}`,
+            `Q${w*.50},${cH+rH*.30} ${w*.44},${cH+rH*.44}`,  // bifurcation
+            `Q${w*.36},${tH-.5}     ${w*.28},${tH}`,
+            `Q${w*.18},${tH-.5}     ${w*.14},${cH+rH*.44}`,
+            `Q${w*.12},${cH+rH*.30} ${w*.16},${cH} Z`,
+          ].join(" ")}
+          fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.75}
+        />
+        {/* Lingual (right) root */}
+        <path
+          d={[
+            `M${w*.50},${cH}`,
+            `L${w*.84},${cH}`,
+            `Q${w*.86},${cH+rH*.28} ${w*.80},${cH+rH*.42}`,
+            `Q${w*.72},${tH-.5}     ${w*.64},${tH}`,
+            `Q${w*.54},${tH-.5}     ${w*.52},${cH+rH*.42}`,
+            `Q${w*.48},${cH+rH*.28} ${w*.50},${cH} Z`,
+          ].join(" ")}
+          fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.75}
+        />
+      </>
+    ),
+    molar: (
+      <>
+        {/* Mesial root (left, wider) */}
+        <path
+          d={[
+            `M${w*.08},${cH}`,
+            `L${w*.50},${cH}`,
+            `Q${w*.48},${cH+rH*.30} ${w*.42},${cH+rH*.44}`,
+            `Q${w*.34},${tH-.5}     ${w*.24},${tH}`,
+            `Q${w*.12},${tH-.5}     ${w*.08},${cH+rH*.44}`,
+            `Q${w*.04},${cH+rH*.28} ${w*.08},${cH} Z`,
+          ].join(" ")}
+          fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.8}
+        />
+        {/* Distal root (right) */}
+        <path
+          d={[
+            `M${w*.50},${cH}`,
+            `L${w*.92},${cH}`,
+            `Q${w*.94},${cH+rH*.26} ${w*.90},${cH+rH*.42}`,
+            `Q${w*.82},${tH-.5}     ${w*.74},${tH}`,
+            `Q${w*.62},${tH-.5}     ${w*.58},${cH+rH*.42}`,
+            `Q${w*.52},${cH+rH*.26} ${w*.50},${cH} Z`,
+          ].join(" ")}
+          fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.8}
+        />
+      </>
+    ),
   };
 
-  const flip = !isUpper;
-  const translateY = flip ? totalH : 0;
-  const scaleY = flip ? -1 : 1;
+  // ── Pulp chamber outline (inner, lighter fill behind crown) ──────────────────
+  const pulpChamber: Record<ToothShape, string> = {
+    incisor:  `M${w*.40},${cH*.08} L${w*.60},${cH*.08} L${w*.62},${cH*.58} L${w*.38},${cH*.58} Z`,
+    canine:   `M${w*.42},${cH*.10} L${w*.58},${cH*.10} Q${w*.60},${cH*.50} ${w*.50},${cH*.62} Q${w*.40},${cH*.50} ${w*.42},${cH*.10} Z`,
+    premolar: `M${w*.38},${cH*.06} Q${w*.50},${cH*.10} ${w*.62},${cH*.06} L${w*.64},${cH*.52} L${w*.36},${cH*.52} Z`,
+    molar:    `M${w*.28},${cH*.08} Q${w*.50},${cH*.12} ${w*.72},${cH*.08} L${w*.70},${cH*.52} L${w*.30},${cH*.52} Z`,
+  };
 
   return (
     <svg
       width={w}
-      height={totalH}
-      viewBox={`0 0 ${w} ${totalH}`}
-      style={{ display: "block", overflow: "visible" }}
+      height={tH}
+      viewBox={`0 0 ${w} ${tH}`}
+      style={{ display: "block", overflow: "visible", filter: "drop-shadow(0px 1.5px 3px rgba(0,0,0,0.28))" }}
     >
       <defs>
-        {/* Enamel: radial highlight — bright ivory centre, warmer shadowed rim */}
-        <radialGradient id={`cg-${gid}`} gradientUnits="objectBoundingBox" cx="0.38" cy="0.22" r="0.68">
+        {/* Enamel: radial — bright ivory off-centre highlight, warm amber at rim */}
+        <radialGradient id={`cg-${gid}`} gradientUnits="objectBoundingBox"
+          cx="0.36" cy="0.18" r="0.72">
           <stop offset="0%"   stopColor="#fefdf9" />
-          <stop offset="50%"  stopColor="#f2ead8" />
-          <stop offset="100%" stopColor="#c8b490" />
+          <stop offset="42%"  stopColor="#f3ebdb" />
+          <stop offset="78%"  stopColor="#dfc8a4" />
+          <stop offset="100%" stopColor="#c2a074" />
         </radialGradient>
-        {/* Dentin: linear — pale cervical, deeper amber toward apex */}
-        <linearGradient id={`rg-${gid}`} gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0.15" y2="1">
-          <stop offset="0%"   stopColor="#ddd0b5" />
-          <stop offset="55%"  stopColor="#c4a97a" />
-          <stop offset="100%" stopColor="#9e7d4a" />
-        </linearGradient>
-        {/* Secondary specular highlight for buccal convexity */}
-        <radialGradient id={`hl-${gid}`} gradientUnits="objectBoundingBox" cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.62" />
+
+        {/* Enamel ambient occlusion: transparent centre → dark rim */}
+        <radialGradient id={`ca-${gid}`} gradientUnits="objectBoundingBox"
+          cx="0.50" cy="0.50" r="0.55">
+          <stop offset="40%"  stopColor="#1a0e04" stopOpacity="0" />
+          <stop offset="80%"  stopColor="#1a0e04" stopOpacity="0.09" />
+          <stop offset="100%" stopColor="#1a0e04" stopOpacity="0.24" />
+        </radialGradient>
+
+        {/* Crown specular (buccal convexity highlight) */}
+        <radialGradient id={`cs-${gid}`} gradientUnits="objectBoundingBox"
+          cx="0.36" cy="0.22" r="0.40">
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.68" />
           <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
         </radialGradient>
+
+        {/* Pulp chamber: lighter creamy dentin */}
+        <radialGradient id={`pc-${gid}`} gradientUnits="objectBoundingBox"
+          cx="0.5" cy="0.3" r="0.6">
+          <stop offset="0%"   stopColor="#fff8e8" stopOpacity="0.70" />
+          <stop offset="100%" stopColor="#f0ddb0" stopOpacity="0.20" />
+        </radialGradient>
+
+        {/* Root dentin: linear — pale at cervical, deep amber at apex */}
+        <linearGradient id={`rg-${gid}`} gradientUnits="objectBoundingBox" x1="0.12" y1="0" x2="0.88" y2="1">
+          <stop offset="0%"   stopColor="#e0d0b0" />
+          <stop offset="40%"  stopColor="#c8a97a" />
+          <stop offset="100%" stopColor="#9a7040" />
+        </linearGradient>
+
+        {/* Root specular highlight (buccal side of root) */}
+        <radialGradient id={`rs-${gid}`} gradientUnits="objectBoundingBox"
+          cx="0.30" cy="0.18" r="0.55">
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.38" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+        </radialGradient>
+
+        {/* Incisal translucency (for incisors/canines) */}
+        <linearGradient id={`it-${gid}`} gradientUnits="objectBoundingBox" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%"   stopColor="#d4eef8" stopOpacity="0" />
+          <stop offset="100%" stopColor="#d4eef8" stopOpacity="0.38" />
+        </linearGradient>
       </defs>
+
       <g transform={`translate(0,${translateY}) scale(1,${scaleY})`}>
-        {/* Root(s) */}
-        <path d={rootPath[shape]} fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.75} />
-        {/* Crown */}
-        <path d={crownPaths[shape]} fill={`url(#cg-${gid})`} stroke="#8a7060" strokeWidth={0.9} />
-        {/* Buccal convexity specular highlight */}
-        <ellipse
-          cx={w * 0.38} cy={crownH * 0.27}
-          rx={w * 0.13} ry={crownH * 0.15}
-          fill={`url(#hl-${gid})`}
+
+        {/* ── ROOTS ── */}
+        {roots[shape]}
+        {/* Root specular */}
+        <path
+          d={shape === "molar"
+            ? `M${w*.08},${cH} L${w*.92},${cH} Q${w*.90},${cH+rH*.38} ${w*.50},${tH} Q${w*.10},${cH+rH*.38} ${w*.08},${cH} Z`
+            : `M${w*.26},${cH} L${w*.74},${cH} Q${w*.68},${cH+rH*.56} ${w*.50},${tH} Q${w*.32},${cH+rH*.56} ${w*.26},${cH} Z`}
+          fill={`url(#rs-${gid})`}
+          opacity={0.55}
         />
-        {/* Molar buccal groove */}
+
+        {/* ── CROWN BASE FILL ── */}
+        <path d={crown[shape]} fill={`url(#cg-${gid})`} stroke="#8a7060" strokeWidth={0.9} />
+
+        {/* ── PULP CHAMBER (subtle inner tint) ── */}
+        <path d={pulpChamber[shape]} fill={`url(#pc-${gid})`} />
+
+        {/* ── INCISAL TRANSLUCENCY (incisors and canines) ── */}
+        {(shape === "incisor" || shape === "canine") && (
+          <path d={crown[shape]} fill={`url(#it-${gid})`} />
+        )}
+
+        {/* ── GROOVE DETAIL ── */}
         {shape === "molar" && (
-          <line x1={w*.5} y1={crownH*.06} x2={w*.5} y2={crownH*.58} stroke="#9a8768" strokeWidth={0.75} opacity={0.65} />
+          <>
+            {/* Mesio-buccal groove */}
+            <line x1={w*.44} y1={cH*.03} x2={w*.44} y2={cH*.62}
+              stroke="#9a8060" strokeWidth={0.80} strokeLinecap="round" opacity={0.70} />
+            {/* Disto-buccal groove (shorter) */}
+            <line x1={w*.68} y1={cH*.08} x2={w*.64} y2={cH*.52}
+              stroke="#9a8060" strokeWidth={0.65} strokeLinecap="round" opacity={0.60} />
+          </>
         )}
-        {/* Premolar buccal groove */}
         {shape === "premolar" && (
-          <line x1={w*.5} y1={crownH*.04} x2={w*.5} y2={crownH*.46} stroke="#9a8768" strokeWidth={0.75} opacity={0.65} />
+          <line x1={w*.5} y1={cH*.02} x2={w*.5} y2={cH*.56}
+            stroke="#9a8060" strokeWidth={0.75} strokeLinecap="round" opacity={0.65} />
         )}
-        {/* Cervical line (cemento-enamel junction) */}
-        <line x1={w*.17} y1={crownH} x2={w*.83} y2={crownH} stroke="#9a8060" strokeWidth={0.55} opacity={0.55} />
+        {shape === "canine" && (
+          <line x1={w*.50} y1={cH*.04} x2={w*.50} y2={cH*.44}
+            stroke="#9a8060" strokeWidth={0.65} strokeLinecap="round" opacity={0.55} />
+        )}
+
+        {/* ── CROWN SPECULAR HIGHLIGHT (buccal convexity) ── */}
+        <path d={crown[shape]} fill={`url(#cs-${gid})`} />
+
+        {/* ── CROWN AMBIENT OCCLUSION (rim darkening for 3D) ── */}
+        <path d={crown[shape]} fill={`url(#ca-${gid})`} />
+
+        {/* ── CROWN OUTLINE (crisp edge) ── */}
+        <path d={crown[shape]} fill="none" stroke="#7a6050" strokeWidth={0.85} />
+
+        {/* ── CEMENTO-ENAMEL JUNCTION ── */}
+        <line
+          x1={shape === "molar" ? w*.09 : w*.22}
+          y1={cH}
+          x2={shape === "molar" ? w*.91 : w*.78}
+          y2={cH}
+          stroke="#9a8060" strokeWidth={0.6} opacity={0.55}
+        />
+
+        {/* ── CERVICAL CONSTRICTION SHADOW ── */}
+        <ellipse
+          cx={w*.5} cy={cH}
+          rx={shape === "molar" ? w*.42 : w*.28} ry={w*.04}
+          fill="#5a3820" fillOpacity={0.18}
+        />
+
       </g>
     </svg>
   );
