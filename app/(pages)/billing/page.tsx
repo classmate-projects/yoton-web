@@ -16,6 +16,7 @@ import { BillingSummaryType, BillType, ChargeableItemType } from "@/types/billin
 import { PatientListItemType } from "@/types/appointment.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { formatCurrency } from "@/lib/currency";
+import SearchIcon from "@/public/icons/SearchIcon";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -45,6 +46,7 @@ function BillingPageInner() {
   const [summary, setSummary] = useState<BillingSummaryType | null>(null);
   const [bills, setBills] = useState<BillType[]>([]);
   const [filter, setFilter] = useState<"pending" | "all">("pending");
+  const [billSearch, setBillSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
   const [patients, setPatients] = useState<PatientListItemType[]>([]);
@@ -138,6 +140,22 @@ function BillingPageInner() {
         p.opId?.toLowerCase().includes(q)
     );
   }, [patientSearch, patients]);
+
+  // Front-desk lookup over the bill list: a bill only carries patientId/patientName, so
+  // phone and MRN come from the patient list already loaded above for the New Bill picker.
+  const filteredBills = useMemo(() => {
+    const q = billSearch.trim().toLowerCase();
+    if (!q) return bills;
+    const patientsById = new Map(patients.map((p) => [p.opId, p]));
+    return bills.filter((bill) => {
+      const patient = bill.patientId ? patientsById.get(bill.patientId) : undefined;
+      return !!(
+        bill.patientName?.toLowerCase().includes(q) ||
+        patient?.phone?.toLowerCase().includes(q) ||
+        patient?.opNumber?.toLowerCase().includes(q)
+      );
+    });
+  }, [billSearch, bills, patients]);
 
   // keep the detail drawer in sync whenever the bill list refreshes
   useEffect(() => {
@@ -366,8 +384,8 @@ function BillingPageInner() {
         </BillingStatCard>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 mb-4">
+      {/* Filter tabs + patient search */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {(["pending", "all"] as const).map((f) => (
           <button
             key={f}
@@ -379,13 +397,26 @@ function BillingPageInner() {
             {f === "pending" ? "Pending Bills" : "All Bills"}
           </button>
         ))}
+        <div className="relative w-full sm:flex-1 sm:min-w-64 sm:max-w-xl sm:ml-auto">
+          <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
+            <SearchIcon color="#555" />
+          </span>
+          <input
+            type="text"
+            autoComplete="off"
+            placeholder="Search by patient name, phone or MRN..."
+            value={billSearch}
+            onChange={(e) => setBillSearch(e.target.value)}
+            className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
+          />
+        </div>
       </div>
 
       {isLoading ? (
         <div className="py-16 flex justify-center"><LoadingSpinner /></div>
-      ) : bills.length > 0 ? (
+      ) : filteredBills.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {bills.map((bill) => (
+          {filteredBills.map((bill) => (
             <div key={bill.billId} className="card p-5 flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
                 <p className="font-semibold text-foreground truncate">{bill.patientName}</p>
@@ -417,7 +448,9 @@ function BillingPageInner() {
           ))}
         </div>
       ) : (
-        <p className="py-16 text-center text-sm text-muted-foreground">No bills found.</p>
+        <p className="py-16 text-center text-sm text-muted-foreground">
+          {billSearch.trim() ? `No bills match "${billSearch.trim()}".` : "No bills found."}
+        </p>
       )}
 
       {isModalOpen && (
@@ -540,21 +573,21 @@ function BillingPageInner() {
 
       {detailBill && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
-          <div className="bg-card w-full max-w-lg rounded-xl border border-border p-6 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-card w-full max-w-2xl rounded-xl border border-border p-6 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-1">
               <h2 className="text-2xl font-semibold text-foreground">{detailBill.patientName}</h2>
-              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(detailBill.status)}`}>
+              <span className={`px-2 py-1 rounded-full text-sm font-semibold ${statusBadgeClass(detailBill.status)}`}>
                 {detailBill.status}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground mb-6">Bill #{detailBill.billId}</p>
+            <p className="text-base text-muted-foreground mb-6">Bill #{detailBill.billId}</p>
 
             <div className="space-y-1 mb-4">
               {detailBill.items.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No items added yet.</p>
+                <p className="text-base text-muted-foreground">No items added yet.</p>
               ) : (
                 detailBill.items.map((item) => (
-                  <div key={item.billItemId} className="flex justify-between text-sm py-1 border-b border-border">
+                  <div key={item.billItemId} className="flex justify-between text-base py-1 border-b border-border">
                     <span className="text-foreground/90">{item.description}</span>
                     <span className="text-foreground font-medium">{currency(item.amount)}</span>
                   </div>
@@ -562,7 +595,7 @@ function BillingPageInner() {
               )}
             </div>
 
-            <div className="space-y-1 text-sm mb-6">
+            <div className="space-y-1 text-base mb-6">
               <div className="flex justify-between text-foreground/70">
                 <span>Subtotal</span>
                 <span>{currency(detailBill.totalAmount)}</span>
@@ -583,11 +616,11 @@ function BillingPageInner() {
 
             {detailBill.status === "Pending" && detailBill.visitId && (
               <div className="mb-6">
-                <p className="text-sm font-bold text-foreground/90 mb-2">Chargeable Items</p>
+                <p className="text-base font-bold text-foreground/90 mb-2">Chargeable Items</p>
                 {isLoadingChargeable ? (
-                  <p className="text-sm text-muted-foreground">Loading...</p>
+                  <p className="text-base text-muted-foreground">Loading...</p>
                 ) : chargeableItems.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-base text-muted-foreground">
                     Nothing dispensed or completed for this visit yet.
                   </p>
                 ) : (
@@ -595,16 +628,16 @@ function BillingPageInner() {
                     {chargeableItems.map((item) => (
                       <div
                         key={`${item.sourceType}-${item.sourceId}`}
-                        className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm"
+                        className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-base"
                       >
                         <div>
                           <p className="font-medium text-foreground">{item.description}</p>
-                          <p className="text-xs text-muted-foreground">{currency(item.suggestedAmount)}</p>
+                          <p className="text-sm text-muted-foreground">{currency(item.suggestedAmount)}</p>
                         </div>
                         <button
                           onClick={() => handleAddFromSource(item)}
                           disabled={addingSourceId === item.sourceId}
-                          className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
+                          className="px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
                         >
                           {addingSourceId === item.sourceId ? "Adding..." : "Add to bill"}
                         </button>
@@ -623,7 +656,7 @@ function BillingPageInner() {
                     placeholder="Description"
                     value={itemDescription}
                     onChange={(e) => setItemDescription(e.target.value)}
-                    className="flex-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
+                    className="flex-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-base"
                   />
                   <input
                     type="number"
@@ -632,31 +665,33 @@ function BillingPageInner() {
                     placeholder="Amount"
                     value={itemAmount || ""}
                     onChange={(e) => setItemAmount(Number(e.target.value))}
-                    className="w-28 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
+                    className="w-28 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-base"
                   />
                   <button
                     type="submit"
                     disabled={isAddingItem}
-                    className="px-3 py-2 rounded-lg bg-muted hover:bg-muted/80 text-foreground text-sm font-semibold cursor-pointer disabled:opacity-60"
+                    className="px-3 py-2 rounded-lg bg-muted hover:bg-muted/80 text-foreground text-base font-semibold cursor-pointer disabled:opacity-60"
                   >
                     Add
                   </button>
                 </form>
 
                 <div className="flex gap-2">
-                  <SearchableSelect
-                    value={payMethod}
-                    onChange={setPayMethod}
-                    options={[
-                      { value: "Cash", label: "Cash" },
-                      { value: "Card", label: "Card" },
-                      { value: "Insurance", label: "Insurance" },
-                    ]}
-                  />
+                  <div className="flex-1 min-w-0">
+                    <SearchableSelect
+                      value={payMethod}
+                      onChange={setPayMethod}
+                      options={[
+                        { value: "Cash", label: "Cash" },
+                        { value: "Card", label: "Card" },
+                        { value: "Insurance", label: "Insurance" },
+                      ]}
+                    />
+                  </div>
                   <button
                     onClick={handlePay}
                     disabled={isPaying || detailBill.items.length === 0}
-                    className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-white font-semibold hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
+                    className="shrink-0 whitespace-nowrap px-6 py-2.5 rounded-lg bg-primary text-white font-semibold hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
                   >
                     {isPaying ? "Processing..." : "Mark as Paid"}
                   </button>

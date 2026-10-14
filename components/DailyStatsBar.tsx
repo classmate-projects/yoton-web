@@ -88,9 +88,11 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
   const [visible, setVisible] = useState(false);
   const [waiting, setWaiting] = useState<number | null>(null);
   const [completedToday, setCompletedToday] = useState<number | null>(null);
-  const [queue, setQueue] = useState<VisitType[]>([]);
+  // The popups' lists come back with the counts from the same daily-stats call (same
+  // today/role/doctor scoping), so a count and its list can never disagree.
+  const [waitingPatients, setWaitingPatients] = useState<VisitType[]>([]);
+  const [consultedPatients, setConsultedPatients] = useState<VisitType[]>([]);
   const [activePopup, setActivePopup] = useState<"waiting" | "consulted" | null>(null);
-  const [isFetchingQueue, setIsFetchingQueue] = useState(false);
 
   const waitingRef = useRef<HTMLDivElement>(null);
   const consultedRef = useRef<HTMLDivElement>(null);
@@ -100,23 +102,12 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
       const result = await ReceptionService.getDailyVisitStats();
       setWaiting(result.waiting);
       setCompletedToday(result.completedToday);
+      setWaitingPatients(result.waitingVisits ?? []);
+      setConsultedPatients(result.completedVisits ?? []);
     } catch {
       // silently ignore — stats bar is informational
     }
   }, []);
-
-  const fetchQueue = useCallback(async () => {
-    if (isFetchingQueue || queue.length > 0) return;
-    try {
-      setIsFetchingQueue(true);
-      const result = await ReceptionService.getVisitQueue();
-      setQueue(result.data ?? []);
-    } catch {
-      // ignore
-    } finally {
-      setIsFetchingQueue(false);
-    }
-  }, [isFetchingQueue, queue.length]);
 
   useEffect(() => {
     const detail = getUserDetail();
@@ -126,14 +117,10 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
     }
   }, [fetchStats]);
 
-  useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], () => {
-    fetchStats();
-    setQueue([]); // reset so queue is re-fetched on next hover
-  });
+  useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], fetchStats);
 
   const handleMouseEnter = (type: "waiting" | "consulted") => {
     setActivePopup(type);
-    fetchQueue();
   };
 
   const handleMouseLeave = () => {
@@ -141,9 +128,6 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
   };
 
   if (!visible) return null;
-
-  const waitingPatients = queue.filter((v) => v.status !== "Completed");
-  const consultedPatients = queue.filter((v) => v.status === "Completed");
 
   const anchorRef = activePopup === "waiting" ? waitingRef : consultedRef;
 

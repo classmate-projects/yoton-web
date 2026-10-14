@@ -4,7 +4,7 @@ import { ReceptionCreatePatientType } from "@/types/reception.type";
 import { compressImageForUpload } from "@/lib/resizeImage";
 import { CreateAppointmentPayload } from "@/types/appointment.type";
 import { UpdateDoctorSchedulePayload } from "@/types/doctorAvailability.type";
-import { CheckInPayload, WalkInPayload, ReassignVisitPayload, UploadPatientDocumentPayload } from "@/types/visit.type";
+import { CheckInPayload, WalkInPayload, ReassignVisitPayload, UploadPatientDocumentPayload, VisitType } from "@/types/visit.type";
 
 export const ReceptionService = {
     getAllPatients: async () => {
@@ -157,7 +157,12 @@ export const ReceptionService = {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT_QUEUE(status))
         return data;
     },
-    getDailyVisitStats: async (): Promise<{ waiting: number; completedToday: number }> => {
+    getDailyVisitStats: async (): Promise<{
+        waiting: number;
+        completedToday: number;
+        waitingVisits: VisitType[];
+        completedVisits: VisitType[];
+    }> => {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DAILY_VISIT_STATS)
         return data;
     },

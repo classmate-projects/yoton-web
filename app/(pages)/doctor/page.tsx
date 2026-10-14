@@ -3068,9 +3068,11 @@ function DoctorWorkbenchInner() {
                     patientId={selectedPatientId}
                   />
                 ) : (
-                  <p className="text-sm text-muted-foreground py-8 text-center">
-                    No active encounter — start a visit to access the dental chart.
-                  </p>
+                  <EmptyState
+                    illustration="visits"
+                    title="No active encounter"
+                    description="Start a visit to access the dental chart."
+                  />
                 )}
               </div>
             </div>

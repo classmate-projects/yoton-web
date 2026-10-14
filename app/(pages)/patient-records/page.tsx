@@ -28,6 +28,7 @@ import {
 import { ListItemType } from "@/types/configList.type";
 import { toDateInputValue } from "@/lib/date";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { matchesPatientSearch } from "@/lib/patientSearch";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 
 const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
@@ -65,21 +66,6 @@ const PATIENTS_PAGE_SIZE = 50;
 const formatFilterDate = (value: string, pattern: string) => {
   const d = parseISO(value);
   return isValid(d) ? format(d, pattern) : "—";
-};
-
-// Shared by both list modes - VisitListItemType extends PatientGetAllType, so this one
-// predicate covers both without needing a second copy. "Mobile Number" = phone; "MRN" =
-// opNumber (opId itself stays internal - never shown to or searched by a user, see the app-
-// wide MRN convention this mirrors).
-const matchesPatientSearch = (p: PatientGetAllType, term: string) => {
-  const q = term.trim().toLowerCase();
-  if (!q) return true;
-  return !!(
-    p.name?.toLowerCase().includes(q) ||
-    p.opNumber?.toLowerCase().includes(q) ||
-    p.phone?.toLowerCase().includes(q) ||
-    p.nationalID?.toLowerCase().includes(q)
-  );
 };
 
 export default function PatientRecordsPage() {
