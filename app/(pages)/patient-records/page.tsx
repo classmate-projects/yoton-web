@@ -30,6 +30,8 @@ import { toDateInputValue } from "@/lib/date";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { matchesPatientSearch } from "@/lib/patientSearch";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { useViewModePreference } from "@/hooks/useViewModePreference";
+import ViewModeToggle from "@/components/ViewModeToggle";
 
 const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
 
@@ -61,6 +63,24 @@ const emptyInsuranceForm = {
 type PatientListMode = "register" | "visit" | "referral";
 const PATIENTS_PAGE_SIZE = 50;
 
+const getInitials = (name: string) =>
+  name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
+const visitStatusClass = (status: string) =>
+  status === "Completed"
+    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+    : status === "Cancelled"
+    ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+    : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+
+const visitTypeLabel = (visitType: string) =>
+  visitType === "WalkIn" ? "Walk-in" : visitType === "Referral" ? "Referral" : "Appointment";
+
+// Shared by the list-view tables of all three tabs.
+const TABLE_CLASS = "w-full min-w-[900px] text-left text-sm";
+const TH_CLASS = "px-4 py-3 font-semibold";
+const TD_CLASS = "px-4 py-3";
+
 // Formats a "yyyy-MM-dd" filter value as a local date; "—" if the field is cleared/invalid,
 // since date-fns' format() throws on an Invalid Date.
 const formatFilterDate = (value: string, pattern: string) => {
@@ -87,6 +107,8 @@ export default function PatientRecordsPage() {
 
   // ---------------- Register List / Visit List toggle ----------------
   const [listMode, setListMode] = useState<PatientListMode>("register");
+  // One grid/list choice for all three tabs, remembered per user across devices.
+  const [viewMode, setViewMode] = useViewModePreference("patientRecords.viewMode");
   const [visits, setVisits] = useState<VisitListItemType[]>([]);
   const [isLoadingVisits, setIsLoadingVisits] = useState(false);
   const [pendingReferrals, setPendingReferrals] = useState<PendingReferralType[]>([]);
@@ -635,6 +657,48 @@ export default function PatientRecordsPage() {
   );
 
   // Register List row actions — operate on the patient record itself.
+  // Avatar + name + MRN chip - the first column of every list-view table.
+  const renderPatientCell = (name: string, mrn: string, avatarClass = "bg-primary/10 text-primary") => (
+    <div className="flex items-center gap-3">
+      <div className={`w-9 h-9 rounded-full font-bold text-xs flex items-center justify-center shrink-0 ${avatarClass}`}>
+        {getInitials(name === "—" ? "?" : name)}
+      </div>
+      <div className="min-w-0 max-w-[220px]">
+        <p className="font-semibold text-foreground truncate" title={name}>{name}</p>
+        <span className="inline-block max-w-full truncate align-bottom font-mono text-[12px] text-foreground bg-muted px-1.5 py-0.5 rounded">
+          {mrn}
+        </span>
+      </div>
+    </div>
+  );
+
+  const renderReferralAction = (r: PendingReferralType) =>
+    r.externalFacility ? (
+      <p className="text-center text-sm text-muted-foreground py-1">Referred to external facility</p>
+    ) : registeredReferralIds.has(r.referralId) ? (
+      <div className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm font-semibold text-green-700 dark:text-green-400">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+        In Queue
+      </div>
+    ) : (
+      <button
+        onClick={async () => {
+          setWalkInReferralId(r.referralId);
+          await openWalkInModal({
+            opId: r.patientId,
+            opNumber: r.patientOpNumber ?? undefined,
+            name: r.patientName ?? "",
+            email: "",
+            phone: r.patientPhone ?? "",
+            address: "",
+          });
+        }}
+        className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+      >
+        <Stethoscope size={15} /> Register Visit
+      </button>
+    );
+
   const renderRegisterActions = (patient: PatientGetAllType) => (
     <div className="flex w-full items-center justify-evenly gap-1">
       <Link
@@ -722,8 +786,11 @@ export default function PatientRecordsPage() {
             View, search, and manage all registered patients in the system.
           </p>
         </div>
-        <Link href={"/patient-entry"} className="bg-blue-500 px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:bg-blue-600 transition duration-150">
-          Add Patient</Link>
+        <div className="flex items-center gap-3">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          <Link href={"/patient-entry"} className="bg-blue-500 px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:bg-blue-600 transition duration-150">
+            Add Patient</Link>
+        </div>
       </div>
 
       <div className="card p-6">
@@ -847,10 +914,35 @@ export default function PatientRecordsPage() {
               }
               action={searchTerm.trim() ? { label: "Clear search", onClick: () => setSearchTerm("") } : undefined}
             />
+          ) : viewMode === "list" ? (
+            <div className="overflow-x-auto">
+              <table className={TABLE_CLASS}>
+                <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className={TH_CLASS}>Patient</th>
+                    <th className={TH_CLASS}>Email</th>
+                    <th className={TH_CLASS}>Phone</th>
+                    <th className={TH_CLASS}>Address</th>
+                    <th className={`${TH_CLASS} text-center`}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedPatients.map((patient) => (
+                    <tr key={patient.opId} className="border-b border-border last:border-b-0 hover:bg-muted/40">
+                      <td className={TD_CLASS}>{renderPatientCell(patient.name, patient.opNumber || patient.opId)}</td>
+                      <td className={`${TD_CLASS} max-w-[220px] truncate text-muted-foreground`} title={patient.email}>{patient.email || "—"}</td>
+                      <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{patient.phone || "—"}</td>
+                      <td className={`${TD_CLASS} max-w-[280px] truncate text-muted-foreground`} title={patient.address}>{patient.address || "—"}</td>
+                      <td className={`${TD_CLASS} w-[300px]`}>{renderRegisterActions(patient)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {pagedPatients.map((patient) => {
-                const initials = patient.name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+                const initials = getInitials(patient.name);
                 return (
                   <div key={patient.opId} className="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
                     <div className="flex items-start gap-3">
@@ -912,16 +1004,42 @@ export default function PatientRecordsPage() {
                   : undefined
               }
             />
+          ) : viewMode === "list" ? (
+            <div className="overflow-x-auto">
+              <table className={TABLE_CLASS}>
+                <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className={TH_CLASS}>Patient</th>
+                    <th className={TH_CLASS}>Phone</th>
+                    <th className={TH_CLASS}>Checked in</th>
+                    <th className={TH_CLASS}>Type</th>
+                    <th className={TH_CLASS}>Status</th>
+                    <th className={`${TH_CLASS} text-center`}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedVisits.map((visit) => (
+                    <tr key={visit.visitId} className="border-b border-border last:border-b-0 hover:bg-muted/40">
+                      <td className={TD_CLASS}>{renderPatientCell(visit.name, visit.opNumber || visit.opId)}</td>
+                      <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{visit.phone || "—"}</td>
+                      <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{format(new Date(visit.checkedInAt), "dd MMM yyyy")}</td>
+                      <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{visitTypeLabel(visit.visitType)}</td>
+                      <td className={TD_CLASS}>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${visitStatusClass(visit.status)}`}>
+                          {visit.status}
+                        </span>
+                      </td>
+                      <td className={TD_CLASS}>{renderVisitActions(visit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {pagedVisits.map((visit) => {
-                const initials = visit.name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-                const statusColor =
-                  visit.status === "Completed"
-                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                    : visit.status === "Cancelled"
-                    ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-                    : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+                const initials = getInitials(visit.name);
+                const statusColor = visitStatusClass(visit.status);
                 return (
                   <div key={visit.visitId} className="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
                     <div className="flex items-start gap-3">
@@ -951,9 +1069,7 @@ export default function PatientRecordsPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Clock size={15} className="shrink-0 text-muted-foreground/60" />
-                        <span>
-                          {visit.visitType === "WalkIn" ? "Walk-in" : visit.visitType === "Referral" ? "Referral" : "Appointment"}
-                        </span>
+                        <span>{visitTypeLabel(visit.visitType)}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 pt-2 border-t border-border mt-auto">
@@ -1003,11 +1119,60 @@ export default function PatientRecordsPage() {
                     : undefined
                 }
               />
+            ) : viewMode === "list" ? (
+              <div className="overflow-x-auto">
+                <table className={TABLE_CLASS}>
+                  <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className={TH_CLASS}>Patient</th>
+                      <th className={TH_CLASS}>Phone</th>
+                      <th className={TH_CLASS}>Specialty</th>
+                      <th className={TH_CLASS}>Referred on</th>
+                      <th className={TH_CLASS}>Priority</th>
+                      <th className={`${TH_CLASS} text-center`}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedReferrals.map((r) => {
+                      const isExternal = !!r.externalFacility;
+                      return (
+                        <tr
+                          key={r.referralId}
+                          className={`border-b border-border last:border-b-0 ${isExternal ? "opacity-50" : "hover:bg-muted/40"}`}
+                        >
+                          <td className={TD_CLASS}>
+                            {renderPatientCell(r.patientName ?? "—", r.patientOpNumber ?? "—", isExternal ? "bg-muted text-muted-foreground" : "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400")}
+                          </td>
+                          <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{r.patientPhone || "—"}</td>
+                          <td className={`${TD_CLASS} max-w-[260px] truncate text-muted-foreground`}>
+                            {r.targetSpecializationName ?? "—"}
+                            {r.cancerSiteName && <span className="ml-1">({r.cancerSiteName})</span>}
+                            {r.externalFacility && <span className="ml-1 font-medium text-slate-500 dark:text-slate-400">· {r.externalFacility}</span>}
+                          </td>
+                          <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{format(new Date(r.createdAt), "dd MMM yyyy")}</td>
+                          <td className={TD_CLASS}>
+                            <div className="flex flex-wrap items-center gap-1">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${r.priority === "Urgent" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : "bg-muted text-muted-foreground"}`}>
+                                {r.priority}
+                              </span>
+                              {isExternal && (
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                  External
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className={`${TD_CLASS} w-[220px]`}>{renderReferralAction(r)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {pagedReferrals.map((r) => {
                   const isExternal = !!r.externalFacility;
-                  const isRegistered = registeredReferralIds.has(r.referralId);
                   return (
                     <div
                       key={r.referralId}
@@ -1055,31 +1220,7 @@ export default function PatientRecordsPage() {
                         </div>
                       </div>
                       <div className="pt-2 border-t border-border mt-auto">
-                        {isExternal ? (
-                          <p className="text-center text-sm text-muted-foreground py-1">Referred to external facility</p>
-                        ) : isRegistered ? (
-                          <div className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm font-semibold text-green-700 dark:text-green-400">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                            In Queue
-                          </div>
-                        ) : (
-                          <button
-                            onClick={async () => {
-                              setWalkInReferralId(r.referralId);
-                              await openWalkInModal({
-                                opId: r.patientId,
-                                opNumber: r.patientOpNumber ?? undefined,
-                                name: r.patientName ?? "",
-                                email: "",
-                                phone: r.patientPhone ?? "",
-                                address: "",
-                              });
-                            }}
-                            className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
-                          >
-                            <Stethoscope size={15} /> Register Visit
-                          </button>
-                        )}
+                        {renderReferralAction(r)}
                       </div>
                     </div>
                   );

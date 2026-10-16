@@ -31,6 +31,7 @@ import {
   rememberAccount,
   type RecentAccount,
 } from "@/lib/recentAccounts";
+import { clearOtherUsersViewModes } from "@/lib/viewModeCache";
 
 // Photo when there is one, initials otherwise (or if the photo fails to load).
 function RecentAccountAvatar({ account, selected }: { account: RecentAccount; selected: boolean }) {
@@ -128,6 +129,7 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(data.message || "Login failed");
 
       localStorage.setItem("yoton_token", data.body.token);
+      clearOtherUsersViewModes(data.body.userId);
 
       localStorage.setItem(
         "yoton_user_detail",

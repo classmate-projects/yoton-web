@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import Image from "next/image";
 import logo from "@/public/yoton_logo.png";
 import { RegisterCompanyPayload } from "@/types/company.type";
+import { clearOtherUsersViewModes } from "@/lib/viewModeCache";
 
 const inputClass =
   "h-12 rounded-2xl border-border! bg-muted/40! pl-12! pr-4 text-base! text-foreground placeholder:text-muted-foreground! focus-visible:bg-card! focus-visible:ring-transparent!";
@@ -61,6 +62,7 @@ export default function RegisterCompanyPage() {
       if (!res.ok) throw new Error(data.message || "Registration failed");
 
       localStorage.setItem("yoton_token", data.body.token);
+      clearOtherUsersViewModes(data.body.userId);
       localStorage.setItem(
         "yoton_user_detail",
         JSON.stringify({

@@ -432,6 +432,10 @@ export const ENDPOINTS = {
         GET: `/api/recent-modules`,
         RECORD: `/api/recent-modules`,
     },
+    USER_PREFERENCES: {
+        GET: (key: string) => `/api/user-preferences/${encodeURIComponent(key)}`,
+        SET: (key: string) => `/api/user-preferences/${encodeURIComponent(key)}`,
+    },
     ATTENDANCE: {
         GET_TODAY: `/api/attendance/today`,
         CHECK_IN: `/api/attendance/check-in`,

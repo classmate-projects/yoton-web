@@ -36,6 +36,8 @@ import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { History as HistoryIcon, UserX } from "lucide-react";
 import { UserService } from "@/services/user.service";
+import ViewModeToggle from "@/components/ViewModeToggle";
+import { useViewModePreference } from "@/hooks/useViewModePreference";
 import { NursingService } from "@/services/nursing.service";
 import { NurseShiftInput } from "@/types/nursing.type";
 import { notifySaveStatus } from "@/lib/saveStatus";
@@ -103,7 +105,7 @@ export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeStatus, setActiveStatus] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
-
+  const [viewMode, setViewMode] = useViewModePreference("userManagement.viewMode");
 
   const [branches, setBranches] = useState<BranchType[]>([]);
   // Defaults to the signed-in staff member's own branch (not "All") - most admins managing
@@ -375,6 +377,46 @@ export default function UserManagement() {
     fetchAllUsers();
   };
 
+  const userStatusBg = (user: getAllResponse) =>
+    user.isTerminated
+      ? "bg-red-100/80 dark:bg-red-950/30"
+      : !user.isActive
+      ? "bg-red-50/50 opacity-80"
+      : "";
+
+  const renderNameBlock = (user: getAllResponse, className: string) => (
+    <div className={`min-w-0 ${className}`}>
+      <p
+        className={`truncate font-semibold ${
+          user.isTerminated ? "text-muted-foreground line-through decoration-red-400" : ""
+        }`}
+        title={user.name}
+      >
+        {user.name}
+      </p>
+      <p className="truncate text-xs text-muted-foreground" title={user.username}>
+        @{user.username}
+      </p>
+    </div>
+  );
+
+  const renderBadges = (user: getAllResponse) => (
+    <>
+      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold capitalize text-primary">
+        {user.role}
+      </span>
+      {user.isTerminated ? (
+        <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+          Terminated
+        </span>
+      ) : !user.isActive ? (
+        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+          Inactive
+        </span>
+      ) : null}
+    </>
+  );
+
   const renderActions = (user: getAllResponse) => (
     <div className="flex items-center justify-evenly">
       <button
@@ -431,6 +473,7 @@ export default function UserManagement() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
           <Link
             href={"/role-management"}
             aria-label="Manage roles and their module permissions"
@@ -507,55 +550,71 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
-        {isLoading ? (
-          <div className="card col-span-full flex justify-center py-20">
-            <LoadingSpinner />
-          </div>
-        ) : filteredUsers.length > 0 ? (
-          filteredUsers.map((user) => (
+      {isLoading ? (
+        <div className="card mt-8 flex justify-center py-20">
+          <LoadingSpinner />
+        </div>
+      ) : filteredUsers.length === 0 ? (
+        <div className="card mt-8">
+          <EmptyState illustration="users" title="No users found" description="Staff accounts you register will appear here." />
+        </div>
+      ) : viewMode === "list" ? (
+        <div className="card mt-8 overflow-x-auto p-0">
+          <table className="w-full min-w-[1000px] text-left text-sm">
+            <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 font-semibold">User</th>
+                <th className="px-4 py-3 font-semibold">Role</th>
+                <th className="px-4 py-3 font-semibold">Email</th>
+                <th className="px-4 py-3 font-semibold">Phone</th>
+                <th className="px-4 py-3 font-semibold">Last login</th>
+                <th className="px-4 py-3 font-semibold">Created</th>
+                <th className="px-4 py-3 font-semibold">Active</th>
+                <th className="px-4 py-3 text-center font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.map((user) => (
+                <tr
+                  key={user.id}
+                  className={`border-b border-border last:border-b-0 ${userStatusBg(user) || "hover:bg-muted/40"}`}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <UserAvatar name={user.name} image={user.userImage} />
+                      {renderNameBlock(user, "max-w-[200px]")}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2">{renderBadges(user)}</div>
+                  </td>
+                  <td className="max-w-[220px] truncate px-4 py-3" title={user.email}>{user.email}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{user.phone}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{getTime(user.lastLogin)}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{getTime(user.createdAt)}</td>
+                  <td className="px-4 py-3">
+                    <ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} />
+                  </td>
+                  <td className="px-4 py-3">{renderActions(user)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+          {filteredUsers.map((user) => (
             <div
               key={user.id}
-              className={`card flex flex-col gap-3 p-4 ${
-                user.isTerminated
-                  ? "bg-red-100/80 dark:bg-red-950/30"
-                  : !user.isActive
-                  ? "bg-red-50/50 opacity-80"
-                  : ""
-              }`}
+              className={`card flex flex-col gap-3 p-4 ${userStatusBg(user)}`}
             >
               <div className="flex items-start gap-3">
                 <UserAvatar name={user.name} image={user.userImage} />
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={`truncate font-semibold ${
-                      user.isTerminated ? "text-muted-foreground line-through decoration-red-400" : ""
-                    }`}
-                    title={user.name}
-                  >
-                    {user.name}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground" title={user.username}>
-                    @{user.username}
-                  </p>
-                </div>
+                {renderNameBlock(user, "flex-1")}
                 <ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} />
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold capitalize text-primary">
-                  {user.role}
-                </span>
-                {user.isTerminated ? (
-                  <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                    Terminated
-                  </span>
-                ) : !user.isActive ? (
-                  <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                    Inactive
-                  </span>
-                ) : null}
-              </div>
+              <div className="flex items-center gap-2">{renderBadges(user)}</div>
 
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
                 <dt className="text-muted-foreground">Email</dt>
@@ -572,13 +631,9 @@ export default function UserManagement() {
                 {renderActions(user)}
               </div>
             </div>
-          ))
-        ) : (
-          <div className="card col-span-full">
-            <EmptyState illustration="users" title="No users found" description="Staff accounts you register will appear here." />
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {shiftsTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
