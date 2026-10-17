@@ -17,6 +17,8 @@ export interface BillType {
   tax: number;
   discountPercent: number | null; // null on older flat-amount bills
   taxPercent: number | null;
+  cancelReason: string | null;
+  cancelledAt: string | null;
   netAmount: number;
   status: string;
   paymentMethod: string | null;

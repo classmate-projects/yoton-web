@@ -12,7 +12,7 @@ export const BillingService = {
     return data;
   },
   getSummary: async () => {
-    const { data } = await api.get(ENDPOINTS.BILLING.GET_SUMMARY);
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_SUMMARY());
     return data;
   },
   getById: async (id: string) => {
@@ -35,8 +35,9 @@ export const BillingService = {
     const { data } = await api.post(ENDPOINTS.BILLING.PAY, { billId, paymentMethod });
     return data;
   },
-  cancel: async (id: string) => {
-    const { data } = await api.post(ENDPOINTS.BILLING.CANCEL(id));
+  // Reason is required by the API (kept on the bill, shown when viewing it).
+  cancel: async (id: string, reason: string) => {
+    const { data } = await api.post(ENDPOINTS.BILLING.CANCEL(id), { reason });
     return data;
   },
   getAwaiting: async () => {

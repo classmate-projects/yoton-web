@@ -76,6 +76,9 @@ function BillingPageInner() {
   // Set by a bill card's Print button: renders that bill's print sheet, then the effect
   // below opens the print dialog once it's on the page, and clears it when printing ends.
   const [printBill, setPrintBill] = useState<BillType | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<BillType | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
     if (!printBill) return;
@@ -395,27 +398,29 @@ function BillingPageInner() {
     }
   };
 
+  // Opens the cancel dialog - a reason is required (the API rejects a cancel without one),
+  // so a toast's one-click confirm isn't enough any more.
   const handleCancelBill = (bill: BillType) => {
-    toast(
-      <span>
-        Cancel bill for <b className="text-red-500 ml-1">{bill.patientName}</b>?
-      </span>,
-      {
-        action: {
-          label: "Cancel Bill",
-          onClick: async () => {
-            try {
-              const data = await BillingService.cancel(bill.billId);
-              toast.success(data.message || "Bill cancelled");
-              if (detailBill?.billId === bill.billId) setDetailBill(data.data);
-              fetchAll();
-            } catch (error) {
-              toast.error(errorMessage(error, "Failed to cancel bill"));
-            }
-          },
-        },
-      }
-    );
+    setCancelTarget(bill);
+    setCancelReason("");
+  };
+
+  const confirmCancelBill = async () => {
+    if (!cancelTarget || !cancelReason.trim()) return;
+    try {
+      setIsCancelling(true);
+      const data = await BillingService.cancel(cancelTarget.billId, cancelReason.trim());
+      toast.success(data.message || "Bill cancelled");
+      if (detailBill?.billId === cancelTarget.billId) setDetailBill(data.data);
+      setCancelTarget(null);
+      fetchAll();
+      // A cancelled visit bill leaves the visit waiting for a fresh bill.
+      if (cancelTarget.visitId) fetchAwaiting();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to cancel bill"));
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   if (!checkedAuth) {
@@ -760,6 +765,15 @@ function BillingPageInner() {
             </div>
             <p className="text-base text-muted-foreground mb-6">Bill #{detailBill.billId}</p>
 
+            {detailBill.status === "Cancelled" && detailBill.cancelReason && (
+              <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm">
+                <p className="font-semibold text-destructive">
+                  Cancelled{detailBill.cancelledAt ? ` on ${formatDateTime(detailBill.cancelledAt)}` : ""}
+                </p>
+                <p className="mt-0.5 text-foreground/90 whitespace-pre-wrap break-words">{detailBill.cancelReason}</p>
+              </div>
+            )}
+
             <div className="space-y-1 mb-4">
               {detailBill.items.length === 0 ? (
                 <EmptyState
@@ -903,6 +917,46 @@ function BillingPageInner() {
       )}
 
       {/* Outside the modal on purpose - see BillPrintout's comment on backdrop-blur. */}
+      {cancelTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
+            <h2 className="text-xl font-semibold text-foreground">Cancel bill</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {cancelTarget.patientName} · Bill #{cancelTarget.billId} · {currency(cancelTarget.netAmount)}
+            </p>
+            <label className="mt-4 block text-sm font-bold text-foreground/90">Reason</label>
+            <textarea
+              autoFocus
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              maxLength={500}
+              rows={3}
+              placeholder="Why is this bill being cancelled?"
+              className="mt-1 w-full resize-none rounded-lg border border-border bg-muted p-3 text-sm text-foreground outline-none focus:border-primary"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Kept on the bill. {cancelTarget.visitId ? "The visit will go back to Awaiting Billing for a new bill." : ""}
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setCancelTarget(null)}
+                disabled={isCancelling}
+                className="flex-1 rounded-md border border-border px-5 py-2.5 text-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                Keep bill
+              </button>
+              <button
+                onClick={confirmCancelBill}
+                disabled={isCancelling || !cancelReason.trim()}
+                className="flex-1 rounded-md bg-destructive px-5 py-2.5 font-semibold text-white hover:opacity-90 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isCancelling ? "Cancelling..." : "Cancel bill"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* The card's Print button wins over an open pop-up; only one sheet ever renders. */}
       {(printBill ?? detailBill) && <BillPrintout bill={(printBill ?? detailBill)!} />}
     </div>

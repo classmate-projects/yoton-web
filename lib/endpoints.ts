@@ -366,11 +366,12 @@ export const ENDPOINTS = {
         SET_HIGH_RISK: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}/high-risk`,
     },
     BILLING: {
-        GET_ALL: (date?: string) => date ? `/api/Billing?date=${date}` : `/api/Billing`,
-        GET_PENDING: (date?: string) => date ? `/api/Billing/pending?date=${date}` : `/api/Billing/pending`,
+        // tz = browser getTimezoneOffset(), so "a day" means the user's local day, not UTC.
+        GET_ALL: (date?: string) => `/api/Billing?tzOffset=${new Date().getTimezoneOffset()}${date ? `&date=${date}` : ""}`,
+        GET_PENDING: (date?: string) => `/api/Billing/pending?tzOffset=${new Date().getTimezoneOffset()}${date ? `&date=${date}` : ""}`,
         GET_AWAITING: `/api/Billing/awaiting`,
         OPEN_VISIT_BILL: (visitId: string) => `/api/Billing/visit/${visitId}/open`,
-        GET_SUMMARY: `/api/Billing/summary`,
+        GET_SUMMARY: () => `/api/Billing/summary?tzOffset=${new Date().getTimezoneOffset()}`,
         GET_BY_ID: (id: string) => `/api/Billing/${id}`,
         GET_BY_PATIENT: (patientId: string) => `/api/Billing/patient/${patientId}`,
         CREATE: `/api/Billing/create`,
