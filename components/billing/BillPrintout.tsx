@@ -16,6 +16,7 @@ export default function BillPrintout({ bill }: { bill: BillType }) {
   const currentUser = getUserDetail();
   const companyName = currentUser?.companyName || "Yoton Health";
   const companyLogo = backendAssetUrl(currentUser?.companyLogoUrl);
+  const liveItems = bill.items.filter((i) => !i.isRemoved);
 
   return (
     <>
@@ -56,24 +57,47 @@ export default function BillPrintout({ bill }: { bill: BillType }) {
           )}
         </div>
 
+        {/* Removed lines are never printed - they're kept on the bill's record only. */}
         <table className="mt-5 w-full border-collapse text-sm">
           <thead>
             <tr className="border-b-2 border-black text-left">
-              <th className="py-2 pr-2 w-10">#</th>
+              <th className="py-2 pr-2 w-8">#</th>
               <th className="py-2 pr-2">Description</th>
+              <th className="py-2 pr-2">SAC/HSN</th>
+              <th className="py-2 pr-2 text-right">Qty</th>
+              <th className="py-2 pr-2 text-right">Rate</th>
+              <th className="py-2 pr-2 text-right">Disc.</th>
+              <th className="py-2 pr-2 text-right">Tax</th>
               <th className="py-2 text-right">Amount</th>
             </tr>
           </thead>
           <tbody>
-            {bill.items.length === 0 ? (
+            {liveItems.length === 0 ? (
               <tr>
-                <td colSpan={3} className="py-3 text-gray-600">No items.</td>
+                <td colSpan={8} className="py-3 text-gray-600">No items.</td>
               </tr>
             ) : (
-              bill.items.map((item, i) => (
-                <tr key={item.billItemId} className="border-b border-gray-300">
+              liveItems.map((item, i) => (
+                <tr key={item.billItemId} className="border-b border-gray-300 align-top">
                   <td className="py-2 pr-2">{i + 1}</td>
-                  <td className="py-2 pr-2">{item.description ?? "—"}</td>
+                  <td className="py-2 pr-2">
+                    {item.description ?? "—"}
+                    <span className="block text-xs text-gray-600">{item.category}</span>
+                  </td>
+                  <td className="py-2 pr-2">{item.serviceCode ?? "—"}</td>
+                  <td className="py-2 pr-2 text-right">{Number(item.quantity.toFixed(2))}</td>
+                  <td className="py-2 pr-2 text-right">{formatCurrency(item.unitPrice)}</td>
+                  <td className="py-2 pr-2 text-right">{item.discountAmount > 0 ? `-${formatCurrency(item.discountAmount)}` : "—"}</td>
+                  <td className="py-2 pr-2 text-right">
+                    {item.taxAmount > 0 ? (
+                      <>
+                        {formatCurrency(item.taxAmount)}
+                        <span className="block text-xs text-gray-600">{Number(item.taxPercent.toFixed(2))}%</span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="py-2 text-right">{formatCurrency(item.amount)}</td>
                 </tr>
               ))
@@ -81,17 +105,17 @@ export default function BillPrintout({ bill }: { bill: BillType }) {
           </tbody>
         </table>
 
-        <div className="ml-auto mt-4 w-64 space-y-1 text-sm">
+        <div className="ml-auto mt-4 w-80 space-y-1 text-sm">
           <div className="flex justify-between">
             <span>Subtotal</span>
             <span>{formatCurrency(bill.totalAmount)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Discount{bill.discountPercent ? ` (${bill.discountPercent}%)` : ""}</span>
+            <span>Discount{bill.discountPercent ? ` (incl. ${bill.discountPercent}% bill discount)` : ""}</span>
             <span>-{formatCurrency(bill.discount)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Tax{bill.taxPercent ? ` (${bill.taxPercent}%)` : ""}</span>
+            <span>Tax</span>
             <span>+{formatCurrency(bill.tax)}</span>
           </div>
           <div className="flex justify-between border-t-2 border-black pt-1 text-base font-bold">

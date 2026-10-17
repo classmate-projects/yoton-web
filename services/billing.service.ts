@@ -1,6 +1,6 @@
 import api from "@/lib/axios";
 import { ENDPOINTS } from "@/lib/endpoints";
-import { AddBillItemPayload, AddBillItemFromSourcePayload, CreateBillPayload } from "@/types/billing.type";
+import { AddBillItemPayload, AddBillItemFromSourcePayload, CreateBillPayload, UpdateBillItemPayload } from "@/types/billing.type";
 
 export const BillingService = {
   getAll: async (date?: string) => {
@@ -29,6 +29,14 @@ export const BillingService = {
   },
   addItem: async (payload: AddBillItemPayload) => {
     const { data } = await api.post(ENDPOINTS.BILLING.ADD_ITEM, payload);
+    return data;
+  },
+  updateItem: async (itemId: string, payload: UpdateBillItemPayload) => {
+    const { data } = await api.put(ENDPOINTS.BILLING.UPDATE_ITEM(itemId), payload);
+    return data;
+  },
+  removeItem: async (itemId: string, reason: string) => {
+    const { data } = await api.post(ENDPOINTS.BILLING.REMOVE_ITEM(itemId), { reason });
     return data;
   },
   pay: async (billId: string, paymentMethod: string) => {

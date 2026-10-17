@@ -380,6 +380,8 @@ export const ENDPOINTS = {
         CANCEL: (id: string) => `/api/Billing/cancel/${id}`,
         GET_CHARGEABLE_ITEMS: (visitId: string) => `/api/Billing/visit/${visitId}/chargeable-items`,
         ADD_ITEM_FROM_SOURCE: `/api/Billing/item/from-source`,
+        UPDATE_ITEM: (itemId: string) => `/api/Billing/item/${itemId}`,
+        REMOVE_ITEM: (itemId: string) => `/api/Billing/item/${itemId}/remove`,
     },
     NURSING: {
         GET_DASHBOARD_SUMMARY: `/api/nursing/dashboard-summary`,

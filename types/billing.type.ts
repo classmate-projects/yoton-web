@@ -1,9 +1,27 @@
+// Mirrors Yoton-API's BillItemCategories.
+export const BILL_ITEM_CATEGORIES = ["Consultation", "Pharmacy", "Lab", "Radiology", "Procedure", "Other"] as const;
+export type BillItemCategory = (typeof BILL_ITEM_CATEGORIES)[number];
+
 export interface BillItemType {
   billItemId: string;
   description: string | null;
-  amount: number;
+  amount: number; // line total: gross - discount + tax
   sourceType: string;
   sourceId: string | null;
+  quantity: number;
+  unitPrice: number;
+  grossAmount: number; // quantity x unitPrice
+  discountPercent: number; // the line's own discount (the bill discount comes on top)
+  discountAmount: number; // line's own discount + its share of the bill discount
+  taxPercent: number;
+  taxAmount: number;
+  category: BillItemCategory;
+  serviceCode: string | null; // GST SAC/HSN
+  isRemoved: boolean; // kept for the record, excluded from totals
+  removedReason: string | null;
+  removedAt: string | null;
+  adjustedReason: string | null;
+  adjustedAt: string | null;
 }
 
 export interface BillType {
@@ -45,7 +63,24 @@ export interface CreateBillPayload {
 export interface AddBillItemPayload {
   billId: string;
   description: string;
-  amount: number;
+  quantity: number;
+  unitPrice: number;
+  discountPercent: number;
+  taxPercent: number;
+  category: BillItemCategory;
+  serviceCode?: string;
+}
+
+// Adjusting a line on a pending bill - all fields are the new values; reason required.
+export interface UpdateBillItemPayload {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  discountPercent: number;
+  taxPercent: number;
+  category: BillItemCategory;
+  serviceCode?: string;
+  reason: string;
 }
 
 export interface ChargeableItemType {

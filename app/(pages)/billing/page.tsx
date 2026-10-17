@@ -19,8 +19,9 @@ import { formatCurrency } from "@/lib/currency";
 import SearchIcon from "@/public/icons/SearchIcon";
 import DatePicker from "@/components/DatePicker";
 import { toDateInputValue } from "@/lib/date";
-import { Printer } from "lucide-react";
+import { Printer, X } from "lucide-react";
 import BillPrintout from "@/components/billing/BillPrintout";
+import BillLines, { AddBillLineForm } from "@/components/billing/BillLines";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -30,7 +31,9 @@ const formatDateTime = (value: string | null | undefined) =>
 
 const currency = (value: number) => formatCurrency(value);
 // " (10%)" next to Discount/Tax - empty for older flat-amount bills, which have no percent.
-const percentLabel = (percent: number | null) => (percent != null && percent > 0 ? ` (${percent}%)` : "");
+// " (incl. 10% bill discount)" next to the Discount total - the total also includes any
+// per-line discounts, so the bill-level percentage alone would mislead. Empty when none.
+const billDiscountNote = (percent: number | null) => (percent != null && percent > 0 ? ` (incl. ${percent}% bill discount)` : "");
 
 const statusBadgeClass = (status: string) => {
   switch (status) {
@@ -91,9 +94,6 @@ function BillingPageInner() {
       window.removeEventListener("afterprint", clear);
     };
   }, [printBill]);
-  const [itemDescription, setItemDescription] = useState("");
-  const [itemAmount, setItemAmount] = useState<number>(0);
-  const [isAddingItem, setIsAddingItem] = useState(false);
   const [payMethod, setPayMethod] = useState("Cash");
   const [isPaying, setIsPaying] = useState(false);
 
@@ -337,33 +337,12 @@ function BillingPageInner() {
     }
   };
 
-  const handleAddItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!detailBill || !itemDescription.trim() || itemAmount <= 0) {
-      toast.warning("Please enter a description and amount");
-      return;
-    }
-
-    notifySaveStatus("saving");
-    try {
-      setIsAddingItem(true);
-      const data = await BillingService.addItem({
-        billId: detailBill.billId,
-        description: itemDescription,
-        amount: itemAmount,
-      });
-      toast.success(data.message || "Item added");
-      notifySaveStatus("saved");
-      setItemDescription("");
-      setItemAmount(0);
-      setDetailBill(data.data);
-      fetchAll();
-    } catch (error) {
-      notifySaveStatus("error");
-      toast.error(errorMessage(error, "Failed to add item"));
-    } finally {
-      setIsAddingItem(false);
-    }
+  // BillLines added, adjusted or removed a line. Removing a medicine/test line frees it to be
+  // billed again, so the visit's chargeable list is refreshed too.
+  const handleBillLinesUpdated = (bill: BillType) => {
+    setDetailBill(bill);
+    fetchAll();
+    if (bill.visitId) fetchChargeableItems(bill.visitId);
   };
 
   const handlePay = async () => {
@@ -713,7 +692,7 @@ function BillingPageInner() {
                   </div>
                 </div>
                 <div className="w-full">
-                  <label className="text-sm font-bold text-foreground/90">Tax (%)</label>
+                  <label className="text-sm font-bold text-foreground/90">Default tax (%)</label>
                   <div className="relative mt-1">
                     <input
                       type="number"
@@ -730,7 +709,7 @@ function BillingPageInner() {
                 </div>
               </div>
               <p className="-mt-2 text-xs text-muted-foreground">
-                Discount is taken off the item total; tax is then added on the discounted amount.
+                Discount applies to every line on this bill. Default tax is pre-filled on each line and can be changed per line; it is always charged on the discounted amount.
               </p>
 
               <div className="flex items-center justify-end gap-3 mt-2 w-full">
@@ -755,162 +734,154 @@ function BillingPageInner() {
       )}
 
       {detailBill && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
-          <div className="bg-card w-full max-w-2xl rounded-xl border border-border p-6 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start mb-1">
-              <h2 className="text-2xl font-semibold text-foreground">{detailBill.patientName}</h2>
-              <span className={`px-2 py-1 rounded-full text-sm font-semibold ${statusBadgeClass(detailBill.status)}`}>
-                {detailBill.status}
-              </span>
-            </div>
-            <p className="text-base text-muted-foreground mb-6">Bill #{detailBill.billId}</p>
-
-            {detailBill.status === "Cancelled" && detailBill.cancelReason && (
-              <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm">
-                <p className="font-semibold text-destructive">
-                  Cancelled{detailBill.cancelledAt ? ` on ${formatDateTime(detailBill.cancelledAt)}` : ""}
-                </p>
-                <p className="mt-0.5 text-foreground/90 whitespace-pre-wrap break-words">{detailBill.cancelReason}</p>
-              </div>
-            )}
-
-            <div className="space-y-1 mb-4">
-              {detailBill.items.length === 0 ? (
-                <EmptyState
-                  size="compact"
-                  illustration="billing"
-                  title="No items added yet"
-                  description={detailBill.status === "Pending" ? "Add chargeable items or a custom line below." : undefined}
-                />
-              ) : (
-                detailBill.items.map((item) => (
-                  <div key={item.billItemId} className="flex justify-between text-base py-1 border-b border-border">
-                    <span className="text-foreground/90">{item.description}</span>
-                    <span className="text-foreground font-medium">{currency(item.amount)}</span>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="space-y-1 text-base mb-6">
-              <div className="flex justify-between text-foreground/70">
-                <span>Subtotal</span>
-                <span>{currency(detailBill.totalAmount)}</span>
-              </div>
-              <div className="flex justify-between text-foreground/70">
-                <span>Discount{percentLabel(detailBill.discountPercent)}</span>
-                <span>-{currency(detailBill.discount)}</span>
-              </div>
-              <div className="flex justify-between text-foreground/70">
-                <span>Tax{percentLabel(detailBill.taxPercent)}</span>
-                <span>+{currency(detailBill.tax)}</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold text-foreground pt-1 border-t border-border">
-                <span>Net Amount</span>
-                <span>{currency(detailBill.netAmount)}</span>
-              </div>
-            </div>
-
-            {detailBill.status === "Pending" && detailBill.visitId && (
-              <div className="mb-6">
-                <p className="text-base font-bold text-foreground/90 mb-2">Chargeable Items</p>
-                {isLoadingChargeable ? (
-                  <p className="text-base text-muted-foreground">Loading...</p>
-                ) : chargeableItems.length === 0 ? (
-                  <p className="text-base text-muted-foreground">
-                    Nothing dispensed or completed for this visit yet.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {chargeableItems.map((item) => (
-                      <div
-                        key={`${item.sourceType}-${item.sourceId}`}
-                        className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-base"
-                      >
-                        <div>
-                          <p className="font-medium text-foreground">{item.description}</p>
-                          <p className="text-sm text-muted-foreground">{currency(item.suggestedAmount)}</p>
-                        </div>
-                        <button
-                          onClick={() => handleAddFromSource(item)}
-                          disabled={addingSourceId === item.sourceId}
-                          className="px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
-                        >
-                          {addingSourceId === item.sourceId ? "Adding..." : "Add to bill"}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {detailBill.status === "Pending" && (
-              <>
-                <form onSubmit={handleAddItem} className="flex gap-2 mb-6">
-                  <input
-                    type="text"
-                    placeholder="Description"
-                    value={itemDescription}
-                    onChange={(e) => setItemDescription(e.target.value)}
-                    className="flex-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-base"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    placeholder="Amount"
-                    value={itemAmount || ""}
-                    onChange={(e) => setItemAmount(Number(e.target.value))}
-                    className="w-28 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-base"
-                  />
-                  <button
-                    type="submit"
-                    // Grey and disabled until both a description and an amount above 0 are
-                    // entered, then turns primary blue so it's obvious it can be clicked.
-                    disabled={isAddingItem || !itemDescription.trim() || !(itemAmount > 0)}
-                    className="px-3 py-2 rounded-lg text-base font-semibold transition-colors bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
-                  >
-                    Add
-                  </button>
-                </form>
-
-                <div className="flex gap-2">
-                  <div className="flex-1 min-w-0">
-                    <SearchableSelect
-                      value={payMethod}
-                      onChange={setPayMethod}
-                      options={[
-                        { value: "Cash", label: "Cash" },
-                        { value: "Card", label: "Card" },
-                        { value: "Insurance", label: "Insurance" },
-                      ]}
-                    />
-                  </div>
-                  <button
-                    onClick={handlePay}
-                    disabled={isPaying || detailBill.items.length === 0}
-                    className="shrink-0 whitespace-nowrap px-6 py-2.5 rounded-lg bg-primary text-white font-semibold hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
-                  >
-                    {isPaying ? "Processing..." : "Mark as Paid"}
-                  </button>
+        // Bill window. Pending bills: two panels - add items on the left, the bill on the
+        // right. Paid/cancelled bills have nothing to add, so it's the bill alone, narrower.
+        // Each panel scrolls on its own; totals + payment stay pinned at the bottom right.
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md p-4">
+          <div
+            className={`flex h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl ${
+              detailBill.status === "Pending" ? "max-w-6xl" : "max-w-3xl"
+            }`}
+          >
+            {/* Header */}
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-6 py-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-3">
+                  <h2 className="truncate text-2xl font-semibold text-foreground">{detailBill.patientName}</h2>
+                  <span className={`shrink-0 px-2 py-1 rounded-full text-sm font-semibold ${statusBadgeClass(detailBill.status)}`}>
+                    {detailBill.status}
+                  </span>
                 </div>
-              </>
-            )}
-
-            <div className="mt-4 flex gap-2">
-              <button
-                onClick={() => window.print()}
-                className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all duration-200 cursor-pointer"
-              >
-                <Printer size={16} /> Print
-              </button>
+                <p className="text-sm text-muted-foreground">
+                  Bill #{detailBill.billId} · {formatDateTime(detailBill.createdAt)}
+                </p>
+              </div>
               <button
                 onClick={() => setDetailBill(null)}
-                className="flex-1 px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground"
+                title="Close"
+                className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-muted cursor-pointer"
               >
-                Close
+                <X size={20} />
               </button>
+            </div>
+
+            <div
+              className={`grid min-h-0 flex-1 grid-cols-1 ${
+                detailBill.status === "Pending" ? "lg:grid-cols-[400px_1fr]" : ""
+              }`}
+            >
+              {/* ---- Left: add items (pending bills only) ---- */}
+              {detailBill.status === "Pending" && (
+                <div className="min-h-0 overflow-y-auto border-b border-border p-5 lg:border-b-0 lg:border-r bg-muted/20">
+                  {detailBill.visitId && (
+                    <div className="mb-5">
+                      <p className="mb-2 text-sm font-bold text-foreground/90">Chargeable Items</p>
+                      {isLoadingChargeable ? (
+                        <p className="text-sm text-muted-foreground">Loading...</p>
+                      ) : chargeableItems.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Nothing dispensed or completed for this visit yet.</p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {chargeableItems.map((item) => (
+                            <div
+                              key={`${item.sourceType}-${item.sourceId}`}
+                              className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm"
+                            >
+                              <div className="min-w-0">
+                                <p className="font-medium text-foreground">{item.description}</p>
+                                <p className="text-xs text-muted-foreground">{currency(item.suggestedAmount)}</p>
+                              </div>
+                              <button
+                                onClick={() => handleAddFromSource(item)}
+                                disabled={addingSourceId === item.sourceId}
+                                className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
+                              >
+                                {addingSourceId === item.sourceId ? "Adding..." : "Add to bill"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* keyed by bill so it starts fresh with this bill's default tax */}
+                  <AddBillLineForm key={detailBill.billId} bill={detailBill} onBillUpdated={handleBillLinesUpdated} />
+                </div>
+              )}
+
+              {/* ---- Right: the bill ---- */}
+              <div className="flex min-h-0 flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                  {detailBill.status === "Cancelled" && detailBill.cancelReason && (
+                    <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm">
+                      <p className="font-semibold text-destructive">
+                        Cancelled{detailBill.cancelledAt ? ` on ${formatDateTime(detailBill.cancelledAt)}` : ""}
+                      </p>
+                      <p className="mt-0.5 text-foreground/90 whitespace-pre-wrap break-words">{detailBill.cancelReason}</p>
+                    </div>
+                  )}
+
+                  <BillLines bill={detailBill} onBillUpdated={handleBillLinesUpdated} />
+                </div>
+
+                {/* Pinned footer: totals, payment, print */}
+                <div className="shrink-0 border-t border-border bg-card px-5 py-4">
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between text-foreground/70">
+                      <span>Subtotal</span>
+                      <span className="tabular-nums">{currency(detailBill.totalAmount)}</span>
+                    </div>
+                    <div className="flex justify-between text-foreground/70">
+                      <span>Discount{billDiscountNote(detailBill.discountPercent)}</span>
+                      <span className="tabular-nums">-{currency(detailBill.discount)}</span>
+                    </div>
+                    <div className="flex justify-between text-foreground/70">
+                      <span>Tax</span>
+                      <span className="tabular-nums">+{currency(detailBill.tax)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-border pt-1.5 text-lg font-bold text-foreground">
+                      <span>Net Amount</span>
+                      <span className="tabular-nums">{currency(detailBill.netAmount)}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {detailBill.status === "Pending" && (
+                      <>
+                        <div className="min-w-40 flex-1">
+                          <SearchableSelect
+                            value={payMethod}
+                            onChange={setPayMethod}
+                            options={[
+                              { value: "Cash", label: "Cash" },
+                              { value: "Card", label: "Card" },
+                              { value: "Insurance", label: "Insurance" },
+                            ]}
+                          />
+                        </div>
+                        <button
+                          onClick={handlePay}
+                          disabled={isPaying || !detailBill.items.some((i) => !i.isRemoved)}
+                          className="shrink-0 whitespace-nowrap px-6 py-2.5 rounded-lg bg-primary text-white font-semibold hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
+                        >
+                          {isPaying ? "Processing..." : "Mark as Paid"}
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => window.print()}
+                      className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg font-semibold transition-all duration-200 cursor-pointer ${
+                        detailBill.status === "Pending"
+                          ? "border border-border text-foreground hover:bg-muted"
+                          : "flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
+                      }`}
+                    >
+                      <Printer size={16} /> Print
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
