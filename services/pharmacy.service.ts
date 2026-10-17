@@ -40,12 +40,12 @@ export const PharmacyService = {
     });
     return data;
   },
-  getPrescriptions: async () => {
-    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_PRESCRIPTIONS);
+  getPrescriptions: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_PRESCRIPTIONS(date));
     return data;
   },
-  getPendingPrescriptions: async () => {
-    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_PENDING_PRESCRIPTIONS);
+  getPendingPrescriptions: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_PENDING_PRESCRIPTIONS(date));
     return data;
   },
   createPrescription: async (payload: CreatePrescriptionPayload) => {
@@ -68,8 +68,8 @@ export const PharmacyService = {
     const { data } = await api.get(ENDPOINTS.PHARMACY.GET_SUMMARY);
     return data;
   },
-  getMedicationQueue: async (status: "pending" | "all") => {
-    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_MEDICATION_QUEUE(status));
+  getMedicationQueue: async (status: "pending" | "all", date?: string) => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_MEDICATION_QUEUE(status, date));
     return data;
   },
   prepareMedication: async (medicationId: string) => {

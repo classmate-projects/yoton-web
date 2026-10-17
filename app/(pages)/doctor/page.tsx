@@ -3148,6 +3148,7 @@ function DoctorWorkbenchInner() {
               totalQuantity: m.totalQuantity,
             }))}
             showPricing={false}
+            doctorSignatureUrl={getUserDetail()?.userSignature}
             onClose={() => setShowPrescriptionPrint(false)}
           />
         )}

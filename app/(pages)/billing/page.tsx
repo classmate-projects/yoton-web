@@ -12,11 +12,13 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import { BillingService } from "@/services/billing.service";
 import { ReceptionService } from "@/services/reception.service";
 import SearchableSelect from "@/components/SearchableSelect";
-import { BillingSummaryType, BillType, ChargeableItemType } from "@/types/billing.type";
+import { AwaitingBillingItemType, BillingSummaryType, BillType, ChargeableItemType } from "@/types/billing.type";
 import { PatientListItemType } from "@/types/appointment.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { formatCurrency } from "@/lib/currency";
 import SearchIcon from "@/public/icons/SearchIcon";
+import DatePicker from "@/components/DatePicker";
+import { toDateInputValue } from "@/lib/date";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -45,9 +47,13 @@ function BillingPageInner() {
 
   const [summary, setSummary] = useState<BillingSummaryType | null>(null);
   const [bills, setBills] = useState<BillType[]>([]);
-  const [filter, setFilter] = useState<"pending" | "all">("pending");
+  const [filter, setFilter] = useState<"awaiting" | "pending" | "all">("awaiting");
   const [billSearch, setBillSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
+
+  const [awaitingItems, setAwaitingItems] = useState<AwaitingBillingItemType[]>([]);
+  const [isOpeningVisit, setIsOpeningVisit] = useState<string | null>(null);
 
   const [patients, setPatients] = useState<PatientListItemType[]>([]);
 
@@ -89,12 +95,21 @@ function BillingPageInner() {
   }, [router]);
 
   // ---------------- DATA ----------------
+  const fetchAwaiting = async () => {
+    try {
+      const res = await BillingService.getAwaiting();
+      setAwaitingItems(res.data ?? []);
+    } catch (error) {
+      console.error("Failed to load awaiting visits:", error);
+    }
+  };
+
   const fetchAll = async () => {
     try {
       setIsLoading(true);
       const [summaryRes, listRes] = await Promise.all([
         BillingService.getSummary(),
-        filter === "pending" ? BillingService.getPending() : BillingService.getAll(),
+        filter === "pending" ? BillingService.getPending(selectedDate || undefined) : BillingService.getAll(selectedDate || undefined),
       ]);
       setSummary(summaryRes.data ?? null);
       setBills(listRes.data ?? []);
@@ -107,9 +122,16 @@ function BillingPageInner() {
 
   useEffect(() => {
     if (!checkedAuth) return;
+    fetchAwaiting();
+  }, [checkedAuth]);
+
+  useEffect(() => {
+    if (!checkedAuth || filter === "awaiting") return;
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkedAuth, filter]);
+  }, [checkedAuth, filter, selectedDate]);
+
+  useSignalRRefetch(["visitStatusUpdated"], fetchAwaiting);
 
   useSignalRRefetch(["billCreated", "billPaid", "billCancelled", "billItemAdded"], fetchAll);
 
@@ -315,6 +337,20 @@ function BillingPageInner() {
     }
   };
 
+  const handleOpenVisit = async (visitId: string) => {
+    try {
+      setIsOpeningVisit(visitId);
+      const res = await BillingService.openVisitBill(visitId);
+      setDetailBill(res.data);
+      fetchAwaiting();
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to open bill"));
+    } finally {
+      setIsOpeningVisit(null);
+    }
+  };
+
   const handleCancelBill = (bill: BillType) => {
     toast(
       <span>
@@ -384,9 +420,9 @@ function BillingPageInner() {
         </BillingStatCard>
       </div>
 
-      {/* Filter tabs + patient search */}
+      {/* Filter tabs + date picker + patient search */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        {(["pending", "all"] as const).map((f) => (
+        {(["awaiting", "pending", "all"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -394,25 +430,77 @@ function BillingPageInner() {
               filter === f ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
           >
-            {f === "pending" ? "Pending Bills" : "All Bills"}
+            {f === "awaiting" ? (
+              <span className="flex items-center gap-1.5">
+                Awaiting Billing
+                {awaitingItems.length > 0 && (
+                  <span className="bg-white/20 text-inherit rounded-full px-1.5 py-0 text-xs font-bold leading-4">
+                    {awaitingItems.length}
+                  </span>
+                )}
+              </span>
+            ) : f === "pending" ? "Pending Bills" : "All Bills"}
           </button>
         ))}
-        <div className="relative w-full sm:flex-1 sm:min-w-64 sm:max-w-xl sm:ml-auto">
-          <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
-            <SearchIcon color="#555" />
-          </span>
-          <input
-            type="text"
-            autoComplete="off"
-            placeholder="Search by patient name, phone or MRN..."
-            value={billSearch}
-            onChange={(e) => setBillSearch(e.target.value)}
-            className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
-          />
-        </div>
+        {filter !== "awaiting" && (
+          <>
+            <div className="w-48">
+              <DatePicker
+                value={selectedDate}
+                onChange={setSelectedDate}
+                max={toDateInputValue(new Date())}
+                placeholder="All dates"
+                className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-(--color-highlight) px-3 py-1.5 text-sm text-foreground ring-offset-background transition-all focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+              />
+            </div>
+            <div className="relative w-full sm:flex-1 sm:min-w-64 sm:max-w-xl sm:ml-auto">
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                <SearchIcon color="#555" />
+              </span>
+              <input
+                type="text"
+                autoComplete="off"
+                placeholder="Search by patient name, phone or MRN..."
+                value={billSearch}
+                onChange={(e) => setBillSearch(e.target.value)}
+                className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </>
+        )}
       </div>
 
-      {isLoading ? (
+      {filter === "awaiting" ? (
+        awaitingItems.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {awaitingItems.map((item) => (
+              <div key={item.visitId} className="card p-5 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-foreground truncate">{item.patientName}</p>
+                  <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
+                    {item.visitType === "WalkIn" ? "Walk-in" : "Appointment"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">Checked in: {formatDateTime(item.checkedInAt)}</p>
+                {item.bill && (
+                  <p className="text-sm font-semibold text-foreground">{currency(item.bill.netAmount)}</p>
+                )}
+                <div className="pt-1 border-t border-border">
+                  <button
+                    onClick={() => handleOpenVisit(item.visitId)}
+                    disabled={isOpeningVisit === item.visitId}
+                    className="w-full py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {isOpeningVisit === item.visitId ? "Opening..." : item.bill ? "Manage Bill" : "Open Bill"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="py-16 text-center text-sm text-muted-foreground">No patients awaiting billing.</p>
+        )
+      ) : isLoading ? (
         <div className="py-16 flex justify-center"><LoadingSpinner /></div>
       ) : filteredBills.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

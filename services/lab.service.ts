@@ -4,12 +4,12 @@ import { CreateLabRequestPayload } from "@/types/lab.type";
 import { compressImageForUpload } from "@/lib/resizeImage";
 
 export const LabService = {
-  getAll: async () => {
-    const { data } = await api.get(ENDPOINTS.LAB.GET_ALL);
+  getAll: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.LAB.GET_ALL(date));
     return data;
   },
-  getPending: async () => {
-    const { data } = await api.get(ENDPOINTS.LAB.GET_PENDING);
+  getPending: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.LAB.GET_PENDING(date));
     return data;
   },
   getSummary: async () => {

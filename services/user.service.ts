@@ -55,5 +55,13 @@ export const UserService = {
     getEmploymentHistory: async (id: string) => {
         const { data } = await api.get(ENDPOINTS.USER.GET_EMPLOYMENT_HISTORY(id))
         return data;
-    }
+    },
+    uploadSignature: async (id: string, file: File) => {
+        const form = new FormData();
+        form.append("file", file);
+        const { data } = await api.post(ENDPOINTS.USER.UPLOAD_SIGNATURE(id), form, {
+            headers: { "Content-Type": "multipart/form-data" },
+        });
+        return data;
+    },
 }

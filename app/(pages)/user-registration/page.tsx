@@ -12,7 +12,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { countryDetails } from "@/helpers/countyDetails";
 import { ConfigListService } from "@/services/configList.service";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
-import { X } from "lucide-react";
+import { X, Upload, PenLine } from "lucide-react";
 import { SpecializationService } from "@/services/specialization.service";
 import { UserService } from "@/services/user.service";
 import { DepartmentSerivce } from "@/services/department.service";
@@ -23,8 +23,9 @@ import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { DepartmentTypes } from "@/types/department.type";
 import { BranchType } from "@/types/branch.type";
 import { getUserDetail } from "@/lib/userDetail";
+import { backendAssetUrl } from "@/lib/backendAsset";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { toast } from "sonner";
 import axios from "axios";
 
@@ -66,6 +67,11 @@ function UserRegistrationForm() {
   const [consultationServiceLabel, setConsultationServiceLabel] = useState("");
   const [experience, setExperience] = useState(0);
 
+
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [signatureUploading, setSignatureUploading] = useState(false);
+  const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -166,6 +172,7 @@ function UserRegistrationForm() {
           setDepartmentId(user.departmentId || "");
           setBranchId(user.branchId || "");
           setMaxDiscountPercent(user.maxDiscountPercent != null ? String(user.maxDiscountPercent) : "");
+          if (user.userSignature) setSignaturePreview(backendAssetUrl(user.userSignature));
         }
       } catch (error) {
         console.error("Error loading user edit data from sessionStorage:", error);
@@ -294,7 +301,17 @@ function UserRegistrationForm() {
         await handleDoctorAssign(data.data.userId)
       }
 
+      if (signatureFile) {
+        try {
+          await UserService.uploadSignature(data.data.userId, signatureFile);
+        } catch {
+          // Non-fatal — the user was created; the admin can re-upload the signature later.
+        }
+      }
+
       resetdata()
+      setSignatureFile(null);
+      setSignaturePreview(null);
       sessionStorage.removeItem("editUser");
       toast.success(data.message);
 
@@ -936,6 +953,72 @@ function UserRegistrationForm() {
               </div>
             </div>
           )}
+
+          {/* Signature upload — shown for both create and edit. On create it uploads
+              after the user record is saved and the new userId is returned. On edit it
+              uploads immediately when a file is picked. */}
+          <div className="border border-border rounded-xl p-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <PenLine size={16} className="text-muted-foreground" />
+              <p className="font-bold text-sm">Signature</p>
+              <p className="text-xs text-muted-foreground">Optional — appears on prescriptions and investigation printouts</p>
+            </div>
+
+            {signaturePreview && (
+              <div className="relative w-fit">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={signaturePreview}
+                  alt="Signature preview"
+                  className="h-20 max-w-xs border border-border rounded-lg bg-white object-contain px-2"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setSignaturePreview(null); setSignatureFile(null); }}
+                  className="absolute -top-2 -right-2 rounded-full bg-destructive text-white p-0.5"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+
+            <div>
+              <input
+                ref={signatureInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setSignatureFile(file);
+                  setSignaturePreview(URL.createObjectURL(file));
+                  // In edit mode we can upload immediately since userId exists.
+                  if (editMode && userId) {
+                    setSignatureUploading(true);
+                    try {
+                      await UserService.uploadSignature(userId, file);
+                      toast.success("Signature saved");
+                    } catch {
+                      toast.error("Failed to upload signature");
+                    } finally {
+                      setSignatureUploading(false);
+                    }
+                  }
+                }}
+              />
+              <button
+                type="button"
+                disabled={signatureUploading}
+                onClick={() => signatureInputRef.current?.click()}
+                className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                <Upload size={14} />
+                {signatureUploading ? "Uploading..." : signaturePreview ? "Replace Signature" : "Upload Signature"}
+              </button>
+              <p className="text-xs text-muted-foreground mt-1">PNG or JPEG, transparent background recommended. Max ~2 MB.</p>
+            </div>
+          </div>
 
           <div className="mt-6 flex justify-end gap-4">
             <button

@@ -4,12 +4,12 @@ import { CreateRadiologyRequestPayload } from "@/types/radiology.type";
 import { compressImageForUpload } from "@/lib/resizeImage";
 
 export const RadiologyService = {
-  getAll: async () => {
-    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_ALL);
+  getAll: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_ALL(date));
     return data;
   },
-  getPending: async () => {
-    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_PENDING);
+  getPending: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_PENDING(date));
     return data;
   },
   getSummary: async () => {

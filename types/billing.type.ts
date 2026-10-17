@@ -51,6 +51,15 @@ export interface ChargeableItemType {
   suggestedAmount: number;
 }
 
+export interface AwaitingBillingItemType {
+  visitId: string;
+  patientId: string;
+  patientName: string;
+  checkedInAt: string;
+  visitType: string;
+  bill: BillType | null;
+}
+
 export interface AddBillItemFromSourcePayload {
   billId: string;
   sourceType: string;

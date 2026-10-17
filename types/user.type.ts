@@ -10,6 +10,7 @@ export interface CurrentUserDetail {
     companyName?: string;
     companyLogoUrl?: string | null;
     userImage?: string | null;
+    userSignature?: string | null;
     // navLinks the admin has granted this user's role (see RoleService.setAllowedModules) -
     // absent/empty means this role can reach nothing beyond the permanent "/settings"
     // exemption. Ignored entirely for role === "admin", who always has every module.
@@ -49,6 +50,7 @@ export interface UserType {
     isActive: boolean;
     createdAt: string;
     lastLogin: string | null;
+    userSignature?: string | null;
 }
 
 export interface UserCreateType {
