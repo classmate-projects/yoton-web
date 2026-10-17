@@ -54,7 +54,7 @@ export interface LabSummaryType {
 }
 
 export interface CreateLabRequestPayload {
-  patientId: string;
+  patientId?: string;
   doctorId?: string;
   visitId?: string;
   testType: string;

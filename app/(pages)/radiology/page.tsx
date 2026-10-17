@@ -212,8 +212,8 @@ export default function RadiologyPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPatient || !scanType.trim()) {
-      toast.warning("Please select a patient and enter a scan type");
+    if (!scanType.trim()) {
+      toast.warning("Please enter a scan type");
       return;
     }
 
@@ -221,7 +221,7 @@ export default function RadiologyPage() {
     try {
       setIsSubmitting(true);
       const payload = {
-        patientId: selectedPatient.opId,
+        patientId: selectedPatient?.opId,
         doctorId: selectedDoctorId || undefined,
         scanType,
         priority,
@@ -411,10 +411,9 @@ export default function RadiologyPage() {
 
             <form onSubmit={handleCreate} className="flex flex-col gap-4">
               <div className="relative">
-                <label className="text-sm font-bold text-foreground/90 required">Patient</label>
+                <label className="text-sm font-bold text-foreground/90">Patient</label>
                 <input
                   type="text"
-                  required
                   value={patientSearch}
                   onChange={(e) => {
                     setPatientSearch(e.target.value);

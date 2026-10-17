@@ -242,8 +242,8 @@ export default function LaboratoryPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPatient || !testType.trim()) {
-      toast.warning("Please select a patient and enter a test type");
+    if (!testType.trim()) {
+      toast.warning("Please enter a test type");
       return;
     }
 
@@ -251,7 +251,7 @@ export default function LaboratoryPage() {
     try {
       setIsSubmitting(true);
       const payload = {
-        patientId: selectedPatient.opId,
+        patientId: selectedPatient?.opId,
         doctorId: selectedDoctorId || undefined,
         testType,
         listItemId: testListItemId,
@@ -517,10 +517,9 @@ export default function LaboratoryPage() {
 
             <form onSubmit={handleCreate} className="flex flex-col gap-4">
               <div className="relative">
-                <label className="text-sm font-bold text-foreground/90 required">Patient</label>
+                <label className="text-sm font-bold text-foreground/90">Patient</label>
                 <input
                   type="text"
-                  required
                   value={patientSearch}
                   onChange={(e) => {
                     setPatientSearch(e.target.value);

@@ -98,7 +98,7 @@ export interface AddMedicinePayload {
 }
 
 export interface CreatePrescriptionPayload {
-  patientId: string;
+  patientId?: string;
   doctorId?: string;
   visitId?: string;
   notes?: string;
