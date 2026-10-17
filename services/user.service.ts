@@ -55,5 +55,23 @@ export const UserService = {
     getEmploymentHistory: async (id: string) => {
         const { data } = await api.get(ENDPOINTS.USER.GET_EMPLOYMENT_HISTORY(id))
         return data;
+    },
+
+    getDetails: async (id: string) => {
+        const { data } = await api.get(ENDPOINTS.USER.GET_DETAILS(id))
+        return data;
+    },
+
+    getNotes: async (id: string) => {
+        const { data } = await api.get(ENDPOINTS.USER.NOTES(id))
+        return data;
+    },
+    addNote: async (id: string, content: string) => {
+        const { data } = await api.post(ENDPOINTS.USER.NOTES(id), { content })
+        return data;
+    },
+    deleteNote: async (noteId: string) => {
+        const { data } = await api.delete(ENDPOINTS.USER.DELETE_NOTE(noteId))
+        return data;
     }
 }

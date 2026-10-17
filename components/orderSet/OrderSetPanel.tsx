@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChevronRight, ClipboardList, Eye, EyeOff, Loader2, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
+import axios from "axios";
 import {
   applyOrderSet,
   createOrderSet,
@@ -37,6 +38,7 @@ export default function OrderSetPanel({ onClose }: Props) {
   const [newName, setNewName] = useState("");
   const [showNewInput, setShowNewInput] = useState(false);
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [noDoctorProfile, setNoDoctorProfile] = useState(false);
 
   // Password dialog state for revert
   const [revertTarget, setRevertTarget] = useState<OrderSetApplicationDto | null>(null);
@@ -52,8 +54,13 @@ export default function OrderSetPanel({ onClose }: Props) {
     try {
       setIsLoading(true);
       setOrderSets(await getOrderSets());
-    } catch {
-      toast.error("Failed to load order sets");
+    } catch (error) {
+      // 403 = signed in but no doctor profile (e.g. admin) - order sets are per-doctor.
+      if (axios.isAxiosError(error) && error.response?.status === 403) {
+        setNoDoctorProfile(true);
+      } else {
+        toast.error("Failed to load order sets");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -178,7 +185,17 @@ export default function OrderSetPanel({ onClose }: Props) {
 
           {/* Body */}
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-            {view.type === "list" && (
+            {view.type === "list" && noDoctorProfile && (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+                <ClipboardList size={28} className="text-muted-foreground" />
+                <p className="text-sm font-medium text-foreground">Order sets are for doctors</p>
+                <p className="text-xs text-muted-foreground">
+                  Each doctor keeps their own order sets, and this account has no doctor profile linked to it.
+                </p>
+              </div>
+            )}
+
+            {view.type === "list" && !noDoctorProfile && (
               <div className="flex flex-col h-full">
                 {/* Create bar */}
                 <div className="px-4 py-3 border-b border-border shrink-0">

@@ -122,6 +122,9 @@ export const ENDPOINTS = {
         GET_SCHEDULED_DOCTOR: (doctorId: string) => `/api/user/${doctorId}/schedule`,
         TERMINATE: (id: string) => `/api/user/${id}/terminate`,
         GET_EMPLOYMENT_HISTORY: (id: string) => `/api/user/${id}/employment-history`,
+        GET_DETAILS: (id: string) => `/api/user/${id}/details`,
+        NOTES: (id: string) => `/api/user/${id}/notes`,
+        DELETE_NOTE: (noteId: string) => `/api/user/notes/${noteId}`,
     },
     EMR: {
         GET_DEPARTMENTS: `/api/emr/departments`,
@@ -443,6 +446,7 @@ export const ENDPOINTS = {
         CHECK_IN: `/api/attendance/check-in`,
         CHECK_OUT: `/api/attendance/check-out`,
         GET_HISTORY: (days?: number) => `/api/attendance/history${days ? `?days=${days}` : ""}`,
+        GET_STAFF: (date: string) => `/api/attendance/staff?date=${date}`,
     },
     FORM_TEMPLATE: {
         GET_ALL: `/api/form-templates`,

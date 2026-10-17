@@ -1,6 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList, UserCheck } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -231,6 +231,17 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Audit Log",
         navLink: "/audit-log",
         icon: ScrollText,
+        group: "Configuration"
+    },
+
+    // Every staff member's check-in/out for a chosen day. Hardcoded admin-only (like
+    // /role-management) rather than an allow-list module - see lib/routeAccess.ts,
+    // components/sidebar.tsx and Yoton-API's StaffAttendanceController.
+    {
+        id: 33,
+        name: "Staff Attendance",
+        navLink: "/staff-attendance",
+        icon: UserCheck,
         group: "Configuration"
     },
 

@@ -7,7 +7,7 @@ import ApiLoadingBar from "@/components/ApiLoadingBar";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import MicrosoftClarity from "@/components/MicrosoftClarity";
 import DisableAutocomplete from "@/components/DisableAutocomplete";
-import SplashScreen from "@/components/SplashScreenLoader";
+import SplashScreen, { SplashScreenGate } from "@/components/SplashScreenLoader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,6 +44,9 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} h-full antialiased scroll-smooth`}
     >
+      <head>
+        <SplashScreenGate />
+      </head>
       <body className="min-h-full">
         <MicrosoftClarity />
         <ThemeProvider

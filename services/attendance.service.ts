@@ -22,4 +22,10 @@ export const AttendanceService = {
         const { data } = await api.get(ENDPOINTS.ATTENDANCE.GET_HISTORY(days));
         return data;
     },
+
+    // Admin only - every staff member's check-in/out for one "yyyy-MM-dd" day.
+    getStaffForDate: async (date: string) => {
+        const { data } = await api.get(ENDPOINTS.ATTENDANCE.GET_STAFF(date));
+        return data;
+    },
 }

@@ -30,7 +30,9 @@ export const protectedRoutes: ProtectedRoute[] = [
     .map((item) =>
       item.navLink === "/nursing/confidential-notes"
         ? { navLink: item.navLink, hardcodedRoles: ["nurse"] }
-        : { navLink: item.navLink },
+        : item.navLink === "/staff-attendance"
+          ? { navLink: item.navLink, hardcodedRoles: ["admin"] }
+          : { navLink: item.navLink },
     ),
   ...extraProtectedRoutes,
 ];

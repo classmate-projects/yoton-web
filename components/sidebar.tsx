@@ -338,6 +338,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const isModuleAllowed = (navLink: string) => {
     if (navLink === "/settings") return true;
     if (navLink === "/nursing/confidential-notes") return userRole === "nurse";
+    if (navLink === "/staff-attendance") return isAdmin;
     return isAdmin || allowedModules.includes(navLink);
   };
   const isVisible = (item: SidebarMenuItem) => isModuleAllowed(item.navLink);

@@ -111,3 +111,43 @@ export interface UserAssignedDoctorCreateType {
     ExperienceYears: number;
     ConsultationServiceId?: string;
 }
+// Staff detail page (/user-management/[id]) - see Yoton-API's UserDetailsResponse.
+export interface UserDetailsType {
+    id: string;
+    name: string;
+    username: string;
+    role: string | null;
+    email: string | null;
+    phone: string | null;
+    gender: string | null;
+    nationality: string | null;
+    designation: string | null;
+    departmentName: string | null;
+    branchName: string | null;
+    userImage: string | null;
+    isActive: boolean;
+    isTerminated: boolean;
+    createdAt: string;
+    lastLogin: string | null;
+    deactivatedAt: string | null;
+    fteValue: number | null;
+    maxDiscountPercent: number | null;
+    joiningDate: string | null;
+    currentStintStartDate: string | null;
+    specializationName: string | null;
+    experienceYears: number | null;
+    licenseNumber: string | null;
+    consultationFee: number | null;
+    clinicianCode: string | null;
+    employmentHistory: StaffEmploymentEventType[];
+    todayCheckInAt: string | null;
+    todayCheckOutAt: string | null;
+}
+
+export interface StaffNoteType {
+    staffNoteId: string;
+    content: string;
+    createdByUserId: string;
+    createdByName: string | null;
+    createdAt: string;
+}

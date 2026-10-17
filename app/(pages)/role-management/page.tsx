@@ -30,7 +30,11 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 // filter by. A role with no configuration yet (a freshly created one) simply starts fully
 // unchecked.
 const allToggleableModules = sidebarMenuItems.filter(
-  (item) => item.navLink !== "/settings" && item.navLink !== "/nursing/confidential-notes",
+  (item) =>
+    item.navLink !== "/settings" &&
+    item.navLink !== "/nursing/confidential-notes" &&
+    // Hardcoded admin-only (see lib/routeAccess.ts) - never grantable, not even by force.
+    item.navLink !== "/staff-attendance",
 );
 
 // Mirrors the backend's ModuleKeys.AdminOnly exactly - each is either full account/

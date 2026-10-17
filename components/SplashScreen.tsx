@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import logo from "@/public/yoton_logo.png";
 
+export const SPLASH_STORAGE_KEY = "yoton_splash";
+
 const PARTICLES = [
   { size: 5, x: 12, y: 18, delay: 0,    dur: 6  },
   { size: 3, x: 80, y: 12, delay: 0.8,  dur: 7  },
@@ -26,14 +28,14 @@ export default function SplashScreen() {
 
   useEffect(() => {
     let alreadyShown = false;
-    try { alreadyShown = !!sessionStorage.getItem("yoton_splash"); } catch {}
+    try { alreadyShown = !!sessionStorage.getItem(SPLASH_STORAGE_KEY); } catch {}
 
     if (alreadyShown) { setVisible(false); return; }
 
     const fadeTimer = setTimeout(() => setFading(true), 2400);
     const hideTimer = setTimeout(() => {
       setVisible(false);
-      try { sessionStorage.setItem("yoton_splash", "1"); } catch {}
+      try { sessionStorage.setItem(SPLASH_STORAGE_KEY, "1"); } catch {}
     }, 3000);
 
     return () => { clearTimeout(fadeTimer); clearTimeout(hideTimer); };
@@ -86,6 +88,7 @@ export default function SplashScreen() {
       `}</style>
 
       <div
+        id="yoton-splash"
         style={{
           position: "fixed",
           inset: 0,

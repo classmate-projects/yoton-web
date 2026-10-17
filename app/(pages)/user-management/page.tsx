@@ -34,7 +34,7 @@ import AddUserIcon from "@/public/icons/AddUserIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { History as HistoryIcon, UserX } from "lucide-react";
+import { History as HistoryIcon, UserX, Eye } from "lucide-react";
 import { UserService } from "@/services/user.service";
 import ViewModeToggle from "@/components/ViewModeToggle";
 import { useViewModePreference } from "@/hooks/useViewModePreference";
@@ -49,17 +49,8 @@ import { BranchService } from "@/services/branch.service";
 import { BranchType } from "@/types/branch.type";
 import { getUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import { TERMINATION_REASONS } from "@/helpers/terminationReasons";
 
-const TERMINATION_REASONS = [
-  { value: "Retired60Plus", label: "Retired (60+ years)" },
-  { value: "EarlyRetirement", label: "Early retirement (<60 years)" },
-  { value: "VoluntaryResignation", label: "Left willingly (resignation)" },
-  { value: "ForcedTermination", label: "Forced to leave" },
-  { value: "Death", label: "Deceased" },
-  { value: "TempContractEnded", label: "Temporary/locum contract ended" },
-  { value: "TransferredDepartment", label: "Transferred to another department" },
-  { value: "Other", label: "Other" },
-];
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -418,7 +409,16 @@ export default function UserManagement() {
   );
 
   const renderActions = (user: getAllResponse) => (
-    <div className="flex items-center justify-evenly">
+    // stopPropagation: the row/card itself opens the detail page on click, these must not.
+    <div className="flex items-center justify-evenly" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => router.push(`/user-management/${user.id}`)}
+        title="View Details"
+        className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer text-primary"
+      >
+        <Eye size={18} />
+      </button>
+
       <button
         onClick={() => openHistory(user)}
         title="Employment History"
@@ -577,7 +577,8 @@ export default function UserManagement() {
               {filteredUsers.map((user) => (
                 <tr
                   key={user.id}
-                  className={`border-b border-border last:border-b-0 ${userStatusBg(user) || "hover:bg-muted/40"}`}
+                  onClick={() => router.push(`/user-management/${user.id}`)}
+                  className={`cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-muted ${userStatusBg(user)}`}
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -593,7 +594,7 @@ export default function UserManagement() {
                   <td className="whitespace-nowrap px-4 py-3">{getTime(user.lastLogin)}</td>
                   <td className="whitespace-nowrap px-4 py-3">{getTime(user.createdAt)}</td>
                   <td className="px-4 py-3">
-                    <ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} />
+                    <span onClick={(e) => e.stopPropagation()}><ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} /></span>
                   </td>
                   <td className="px-4 py-3">{renderActions(user)}</td>
                 </tr>
@@ -606,12 +607,15 @@ export default function UserManagement() {
           {filteredUsers.map((user) => (
             <div
               key={user.id}
-              className={`card flex flex-col gap-3 p-4 ${userStatusBg(user)}`}
+              onClick={() => router.push(`/user-management/${user.id}`)}
+              // .card sets its own background/border outside Tailwind's layers, so the hover
+              // classes need "!" to win over it.
+              className={`card flex cursor-pointer flex-col gap-3 p-4 hover:bg-muted! hover:border-primary/50! ${userStatusBg(user)}`}
             >
               <div className="flex items-start gap-3">
                 <UserAvatar name={user.name} image={user.userImage} />
                 {renderNameBlock(user, "flex-1")}
-                <ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} />
+                <span onClick={(e) => e.stopPropagation()}><ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} /></span>
               </div>
 
               <div className="flex items-center gap-2">{renderBadges(user)}</div>
