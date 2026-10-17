@@ -87,11 +87,11 @@ export default function BillPrintout({ bill }: { bill: BillType }) {
             <span>{formatCurrency(bill.totalAmount)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Discount</span>
+            <span>Discount{bill.discountPercent ? ` (${bill.discountPercent}%)` : ""}</span>
             <span>-{formatCurrency(bill.discount)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Tax</span>
+            <span>Tax{bill.taxPercent ? ` (${bill.taxPercent}%)` : ""}</span>
             <span>+{formatCurrency(bill.tax)}</span>
           </div>
           <div className="flex justify-between border-t-2 border-black pt-1 text-base font-bold">

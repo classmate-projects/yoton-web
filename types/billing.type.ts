@@ -15,6 +15,8 @@ export interface BillType {
   totalAmount: number;
   discount: number;
   tax: number;
+  discountPercent: number | null; // null on older flat-amount bills
+  taxPercent: number | null;
   netAmount: number;
   status: string;
   paymentMethod: string | null;
@@ -34,8 +36,8 @@ export interface CreateBillPayload {
   patientId: string;
   appointmentId?: string;
   visitId?: string;
-  discount: number;
-  tax: number;
+  discountPercent: number; // 0-100, off the item total
+  taxPercent: number; // 0-100, on the discounted amount
 }
 
 export interface AddBillItemPayload {

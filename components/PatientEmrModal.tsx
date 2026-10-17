@@ -660,7 +660,7 @@ export default function PatientEmrModal({ patientId, patientName, isOpen, onClos
 
       {/* Print: section selection overlay */}
       {printStep === "selecting" && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-end justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
           <div className="bg-card rounded-xl border border-border shadow-2xl w-full max-w-sm p-6">
             <h3 className="text-base font-semibold text-foreground mb-1">Select sections to print</h3>
             <p className="text-sm text-muted-foreground mb-4">Choose which sections to include in the printout.</p>

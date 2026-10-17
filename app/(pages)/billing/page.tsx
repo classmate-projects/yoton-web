@@ -29,6 +29,8 @@ const formatDateTime = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString() : "—";
 
 const currency = (value: number) => formatCurrency(value);
+// " (10%)" next to Discount/Tax - empty for older flat-amount bills, which have no percent.
+const percentLabel = (percent: number | null) => (percent != null && percent > 0 ? ` (${percent}%)` : "");
 
 const statusBadgeClass = (status: string) => {
   switch (status) {
@@ -65,8 +67,10 @@ function BillingPageInner() {
   const [selectedPatient, setSelectedPatient] = useState<PatientListItemType | null>(null);
   const [appointmentId, setAppointmentId] = useState("");
   const [visitId, setVisitId] = useState(visitIdParam);
-  const [discount, setDiscount] = useState<number>(0);
-  const [tax, setTax] = useState<number>(0);
+  // Kept as the raw text typed so the fields can be cleared (a number state snaps an
+  // emptied box straight back to 0); parsed on submit, where empty means 0%.
+  const [discount, setDiscount] = useState("");
+  const [tax, setTax] = useState("");
 
   const [detailBill, setDetailBill] = useState<BillType | null>(null);
   // Set by a bill card's Print button: renders that bill's print sheet, then the effect
@@ -207,12 +211,21 @@ function BillingPageInner() {
     });
   }, [billSearch, bills, patients]);
 
-  // keep the detail drawer in sync whenever the bill list refreshes
+  // Keep the detail pop-up in sync whenever the bill LIST refreshes - only on `bills`
+  // changing, never on detailBill itself. Running on detailBill too meant that right after
+  // Mark as Paid set the pop-up to the paid bill, this copied the list's still-stale
+  // Pending copy straight back over it, so the button reappeared. Also never lets a list
+  // copy turn a settled (Paid/Cancelled) bill back into Pending, in case a refresh that
+  // started before the payment lands after it.
   useEffect(() => {
-    if (!detailBill) return;
-    const fresh = bills.find((b) => b.billId === detailBill.billId);
-    if (fresh) setDetailBill(fresh);
-  }, [bills, detailBill]);
+    setDetailBill((current) => {
+      if (!current) return current;
+      const fresh = bills.find((b) => b.billId === current.billId);
+      if (!fresh) return current;
+      if (current.status !== "Pending" && fresh.status === "Pending") return current;
+      return fresh;
+    });
+  }, [bills]);
 
   // fetch dispensed/completed items not yet billed for this bill's visit
   const fetchChargeableItems = async (targetVisitId: string) => {
@@ -265,8 +278,8 @@ function BillingPageInner() {
     setSelectedPatient(null);
     setAppointmentId("");
     setVisitId(visitIdParam);
-    setDiscount(0);
-    setTax(0);
+    setDiscount("");
+    setTax("");
   };
 
   const openCreateModal = () => {
@@ -286,13 +299,16 @@ function BillingPageInner() {
       return;
     }
 
-    // Client-side discount privilege check when chargeable items give us a gross total.
-    if (userDiscountPercent !== null && chargeableItems.length > 0) {
-      const grossTotal = chargeableItems.reduce((sum, i) => sum + (i.suggestedAmount ?? 0), 0);
-      if (grossTotal > 0 && discount > grossTotal * userDiscountPercent / 100) {
-        toast.error(`You have only ${userDiscountPercent}% billing discount privilege.`);
-        return;
-      }
+    // Both are percentages now - checkable up front, no total needed (the API re-checks).
+    const discountPercent = Number(discount) || 0;
+    const taxPercent = Number(tax) || 0;
+    if (discountPercent < 0 || discountPercent > 100 || taxPercent < 0 || taxPercent > 100) {
+      toast.error("Discount and tax must be between 0 and 100%");
+      return;
+    }
+    if (userDiscountPercent !== null && discountPercent > userDiscountPercent) {
+      toast.error(`You have only ${userDiscountPercent}% billing discount privilege.`);
+      return;
     }
 
     notifySaveStatus("saving");
@@ -302,8 +318,8 @@ function BillingPageInner() {
         patientId: selectedPatient.opId,
         appointmentId: appointmentId || undefined,
         visitId: visitId || undefined,
-        discount,
-        tax,
+        discountPercent,
+        taxPercent,
       });
       toast.success(data.message || "Bill created");
       notifySaveStatus("saved");
@@ -672,32 +688,45 @@ function BillingPageInner() {
               <div className="flex gap-4">
                 <div className="w-full">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-bold text-foreground/90">Discount</label>
+                    <label className="text-sm font-bold text-foreground/90">Discount (%)</label>
                     {userDiscountPercent !== null && (
                       <span className="text-xs text-muted-foreground">Your limit: {userDiscountPercent}%</span>
                     )}
                   </div>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={discount}
-                    onChange={(e) => setDiscount(Number(e.target.value))}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  />
+                  <div className="relative mt-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={userDiscountPercent ?? 100}
+                      step={0.01}
+                      value={discount}
+                      onChange={(e) => setDiscount(e.target.value)}
+                      placeholder="0"
+                      className="w-full p-3 pr-9 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                  </div>
                 </div>
                 <div className="w-full">
-                  <label className="text-sm font-bold text-foreground/90">Tax</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={tax}
-                    onChange={(e) => setTax(Number(e.target.value))}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  />
+                  <label className="text-sm font-bold text-foreground/90">Tax (%)</label>
+                  <div className="relative mt-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      value={tax}
+                      onChange={(e) => setTax(e.target.value)}
+                      placeholder="0"
+                      className="w-full p-3 pr-9 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                  </div>
                 </div>
               </div>
+              <p className="-mt-2 text-xs text-muted-foreground">
+                Discount is taken off the item total; tax is then added on the discounted amount.
+              </p>
 
               <div className="flex items-center justify-end gap-3 mt-2 w-full">
                 <button
@@ -755,11 +784,11 @@ function BillingPageInner() {
                 <span>{currency(detailBill.totalAmount)}</span>
               </div>
               <div className="flex justify-between text-foreground/70">
-                <span>Discount</span>
+                <span>Discount{percentLabel(detailBill.discountPercent)}</span>
                 <span>-{currency(detailBill.discount)}</span>
               </div>
               <div className="flex justify-between text-foreground/70">
-                <span>Tax</span>
+                <span>Tax{percentLabel(detailBill.taxPercent)}</span>
                 <span>+{currency(detailBill.tax)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold text-foreground pt-1 border-t border-border">
@@ -823,8 +852,10 @@ function BillingPageInner() {
                   />
                   <button
                     type="submit"
-                    disabled={isAddingItem}
-                    className="px-3 py-2 rounded-lg bg-muted hover:bg-muted/80 text-foreground text-base font-semibold cursor-pointer disabled:opacity-60"
+                    // Grey and disabled until both a description and an amount above 0 are
+                    // entered, then turns primary blue so it's obvious it can be clicked.
+                    disabled={isAddingItem || !itemDescription.trim() || !(itemAmount > 0)}
+                    className="px-3 py-2 rounded-lg text-base font-semibold transition-colors bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
                   >
                     Add
                   </button>
