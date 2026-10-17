@@ -34,6 +34,9 @@ export interface PrescriptionPrintoutProps {
   // Pharmacy passes true; the doctor workbench never does — no price on a doctor's
   // printed prescription.
   showPricing?: boolean;
+  // Server-relative path to the doctor's signature image. When supplied it is rendered
+  // at the bottom of the printout next to the "Prescribed by" label.
+  doctorSignatureUrl?: string | null;
   onClose: () => void;
 }
 
@@ -57,11 +60,13 @@ export default function PrescriptionPrintout({
   preparedByName,
   dispensedByName,
   showPricing = false,
+  doctorSignatureUrl,
   onClose,
 }: PrescriptionPrintoutProps) {
   const currentUser = getUserDetail();
   const companyName = currentUser?.companyName || "Yoton Health";
   const companyLogo = backendAssetUrl(currentUser?.companyLogoUrl);
+  const signatureUrl = backendAssetUrl(doctorSignatureUrl);
 
   const print = () => window.print();
 
@@ -101,6 +106,7 @@ export default function PrescriptionPrintout({
             dispensedByName={dispensedByName}
             showPricing={showPricing}
             total={total}
+            doctorSignatureUrl={signatureUrl}
           />
         </div>
       </div>
@@ -122,6 +128,7 @@ export default function PrescriptionPrintout({
           dispensedByName={dispensedByName}
           showPricing={showPricing}
           total={total}
+          doctorSignatureUrl={signatureUrl}
         />
       </div>
 
@@ -168,6 +175,7 @@ interface BodyProps {
   dispensedByName?: string | null;
   showPricing: boolean;
   total: number;
+  doctorSignatureUrl?: string | null;
 }
 
 function PrintablePrescriptionBody({
@@ -184,6 +192,7 @@ function PrintablePrescriptionBody({
   dispensedByName,
   showPricing,
   total,
+  doctorSignatureUrl,
 }: BodyProps) {
   return (
     <div className="bg-white p-6 text-black" style={{ width: "100%" }}>
@@ -259,6 +268,10 @@ function PrintablePrescriptionBody({
       <div className="mt-10 grid grid-cols-3 gap-4 text-xs">
         <div className="border-t border-black pt-1">
           <p className="font-semibold">Prescribed by</p>
+          {doctorSignatureUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={doctorSignatureUrl} alt="Doctor signature" className="h-10 max-w-[120px] object-contain my-1" />
+          )}
           <p>{doctorName}</p>
         </div>
         <div className="border-t border-black pt-1">

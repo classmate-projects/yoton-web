@@ -73,5 +73,14 @@ export const UserService = {
     deleteNote: async (noteId: string) => {
         const { data } = await api.delete(ENDPOINTS.USER.DELETE_NOTE(noteId))
         return data;
-    }
+    },
+
+    uploadSignature: async (id: string, file: File) => {
+        const form = new FormData();
+        form.append("file", file);
+        const { data } = await api.post(ENDPOINTS.USER.UPLOAD_SIGNATURE(id), form, {
+            headers: { "Content-Type": "multipart/form-data" },
+        });
+        return data;
+    },
 }

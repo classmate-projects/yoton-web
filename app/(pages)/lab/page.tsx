@@ -9,6 +9,8 @@ import { FlaskConical, Pencil, Settings, Trash2, Undo2 } from "lucide-react";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import DatePicker from "@/components/DatePicker";
+import { toDateInputValue } from "@/lib/date";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import SearchableSelect from "@/components/SearchableSelect";
 import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
@@ -67,6 +69,7 @@ export default function LaboratoryPage() {
   const [requests, setRequests] = useState<LabRequestType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "pending">("pending");
+  const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
 
   const [patients, setPatients] = useState<PatientListItemType[]>([]);
   const [doctors, setDoctors] = useState<DoctorGridType[]>([]);
@@ -128,7 +131,7 @@ export default function LaboratoryPage() {
       setIsLoading(true);
       const [summaryRes, listRes] = await Promise.all([
         LabService.getSummary(),
-        filter === "pending" ? LabService.getPending() : LabService.getAll(),
+        filter === "pending" ? LabService.getPending(selectedDate || undefined) : LabService.getAll(selectedDate || undefined),
       ]);
       setSummary(summaryRes.data ?? null);
       setRequests(listRes.data ?? []);
@@ -146,7 +149,7 @@ export default function LaboratoryPage() {
       UserService.getAllByRole("nurse").then((res) => setNurses(res.data || [])).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkedAuth, filter]);
+  }, [checkedAuth, filter, selectedDate]);
 
   useSignalRRefetch(["labRequestCreated", "labStatusUpdated"], fetchAll);
 
@@ -481,7 +484,7 @@ export default function LaboratoryPage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {(["pending", "all"] as const).map((f) => (
           <button
             key={f}
@@ -493,6 +496,15 @@ export default function LaboratoryPage() {
             {f === "pending" ? "Pending Queue" : "All Requests"}
           </button>
         ))}
+        <div className="w-44 ml-auto">
+          <DatePicker
+            value={selectedDate}
+            onChange={setSelectedDate}
+            max={toDateInputValue(new Date())}
+            placeholder="All dates"
+            className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-(--color-highlight) px-3 py-1.5 text-sm text-foreground ring-offset-background transition-all focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+          />
+        </div>
       </div>
 
       {isModalOpen && (

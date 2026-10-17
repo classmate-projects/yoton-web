@@ -3,12 +3,12 @@ import { ENDPOINTS } from "@/lib/endpoints";
 import { AddBillItemPayload, AddBillItemFromSourcePayload, CreateBillPayload } from "@/types/billing.type";
 
 export const BillingService = {
-  getAll: async () => {
-    const { data } = await api.get(ENDPOINTS.BILLING.GET_ALL);
+  getAll: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_ALL(date));
     return data;
   },
-  getPending: async () => {
-    const { data } = await api.get(ENDPOINTS.BILLING.GET_PENDING);
+  getPending: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_PENDING(date));
     return data;
   },
   getSummary: async () => {
@@ -37,6 +37,14 @@ export const BillingService = {
   },
   cancel: async (id: string) => {
     const { data } = await api.post(ENDPOINTS.BILLING.CANCEL(id));
+    return data;
+  },
+  getAwaiting: async () => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_AWAITING);
+    return data;
+  },
+  openVisitBill: async (visitId: string) => {
+    const { data } = await api.post(ENDPOINTS.BILLING.OPEN_VISIT_BILL(visitId));
     return data;
   },
   getChargeableItems: async (visitId: string) => {

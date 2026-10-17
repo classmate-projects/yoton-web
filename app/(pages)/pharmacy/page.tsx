@@ -10,6 +10,7 @@ import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdWarning } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
+import { toDateInputValue } from "@/lib/date";
 import SearchableSelect from "@/components/SearchableSelect";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
@@ -65,6 +66,7 @@ export default function PharmacyPage() {
   const invTotalPages = Math.max(1, Math.ceil(invTotalCount / INV_PAGE_SIZE));
   const [prescriptionFilter, setPrescriptionFilter] = useState<"pending" | "all">("pending");
   const [prescriptionView, setPrescriptionView] = useState<"doctorOrders" | "walkIn">("doctorOrders");
+  const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
   const [isLoading, setIsLoading] = useState(true);
 
   // Doctor-order dispense workflow (Prepared -> Dispensed, per Medication)
@@ -154,15 +156,15 @@ export default function PharmacyPage() {
       const [summaryRes, rxRes, medsRes, lowStockRes, queueRes] = await Promise.all([
         PharmacyService.getSummary(),
         prescriptionFilter === "pending"
-          ? PharmacyService.getPendingPrescriptions()
-          : PharmacyService.getPrescriptions(),
+          ? PharmacyService.getPendingPrescriptions(selectedDate || undefined)
+          : PharmacyService.getPrescriptions(selectedDate || undefined),
         // Flat picker list for the walk-in-sale/alternatives <select> dropdowns below -
         // capped at the max page size rather than left unbounded now that the catalog can
         // hold tens of thousands of bulk-imported rows. The searchable/paginated Inventory
         // tab table is fetched separately, see fetchInventory().
         PharmacyService.getMedicines({ pageSize: 500 }),
         PharmacyService.getLowStock(),
-        PharmacyService.getMedicationQueue(prescriptionFilter),
+        PharmacyService.getMedicationQueue(prescriptionFilter, selectedDate || undefined),
       ]);
       setSummary(summaryRes.data ?? null);
       setPrescriptions(rxRes.data ?? []);
@@ -348,7 +350,7 @@ export default function PharmacyPage() {
     if (!checkedAuth) return;
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkedAuth, prescriptionFilter]);
+  }, [checkedAuth, prescriptionFilter, selectedDate]);
 
   useSignalRRefetch(
     ["prescriptionCreated", "prescriptionDispensed", "medicineAdded", "medicineUpdated", "medicineStockUpdated"],
@@ -732,7 +734,7 @@ export default function PharmacyPage() {
                 </button>
               ))}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {(["pending", "all"] as const).map((f) => (
                 <button
                   key={f}
@@ -746,6 +748,15 @@ export default function PharmacyPage() {
                   {f === "pending" ? "Pending Only" : "All"}
                 </button>
               ))}
+              <div className="w-40">
+                <DatePicker
+                  value={selectedDate}
+                  onChange={setSelectedDate}
+                  max={toDateInputValue(new Date())}
+                  placeholder="All dates"
+                  className="flex h-8 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-(--color-highlight) px-3 py-1 text-xs text-foreground ring-offset-background transition-all focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+                />
+              </div>
             </div>
           </div>
 

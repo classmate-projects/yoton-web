@@ -9,6 +9,8 @@ import { Pencil, ScanLine, Settings, Trash2, Undo2, X } from "lucide-react";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload, MdOutlineImage } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import DatePicker from "@/components/DatePicker";
+import { toDateInputValue } from "@/lib/date";
 import SearchableSelect from "@/components/SearchableSelect";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
@@ -55,6 +57,7 @@ export default function RadiologyPage() {
   const [requests, setRequests] = useState<RadiologyRequestType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "pending">("pending");
+  const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
 
   const [patients, setPatients] = useState<PatientListItemType[]>([]);
   const [doctors, setDoctors] = useState<DoctorGridType[]>([]);
@@ -103,7 +106,7 @@ export default function RadiologyPage() {
       setIsLoading(true);
       const [summaryRes, listRes] = await Promise.all([
         RadiologyService.getSummary(),
-        filter === "pending" ? RadiologyService.getPending() : RadiologyService.getAll(),
+        filter === "pending" ? RadiologyService.getPending(selectedDate || undefined) : RadiologyService.getAll(selectedDate || undefined),
       ]);
       setSummary(summaryRes.data ?? null);
       setRequests(listRes.data ?? []);
@@ -118,7 +121,7 @@ export default function RadiologyPage() {
     if (!checkedAuth) return;
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkedAuth, filter]);
+  }, [checkedAuth, filter, selectedDate]);
 
   useSignalRRefetch(["radiologyRequestCreated", "radiologyStatusUpdated"], fetchAll);
 
@@ -375,7 +378,7 @@ export default function RadiologyPage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {(["pending", "all"] as const).map((f) => (
           <button
             key={f}
@@ -387,6 +390,15 @@ export default function RadiologyPage() {
             {f === "pending" ? "Pending Queue" : "All Requests"}
           </button>
         ))}
+        <div className="w-44 ml-auto">
+          <DatePicker
+            value={selectedDate}
+            onChange={setSelectedDate}
+            max={toDateInputValue(new Date())}
+            placeholder="All dates"
+            className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-(--color-highlight) px-3 py-1.5 text-sm text-foreground ring-offset-background transition-all focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+          />
+        </div>
       </div>
 
       {isModalOpen && (
