@@ -19,9 +19,43 @@ import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
 import { useSessionRevokedListener } from "@/hooks/useSessionRevokedListener";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { matchRoute, isRouteAllowed, getHomeRoute } from "@/lib/routeAccess";
-import { CurrentEncounterProvider } from "@/lib/currentEncounterContext";
+import { CurrentEncounterProvider, useCurrentEncounter } from "@/lib/currentEncounterContext";
 import OrderSetPanel from "@/components/orderSet/OrderSetPanel";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Unlock as UnlockIcon } from "lucide-react";
+
+// Reads encounter state from context to show "Reopen" button; must be a separate
+// component so it can call useCurrentEncounter() while living inside the provider.
+function HeaderActions({ isDoctor, onOpenOrderSets }: { isDoctor: boolean; onOpenOrderSets: () => void }) {
+  const { isCompleted, onRequestReopen } = useCurrentEncounter();
+  return (
+    <>
+      <AutoSaveIndicator />
+      {isDoctor && isCompleted && onRequestReopen && (
+        <button
+          type="button"
+          onClick={onRequestReopen}
+          title="Request to reopen this completed encounter"
+          className="flex items-center gap-1.5 rounded-lg border border-amber-500/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 transition-colors hover:border-amber-500 hover:bg-amber-100 dark:hover:bg-amber-950/50"
+        >
+          <UnlockIcon size={15} />
+          <span className="hidden sm:inline">Reopen</span>
+        </button>
+      )}
+      {isDoctor && (
+        <button
+          type="button"
+          onClick={onOpenOrderSets}
+          title="Order Sets"
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/60 hover:text-primary"
+        >
+          <ClipboardList size={15} />
+          <span className="hidden sm:inline">Order Sets</span>
+        </button>
+      )}
+      <CheckInHeaderWidget />
+    </>
+  );
+}
 
 export default function PageLayout({
   children,
@@ -145,19 +179,7 @@ export default function PageLayout({
             </Suspense>
             <DailyStatsBar variant="inline" />
             <div className="flex-1" />
-            <AutoSaveIndicator />
-            {isDoctor && (
-              <button
-                type="button"
-                onClick={() => setShowOrderSets(true)}
-                title="Order Sets"
-                className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/60 hover:text-primary"
-              >
-                <ClipboardList size={15} />
-                <span className="hidden sm:inline">Order Sets</span>
-              </button>
-            )}
-            <CheckInHeaderWidget />
+            <HeaderActions isDoctor={isDoctor} onOpenOrderSets={() => setShowOrderSets(true)} />
           </header>
         {/* outline-none: Chromium makes scroll containers focusable, and Next.js moves focus
             into the new page after navigation - so after a keyboard login (Enter) the browser

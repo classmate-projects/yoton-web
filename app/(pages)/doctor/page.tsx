@@ -86,6 +86,7 @@ import {
   DoctorDashboardSummaryType,
   EmrPatientListItem,
   EncounterCorrectionType,
+  EncounterListItemType,
   EncounterUnlockRequestType,
   FollowUpType,
   MedicationPayload,
@@ -122,7 +123,7 @@ function DoctorWorkbenchInner() {
   const searchParams = useSearchParams();
   const visitIdParam = searchParams.get("visitId") || undefined;
   const initialPatientIdParam = searchParams.get("patientId") || undefined;
-  const { setCurrentEncounter } = useCurrentEncounter();
+  const { setCurrentEncounter, setReopenState } = useCurrentEncounter();
 
   const [activeVisitId, setActiveVisitId] = useState<string | undefined>(visitIdParam);
   const [role, setRole] = useState<string | null>(null);
@@ -735,6 +736,27 @@ function DoctorWorkbenchInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.latestEncounter?.encounterId, isCompletedEncounter]);
 
+  // Signal the header "Reopen" button visibility through context
+  useEffect(() => {
+    if (!selectedPatientId || !isCompletedEncounter || isAdmin) {
+      setReopenState(false, null);
+      return;
+    }
+    setReopenState(true, () => setShowUnlockRequestModal(true));
+    return () => setReopenState(false, null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCompletedEncounter, selectedPatientId, isAdmin, setReopenState]);
+
+  // Fetch the full past-encounters list for this patient so the Past Visits drawer and
+  // history drawers can show previous visit dates and chief complaints.
+  useEffect(() => {
+    if (!selectedPatientId) { setPastEncounters([]); return; }
+    EmrService.getPatientEncounters(selectedPatientId, doctorIdParam)
+      .then((res) => setPastEncounters(res.data ?? []))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPatientId, doctorIdParam]);
+
   useSignalRRefetch(["encounterUnlockRequested", "encounterUnlockResolved"], () => {
     fetchUnlockRequests();
     fetchUnlockStatusForEncounter();
@@ -1301,6 +1323,9 @@ function DoctorWorkbenchInner() {
   const [showDiagnosisHistory, setShowDiagnosisHistory] = useState(false);
   const [showMedHistory, setShowMedHistory] = useState(false);
   const [showOrderHistory, setShowOrderHistory] = useState(false);
+  const [showPastVisitsDrawer, setShowPastVisitsDrawer] = useState(false);
+  const [showEncounterNotesHistory, setShowEncounterNotesHistory] = useState(false);
+  const [pastEncounters, setPastEncounters] = useState<EncounterListItemType[]>([]);
   const [diagnosisHistory, setDiagnosisHistory] = useState<{ encounterDiagnosisId: string; listItemId: string | null; diagnosisCode: string | null; diagnosisName: string; encounterDate: string | null }[]>([]);
   const [isDiagnosisHistoryLoading, setIsDiagnosisHistoryLoading] = useState(false);
   const [prefillMedication, setPrefillMedication] = useState<MedicationType | null>(null);
@@ -1672,12 +1697,24 @@ function DoctorWorkbenchInner() {
   if (selectedPatientId) {
     return (
       <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
-        <button
-          onClick={backToWorkbench}
-          className="mb-5 flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors"
-        >
-          <ArrowLeft size={16} /> Back to patients
-        </button>
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <button
+            onClick={backToWorkbench}
+            className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors"
+          >
+            <ArrowLeft size={16} /> Back to patients
+          </button>
+          {pastEncounters.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowPastVisitsDrawer(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:border-primary/60 hover:text-primary transition-colors"
+            >
+              <History size={14} />
+              Past Visits ({pastEncounters.length})
+            </button>
+          )}
+        </div>
         {!summary ? (
           <LoadingSpinner />
         ) : (
@@ -2012,9 +2049,20 @@ function DoctorWorkbenchInner() {
               <div className="lg:col-span-2 flex flex-col gap-6">
                 {/* Chief complaint / examination notes / review of systems / clinical exam */}
                 <div className="card p-6 flex flex-col gap-4">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <FileText size={18} className="text-primary" /> Encounter Notes
-                  </h2>
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <FileText size={18} className="text-primary" /> Encounter Notes
+                    </h2>
+                    {pastEncounters.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowEncounterNotesHistory(true)}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <History size={14} /> History
+                      </button>
+                    )}
+                  </div>
 
                   {isCompletedEncounter && (
                     <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
@@ -3206,6 +3254,86 @@ function DoctorWorkbenchInner() {
                 </div>
               ))}
             </>
+          )}
+        </HistoryDrawer>
+
+        {/* Past Visits Drawer — lists all recorded encounters for this patient */}
+        <HistoryDrawer
+          open={showPastVisitsDrawer}
+          onClose={() => setShowPastVisitsDrawer(false)}
+          title="Past Visits"
+          subtitle="Select a visit to open it in read-only view. Completed visits can be reopened via an admin request."
+        >
+          {pastEncounters.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No past visits found.</p>
+          ) : (
+            pastEncounters.map((enc) => (
+              <div
+                key={enc.encounterId}
+                className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5"
+              >
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{formatDate(enc.createdAt)}</span>
+                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${enc.status === "Completed" ? "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400" : "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400"}`}>
+                      {enc.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate max-w-xs">{enc.chiefComplaint || "No chief complaint recorded"}</p>
+                  {enc.doctorName && <p className="text-xs text-muted-foreground">Dr. {enc.doctorName}</p>}
+                </div>
+                <button
+                  onClick={() => {
+                    if (selectedPatientId) openPatient(selectedPatientId, enc.visitId ?? undefined);
+                    setShowPastVisitsDrawer(false);
+                  }}
+                  className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                >
+                  Open
+                </button>
+              </div>
+            ))
+          )}
+        </HistoryDrawer>
+
+        {/* Encounter Notes History Drawer — shows previous encounter notes for reference during a new visit */}
+        <HistoryDrawer
+          open={showEncounterNotesHistory}
+          onClose={() => setShowEncounterNotesHistory(false)}
+          title="Encounter Notes History"
+          subtitle="Previous visits' chief complaints and dates — click Open to view the full encounter."
+        >
+          {pastEncounters.filter(e => e.encounterId !== summary?.latestEncounter?.encounterId).length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No previous encounter notes found.</p>
+          ) : (
+            pastEncounters
+              .filter(e => e.encounterId !== summary?.latestEncounter?.encounterId)
+              .map((enc) => (
+                <div
+                  key={enc.encounterId}
+                  className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5"
+                >
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">{formatDate(enc.createdAt)}</span>
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${enc.status === "Completed" ? "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400" : "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400"}`}>
+                        {enc.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-foreground/80 mt-0.5">{enc.chiefComplaint || "No chief complaint recorded"}</p>
+                    {enc.doctorName && <p className="text-xs text-muted-foreground">Dr. {enc.doctorName}</p>}
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (selectedPatientId) openPatient(selectedPatientId, enc.visitId ?? undefined);
+                      setShowEncounterNotesHistory(false);
+                    }}
+                    className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    Open
+                  </button>
+                </div>
+              ))
           )}
         </HistoryDrawer>
 

@@ -3,10 +3,21 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Save, RefreshCw, X } from "lucide-react";
-import SurfaceBox from "./SurfaceBox";
+import dynamic from "next/dynamic";
+import SurfaceBox, { CONDITION_COLOR } from "./SurfaceBox";
 import ToothCaseSheet from "./ToothCaseSheet";
 import { DentalService } from "@/services/dental.service";
-import { ToothRecord, PerioRecord, DentalChartType } from "@/types/dental.type";
+
+const Tooth3DCanvas = dynamic(() => import("./Tooth3DCanvas"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center rounded-xl bg-muted/30 text-xs text-muted-foreground"
+      style={{ width: 240, height: 280 }}>
+      Loading 3D…
+    </div>
+  ),
+});
+import { ToothRecord, PerioRecord, DentalChartType, ToothCondition, ToothSurface } from "@/types/dental.type";
 
 // ─── Universal (US) adult numbering & alphabetic pediatric ───────────────────
 // Adult: 1-16 upper (patient right→left), 32-17 lower (patient right→left)
@@ -43,6 +54,21 @@ function toothShape(n: string): ToothShape {
 type ToothView = "Buccal" | "Lingual" | "Mesial" | "Distal" | "Occlusal";
 const ROTATE_VIEWS: ToothView[] = ["Mesial", "Buccal", "Distal", "Lingual"];
 
+// ─── Dominant condition colour for 3D overlays ───────────────────────────────
+const CONDITION_PRIORITY: ToothCondition[] = [
+  "Missing","BridgePontic","Implant","Crown","ExtractionIndicated",
+  "RCT","Caries","Filled","Fracture","BridgeAbutment",
+  "Watch","Attrition","Abrasion","Erosion","Calculus",
+];
+const WHOLE_TOOTH: ToothCondition[] = ["Missing","BridgePontic","Implant","Crown","ExtractionIndicated","BridgeAbutment"];
+
+function dominantColor(conditions: ToothCondition[]): string | null {
+  for (const c of CONDITION_PRIORITY) {
+    if (conditions.includes(c)) return (CONDITION_COLOR as Record<string, string>)[c] ?? null;
+  }
+  return null;
+}
+
 // ─── High-quality anatomical buccal-view SVG ─────────────────────────────────
 // Renders a clinically accurate buccal (side) view of each tooth class with:
 //   • Per-shape anatomically distinct crown profiles
@@ -52,7 +78,10 @@ const ROTATE_VIEWS: ToothView[] = ["Mesial", "Buccal", "Distal", "Lingual"];
 //   • Drop-shadow for depth
 // Coordinate system: crown at y=0 (incisal/occlusal), root apex at y=totalH.
 // For lower teeth the caller wraps in a CSS scale(-1) so no coordinate change needed.
-function ToothAnatomySVG({ shape, isUpper, w = 40 }: { shape: ToothShape; isUpper: boolean; w?: number }) {
+function ToothAnatomySVG({ shape, isUpper, w = 40, conditions = [], surfaces = [] }: {
+  shape: ToothShape; isUpper: boolean; w?: number;
+  conditions?: ToothCondition[]; surfaces?: ToothSurface[];
+}) {
   const cH  = w * 0.72;   // crown height
   const rH  = w * 0.95;   // root zone height
   const tH  = cH + rH;    // total SVG height
@@ -341,13 +370,38 @@ function ToothAnatomySVG({ shape, isUpper, w = 40 }: { shape: ToothShape; isUppe
           fill="#5a3820" fillOpacity={0.18}
         />
 
+        {/* ── CONDITION / SURFACE OVERLAYS (buccal view: B, M edge, D edge) ── */}
+        {(() => {
+          const col = dominantColor(conditions);
+          if (!col) return null;
+          const isWhole = conditions.some(c => WHOLE_TOOTH.includes(c));
+          const hasB = surfaces.includes("B") || isWhole;
+          const hasM = surfaces.includes("M") && !isWhole;
+          const hasD = surfaces.includes("D") && !isWhole;
+          return (
+            <>
+              <defs>
+                <clipPath id={`ov-${gid}`}><path d={crown[shape]} /></clipPath>
+              </defs>
+              {hasB && <path d={crown[shape]} fill={col} fillOpacity={0.38} />}
+              {hasM && <rect x={0} y={0} width={w*.36} height={cH}
+                fill={col} fillOpacity={0.42} clipPath={`url(#ov-${gid})`} />}
+              {hasD && <rect x={w*.64} y={0} width={w*.36} height={cH}
+                fill={col} fillOpacity={0.42} clipPath={`url(#ov-${gid})`} />}
+            </>
+          );
+        })()}
+
       </g>
     </svg>
   );
 }
 
 // ─── Lingual-view SVG ────────────────────────────────────────────────────────
-function ToothLingualSVG({ shape, isUpper, w = 120 }: { shape: ToothShape; isUpper: boolean; w?: number }) {
+function ToothLingualSVG({ shape, isUpper, w = 120, conditions = [], surfaces = [] }: {
+  shape: ToothShape; isUpper: boolean; w?: number;
+  conditions?: ToothCondition[]; surfaces?: ToothSurface[];
+}) {
   const cH = w * 0.72, rH = w * 0.95, tH = cH + rH;
   const translateY = !isUpper ? tH : 0, scaleY = !isUpper ? -1 : 1;
   const gid = `tl-${shape[0]}`;
@@ -413,13 +467,24 @@ function ToothLingualSVG({ shape, isUpper, w = 120 }: { shape: ToothShape; isUpp
           stroke="#9a8060" strokeWidth={0.6} opacity={0.55} />
         <ellipse cx={w*.5} cy={cH} rx={shape==="molar"?w*.40:w*.26} ry={w*.04}
           fill="#5a3820" fillOpacity={0.18} />
+        {/* Condition overlay — lingual view shows L surface */}
+        {(() => {
+          const col = dominantColor(conditions);
+          if (!col) return null;
+          const isWhole = conditions.some(c => WHOLE_TOOTH.includes(c));
+          if (!surfaces.includes("L") && !isWhole) return null;
+          return <path d={crown[shape]} fill={col} fillOpacity={0.38} />;
+        })()}
       </g>
     </svg>
   );
 }
 
 // ─── Proximal-view SVG (mesial or distal) ─────────────────────────────────────
-function ToothProximalSVG({ shape, isUpper, w = 120 }: { shape: ToothShape; isUpper: boolean; w?: number }) {
+function ToothProximalSVG({ shape, isUpper, w = 120, proximalSide = "M", conditions = [], surfaces = [] }: {
+  shape: ToothShape; isUpper: boolean; w?: number;
+  proximalSide?: "M" | "D"; conditions?: ToothCondition[]; surfaces?: ToothSurface[];
+}) {
   const cH = w * 0.72, rH = w * 0.95, tH = cH + rH;
   const translateY = !isUpper ? tH : 0, scaleY = !isUpper ? -1 : 1;
   const gid = `tp-${shape[0]}`;
@@ -478,80 +543,34 @@ function ToothProximalSVG({ shape, isUpper, w = 120 }: { shape: ToothShape; isUp
           stroke="#9a8060" strokeWidth={0.6} opacity={0.55} />
         <ellipse cx={w*.5} cy={cH} rx={w*.18} ry={w*.03}
           fill="#5a3820" fillOpacity={0.18} />
+        {/* Condition overlay — proximal view shows M or D surface */}
+        {(() => {
+          const col = dominantColor(conditions);
+          if (!col) return null;
+          const isWhole = conditions.some(c => WHOLE_TOOTH.includes(c));
+          if (!surfaces.includes(proximalSide) && !isWhole) return null;
+          return <path d={crown[shape]} fill={col} fillOpacity={0.38} />;
+        })()}
       </g>
     </svg>
   );
 }
 
-// Zone order for 360° horizontal drag: Buccal(0°) → Distal(90°) → Lingual(180°) → Mesial(270°)
-const ZONE_VIEWS: ToothView[] = ["Buccal", "Distal", "Lingual", "Mesial"];
-const SNAP_DEG: Record<string, number> = { Buccal: 0, Distal: 90, Lingual: 180, Mesial: 270 };
-
-// ─── 3D multi-view tooth viewer ───────────────────────────────────────────────
-function Tooth3DViewer({ toothNumber, shape, isUpper, record }: {
+// ─── 3D tooth viewer (WebGL via Three.js) ────────────────────────────────────
+function Tooth3DViewer({ toothNumber, shape, isUpper, record, onChange }: {
   toothNumber: string;
   shape: ToothShape;
   isUpper: boolean;
   record: ToothRecord;
+  onChange?: (r: ToothRecord) => void;
 }) {
-  // rotation: continuous degrees, wraps via %360
-  const [rotation, setRotation]     = useState(0);
-  const [showOcclusal, setShowOcclusal] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartX   = useRef<number | null>(null);
-  const rotAtDragStart = useRef(0);
+  // Use {view, ver} so clicking the same snap button twice still re-triggers the animation.
+  const [snap, setSnap] = useState<{ view: string; ver: number } | undefined>(undefined);
 
-  // Derive which face to show + how much to squish it
-  const norm      = ((rotation % 360) + 360) % 360;
-  const zoneIdx   = Math.floor(norm / 90) % 4;
-  const zoneAngle = norm % 90;  // 0–89° within this zone
-  // First half of zone: showing current face squishing toward edge
-  // Second half: showing next face un-squishing from edge
-  const faceIdx     = zoneAngle < 45 ? zoneIdx : (zoneIdx + 1) % 4;
-  const rotateY     = zoneAngle < 45 ? zoneAngle : -(90 - zoneAngle);
-  const activeLabel = showOcclusal ? "Occlusal" : ZONE_VIEWS[faceIdx];
-
-  const VIEW_LABEL: Record<ToothView, string> = {
-    Buccal:   "Buccal (Labial / Facial)",
-    Lingual:  "Lingual (Palatal)",
-    Mesial:   "Mesial Proximal",
-    Distal:   "Distal Proximal",
-    Occlusal: "Occlusal (Incisal)",
-  };
-
-  const VIEWER_W = 130;
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    dragStartX.current    = e.clientX;
-    rotAtDragStart.current = rotation;
-    setIsDragging(true);
-    setShowOcclusal(false);
-    e.preventDefault();
-  };
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (dragStartX.current === null) return;
-      const dx = e.clientX - dragStartX.current;
-      // 250px drag = full 360°
-      setRotation(rotAtDragStart.current - (dx / 250) * 360);
-    };
-    const onUp = () => {
-      dragStartX.current = null;
-      setIsDragging(false);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, []);
-
-  const snapTo = (v: ToothView) => {
-    if (v === "Occlusal") { setShowOcclusal(true); return; }
-    setShowOcclusal(false);
-    setRotation(SNAP_DEG[v] ?? 0);
+  const toggleSurface = (s: ToothSurface) => {
+    if (!onChange) return;
+    const has = record.surfaces.includes(s);
+    onChange({ ...record, surfaces: has ? record.surfaces.filter(x => x !== s) : [...record.surfaces, s] });
   };
 
   return (
@@ -561,63 +580,52 @@ function Tooth3DViewer({ toothNumber, shape, isUpper, record }: {
           <span className="text-sm font-semibold">Tooth {toothNumber}</span>
           <span className="text-xs text-muted-foreground capitalize px-1.5 py-0.5 rounded bg-muted">{shape}</span>
         </div>
-        <span className="text-[10px] text-muted-foreground italic hidden sm:block">← drag to rotate 360°</span>
+        <span className="text-[10px] text-muted-foreground italic hidden sm:block">Drag to rotate · Scroll to zoom</span>
       </div>
 
       <div className="flex flex-wrap gap-4 items-start">
-        {/* 360° draggable viewer */}
-        <div
-          className="flex flex-col items-center gap-2 select-none"
-          style={{ cursor: isDragging ? "grabbing" : "grab" }}
-          onMouseDown={handleMouseDown}
-        >
-          <div
-            className="flex items-center justify-center rounded-xl bg-gradient-to-b from-slate-100/60 to-slate-200/60 dark:from-slate-800/50 dark:to-slate-700/50 p-5"
-            style={{ minWidth: VIEWER_W + 40, minHeight: VIEWER_W * 1.68 + 40, perspective: "600px" }}
-          >
-            <div style={{
-              transform: showOcclusal ? "none" : `rotateY(${rotateY}deg)`,
-              transition: isDragging ? "none" : "transform 0.25s ease",
-              transformStyle: "preserve-3d",
-            }}>
-              {showOcclusal ? (
-                <SurfaceBox
-                  conditions={record.conditions}
-                  surfaces={record.surfaces}
-                  isSelected={false}
-                  onClick={() => {}}
-                  size={VIEWER_W}
-                  shape={shape}
-                />
-              ) : ZONE_VIEWS[faceIdx] === "Buccal" ? (
-                <ToothAnatomySVG shape={shape} isUpper={isUpper} w={VIEWER_W} />
-              ) : ZONE_VIEWS[faceIdx] === "Lingual" ? (
-                <ToothLingualSVG shape={shape} isUpper={isUpper} w={VIEWER_W} />
-              ) : (
-                <ToothProximalSVG shape={shape} isUpper={isUpper} w={VIEWER_W} />
-              )}
-            </div>
-          </div>
-          <p className="text-[10px] text-muted-foreground text-center">{VIEW_LABEL[activeLabel]}</p>
-        </div>
+        {/* True WebGL 3D tooth */}
+        <Tooth3DCanvas
+          shape={shape}
+          isUpper={isUpper}
+          conditions={record.conditions}
+          surfaces={record.surfaces}
+          width={240}
+          height={280}
+          cameraView={snap}
+        />
 
-        {/* View snap buttons */}
-        <div className="flex flex-col gap-1.5 shrink-0">
-          <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide mb-0.5">View</p>
-          {(["Buccal","Lingual","Mesial","Distal","Occlusal"] as ToothView[]).map(v => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => snapTo(v)}
-              className={`px-3 py-1.5 text-xs rounded border transition-colors text-left min-w-[80px] ${
-                activeLabel === v
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border text-muted-foreground hover:border-primary/60 hover:text-foreground"
-              }`}
-            >
-              {v}
-            </button>
-          ))}
+        {/* View snap buttons + surface map */}
+        <div className="flex flex-col gap-3 shrink-0">
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide mb-0.5">Snap View</p>
+            {(["Buccal","Lingual","Mesial","Distal","Occlusal"] as const).map(v => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setSnap(s => ({ view: v.toLowerCase(), ver: (s?.ver ?? 0) + 1 }))}
+                className="px-3 py-1.5 text-xs rounded border border-border text-muted-foreground hover:border-primary/60 hover:text-foreground transition-colors text-left min-w-[80px]"
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+
+          {/* Surface map — occlusal diagram showing affected surfaces */}
+          <div className="flex flex-col gap-1">
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Surface Map</p>
+            <SurfaceBox
+              conditions={record.conditions}
+              surfaces={record.surfaces}
+              shape={shape}
+              size={80}
+              onClick={() => {}}
+              onSurfaceClick={onChange ? toggleSurface : undefined}
+            />
+            <p className="text-[9px] text-muted-foreground/60 text-center">
+              {onChange ? "Click surface to toggle" : ""}
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -1216,6 +1224,7 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                       shape={toothShape(selectedTooth)}
                       isUpper={upperTeeth.includes(selectedTooth)}
                       record={toothRecords.get(selectedTooth) ?? { toothNumber: selectedTooth, conditions: [], surfaces: [] }}
+                      onChange={updateTooth}
                     />
                   </div>
                   <ToothCaseSheet

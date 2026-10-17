@@ -133,6 +133,8 @@ export const ENDPOINTS = {
             const qs = p.toString();
             return `/api/emr/patients${qs ? `?${qs}` : ""}`;
         },
+        GET_PATIENT_ENCOUNTERS: (patientId: string, doctorId?: string) =>
+            `/api/emr/patient/${patientId}/encounters${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_PATIENT_SUMMARY: (patientId: string, doctorId?: string, visitId?: string) => {
             const qs = new URLSearchParams();
             if (doctorId) qs.set("doctorId", doctorId);

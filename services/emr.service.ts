@@ -24,6 +24,10 @@ export const EmrService = {
     const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENTS(doctorId, date, department));
     return data;
   },
+  getPatientEncounters: async (patientId: string, doctorId?: string) => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENT_ENCOUNTERS(patientId, doctorId));
+    return data;
+  },
   getPatientSummary: async (patientId: string, doctorId?: string, visitId?: string) => {
     const { data } = await api.get(ENDPOINTS.EMR.GET_PATIENT_SUMMARY(patientId, doctorId, visitId));
     return data;

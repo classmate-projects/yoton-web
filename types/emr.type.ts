@@ -122,6 +122,15 @@ export interface PatientDocumentType {
   createdAt: string;
 }
 
+export interface EncounterListItemType {
+  encounterId: string;
+  visitId: string | null;
+  createdAt: string;
+  status: string;
+  chiefComplaint: string | null;
+  doctorName: string | null;
+}
+
 export interface EncounterType {
   encounterId: string;
   appointmentId: string | null;
