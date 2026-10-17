@@ -41,6 +41,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // Pairs with "scroll-smooth" below: tells Next.js to switch smooth scrolling off while
+      // it scrolls to the top on a route change, so page navigations jump instantly instead
+      // of visibly animating. In-page anchor links still scroll smoothly.
+      data-scroll-behavior="smooth"
       suppressHydrationWarning
       className={`${geistSans.variable} h-full antialiased scroll-smooth`}
     >

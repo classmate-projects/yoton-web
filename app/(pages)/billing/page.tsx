@@ -19,6 +19,8 @@ import { formatCurrency } from "@/lib/currency";
 import SearchIcon from "@/public/icons/SearchIcon";
 import DatePicker from "@/components/DatePicker";
 import { toDateInputValue } from "@/lib/date";
+import { Printer } from "lucide-react";
+import BillPrintout from "@/components/billing/BillPrintout";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -67,6 +69,21 @@ function BillingPageInner() {
   const [tax, setTax] = useState<number>(0);
 
   const [detailBill, setDetailBill] = useState<BillType | null>(null);
+  // Set by a bill card's Print button: renders that bill's print sheet, then the effect
+  // below opens the print dialog once it's on the page, and clears it when printing ends.
+  const [printBill, setPrintBill] = useState<BillType | null>(null);
+
+  useEffect(() => {
+    if (!printBill) return;
+    const clear = () => setPrintBill(null);
+    window.addEventListener("afterprint", clear);
+    // Wait a frame so the sheet is actually rendered before the dialog snapshots the page.
+    const frame = requestAnimationFrame(() => window.print());
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("afterprint", clear);
+    };
+  }, [printBill]);
   const [itemDescription, setItemDescription] = useState("");
   const [itemAmount, setItemAmount] = useState<number>(0);
   const [isAddingItem, setIsAddingItem] = useState(false);
@@ -104,14 +121,24 @@ function BillingPageInner() {
     }
   };
 
+  // The stat cards are page-wide, not per-tab - loaded on mount (below) so they show on the
+  // default Awaiting Billing tab too, and refreshed again by every fetchAll.
+  const fetchSummary = async () => {
+    try {
+      const res = await BillingService.getSummary();
+      setSummary(res.data ?? null);
+    } catch (error) {
+      console.error("Failed to load billing summary:", error);
+    }
+  };
+
   const fetchAll = async () => {
     try {
       setIsLoading(true);
-      const [summaryRes, listRes] = await Promise.all([
-        BillingService.getSummary(),
+      const [, listRes] = await Promise.all([
+        fetchSummary(),
         filter === "pending" ? BillingService.getPending(selectedDate || undefined) : BillingService.getAll(selectedDate || undefined),
       ]);
-      setSummary(summaryRes.data ?? null);
       setBills(listRes.data ?? []);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load bills"));
@@ -123,6 +150,7 @@ function BillingPageInner() {
   useEffect(() => {
     if (!checkedAuth) return;
     fetchAwaiting();
+    fetchSummary();
   }, [checkedAuth]);
 
   useEffect(() => {
@@ -498,7 +526,13 @@ function BillingPageInner() {
             ))}
           </div>
         ) : (
-          <p className="py-16 text-center text-sm text-muted-foreground">No patients awaiting billing.</p>
+          <div className="card">
+            <EmptyState
+              illustration="billing"
+              title="No patients awaiting billing"
+              description="Visits show up here once the doctor, lab and pharmacy steps are done."
+            />
+          </div>
         )
       ) : isLoading ? (
         <div className="py-16 flex justify-center"><LoadingSpinner /></div>
@@ -523,6 +557,13 @@ function BillingPageInner() {
                 >
                   Manage
                 </button>
+                <button
+                  onClick={() => setPrintBill(bill)}
+                  title="Print bill"
+                  className="flex flex-1 items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
+                >
+                  <Printer size={13} /> Print
+                </button>
                 {bill.status === "Pending" && (
                   <button
                     onClick={() => handleCancelBill(bill)}
@@ -536,9 +577,29 @@ function BillingPageInner() {
           ))}
         </div>
       ) : (
-        <p className="py-16 text-center text-sm text-muted-foreground">
-          {billSearch.trim() ? `No bills match "${billSearch.trim()}".` : "No bills found."}
-        </p>
+        <div className="card">
+          {billSearch.trim() ? (
+            <EmptyState
+              illustration="billing"
+              title={`No bills match "${billSearch.trim()}"`}
+              description="Try a different patient name."
+              action={{ label: "Clear search", onClick: () => setBillSearch("") }}
+            />
+          ) : (
+            <EmptyState
+              illustration="billing"
+              title={filter === "pending" ? "No pending bills" : "No bills found"}
+              description={
+                selectedDate
+                  ? "Nothing was billed on this date. Pick another day or show all dates."
+                  : filter === "pending"
+                    ? "Every bill has been paid or cancelled."
+                    : "Bills you create will appear here."
+              }
+              action={selectedDate ? { label: "Show all dates", onClick: () => setSelectedDate("") } : undefined}
+            />
+          )}
+        </div>
       )}
 
       {isModalOpen && (
@@ -672,7 +733,12 @@ function BillingPageInner() {
 
             <div className="space-y-1 mb-4">
               {detailBill.items.length === 0 ? (
-                <p className="text-base text-muted-foreground">No items added yet.</p>
+                <EmptyState
+                  size="compact"
+                  illustration="billing"
+                  title="No items added yet"
+                  description={detailBill.status === "Pending" ? "Add chargeable items or a custom line below." : undefined}
+                />
               ) : (
                 detailBill.items.map((item) => (
                   <div key={item.billItemId} className="flex justify-between text-base py-1 border-b border-border">
@@ -787,15 +853,27 @@ function BillingPageInner() {
               </>
             )}
 
-            <button
-              onClick={() => setDetailBill(null)}
-              className="w-full mt-4 px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground"
-            >
-              Close
-            </button>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => window.print()}
+                className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-all duration-200 cursor-pointer"
+              >
+                <Printer size={16} /> Print
+              </button>
+              <button
+                onClick={() => setDetailBill(null)}
+                className="flex-1 px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Outside the modal on purpose - see BillPrintout's comment on backdrop-blur. */}
+      {/* The card's Print button wins over an open pop-up; only one sheet ever renders. */}
+      {(printBill ?? detailBill) && <BillPrintout bill={(printBill ?? detailBill)!} />}
     </div>
   );
 }
