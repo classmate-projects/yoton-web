@@ -447,8 +447,8 @@ export default function PharmacyPage() {
   const handleCreatePrescription = async (e: React.FormEvent) => {
     e.preventDefault();
     const validItems = items.filter((i) => i.medicineId && i.quantity > 0);
-    if (!selectedPatient || validItems.length === 0) {
-      toast.warning("Please select a patient and at least one medicine");
+    if (validItems.length === 0) {
+      toast.warning("Please add at least one medicine");
       return;
     }
 
@@ -456,7 +456,7 @@ export default function PharmacyPage() {
     try {
       setIsSubmittingRx(true);
       const payload = {
-        patientId: selectedPatient.opId,
+        patientId: selectedPatient?.opId,
         doctorId: selectedDoctorId || undefined,
         notes: notes || undefined,
         items: validItems,
@@ -1237,10 +1237,9 @@ export default function PharmacyPage() {
 
             <form onSubmit={handleCreatePrescription} className="flex flex-col gap-4">
               <div className="relative">
-                <label className="text-sm font-bold text-foreground/90 required">Patient</label>
+                <label className="text-sm font-bold text-foreground/90">Patient</label>
                 <input
                   type="text"
-                  required
                   value={patientSearch}
                   onChange={(e) => {
                     setPatientSearch(e.target.value);

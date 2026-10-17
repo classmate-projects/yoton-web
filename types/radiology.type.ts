@@ -40,7 +40,7 @@ export interface RadiologySummaryType {
 }
 
 export interface CreateRadiologyRequestPayload {
-  patientId: string;
+  patientId?: string;
   doctorId?: string;
   visitId?: string;
   scanType: string;
