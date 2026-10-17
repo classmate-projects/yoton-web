@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { DashboardService } from "@/services/dashboard.service";
 import BarChart, { BarChartPoint } from "@/components/BarChart";
+import LineChart from "@/components/LineChart";
+import { formatCurrency } from "@/lib/currency";
 import TopDoctorsList from "@/components/TopDoctorsList";
 import { RevenuePoint, TopDoctor, WeeklyAppointmentPoint } from "@/types/dashboard.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
@@ -274,10 +276,10 @@ export default function Home() {
           {isActivityLoading ? (
             <div className="h-56 animate-pulse bg-muted/50 rounded-xl" />
           ) : (
-            <BarChart
+            <LineChart
               data={buildRevenueSeries(revenue)}
               color="#059669"
-              formatValue={(v) => `$${v.toLocaleString()}`}
+              formatValue={formatCurrency}
               emptyMessage="No billing activity recorded yet"
               emptyIllustration="billing"
             />
