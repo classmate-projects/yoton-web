@@ -101,9 +101,10 @@ export default function RadiologyPage() {
   }, [router]);
 
   // ---------------- DATA ----------------
-  const fetchAll = async () => {
+  // silent: live SignalR refreshes update the list in place instead of flashing the spinner.
+  const fetchAll = async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       const [summaryRes, listRes] = await Promise.all([
         RadiologyService.getSummary(),
         filter === "pending" ? RadiologyService.getPending(selectedDate || undefined) : RadiologyService.getAll(selectedDate || undefined),
@@ -111,9 +112,9 @@ export default function RadiologyPage() {
       setSummary(summaryRes.data ?? null);
       setRequests(listRes.data ?? []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load radiology requests"));
+      if (!silent) toast.error(errorMessage(error, "Failed to load radiology requests"));
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -123,7 +124,10 @@ export default function RadiologyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, filter, selectedDate]);
 
-  useSignalRRefetch(["radiologyRequestCreated", "radiologyStatusUpdated"], fetchAll);
+  useSignalRRefetch(
+    ["radiologyRequestCreated", "radiologyStatusUpdated", "radiologyRequestUpdated", "radiologyRequestRemoved", "encounterFinished", "encounterReopened"],
+    () => fetchAll(true)
+  );
 
   useEffect(() => {
     if (!checkedAuth) return;

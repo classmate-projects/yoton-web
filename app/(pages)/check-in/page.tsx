@@ -118,6 +118,10 @@ export default function CheckInPage() {
                 <LogOut size={16} />
                 Check Out
               </button>
+            ) : today.isAutoCheckOut ? (
+              <p className="text-sm text-orange-600 dark:text-orange-400">
+                You didn&apos;t check out, so the system checked you out automatically at the end of the day.
+              </p>
             ) : (
               <p className="text-sm text-muted-foreground">You&apos;re all done for today.</p>
             )}
@@ -132,8 +136,16 @@ export default function CheckInPage() {
             {history.map((record) => (
               <div key={record.attendanceRecordId} className="flex items-center justify-between py-2 text-sm">
                 <span className="text-foreground">{formatDate(record.date)}</span>
-                <span className="text-muted-foreground">
+                <span className="flex items-center gap-2 text-muted-foreground">
                   {formatTime(record.checkInAt)} – {formatTime(record.checkOutAt)}
+                  {record.isAutoCheckOut && (
+                    <span
+                      title="You didn't check out, so the system checked you out at the end of the day"
+                      className="rounded-full bg-orange-500/10 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:text-orange-400"
+                    >
+                      Auto
+                    </span>
+                  )}
                 </span>
               </div>
             ))}

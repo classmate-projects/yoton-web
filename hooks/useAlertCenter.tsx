@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { getSignalRConnection } from "@/lib/signalR";
 import { ReceptionService } from "@/services/reception.service";
 import { EmrService } from "@/services/emr.service";
 import { PharmacyService } from "@/services/pharmacy.service";
 import { SavedMedicalFormService } from "@/services/medicalForm.service";
+import { AttendanceService } from "@/services/attendance.service";
+import { AutoCheckOutType } from "@/types/attendance.type";
+import { parseDateInputValue } from "@/lib/date";
 import { ensureNotificationPermission, showAlertNotification } from "@/lib/notifications";
 
 export interface AlertItem {
@@ -19,6 +22,13 @@ export interface AlertItem {
 }
 
 const MAX_ALERTS = 30;
+
+// "Priya", "Priya and Arun", "Priya, Arun and 3 others"
+function listNames(names: string[]): string {
+  if (names.length <= 2) return names.join(" and ");
+  const others = names.length - 2;
+  return `${names.slice(0, 2).join(", ")} and ${others} other${others === 1 ? "" : "s"}`;
+}
 
 // General alert box - one bell, many sources, instead of the old appointment-request-only
 // popover. Each source below normalizes into the same AlertItem shape and gets pushed onto
@@ -65,6 +75,9 @@ export function useAlertCenter(role: string, userId: string | undefined) {
     setAlerts((prev) => prev.map((a) => (a.id === id && !a.read ? { ...a, read: true } : a)));
 
   const markAllRead = () => setAlerts((prev) => prev.map((a) => (a.read ? a : { ...a, read: true })));
+
+  // Which automatic check-outs already have an alert, so a live refetch only rings for new ones.
+  const knownAutoCheckOutIds = useRef(new Set<string>());
 
   // ---------------- Appointment requests (admin, reception) ----------------
   useEffect(() => {
@@ -464,6 +477,63 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       }).catch(() => {});
     };
   }, [isAdmin, isPharmacist]);
+
+  // ---------------- Missed check-outs (admin - the supervisor's view) ----------------
+  // One alert per day the end-of-day job had to check someone out (see EodAutoCheckOutService),
+  // linking to that day on Staff Attendance. Loaded on start too, since the job runs at
+  // midnight when hardly any admin is online to catch the live event.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let isMounted = true;
+
+    const load = (announce: boolean) =>
+      AttendanceService.getRecentAutoCheckOuts()
+        .then((res) => {
+          if (!isMounted) return;
+          const records: AutoCheckOutType[] = res.data ?? [];
+          const byDate = new Map<string, AutoCheckOutType[]>();
+          records.forEach((r) => byDate.set(r.date, [...(byDate.get(r.date) ?? []), r]));
+
+          byDate.forEach((group, date) => {
+            if (group.every((r) => knownAutoCheckOutIds.current.has(r.attendanceRecordId))) return;
+            const day = (parseDateInputValue(date) ?? new Date(date)).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+            const who = listNames(group.map((r) => r.name));
+            const item = {
+              id: `autocheckout-${date}`,
+              navLink: `/staff-attendance?date=${date}`,
+              title: "Missed check-out",
+              message: `${who} didn't check out on ${day}, so the system checked them out automatically at 11:59:59 PM`,
+              timestamp: Date.now(),
+            };
+            if (announce) {
+              pushAlert(item, <span><b>{who}</b> didn&apos;t check out on {day} - checked out automatically</span>);
+            } else {
+              setAlerts((prev) => [{ ...item, read: false }, ...prev.filter((a) => a.id !== item.id)].slice(0, MAX_ALERTS));
+            }
+          });
+          records.forEach((r) => knownAutoCheckOutIds.current.add(r.attendanceRecordId));
+        })
+        .catch(() => {});
+
+    load(false);
+    // The event isn't company-scoped, so just refetch - the API only ever returns this admin's own staff.
+    const handleAutoCheckedOut = () => load(true);
+
+    const connect = async () => {
+      const connection = await getSignalRConnection();
+      if (!isMounted) return;
+      connection.off("attendanceAutoCheckedOut", handleAutoCheckedOut);
+      connection.on("attendanceAutoCheckedOut", handleAutoCheckedOut);
+    };
+    connect().catch(() => {});
+
+    return () => {
+      isMounted = false;
+      getSignalRConnection().then((connection) => {
+        connection.off("attendanceAutoCheckedOut", handleAutoCheckedOut);
+      }).catch(() => {});
+    };
+  }, [isAdmin]);
 
   // ---------------- Lab/radiology results ready (doctor - the one who ordered it) ----------------
   useEffect(() => {

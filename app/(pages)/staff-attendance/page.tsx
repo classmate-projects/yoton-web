@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { UserCheck, Loader2, ChevronLeft, ChevronRight, Search, FileSpreadsheet } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import { AttendanceService } from "@/services/attendance.service";
 import { StaffAttendanceType } from "@/types/attendance.type";
 import { toDateInputValue, parseDateInputValue } from "@/lib/date";
@@ -14,14 +15,17 @@ import { toDateInputValue, parseDateInputValue } from "@/lib/date";
 // Admin-only (hardcoded in lib/routeAccess.ts and on StaffAttendanceController) - who
 // checked in, who didn't, for one chosen day.
 
-type StatusFilter = "" | "checked-in" | "checked-out" | "not-checked-in";
+type StatusFilter = "" | "checked-in" | "checked-out" | "auto-checked-out" | "not-checked-in";
 
 const STATUS_OPTIONS = [
   { value: "", label: "All staff" },
   { value: "checked-in", label: "Checked in" },
   { value: "checked-out", label: "Checked out" },
+  { value: "auto-checked-out", label: "Auto check-out" },
   { value: "not-checked-in", label: "Not checked in" },
 ];
+
+const AUTO_CHECK_OUT_HINT = "No check-out was recorded, so the system checked them out at 11:59:59 PM";
 
 const formatTime = (value: string | null) =>
   value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
@@ -34,7 +38,8 @@ function formatDuration(from: string, to: string | null): string {
 
 function statusOf(s: StaffAttendanceType): Exclude<StatusFilter, ""> {
   if (!s.checkInAt) return "not-checked-in";
-  return s.checkOutAt ? "checked-out" : "checked-in";
+  if (!s.checkOutAt) return "checked-in";
+  return s.isAutoCheckOut ? "auto-checked-out" : "checked-out";
 }
 
 function shiftDate(value: string, days: number): string {
@@ -43,14 +48,24 @@ function shiftDate(value: string, days: number): string {
   return toDateInputValue(date);
 }
 
-export default function StaffAttendancePage() {
+// A ?date= (e.g. from the missed check-out alert) is only used if it's a real day, not in the future.
+const pickDate = (requested: string | null, today: string) =>
+  requested && parseDateInputValue(requested) && requested <= today ? requested : today;
+
+function StaffAttendanceInner() {
   const today = toDateInputValue(new Date());
   const router = useRouter();
-  const [date, setDate] = useState(today);
+  const requestedDate = useSearchParams().get("date");
+  const [date, setDate] = useState(() => pickDate(requestedDate, today));
   const [staff, setStaff] = useState<StaffAttendanceType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("");
+
+  // Clicking an alert while already on this page changes only the query string.
+  useEffect(() => {
+    if (requestedDate) setDate(pickDate(requestedDate, today));
+  }, [requestedDate, today]);
 
   useEffect(() => {
     if (!date) return;
@@ -66,12 +81,12 @@ export default function StaffAttendancePage() {
 
   const counts = useMemo(() => {
     const checkedIn = staff.filter((s) => statusOf(s) === "checked-in").length;
-    const checkedOut = staff.filter((s) => statusOf(s) === "checked-out").length;
+    const absent = staff.filter((s) => statusOf(s) === "not-checked-in").length;
     return {
       total: staff.length,
-      present: checkedIn + checkedOut,
+      present: staff.length - absent,
       checkedIn,
-      absent: staff.length - checkedIn - checkedOut,
+      absent,
     };
   }, [staff]);
 
@@ -111,6 +126,7 @@ export default function StaffAttendancePage() {
           Status:
             st === "checked-in" ? (isToday ? "On duty" : "No check-out")
             : st === "checked-out" ? "Checked out"
+            : st === "auto-checked-out" ? "Auto check-out (missed check-out)"
             : "Not checked in",
           "Account status": s.isActive ? "Active" : "Inactive",
         };
@@ -275,6 +291,13 @@ export default function StaffAttendancePage() {
                           <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-semibold text-green-600 dark:text-green-400">
                             Checked out
                           </span>
+                        ) : st === "auto-checked-out" ? (
+                          <span
+                            title={AUTO_CHECK_OUT_HINT}
+                            className="whitespace-nowrap rounded-full bg-orange-500/10 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:text-orange-400"
+                          >
+                            Auto check-out
+                          </span>
                         ) : (
                           <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
                             Not checked in
@@ -290,5 +313,19 @@ export default function StaffAttendancePage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function StaffAttendancePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-full">
+          <LoadingSpinner />
+        </div>
+      }
+    >
+      <StaffAttendanceInner />
+    </Suspense>
   );
 }

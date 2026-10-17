@@ -16,3 +16,10 @@ export function parseDateInputValue(value: string): Date | null {
   const date = new Date(year, month - 1, day);
   return Number.isNaN(date.getTime()) ? null : date;
 }
+
+// The API stores UTC in "timestamp without time zone" columns, so timestamps read back from
+// the database arrive with no zone marker - new Date() alone would read them as local time.
+export function parseServerUtcDate(value: string): Date {
+  const needsZone = /T\d{2}:\d{2}/.test(value) && !/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(value);
+  return new Date(needsZone ? `${value}Z` : value);
+}

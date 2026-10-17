@@ -76,6 +76,10 @@ export const PharmacyService = {
     const { data } = await api.post(ENDPOINTS.PHARMACY.PREPARE_MEDICATION(medicationId));
     return data;
   },
+  revertPreparedMedication: async (medicationId: string) => {
+    const { data } = await api.put(ENDPOINTS.PHARMACY.REVERT_PREPARE_MEDICATION(medicationId));
+    return data;
+  },
   dispenseMedication: async (medicationId: string, payload: DispenseMedicationPayload) => {
     const { data } = await api.post(ENDPOINTS.PHARMACY.DISPENSE_MEDICATION(medicationId), payload);
     return data;

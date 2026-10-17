@@ -8,7 +8,7 @@ export const AttendanceService = {
     },
 
     checkIn: async () => {
-        const { data } = await api.post(ENDPOINTS.ATTENDANCE.CHECK_IN);
+        const { data } = await api.post(ENDPOINTS.ATTENDANCE.CHECK_IN());
         return data;
     },
 
@@ -26,6 +26,12 @@ export const AttendanceService = {
     // Admin only - every staff member's check-in/out for one "yyyy-MM-dd" day.
     getStaffForDate: async (date: string) => {
         const { data } = await api.get(ENDPOINTS.ATTENDANCE.GET_STAFF(date));
+        return data;
+    },
+
+    // Admin only - sessions the system closed at 23:59:59 over the last `days` days.
+    getRecentAutoCheckOuts: async (days = 2) => {
+        const { data } = await api.get(ENDPOINTS.ATTENDANCE.GET_RECENT_AUTO_CHECK_OUTS(days));
         return data;
     },
 }

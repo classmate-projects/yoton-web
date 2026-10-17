@@ -126,9 +126,10 @@ export default function LaboratoryPage() {
   }, [router]);
 
   // ---------------- DATA ----------------
-  const fetchAll = async () => {
+  // silent: live SignalR refreshes update the list in place instead of flashing the spinner.
+  const fetchAll = async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       const [summaryRes, listRes] = await Promise.all([
         LabService.getSummary(),
         filter === "pending" ? LabService.getPending(selectedDate || undefined) : LabService.getAll(selectedDate || undefined),
@@ -136,9 +137,9 @@ export default function LaboratoryPage() {
       setSummary(summaryRes.data ?? null);
       setRequests(listRes.data ?? []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load lab requests"));
+      if (!silent) toast.error(errorMessage(error, "Failed to load lab requests"));
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -151,7 +152,10 @@ export default function LaboratoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, filter, selectedDate]);
 
-  useSignalRRefetch(["labRequestCreated", "labStatusUpdated"], fetchAll);
+  useSignalRRefetch(
+    ["labRequestCreated", "labStatusUpdated", "labRequestUpdated", "labRequestRemoved", "encounterFinished", "encounterReopened"],
+    () => fetchAll(true)
+  );
 
   useEffect(() => {
     if (!checkedAuth) return;

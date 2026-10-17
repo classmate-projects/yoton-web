@@ -126,6 +126,11 @@ export interface MedicationAdministrationType {
   route: string | null;
   remarks: string | null;
   witnessName: string | null;
+  // A cancelled entry stays visible in the log but no longer locks the medication for the doctor.
+  isCancelled: boolean;
+  cancelledAt: string | null;
+  cancelledByName: string | null;
+  cancellationReason: string | null;
 }
 
 export interface InjectionType {

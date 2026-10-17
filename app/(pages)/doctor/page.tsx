@@ -25,6 +25,7 @@ import {
   Pencil,
   Pill,
   Plus,
+  RotateCcw,
   Save,
   Search,
   Share2,
@@ -44,6 +45,8 @@ import SearchableSelect, { standaloneSelectClass } from "@/components/Searchable
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
 import OrderedItemsList from "@/components/orders/OrderedItemsList";
+import OrderLockNotice from "@/components/orders/OrderLockNotice";
+import { parseServerUtcDate } from "@/lib/date";
 import LabRadiologyConfigModal, {
   DEFAULT_LAB_RADIOLOGY_VALUES,
   LabRadiologyConfigValues,
@@ -525,6 +528,23 @@ function DoctorWorkbenchInner() {
   const lastSavedFormRef = useRef<string>("");
 
   const isCompletedEncounter = summary?.latestEncounter?.status === "Completed";
+  // Today's finalized encounter reopens with the doctor's own password (Re-Encounter); an
+  // earlier visit's goes through the admin-approved Reopen request instead.
+  const isTodaysEncounter =
+    !!summary?.latestEncounter &&
+    parseServerUtcDate(summary.latestEncounter.createdAt).toDateString() === new Date().toDateString();
+  const canReEncounter = isCompletedEncounter && !isAdmin && isTodaysEncounter;
+  // Orders on a finalized encounter are read-only for everyone (the server enforces it);
+  // the rest of the encounter follows the notes rule, where admin proposes corrections.
+  const ordersReadOnly = isCompletedEncounter;
+  const encounterReadOnly = isCompletedEncounter && !isAdmin;
+  const visitLockHint = !isCompletedEncounter
+    ? "It belongs to an earlier visit that's already finalized — discontinue or re-order instead."
+    : isAdmin
+      ? "This encounter is finalized."
+      : isTodaysEncounter
+        ? "Click Re-Encounter to make changes."
+        : "Use Reopen to ask an admin for edit access.";
   const isEncounterDirty =
     isAdmin && isCompletedEncounter && JSON.stringify(encounterForm) !== JSON.stringify(encounterFormSnapshot);
 
@@ -736,19 +756,21 @@ function DoctorWorkbenchInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.latestEncounter?.encounterId, isCompletedEncounter]);
 
-  // Signal the header "Reopen" button visibility through context
+  // Signal the header "Reopen" button visibility through context - only for an earlier
+  // visit; today's finalized encounter uses Re-Encounter instead.
   useEffect(() => {
-    if (!selectedPatientId || !isCompletedEncounter || isAdmin) {
+    if (!selectedPatientId || !isCompletedEncounter || isAdmin || isTodaysEncounter) {
       setReopenState(false, null);
       return;
     }
     setReopenState(true, () => setShowUnlockRequestModal(true));
     return () => setReopenState(false, null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCompletedEncounter, selectedPatientId, isAdmin, setReopenState]);
+  }, [isCompletedEncounter, selectedPatientId, isAdmin, isTodaysEncounter, setReopenState]);
 
   // Fetch the full past-encounters list for this patient so the Past Visits drawer and
   // history drawers can show previous visit dates and chief complaints.
+  const [pastEncounters, setPastEncounters] = useState<EncounterListItemType[]>([]);
   useEffect(() => {
     if (!selectedPatientId) { setPastEncounters([]); return; }
     EmrService.getPatientEncounters(selectedPatientId, doctorIdParam)
@@ -795,6 +817,61 @@ function DoctorWorkbenchInner() {
     } finally {
       setResolvingUnlockId(null);
     }
+  };
+
+  // ---------------- LIVE ORDER LOCKS ----------------
+  // Keeps the open patient's orders current while other teams work on them - a lock appears
+  // the moment lab/nursing/pharmacy start something and lifts the moment they revert it.
+  // Only replaces `summary`: fetchSummary would also reset the alert/history fields the
+  // doctor may be typing in. Debounced since one action can fire several events.
+  const selectedPatientIdRef = useRef(selectedPatientId);
+  useEffect(() => {
+    selectedPatientIdRef.current = selectedPatientId;
+  });
+  const liveRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refreshSummarySilently = async (patientId: string) => {
+    try {
+      const res = await EmrService.getPatientSummary(patientId, doctorIdParam, activeVisitId);
+      if (selectedPatientIdRef.current === patientId && res.data) setSummary(res.data);
+    } catch {
+      // Keep what's on screen - the next event or action refreshes it again.
+    }
+  };
+
+  useSignalRRefetch(
+    [
+      "labStatusUpdated", "labRequestCreated", "labRequestUpdated", "labRequestRemoved",
+      "radiologyStatusUpdated", "radiologyRequestCreated", "radiologyRequestUpdated", "radiologyRequestRemoved",
+      "treatmentAdded", "treatmentUpdated", "treatmentStarted", "treatmentReverted", "treatmentMarkedDone", "treatmentRemoved",
+      "medicationAdded", "medicationUpdated", "medicationRemoved", "medicationDiscontinued",
+      "medicationAdministered", "medicationAdministrationCancelled",
+      "medicationPrepared", "medicationPrepareReverted", "medicationDispensed",
+      "diagnosisAdded", "diagnosisRemoved",
+      "encounterFinished", "encounterReopened", "encounterUnlockResolved", "encounterCorrectionResolved",
+    ],
+    () => {
+      const patientId = selectedPatientIdRef.current;
+      if (!patientId) return;
+      if (liveRefreshTimerRef.current) clearTimeout(liveRefreshTimerRef.current);
+      liveRefreshTimerRef.current = setTimeout(() => void refreshSummarySilently(patientId), 400);
+    }
+  );
+
+  useEffect(() => () => {
+    if (liveRefreshTimerRef.current) clearTimeout(liveRefreshTimerRef.current);
+  }, []);
+
+  // ---------------- RE-ENCOUNTER (doctor reopens today's finalized encounter) ----------------
+  const [showReEncounterConfirm, setShowReEncounterConfirm] = useState(false);
+
+  // Left throwing on failure so the password prompt shows the error and lets the doctor retry.
+  const reEncounter = async (password: string) => {
+    if (!selectedPatientId || !summary?.latestEncounter) return;
+    await EmrService.reEncounter(summary.latestEncounter.encounterId, password);
+    setShowReEncounterConfirm(false);
+    toast.success("Encounter re-opened. Orders another team has already started stay locked until they revert them.");
+    await refreshSummarySilently(selectedPatientId);
   };
 
   // ---------------- MY PENDING CORRECTIONS (doctor acknowledging admin's edits) ----------------
@@ -1068,6 +1145,18 @@ function DoctorWorkbenchInner() {
   const [editingMedication, setEditingMedication] = useState<MedicationType | null>(null);
   const [medTab, setMedTab] = useState<"current" | "history">("current");
 
+  // Another team can start on a medication while the doctor is mid-correction - drop the
+  // correction as soon as the live refresh shows it locked rather than letting it fail on save.
+  useEffect(() => {
+    if (!editingMedication || !summary) return;
+    const live = summary.currentMedications.find((m) => m.medicationId === editingMedication.medicationId);
+    if (live?.locked) {
+      toast.warning(live.lockMessage || `${live.drugName} was just locked by another team`);
+      setEditingMedication(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary]);
+
   const addMedication = async (payload: MedicationPayload): Promise<boolean> => {
     if (!selectedPatientId) return false;
     if (!requireDoctorSelected()) return false;
@@ -1325,7 +1414,6 @@ function DoctorWorkbenchInner() {
   const [showOrderHistory, setShowOrderHistory] = useState(false);
   const [showPastVisitsDrawer, setShowPastVisitsDrawer] = useState(false);
   const [showEncounterNotesHistory, setShowEncounterNotesHistory] = useState(false);
-  const [pastEncounters, setPastEncounters] = useState<EncounterListItemType[]>([]);
   const [diagnosisHistory, setDiagnosisHistory] = useState<{ encounterDiagnosisId: string; listItemId: string | null; diagnosisCode: string | null; diagnosisName: string; encounterDate: string | null }[]>([]);
   const [isDiagnosisHistoryLoading, setIsDiagnosisHistoryLoading] = useState(false);
   const [prefillMedication, setPrefillMedication] = useState<MedicationType | null>(null);
@@ -2068,6 +2156,19 @@ function DoctorWorkbenchInner() {
                     <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                       {isAdmin ? (
                         "This encounter is finalized — edits here are proposed as a correction, not saved directly."
+                      ) : canReEncounter ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <span>
+                            This encounter is finalized and read-only. Re-Encounter to make changes — orders another team has
+                            already started stay locked until they revert them.
+                          </span>
+                          <button
+                            onClick={() => setShowReEncounterConfirm(true)}
+                            className="shrink-0 flex items-center gap-1.5 rounded-md bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-600"
+                          >
+                            <RotateCcw size={12} /> Re-Encounter
+                          </button>
+                        </div>
                       ) : pendingUnlockForEncounter ? (
                         <span className="text-amber-600 dark:text-amber-400 font-medium">
                           Unlock request pending — an admin will review it shortly.
@@ -2235,6 +2336,15 @@ function DoctorWorkbenchInner() {
                         <Save size={15} /> Save Encounter
                       </button>
                     )}
+                    {canReEncounter && (
+                      <button
+                        onClick={() => setShowReEncounterConfirm(true)}
+                        title="Re-open this finalized encounter (requires your password)"
+                        className="flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600"
+                      >
+                        <RotateCcw size={15} /> Re-Encounter
+                      </button>
+                    )}
                     {summary.latestEncounter && summary.latestEncounter.status !== "Completed" && (
                       <button
                         onClick={finishEncounter}
@@ -2400,6 +2510,7 @@ function DoctorWorkbenchInner() {
                       <History size={13} /> History
                     </button>
                   </div>
+                  <fieldset disabled={encounterReadOnly} className="min-w-0 flex flex-col gap-3 disabled:opacity-70">
                   {summary.diagnoses.length > 0 ? (
                     <div className="flex flex-col gap-1.5">
                       {summary.diagnoses.map((d) => (
@@ -2450,6 +2561,7 @@ function DoctorWorkbenchInner() {
                     }}
                     onSelect={(opt) => addDiagnosis(opt.id)}
                   />
+                  </fieldset>
 
                   {/* Narrative Diagnosis */}
                   <div className="flex flex-col gap-1.5 pt-1">
@@ -2722,6 +2834,11 @@ function DoctorWorkbenchInner() {
                                         Discontinued
                                       </span>
                                     )}
+                                    {m.locked && !(m.lockedBy === "Visit" && ordersReadOnly) && (
+                                      <div className="mt-0.5">
+                                        <OrderLockNotice lock={m} visitLockHint={visitLockHint} compact />
+                                      </div>
+                                    )}
                                   </td>
                                   <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
                                   <td>{m.route || "—"}</td>
@@ -2741,14 +2858,26 @@ function DoctorWorkbenchInner() {
                                       <div className="flex items-center gap-3">
                                         <button
                                           onClick={() => discontinueMedication(m.medicationId)}
-                                          className="text-sm font-semibold text-red-600 hover:underline"
+                                          disabled={ordersReadOnly}
+                                          title={ordersReadOnly ? visitLockHint : undefined}
+                                          className="text-sm font-semibold text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:no-underline"
                                         >
                                           Discontinue
                                         </button>
-                                        <button onClick={() => setEditingMedication(m)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
+                                        <button
+                                          onClick={() => setEditingMedication(m)}
+                                          disabled={ordersReadOnly || m.locked}
+                                          title={m.locked ? (m.lockedBy === "Visit" ? visitLockHint : m.lockMessage ?? "Locked") : "Correct"}
+                                          className="p-1 hover:bg-primary/10 rounded-full text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                                        >
                                           <Pencil size={13} />
                                         </button>
-                                        <button onClick={() => removeMedication(m)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
+                                        <button
+                                          onClick={() => removeMedication(m)}
+                                          disabled={ordersReadOnly || m.locked}
+                                          title={m.locked ? (m.lockedBy === "Visit" ? visitLockHint : m.lockMessage ?? "Locked") : "Delete"}
+                                          className="p-1 hover:bg-destructive/10 rounded-full text-destructive disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                                        >
                                           <Trash2 size={13} />
                                         </button>
                                       </div>
@@ -2831,13 +2960,19 @@ function DoctorWorkbenchInner() {
               </div>
 
               <div className="flex flex-col gap-6">
-                <MedicationOrderPanel
-                  onSubmit={addMedication}
-                  editingMedication={editingMedication}
-                  onCancelEdit={() => setEditingMedication(null)}
-                  prefillFromHistory={prefillMedication}
-                  onClearPrefill={() => setPrefillMedication(null)}
-                />
+                <fieldset
+                  disabled={ordersReadOnly}
+                  title={ordersReadOnly ? visitLockHint : undefined}
+                  className="min-w-0 disabled:opacity-60"
+                >
+                  <MedicationOrderPanel
+                    onSubmit={addMedication}
+                    editingMedication={editingMedication}
+                    onCancelEdit={() => setEditingMedication(null)}
+                    prefillFromHistory={prefillMedication}
+                    onClearPrefill={() => setPrefillMedication(null)}
+                  />
+                </fieldset>
 
                 {/* Unified ordering - Lab, Radiology and Treatment all placed from one CPT-
                     code/procedure-name search, shown together in one grouped list below it.
@@ -2853,28 +2988,34 @@ function DoctorWorkbenchInner() {
                       <History size={13} /> History
                     </button>
                   </div>
-                  <CatalogSearchInput
-                    placeholder="Search by CPT code or procedure name..."
-                    fetchOptions={async (search) => {
-                      const res = await ConfigListService.get("Procedure", search);
-                      const items: ListItemType[] = res.data || [];
-                      items.forEach((i) => procedureResultsRef.current.set(i.listItemId, i));
-                      return items.map((i) => ({
-                        id: i.listItemId,
-                        name: i.name,
-                        code: i.code,
-                        meta: [i.department, i.orderCategory].filter(Boolean).join(" · ") || undefined,
-                      }));
-                    }}
-                    onSelect={(opt) => {
-                      const item = procedureResultsRef.current.get(opt.id);
-                      if (item) {
-                        setOrderingModal({ mode: "create", item });
-                      } else {
-                        toast.error("Couldn't load that item — please search again");
-                      }
-                    }}
-                  />
+                  <fieldset
+                    disabled={ordersReadOnly}
+                    title={ordersReadOnly ? visitLockHint : undefined}
+                    className="min-w-0 disabled:opacity-60"
+                  >
+                    <CatalogSearchInput
+                      placeholder="Search by CPT code or procedure name..."
+                      fetchOptions={async (search) => {
+                        const res = await ConfigListService.get("Procedure", search);
+                        const items: ListItemType[] = res.data || [];
+                        items.forEach((i) => procedureResultsRef.current.set(i.listItemId, i));
+                        return items.map((i) => ({
+                          id: i.listItemId,
+                          name: i.name,
+                          code: i.code,
+                          meta: [i.department, i.orderCategory].filter(Boolean).join(" · ") || undefined,
+                        }));
+                      }}
+                      onSelect={(opt) => {
+                        const item = procedureResultsRef.current.get(opt.id);
+                        if (item) {
+                          setOrderingModal({ mode: "create", item });
+                        } else {
+                          toast.error("Couldn't load that item — please search again");
+                        }
+                      }}
+                    />
+                  </fieldset>
                   <OrderedItemsList
                     labRequests={summary.labRequests}
                     radiologyRequests={summary.radiologyRequests}
@@ -2883,6 +3024,9 @@ function DoctorWorkbenchInner() {
                     onOpenRadiology={(item) => setOrderingModal({ mode: "edit-radiology", item })}
                     onOpenTreatment={(item) => setOrderingModal({ mode: "edit-treatment", item })}
                     itemClassName="italic"
+                    showLockDetails
+                    visitLockHint={visitLockHint}
+                    hideVisitLocks={ordersReadOnly}
                   />
                 </div>
 
@@ -2891,6 +3035,7 @@ function DoctorWorkbenchInner() {
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <Share2 size={18} className="text-primary" /> Referral Module
                   </h2>
+                  <fieldset disabled={encounterReadOnly} className="min-w-0 flex flex-col gap-3 disabled:opacity-70">
                   <SearchableSelect
                     value={referralForm.targetSpecializationId}
                     onChange={(v) => setReferralForm((p) => ({ ...p, targetSpecializationId: v }))}
@@ -3030,6 +3175,7 @@ function DoctorWorkbenchInner() {
                       ))}
                     </div>
                   )}
+                  </fieldset>
                 </div>
 
                 {/* Follow-up — an optional booking, not a confirmed appointment; front
@@ -3038,6 +3184,7 @@ function DoctorWorkbenchInner() {
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <CalendarPlus size={18} className="text-primary" /> Follow-Up
                   </h2>
+                  <fieldset disabled={encounterReadOnly} className="min-w-0 flex flex-col gap-3 disabled:opacity-70">
                   <DatePicker
                     value={followUpForm.followUpDate}
                     onChange={(v) => setFollowUpForm((p) => ({ ...p, followUpDate: v }))}
@@ -3088,6 +3235,7 @@ function DoctorWorkbenchInner() {
                       ))}
                     </div>
                   )}
+                  </fieldset>
                 </div>
               </div>
             </div>
@@ -3389,8 +3537,8 @@ function DoctorWorkbenchInner() {
               coInsurancePercent: orderingModal.item.coInsurancePercent != null ? String(orderingModal.item.coInsurancePercent) : "",
             }}
             coverageHint={coverageHintText("Lab")}
-            locked={orderingModal.item.locked}
-            lockedBy={orderingModal.item.lockedBy}
+            lock={summary?.labRequests.find((l) => l.labRequestId === orderingModal.item.labRequestId) ?? orderingModal.item}
+            visitLockHint={visitLockHint}
             saving={isSavingOrder}
             submitLabel="Save changes"
             onSave={submitLabRadiology}
@@ -3415,8 +3563,8 @@ function DoctorWorkbenchInner() {
               coInsurancePercent: orderingModal.item.coInsurancePercent != null ? String(orderingModal.item.coInsurancePercent) : "",
             }}
             coverageHint={coverageHintText("Radiology")}
-            locked={orderingModal.item.locked}
-            lockedBy={orderingModal.item.lockedBy}
+            lock={summary?.radiologyRequests.find((r) => r.radiologyRequestId === orderingModal.item.radiologyRequestId) ?? orderingModal.item}
+            visitLockHint={visitLockHint}
             saving={isSavingOrder}
             submitLabel="Save changes"
             onSave={submitLabRadiology}
@@ -3432,8 +3580,8 @@ function DoctorWorkbenchInner() {
               isPackage: orderingModal.item.isPackage,
               isBillingPending: orderingModal.item.isBillingPending,
             }}
-            locked={orderingModal.item.locked}
-            lockedBy={orderingModal.item.lockedBy}
+            lock={summary?.treatments.find((t) => t.treatmentId === orderingModal.item.treatmentId) ?? orderingModal.item}
+            visitLockHint={visitLockHint}
             saving={isSavingOrder}
             submitLabel="Save changes"
             onSave={submitTreatment}
@@ -3613,6 +3761,18 @@ function DoctorWorkbenchInner() {
             passwordPlaceholder="Your password"
             onCancel={() => setShowReleaseConfirm(false)}
             onConfirm={releasePatient}
+          />
+        )}
+
+        {showReEncounterConfirm && (
+          <AdminPasswordConfirm
+            title="Re-Encounter"
+            description="Re-open this finalized encounter so you can change notes and orders. Orders another team has already started stay locked until they revert them. Enter your password to confirm."
+            confirmLabel="Re-open"
+            confirmingLabel="Re-opening..."
+            passwordPlaceholder="Your password"
+            onCancel={() => setShowReEncounterConfirm(false)}
+            onConfirm={reEncounter}
           />
         )}
 

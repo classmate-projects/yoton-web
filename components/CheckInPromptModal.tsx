@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, Clock, LogIn, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, LogIn, X } from "lucide-react";
 import { AttendanceService } from "@/services/attendance.service";
 import { AttendanceRecordType } from "@/types/attendance.type";
 import { dispatchAttendanceUpdate } from "@/components/CheckInHeaderWidget";
@@ -15,14 +15,27 @@ interface CheckInPromptModalProps {
 const formatTime = (value: string | null) =>
   value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
 
+const formatDay = (value: string) =>
+  new Date(value).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+
 export default function CheckInPromptModal({ onClose, mandatory = false }: CheckInPromptModalProps) {
   const [today, setToday] = useState<AttendanceRecordType | null | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [missedCheckOut, setMissedCheckOut] = useState<AttendanceRecordType | null>(null);
 
   useEffect(() => {
     AttendanceService.getToday()
       .then((res) => setToday(res.data ?? null))
       .catch(() => setToday(null));
+
+    // If the system had to close the user's last finished session, say so here - this
+    // prompt is the first thing they see on their next visit.
+    AttendanceService.getHistory(7)
+      .then((res) => {
+        const lastFinished = (res.data as AttendanceRecordType[] | undefined)?.find((r) => r.checkOutAt);
+        setMissedCheckOut(lastFinished?.isAutoCheckOut ? lastFinished : null);
+      })
+      .catch(() => {});
   }, []);
 
   const handleCheckIn = async () => {
@@ -62,6 +75,17 @@ export default function CheckInPromptModal({ onClose, mandatory = false }: Check
             </button>
           )}
         </div>
+
+        {missedCheckOut && (
+          <div className="mb-4 flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-xs text-orange-700 dark:text-orange-300">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            <p>
+              You didn&apos;t check out on <b>{formatDay(missedCheckOut.checkInAt)}</b>, so the system checked you
+              out automatically at {formatTime(missedCheckOut.checkOutAt)}. Ask your administrator if this needs
+              correcting.
+            </p>
+          </div>
+        )}
 
         {today === undefined ? (
           <p className="text-sm text-muted-foreground text-center py-4">Loading...</p>

@@ -150,9 +150,10 @@ export default function PharmacyPage() {
   }, [router]);
 
   // ---------------- DATA ----------------
-  const fetchAll = async () => {
+  // silent: live SignalR refreshes update the lists in place instead of flashing the spinner.
+  const fetchAll = async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       const [summaryRes, rxRes, medsRes, lowStockRes, queueRes] = await Promise.all([
         PharmacyService.getSummary(),
         prescriptionFilter === "pending"
@@ -172,9 +173,9 @@ export default function PharmacyPage() {
       setLowStock(lowStockRes.data ?? []);
       setMedicationQueue(queueRes.data ?? []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load pharmacy data"));
+      if (!silent) toast.error(errorMessage(error, "Failed to load pharmacy data"));
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -236,6 +237,21 @@ export default function PharmacyPage() {
       fetchAll();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to mark as prepared"));
+    } finally {
+      setPreparingId(null);
+    }
+  };
+
+  // Hands the order back to the doctor (e.g. they need to change the dose) - only from
+  // Prepared; a dispensed medication is final.
+  const handleRevertPrepared = async (medicationId: string) => {
+    try {
+      setPreparingId(medicationId);
+      const data = await PharmacyService.revertPreparedMedication(medicationId);
+      toast.success(data.message || "Reverted to Pending");
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to revert"));
     } finally {
       setPreparingId(null);
     }
@@ -353,8 +369,15 @@ export default function PharmacyPage() {
   }, [checkedAuth, prescriptionFilter, selectedDate]);
 
   useSignalRRefetch(
-    ["prescriptionCreated", "prescriptionDispensed", "medicineAdded", "medicineUpdated", "medicineStockUpdated"],
-    fetchAll
+    [
+      "prescriptionCreated", "prescriptionDispensed", "medicineAdded", "medicineUpdated", "medicineStockUpdated",
+      // Doctor-side changes to the queue (new/edited/stopped orders, encounter finished or
+      // re-opened) and other pharmacists' actions on the same items.
+      "medicationAdded", "medicationUpdated", "medicationRemoved", "medicationDiscontinued",
+      "medicationPrepared", "medicationPrepareReverted", "medicationDispensed",
+      "encounterFinished", "encounterReopened",
+    ],
+    () => fetchAll(true)
   );
 
   useEffect(() => {
@@ -866,12 +889,22 @@ export default function PharmacyPage() {
                               </button>
                             )}
                             {item.dispenseStatus === "Prepared" && (
-                              <button
-                                onClick={() => openMedDispenseModal(item)}
-                                className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer"
-                              >
-                                Dispense
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => openMedDispenseModal(item)}
+                                  className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer"
+                                >
+                                  Dispense
+                                </button>
+                                <button
+                                  onClick={() => handleRevertPrepared(item.medicationId)}
+                                  disabled={preparingId === item.medicationId}
+                                  title="Undo Prepared so the doctor can change this medication"
+                                  className="px-3 py-1.5 text-xs font-semibold rounded-md border border-amber-500/40 text-amber-600 hover:bg-amber-500/10 transition-colors cursor-pointer disabled:opacity-60"
+                                >
+                                  {preparingId === item.medicationId ? "Reverting..." : "Revert"}
+                                </button>
+                              </>
                             )}
                             {item.dispenseStatus !== "Pending" && (
                               <button

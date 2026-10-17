@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Lock, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
+import type { OrderLockFields } from "@/types/orderLock.type";
+import OrderLockNotice from "@/components/orders/OrderLockNotice";
 
 export interface LabRadiologyConfigValues {
   quantity: string;
@@ -39,12 +41,12 @@ interface LabRadiologyConfigModalProps {
   // independently editable, never auto-filled. Same wording the old Order Investigation
   // card used.
   coverageHint?: string | null;
-  // locked: this specific order is currently locked (started by a team, or the visit's
-  // finalized) - shows the "already started" banner. readOnly: this VIEWER just isn't
+  // lock: this specific order is currently locked (started by a team, or the visit's
+  // finalized) - shows who has it and what to do. readOnly: this VIEWER just isn't
   // allowed to edit here regardless (Lab/Radiology/Nursing's own gear-icon view) - no
   // banner, fields simply disabled. The two are independent; either forces disabled=true.
-  locked?: boolean;
-  lockedBy?: string | null;
+  lock?: OrderLockFields | null;
+  visitLockHint?: string;
   readOnly?: boolean;
   saving?: boolean;
   submitLabel: string;
@@ -62,8 +64,8 @@ export default function LabRadiologyConfigModal({
   itemName,
   values: initialValues,
   coverageHint,
-  locked = false,
-  lockedBy,
+  lock,
+  visitLockHint,
   readOnly = false,
   saving = false,
   submitLabel,
@@ -71,6 +73,7 @@ export default function LabRadiologyConfigModal({
   onClose,
 }: LabRadiologyConfigModalProps) {
   const [values, setValues] = useState(initialValues);
+  const locked = !!lock?.locked;
   const disabled = locked || readOnly;
 
   return (
@@ -87,12 +90,9 @@ export default function LabRadiologyConfigModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6">
-          {locked && (
-            <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
-              <Lock size={15} className="shrink-0" />
-              {lockedBy === "Visit"
-                ? "This visit has already been finalized and can no longer be edited."
-                : `This order has already been started by ${lockedBy ?? "another team"} — ask them to revert it before editing.`}
+          {lock && locked && (
+            <div className="mb-4">
+              <OrderLockNotice lock={lock} visitLockHint={visitLockHint} />
             </div>
           )}
 

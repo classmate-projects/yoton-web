@@ -68,6 +68,10 @@ export const EmrService = {
     const { data } = await api.put(ENDPOINTS.EMR.FINISH_ENCOUNTER(encounterId, doctorId));
     return data;
   },
+  reEncounter: async (encounterId: string, password: string) => {
+    const { data } = await api.post(ENDPOINTS.EMR.RE_ENCOUNTER(encounterId, new Date().getTimezoneOffset()), { password });
+    return data;
+  },
   releaseVisit: async (visitId: string, doctorId?: string, password?: string) => {
     const { data } = await api.post(ENDPOINTS.EMR.RELEASE_VISIT(visitId, doctorId, password));
     return data;

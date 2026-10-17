@@ -1,4 +1,6 @@
-export interface TreatmentType {
+import type { OrderLockFields } from "./orderLock.type";
+
+export interface TreatmentType extends OrderLockFields {
   treatmentId: string;
   patientId: string | null;
   encounterId: string | null;
@@ -14,10 +16,6 @@ export interface TreatmentType {
   startedByName: string | null;
   doneAt: string | null;
   doneByName: string | null;
-  // Whether the doctor can still edit this order right now - see OrderLockHelper on the
-  // backend. lockedBy is "Nursing" (already started) or "Visit" (encounter finalized).
-  locked: boolean;
-  lockedBy: string | null;
 }
 
 export interface CreateTreatmentPayload {

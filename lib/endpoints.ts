@@ -154,6 +154,7 @@ export const ENDPOINTS = {
         GET_ACTIVE_CASES: (doctorId?: string) => `/api/emr/active-cases${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPSERT_ENCOUNTER: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/encounter${doctorId ? `?doctorId=${doctorId}` : ""}`,
         FINISH_ENCOUNTER: (encounterId: string, doctorId?: string) => `/api/emr/encounter/${encounterId}/finish${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        RE_ENCOUNTER: (encounterId: string, tzOffset: number) => `/api/emr/encounter/${encounterId}/re-encounter?tzOffset=${tzOffset}`,
         RELEASE_VISIT: (visitId: string, doctorId?: string, password?: string) => {
           const params = new URLSearchParams();
           if (doctorId) params.set("doctorId", doctorId);
@@ -358,6 +359,7 @@ export const ENDPOINTS = {
         GET_SUMMARY: `/api/Pharmacy/summary`,
         GET_MEDICATION_QUEUE: (status: "pending" | "all", date?: string) => `/api/Pharmacy/medication-queue?status=${status}${date ? `&date=${date}` : ""}`,
         PREPARE_MEDICATION: (medicationId: string) => `/api/Pharmacy/medication/${medicationId}/prepare`,
+        REVERT_PREPARE_MEDICATION: (medicationId: string) => `/api/Pharmacy/medication/${medicationId}/revert-prepare`,
         DISPENSE_MEDICATION: (medicationId: string) => `/api/Pharmacy/medication/${medicationId}/dispense`,
         GET_ALTERNATIVES: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}/alternatives`,
         ADD_ALTERNATIVE: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}/alternatives`,
@@ -432,6 +434,7 @@ export const ENDPOINTS = {
         ADD_EXAMINATION_NOTE: (patientId: string) => `/api/nursing/patient/${patientId}/examination-note`,
         // MARK_TREATMENT_DONE moved to ENDPOINTS.TREATMENTS.MARK_DONE.
         ADMINISTER_MEDICATION: (medicationId: string) => `/api/nursing/medication/${medicationId}/administer`,
+        CANCEL_MEDICATION_ADMINISTRATION: (administrationId: string) => `/api/nursing/medication-administration/${administrationId}/cancel`,
         GET_WORK_QUEUE: `/api/nursing/work-queue`,
         GET_UNTOUCHED_PATIENTS: `/api/nursing/untouched-patients`,
         SAVE_TRIAGE: (patientId: string) => `/api/nursing/patient/${patientId}/triage`,
@@ -449,10 +452,12 @@ export const ENDPOINTS = {
     },
     ATTENDANCE: {
         GET_TODAY: `/api/attendance/today`,
-        CHECK_IN: `/api/attendance/check-in`,
+        // tzOffset lets a forgotten check-out be closed at 23:59:59 of this user's own local day.
+        CHECK_IN: () => `/api/attendance/check-in?tzOffset=${new Date().getTimezoneOffset()}`,
         CHECK_OUT: `/api/attendance/check-out`,
         GET_HISTORY: (days?: number) => `/api/attendance/history${days ? `?days=${days}` : ""}`,
         GET_STAFF: (date: string) => `/api/attendance/staff?date=${date}`,
+        GET_RECENT_AUTO_CHECK_OUTS: (days: number) => `/api/attendance/staff/auto-check-outs?days=${days}`,
     },
     FORM_TEMPLATE: {
         GET_ALL: `/api/form-templates`,

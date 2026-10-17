@@ -196,6 +196,26 @@ export default function MessagesPage() {
     }
   };
 
+  // Deep link from elsewhere in the app (e.g. a locked order's "Message" button):
+  // /messages?userId=... opens - or starts - that staff member's conversation directly.
+  // Read from window.location rather than useSearchParams so this page needs no Suspense
+  // boundary; the param is dropped right away so a refresh doesn't repeat it.
+  useEffect(() => {
+    const userId = new URLSearchParams(window.location.search).get("userId");
+    if (!userId) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    ChatService.startConversation({ otherId: userId, otherType: "User" })
+      .then(async (res) => {
+        const conversation: ChatConversationType = res.data;
+        setConversations((prev) =>
+          prev.some((c) => c.chatConversationId === conversation.chatConversationId) ? prev : [conversation, ...prev]
+        );
+        await openConversation(conversation);
+      })
+      .catch((error) => toast.error(errorMessage(error, "Failed to open conversation")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);

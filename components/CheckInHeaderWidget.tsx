@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Clock, LogIn, LogOut } from "lucide-react";
 import { AttendanceService } from "@/services/attendance.service";
-import { AttendanceRecordType } from "@/types/attendance.type";
+import { AttendanceRecordType, AutoCheckOutEvent } from "@/types/attendance.type";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
+import { getSignalRConnection } from "@/lib/signalR";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
 
 export const ATTENDANCE_UPDATED_EVENT = "yoton:attendance-updated";
@@ -38,6 +39,35 @@ export default function CheckInHeaderWidget() {
     return () => {
       window.removeEventListener(ATTENDANCE_UPDATED_EVENT, fetchToday);
       cleanup();
+    };
+  }, []);
+
+  // The end-of-day job just closed a session this user never checked out of - every role
+  // has this widget (unlike the alert bell), so it's where they hear about it live.
+  useEffect(() => {
+    const userId = getUserDetail()?.userId;
+    if (!userId) return;
+    let isMounted = true;
+
+    const handleAutoCheckedOut = (event: AutoCheckOutEvent) => {
+      if (!isMounted || !event.records?.some((r) => r.userId === userId)) return;
+      fetchToday();
+      toast.warning("You didn't check out, so the system checked you out automatically at the end of the day.");
+    };
+
+    getSignalRConnection()
+      .then((connection) => {
+        if (!isMounted) return;
+        connection.off("attendanceAutoCheckedOut", handleAutoCheckedOut);
+        connection.on("attendanceAutoCheckedOut", handleAutoCheckedOut);
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+      getSignalRConnection()
+        .then((connection) => connection.off("attendanceAutoCheckedOut", handleAutoCheckedOut))
+        .catch(() => {});
     };
   }, []);
 
@@ -105,7 +135,10 @@ export default function CheckInHeaderWidget() {
           </button>
         </div>
       ) : (
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <span
+          title={today.isAutoCheckOut ? "You didn't check out, so the system checked you out at the end of the day" : undefined}
+          className="flex items-center gap-1 text-xs text-muted-foreground"
+        >
           <Clock size={12} />
           <span className="hidden sm:inline">
             {fmt(today.checkInAt)} – {fmt(today.checkOutAt)}

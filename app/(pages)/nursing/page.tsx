@@ -93,6 +93,7 @@ import {
   BloodSugarType,
   IVFluidsType,
   NurseNoteType,
+  MedicationAdministrationType,
 } from "@/types/nursing.type";
 
 const REMARK_TYPES = ["Refusal", "ClinicalConcern", "Other"];
@@ -658,6 +659,40 @@ function NurseWorkbenchInner() {
       // non-fatal — the just-saved entry still succeeded
     }
   };
+
+  // Keeps the open patient's prescriptions and orders current while the doctor edits them
+  // (or reopens the encounter) and while other nurses/pharmacy act on them. Debounced since
+  // one action can fire several events.
+  const liveRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useSignalRRefetch(
+    [
+      "medicationAdded", "medicationUpdated", "medicationRemoved", "medicationDiscontinued",
+      "medicationAdministered", "medicationAdministrationCancelled",
+      "medicationPrepared", "medicationPrepareReverted", "medicationDispensed",
+      "treatmentAdded", "treatmentUpdated", "treatmentStarted", "treatmentReverted", "treatmentMarkedDone", "treatmentRemoved",
+      "labStatusUpdated", "labRequestCreated", "labRequestUpdated", "labRequestRemoved",
+      "radiologyStatusUpdated", "radiologyRequestCreated", "radiologyRequestUpdated", "radiologyRequestRemoved",
+      "encounterFinished", "encounterReopened",
+    ],
+    () => {
+      const patientId = selectedPatientId;
+      if (!patientId) return;
+      if (liveRefreshTimerRef.current) clearTimeout(liveRefreshTimerRef.current);
+      liveRefreshTimerRef.current = setTimeout(async () => {
+        try {
+          const res = await EmrService.getPatientSummary(patientId, undefined, currentVisitId ?? undefined);
+          setSummary((prev) => (prev && prev.opId === patientId ? res.data : prev));
+        } catch {
+          // keep what's on screen
+        }
+        void refreshChart();
+      }, 400);
+    }
+  );
+
+  useEffect(() => () => {
+    if (liveRefreshTimerRef.current) clearTimeout(liveRefreshTimerRef.current);
+  }, []);
 
   const backToWorkbench = () => {
     setSelectedPatientId(null);
@@ -1871,6 +1906,45 @@ function NurseWorkbenchInner() {
       toast.error(errorMessage(error, "Failed to record administration"));
     } finally {
       setSavingAdministration(false);
+    }
+  };
+
+  // Undoes an administration record so the doctor can change the medication again - the
+  // entry stays in the log marked as cancelled (see NursingController.CancelMedicationAdministration).
+  const [cancelAdministrationTarget, setCancelAdministrationTarget] = useState<{
+    medication: MedicationType;
+    administration: MedicationAdministrationType;
+  } | null>(null);
+  const [cancelAdministrationForm, setCancelAdministrationForm] = useState({ reason: "", password: "" });
+  const [cancellingAdministration, setCancellingAdministration] = useState(false);
+
+  const closeCancelAdministration = () => {
+    setCancelAdministrationTarget(null);
+    setCancelAdministrationForm({ reason: "", password: "" });
+  };
+
+  const cancelAdministration = async () => {
+    if (!cancelAdministrationTarget) return;
+    if (!cancelAdministrationForm.reason.trim()) {
+      toast.error("Please give a reason for cancelling this record");
+      return;
+    }
+    try {
+      setCancellingAdministration(true);
+      await NursingService.cancelMedicationAdministration(cancelAdministrationTarget.administration.medicationAdministrationId, {
+        password: cancelAdministrationForm.password,
+        reason: cancelAdministrationForm.reason.trim(),
+      });
+      toast.success("Administration record cancelled");
+      closeCancelAdministration();
+      if (selectedPatientId) {
+        const res = await EmrService.getPatientSummary(selectedPatientId, undefined, currentVisitId ?? undefined);
+        setSummary(res.data);
+      }
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to cancel administration record"));
+    } finally {
+      setCancellingAdministration(false);
     }
   };
 
@@ -3356,9 +3430,33 @@ function NurseWorkbenchInner() {
                         {m.administrations.length > 0 && (
                           <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
                             {m.administrations.slice(0, 3).map((a) => (
-                              <div key={a.medicationAdministrationId} className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>{a.doseGiven} · {a.route} {a.remarks ? `· ${a.remarks}` : ""}</span>
-                                <span>{a.nurseName || "Nurse"} · {formatDateTime(a.administeredAt)}</span>
+                              <div key={a.medicationAdministrationId} className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={a.isCancelled ? "line-through opacity-70" : ""}>
+                                    {a.doseGiven} · {a.route} {a.remarks ? `· ${a.remarks}` : ""}
+                                  </span>
+                                  <span className="flex shrink-0 items-center gap-2">
+                                    <span className={a.isCancelled ? "line-through opacity-70" : ""}>
+                                      {a.nurseName || "Nurse"} · {formatDateTime(a.administeredAt)}
+                                    </span>
+                                    {canEdit && !a.isCancelled && (
+                                      <button
+                                        onClick={() => setCancelAdministrationTarget({ medication: m, administration: a })}
+                                        title="Cancel this administration record so the doctor can change the medication"
+                                        className="flex items-center gap-0.5 font-semibold text-destructive hover:underline"
+                                      >
+                                        <Undo2 size={11} /> Cancel
+                                      </button>
+                                    )}
+                                  </span>
+                                </div>
+                                {a.isCancelled && (
+                                  <span className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                                    Cancelled by {a.cancelledByName || "staff"}
+                                    {a.cancelledAt ? ` · ${formatDateTime(a.cancelledAt)}` : ""}
+                                    {a.cancellationReason ? ` — ${a.cancellationReason}` : ""}
+                                  </span>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -3784,6 +3882,167 @@ function NurseWorkbenchInner() {
         )}
       </HistoryDrawer>
 
+      {/* Administer Medication Modal */}
+      {administerTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-background p-6 shadow-xl flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <Syringe size={22} className="text-primary shrink-0 mt-0.5" />
+              <div>
+                <h2 className="text-base font-semibold text-foreground">Administer Medication</h2>
+                <p className="text-sm text-muted-foreground">{administerTarget.drugName}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Dose given</label>
+                  <input
+                    type="text"
+                    value={administerForm.doseGiven}
+                    onChange={(ev) => setAdministerForm((p) => ({ ...p, doseGiven: ev.target.value }))}
+                    className="h-9 text-sm"
+                    placeholder="e.g. 500mg"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Route</label>
+                  <SearchableSelect
+                    value={administerForm.route}
+                    onChange={(v) => setAdministerForm((p) => ({ ...p, route: v }))}
+                    options={[
+                      { value: "Oral (PO)", label: "Oral (PO)" },
+                      { value: "Intravenous (IV)", label: "Intravenous (IV)" },
+                      { value: "Intramuscular (IM)", label: "Intramuscular (IM)" },
+                      { value: "Subcutaneous (SC)", label: "Subcutaneous (SC)" },
+                      { value: "Topical", label: "Topical" },
+                    ]}
+                  />
+                </div>
+              </div>
+
+              <input
+                type="text"
+                placeholder="Remarks (optional)"
+                value={administerForm.remarks}
+                onChange={(ev) => setAdministerForm((p) => ({ ...p, remarks: ev.target.value }))}
+                className="h-9 text-sm"
+              />
+
+              {administerTarget.isHighRisk && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 flex flex-col gap-2">
+                  <p className="text-xs font-semibold text-destructive flex items-center gap-1">
+                    <ShieldAlert size={12} /> High-risk medication — a second nurse must witness this
+                  </p>
+                  <SearchableSelect
+                    value={administerForm.witnessUserId}
+                    onChange={(v) => setAdministerForm((p) => ({ ...p, witnessUserId: v }))}
+                    options={[
+                      { value: "", label: "Select witnessing nurse" },
+                      ...nurses.filter((n) => n.id !== currentUserId).map((n) => ({ value: n.id, label: n.name })),
+                    ]}
+                  />
+                  <PasswordInput
+                    placeholder="Witness's password"
+                    value={administerForm.witnessPassword}
+                    onChange={(ev) => setAdministerForm((p) => ({ ...p, witnessPassword: ev.target.value }))}
+                    className="h-9 text-sm w-full"
+                  />
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-muted-foreground">Your password</label>
+                <PasswordInput
+                  placeholder="Enter your password to confirm"
+                  value={administerForm.nursePassword}
+                  onChange={(ev) => setAdministerForm((p) => ({ ...p, nursePassword: ev.target.value }))}
+                  className="h-9 text-sm w-full"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end pt-1">
+              <button
+                onClick={() => { setAdministerTarget(null); setAdministerForm({ doseGiven: "", route: "Oral (PO)", remarks: "", witnessUserId: "", witnessPassword: "", nursePassword: "" }); }}
+                className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void administerMedication()}
+                disabled={savingAdministration || !administerForm.nursePassword.trim()}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                <Save size={15} /> {savingAdministration ? "Recording…" : "Confirm Administration"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Administration Modal */}
+      {cancelAdministrationTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-background p-6 shadow-xl flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <Undo2 size={22} className="text-destructive shrink-0 mt-0.5" />
+              <div>
+                <h2 className="text-base font-semibold text-foreground">Cancel Administration Record</h2>
+                <p className="text-sm text-muted-foreground">
+                  {cancelAdministrationTarget.medication.drugName} ·{" "}
+                  {cancelAdministrationTarget.administration.doseGiven || "dose"} given by{" "}
+                  {cancelAdministrationTarget.administration.nurseName || "Nurse"} at{" "}
+                  {formatDateTime(cancelAdministrationTarget.administration.administeredAt)}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The record stays in the log marked as cancelled. Once nothing else is holding this medication, the doctor can change it again.
+            </p>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-muted-foreground">Reason</label>
+                <textarea
+                  autoFocus
+                  rows={2}
+                  placeholder="e.g. Recorded against the wrong medication, doctor is changing the dose"
+                  value={cancelAdministrationForm.reason}
+                  onChange={(ev) => setCancelAdministrationForm((p) => ({ ...p, reason: ev.target.value }))}
+                  className="w-full text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-muted-foreground">Your password</label>
+                <PasswordInput
+                  placeholder="Enter your password to confirm"
+                  value={cancelAdministrationForm.password}
+                  onChange={(ev) => setCancelAdministrationForm((p) => ({ ...p, password: ev.target.value }))}
+                  onKeyDown={(ev) => ev.key === "Enter" && void cancelAdministration()}
+                  className="h-9 text-sm w-full"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end pt-1">
+              <button
+                onClick={closeCancelAdministration}
+                className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Keep record
+              </button>
+              <button
+                onClick={() => void cancelAdministration()}
+                disabled={cancellingAdministration || !cancelAdministrationForm.reason.trim() || !cancelAdministrationForm.password}
+                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                <Undo2 size={15} /> {cancellingAdministration ? "Cancelling…" : "Cancel Record"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       </div>
     );
   }
@@ -4199,106 +4458,6 @@ function NurseWorkbenchInner() {
           onSave={() => {}}
           onClose={() => setViewingRadiologyRequest(null)}
         />
-      )}
-
-      {/* Administer Medication Modal */}
-      {administerTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-background p-6 shadow-xl flex flex-col gap-4">
-            <div className="flex items-start gap-3">
-              <Syringe size={22} className="text-primary shrink-0 mt-0.5" />
-              <div>
-                <h2 className="text-base font-semibold text-foreground">Administer Medication</h2>
-                <p className="text-sm text-muted-foreground">{administerTarget.drugName}</p>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-muted-foreground">Dose given</label>
-                  <input
-                    type="text"
-                    value={administerForm.doseGiven}
-                    onChange={(ev) => setAdministerForm((p) => ({ ...p, doseGiven: ev.target.value }))}
-                    className="h-9 text-sm"
-                    placeholder="e.g. 500mg"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-muted-foreground">Route</label>
-                  <SearchableSelect
-                    value={administerForm.route}
-                    onChange={(v) => setAdministerForm((p) => ({ ...p, route: v }))}
-                    options={[
-                      { value: "Oral (PO)", label: "Oral (PO)" },
-                      { value: "Intravenous (IV)", label: "Intravenous (IV)" },
-                      { value: "Intramuscular (IM)", label: "Intramuscular (IM)" },
-                      { value: "Subcutaneous (SC)", label: "Subcutaneous (SC)" },
-                      { value: "Topical", label: "Topical" },
-                    ]}
-                  />
-                </div>
-              </div>
-
-              <input
-                type="text"
-                placeholder="Remarks (optional)"
-                value={administerForm.remarks}
-                onChange={(ev) => setAdministerForm((p) => ({ ...p, remarks: ev.target.value }))}
-                className="h-9 text-sm"
-              />
-
-              {administerTarget.isHighRisk && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 flex flex-col gap-2">
-                  <p className="text-xs font-semibold text-destructive flex items-center gap-1">
-                    <ShieldAlert size={12} /> High-risk medication — a second nurse must witness this
-                  </p>
-                  <SearchableSelect
-                    value={administerForm.witnessUserId}
-                    onChange={(v) => setAdministerForm((p) => ({ ...p, witnessUserId: v }))}
-                    options={[
-                      { value: "", label: "Select witnessing nurse" },
-                      ...nurses.filter((n) => n.id !== currentUserId).map((n) => ({ value: n.id, label: n.name })),
-                    ]}
-                  />
-                  <PasswordInput
-                    placeholder="Witness's password"
-                    value={administerForm.witnessPassword}
-                    onChange={(ev) => setAdministerForm((p) => ({ ...p, witnessPassword: ev.target.value }))}
-                    className="h-9 text-sm w-full"
-                  />
-                </div>
-              )}
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-muted-foreground">Your password</label>
-                <PasswordInput
-                  placeholder="Enter your password to confirm"
-                  value={administerForm.nursePassword}
-                  onChange={(ev) => setAdministerForm((p) => ({ ...p, nursePassword: ev.target.value }))}
-                  className="h-9 text-sm w-full"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 justify-end pt-1">
-              <button
-                onClick={() => { setAdministerTarget(null); setAdministerForm({ doseGiven: "", route: "Oral (PO)", remarks: "", witnessUserId: "", witnessPassword: "", nursePassword: "" }); }}
-                className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void administerMedication()}
-                disabled={savingAdministration || !administerForm.nursePassword.trim()}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                <Save size={15} /> {savingAdministration ? "Recording…" : "Confirm Administration"}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       </div>

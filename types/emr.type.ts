@@ -1,6 +1,7 @@
 import { MedicationAdministrationType, NurseNoteType, TreatmentType } from "./nursing.type";
 import { LabRequestType } from "./lab.type";
 import { RadiologyRequestType } from "./radiology.type";
+import type { OrderLockFields } from "./orderLock.type";
 
 export interface EmrPatientListItem {
   opId: string;
@@ -70,8 +71,10 @@ export interface TaperingStepType {
   durationDays: number | null;
 }
 
-export interface MedicationType {
+// Lock fields are only filled for currentMedications - see OrderLockHelper on the backend.
+export interface MedicationType extends OrderLockFields {
   medicationId: string;
+  encounterId: string | null;
   medicineId: string | null;
   drugName: string;
   dosage: string | null;

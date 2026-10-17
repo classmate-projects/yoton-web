@@ -73,7 +73,6 @@ interface MeResponse {
   companyEclaimlinkPasswordSet: boolean;
   branchId: string | null;
   staffCheckInRequired: boolean;
-  eodAutoCheckOutTime: string | null;
 }
 
 // Each tile on the landing grid drills into one settings category. Adding a new
@@ -126,8 +125,6 @@ export default function SettingsPage() {
 
   const [staffCheckInRequired, setStaffCheckInRequired] = useState(false);
   const [savingCheckInRequired, setSavingCheckInRequired] = useState(false);
-  const [eodAutoCheckOutInput, setEodAutoCheckOutInput] = useState("");
-  const eodAutoCheckOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [includeLoginCredentials, setIncludeLoginCredentials] = useState(true);
   const [savingPatientEmailMode, setSavingPatientEmailMode] = useState(false);
@@ -191,7 +188,6 @@ export default function SettingsPage() {
         setGeriatricMinAgeInput(String(data.geriatricMinAgeYears ?? 65));
         setIdleTimeoutInput(String(data.idleTimeoutMinutes ?? 15));
         setStaffCheckInRequired(data.staffCheckInRequired ?? false);
-        setEodAutoCheckOutInput(data.eodAutoCheckOutTime ?? "");
         setIncludeLoginCredentials(data.includeLoginCredentialsInPatientEmail ?? true);
         setCredentialsSubject(data.patientEmailCredentialsSubject || "");
         setCredentialsBody(data.patientEmailCredentialsBody || "");
@@ -421,26 +417,6 @@ export default function SettingsPage() {
     } finally {
       setSavingCheckInRequired(false);
     }
-  };
-
-  const handleEodAutoCheckOutChange = (raw: string) => {
-    setEodAutoCheckOutInput(raw);
-    if (!me) return;
-    if (eodAutoCheckOutTimer.current) clearTimeout(eodAutoCheckOutTimer.current);
-    notifySaveStatus("saving");
-    eodAutoCheckOutTimer.current = setTimeout(async () => {
-      try {
-        // Send "" to clear (if input is empty), or the time string to set.
-        const data = await CompanyService.updateSettings({ eodAutoCheckOutTime: raw.trim() });
-        setMe((prev) =>
-          prev ? { ...prev, eodAutoCheckOutTime: data.eodAutoCheckOutTime ?? null } : prev
-        );
-        notifySaveStatus("saved");
-      } catch {
-        notifySaveStatus("error");
-        toast.error("Failed to update auto check-out time");
-      }
-    }, 800);
   };
 
   const handleTogglePatientEmailMode = async (checked: boolean) => {
@@ -1148,27 +1124,14 @@ export default function SettingsPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-foreground mb-1.5">
-                End-of-day auto check-out
+                Missed check-outs
               </p>
-              <p className="text-xs text-muted-foreground mb-3">
-                Staff who haven&apos;t checked out by this time (UTC) are automatically
-                checked out. Leave empty to disable auto check-out.
+              <p className="text-xs text-muted-foreground">
+                Anyone still checked in when their day ends is checked out automatically
+                at 11:59:59 PM, and their hours are counted up to that time. Each automatic
+                check-out is marked on Staff Attendance, recorded in the Audit Log, and
+                the staff member and admins are notified.
               </p>
-              <input
-                type="time"
-                value={eodAutoCheckOutInput}
-                onChange={(e) => handleEodAutoCheckOutChange(e.target.value)}
-                className="w-36 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-              />
-              {eodAutoCheckOutInput && (
-                <button
-                  type="button"
-                  onClick={() => handleEodAutoCheckOutChange("")}
-                  className="ml-3 text-xs text-muted-foreground hover:text-foreground underline"
-                >
-                  Clear
-                </button>
-              )}
             </div>
           </div>
 
