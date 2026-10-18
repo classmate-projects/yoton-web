@@ -384,6 +384,8 @@ export const ENDPOINTS = {
         ADD_ITEM_FROM_SOURCE: `/api/Billing/item/from-source`,
         UPDATE_ITEM: (itemId: string) => `/api/Billing/item/${itemId}`,
         REMOVE_ITEM: (itemId: string) => `/api/Billing/item/${itemId}/remove`,
+        REPORTS: (from: string, to: string) =>
+            `/api/BillingReports?from=${from}&to=${to}&tzOffset=${new Date().getTimezoneOffset()}`,
     },
     NURSING: {
         GET_DASHBOARD_SUMMARY: `/api/nursing/dashboard-summary`,

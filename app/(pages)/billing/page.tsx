@@ -19,7 +19,8 @@ import { formatCurrency } from "@/lib/currency";
 import SearchIcon from "@/public/icons/SearchIcon";
 import DatePicker from "@/components/DatePicker";
 import { toDateInputValue } from "@/lib/date";
-import { Printer, X } from "lucide-react";
+import Link from "next/link";
+import { FileBarChart, Printer, X } from "lucide-react";
 import BillPrintout from "@/components/billing/BillPrintout";
 import BillLines, { AddBillLineForm } from "@/components/billing/BillLines";
 
@@ -422,14 +423,23 @@ function BillingPageInner() {
             Create patient bills, itemize charges, and record payments.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150 shrink-0"
-        >
-          <MdAdd size={22} />
-          New Bill
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/billing/reports"
+            className="px-4 py-2 rounded-md border border-border text-foreground text-lg flex gap-2 items-center hover:bg-muted transition duration-150"
+          >
+            <FileBarChart size={20} />
+            Reports
+          </Link>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150"
+          >
+            <MdAdd size={22} />
+            New Bill
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}

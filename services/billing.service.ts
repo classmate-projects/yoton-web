@@ -64,4 +64,8 @@ export const BillingService = {
     const { data } = await api.post(ENDPOINTS.BILLING.ADD_ITEM_FROM_SOURCE, payload);
     return data;
   },
+  getReports: async (from: string, to: string) => {
+    const { data } = await api.get(ENDPOINTS.BILLING.REPORTS(from, to));
+    return data;
+  },
 };
