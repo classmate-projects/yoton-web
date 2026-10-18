@@ -14,6 +14,14 @@ import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight, Search, MessageCir
 import { CurrentUserDetail } from "@/types/user.type";
 import { getInitials } from "@/lib/getInitials";
 import { useAlertCenter } from "@/hooks/useAlertCenter";
+import { useConnectionState } from "@/hooks/useConnectionState";
+import type { ConnectionState } from "@/lib/connectionStatus";
+
+const CONNECTION_BADGE: Record<ConnectionState, { className: string; label: string }> = {
+  online: { className: "bg-green-500", label: "Online" },
+  "server-down": { className: "bg-amber-500 animate-pulse", label: "Can't reach the server - changes may not be saved" },
+  offline: { className: "bg-red-500", label: "Offline - no internet connection" },
+};
 import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
 import { useRolePermissionsSync } from "@/hooks/useRolePermissionsSync";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
@@ -249,6 +257,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   ];
 
   const userRole = currentUser?.role || "";
+  const connectionBadge = CONNECTION_BADGE[useConnectionState()];
   const { canSeeAlerts, alerts, unreadCount, isRinging, markAlertRead, markAllRead } =
     useAlertCenter(userRole, currentUser?.userId);
   const { unreadCount: unreadChatCount, clearUnread: clearUnreadChat } = useUnreadChatCount(!!userRole);
@@ -481,6 +490,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                 <Image src={logo} alt="logo" height={48} width={48} className="h-full w-full object-contain" loading="eager" />
               </div>
             )}
+
+            <span
+              role="img"
+              title={connectionBadge.label}
+              aria-label={connectionBadge.label}
+              className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full ring-2 ring-card ${connectionBadge.className}`}
+            />
 
             {!isExpanded && mounted && canSeeAlerts && unreadCount > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-card">

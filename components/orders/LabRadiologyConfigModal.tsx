@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import type { OrderLockFields } from "@/types/orderLock.type";
 import OrderLockNotice from "@/components/orders/OrderLockNotice";
+import SearchableSelect, { fieldSelectClass } from "@/components/SearchableSelect";
 
 export interface LabRadiologyConfigValues {
   quantity: string;
@@ -107,26 +108,30 @@ export default function LabRadiologyConfigModal({
                 onChange={(e) => setValues((p) => ({ ...p, quantity: e.target.value }))}
                 className="h-10 text-sm disabled:opacity-60"
               />
-              <select
+              <SearchableSelect
                 disabled={disabled}
                 value={values.priority}
-                onChange={(e) => setValues((p) => ({ ...p, priority: e.target.value }))}
-                className="h-10 text-sm disabled:opacity-60"
-              >
-                <option value="Normal">Normal</option>
-                <option value="Urgent">Urgent</option>
-              </select>
+                onChange={(v) => setValues((p) => ({ ...p, priority: v }))}
+                options={[
+                  { value: "Normal", label: "Normal" },
+                  { value: "Urgent", label: "Urgent" },
+                ]}
+                className={fieldSelectClass}
+                preserveCase
+              />
             </div>
 
-            <select
+            <SearchableSelect
               disabled={disabled}
               value={values.source}
-              onChange={(e) => setValues((p) => ({ ...p, source: e.target.value }))}
-              className="h-10 text-sm disabled:opacity-60"
-            >
-              <option value="InHouse">In-house</option>
-              <option value="External">External</option>
-            </select>
+              onChange={(v) => setValues((p) => ({ ...p, source: v }))}
+              options={[
+                { value: "InHouse", label: "In-house" },
+                { value: "External", label: "External" },
+              ]}
+              className={fieldSelectClass}
+              preserveCase
+            />
 
             <textarea
               disabled={disabled}
@@ -202,17 +207,14 @@ export default function LabRadiologyConfigModal({
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">Pre-authorization</label>
-                <select
+                <SearchableSelect
                   disabled={disabled}
                   value={values.preAuthStatus}
-                  onChange={(e) => setValues((p) => ({ ...p, preAuthStatus: e.target.value }))}
-                  className="h-10 text-sm disabled:opacity-60"
-                >
-                  <option value="Not Required">Not Required</option>
-                  <option value="Required">Required</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Approved">Approved</option>
-                </select>
+                  onChange={(v) => setValues((p) => ({ ...p, preAuthStatus: v }))}
+                  options={["Not Required", "Required", "Pending", "Approved"].map((v) => ({ value: v, label: v }))}
+                  className={fieldSelectClass}
+                  preserveCase
+                />
               </div>
             </div>
 

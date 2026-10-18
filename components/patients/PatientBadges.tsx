@@ -1,6 +1,6 @@
 "use client";
 
-import { Footprints, Stethoscope } from "lucide-react";
+import { Footprints } from "lucide-react";
 
 // A walk-in registered with minimal details (registrationType "External") - reception can
 // complete the record later; it's the same patient and MRN either way.
@@ -13,22 +13,6 @@ export function WalkInPatientBadge({ registrationType }: { registrationType?: st
     >
       <Footprints size={11} />
       Walk-in patient
-    </span>
-  );
-}
-
-// Where an order came from: a consultation here (has a visit) or a walk-in with an outside
-// prescription/request.
-export function OrderOriginBadge({ visitId }: { visitId?: string | null }) {
-  return visitId ? (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-      <Stethoscope size={11} />
-      Consultation
-    </span>
-  ) : (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[11px] font-semibold text-violet-600 dark:text-violet-400">
-      <Footprints size={11} />
-      Walk-in
     </span>
   );
 }

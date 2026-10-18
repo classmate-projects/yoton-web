@@ -56,14 +56,6 @@ export const ReceptionService = {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DOCTOR_AVAILABILITY)
         return data;
     },
-    getAllAppointments: async () => {
-        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_ALL_APPOINTMENTS)
-        return data;
-    },
-    getDoctorById: async (id: string) => {
-        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DOCTOR_BY_ID(id))
-        return data;
-    },
     updateDoctorSchedule: async (payload: UpdateDoctorSchedulePayload) => {
         const { data } = await api.put(ENDPOINTS.RECEPTION.UPDATE_SCEDULE, {
             DoctorId: payload.doctorId,
@@ -158,20 +150,12 @@ export const ReceptionService = {
         const { data } = await api.post(ENDPOINTS.RECEPTION.WALK_IN, payload)
         return data;
     },
-    getVisit: async (id: string) => {
-        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT(id))
-        return data;
-    },
     reassignVisit: async (id: string, payload: ReassignVisitPayload) => {
         const { data } = await api.put(ENDPOINTS.RECEPTION.REASSIGN_VISIT(id), payload)
         return data;
     },
     cancelVisit: async (id: string, password: string) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CANCEL_VISIT(id), { password })
-        return data;
-    },
-    getVisitQueue: async (status?: string) => {
-        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT_QUEUE(status))
         return data;
     },
     getDailyVisitStats: async (): Promise<{

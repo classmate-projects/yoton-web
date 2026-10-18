@@ -20,14 +20,7 @@ import {
   ChatPresenceType,
   MAX_ATTACHMENT_BYTES,
 } from "@/types/chat.type";
-
-const errorMessage = (error: unknown, fallback: string) => {
-  if (error && typeof error === "object" && "response" in error) {
-    const resp = (error as { response?: { data?: { message?: string } } }).response;
-    return resp?.data?.message || fallback;
-  }
-  return fallback;
-};
+import { apiErrorMessage } from "@/lib/apiError";
 
 const formatTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const formatDay = (value: string) => new Date(value).toLocaleDateString();
@@ -97,7 +90,7 @@ export default function MessagesPage() {
       const res = await ChatService.getConversations();
       setConversations(res.data || []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load conversations"));
+      toast.error(apiErrorMessage(error, "Failed to load conversations"));
     } finally {
       setIsLoadingConversations(false);
     }
@@ -175,7 +168,7 @@ export default function MessagesPage() {
         );
       }
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load messages"));
+      toast.error(apiErrorMessage(error, "Failed to load messages"));
     } finally {
       setIsLoadingMessages(false);
     }
@@ -192,7 +185,7 @@ export default function MessagesPage() {
       setShowContactPicker(false);
       await openConversation(conversation);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to start conversation"));
+      toast.error(apiErrorMessage(error, "Failed to start conversation"));
     }
   };
 
@@ -212,7 +205,7 @@ export default function MessagesPage() {
         );
         await openConversation(conversation);
       })
-      .catch((error) => toast.error(errorMessage(error, "Failed to open conversation")));
+      .catch((error) => toast.error(apiErrorMessage(error, "Failed to open conversation")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -360,7 +353,7 @@ export default function MessagesPage() {
         return [moved, ...updated];
       });
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to send message"));
+      toast.error(apiErrorMessage(error, "Failed to send message"));
       setDraft(content);
       setPendingFiles(files);
     } finally {
@@ -376,7 +369,7 @@ export default function MessagesPage() {
       const updated: ChatMessageType = res.data;
       setMessages((prev) => prev.map((m) => (m.chatMessageId === updated.chatMessageId ? updated : m)));
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update reaction"));
+      toast.error(apiErrorMessage(error, "Failed to update reaction"));
     }
   };
 

@@ -28,6 +28,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import { toast } from "sonner";
 import axios from "axios";
+import { apiErrorMessage } from "@/lib/apiError";
 
 function UserRegistrationForm() {
   const [name, setName] = useState("");
@@ -248,9 +249,7 @@ function UserRegistrationForm() {
     } catch (error) {
       console.error(error);
       toast.error(
-        axios.isAxiosError(error)
-          ? error.response?.data?.message || "Failed to save the doctor profile"
-          : "Failed to save the doctor profile"
+        apiErrorMessage(error, "Failed to save the doctor profile")
       );
     }
   }

@@ -177,7 +177,7 @@ export default function CountrySearchSelect({
           ref={popupRef}
           role="listbox"
           style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}
-          className="z-50 flex max-h-80 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          className="z-[300] flex max-h-80 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-150"
         >
           <div className="border-b border-border p-2">
             <input

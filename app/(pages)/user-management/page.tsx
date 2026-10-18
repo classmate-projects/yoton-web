@@ -23,7 +23,6 @@ import EmptyState from "@/components/EmptyState";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import axios from "axios";
 import SelectRole from "@/components/selectRole";
 import SearchableSelect from "@/components/SearchableSelect";
 import DatePicker from "@/components/DatePicker";
@@ -50,6 +49,7 @@ import { BranchType } from "@/types/branch.type";
 import { getUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { TERMINATION_REASONS } from "@/helpers/terminationReasons";
+import { apiErrorMessage } from "@/lib/apiError";
 
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -319,7 +319,7 @@ export default function UserManagement() {
       fetchAllUsers();
     } catch (error) {
       toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to terminate employment" : "Failed to terminate employment"
+        apiErrorMessage(error, "Failed to terminate employment")
       );
     } finally {
       setIsTerminating(false);

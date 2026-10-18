@@ -29,6 +29,7 @@ const Loading3D = ({ height }: { height: number }) => (
 const DentalArch3D = dynamic(() => import("./DentalArch3D"), { ssr: false, loading: () => <Loading3D height={480} /> });
 const ToothDetail3D = dynamic(() => import("./ToothDetail3D"), { ssr: false, loading: () => <Loading3D height={340} /> });
 import { ToothRecord, PerioRecord, DentalChartType, ToothCondition, ToothSurface } from "@/types/dental.type";
+import SearchableSelect, { compactSelectClass } from "@/components/SearchableSelect";
 
 // ─── Universal (US) adult numbering & alphabetic pediatric ───────────────────
 // Adult: 1-16 upper (patient right→left), 32-17 lower (patient right→left)
@@ -43,9 +44,6 @@ type ToothShape = "incisor" | "canine" | "premolar" | "molar";
 function toothShape(n: string): ToothShape {
   return toothInfo(n).kind;
 }
-
-type ToothView = "Buccal" | "Lingual" | "Mesial" | "Distal" | "Occlusal";
-const ROTATE_VIEWS: ToothView[] = ["Mesial", "Buccal", "Distal", "Lingual"];
 
 // ─── Dominant condition colour for 3D overlays ───────────────────────────────
 const CONDITION_PRIORITY: ToothCondition[] = [
@@ -390,165 +388,6 @@ function ToothAnatomySVG({ shape, isUpper, w = 40, conditions = [], surfaces = [
   );
 }
 
-// ─── Lingual-view SVG ────────────────────────────────────────────────────────
-function ToothLingualSVG({ shape, isUpper, w = 120, conditions = [], surfaces = [] }: {
-  shape: ToothShape; isUpper: boolean; w?: number;
-  conditions?: ToothCondition[]; surfaces?: ToothSurface[];
-}) {
-  const cH = w * 0.72, rH = w * 0.95, tH = cH + rH;
-  const translateY = !isUpper ? tH : 0, scaleY = !isUpper ? -1 : 1;
-  const gid = `tl-${shape[0]}`;
-
-  const crown: Record<ToothShape, string> = {
-    incisor: [`M${w*.30},0`,`L${w*.70},0`,`Q${w*.82},${cH*.08} ${w*.78},${cH*.40}`,
-      `Q${w*.72},${cH*.68} ${w*.58},${cH*.84}`,`Q${w*.54},${cH} ${w*.50},${cH}`,
-      `Q${w*.46},${cH} ${w*.42},${cH*.84}`,`Q${w*.28},${cH*.68} ${w*.22},${cH*.40}`,
-      `Q${w*.18},${cH*.08} ${w*.30},0 Z`].join(" "),
-    canine: [`M${w*.32},0`,`L${w*.68},0`,`Q${w*.84},${cH*.12} ${w*.76},${cH*.50}`,
-      `Q${w*.68},${cH*.72} ${w*.58},${cH*.86}`,`Q${w*.54},${cH} ${w*.50},${cH}`,
-      `Q${w*.46},${cH} ${w*.42},${cH*.86}`,`Q${w*.32},${cH*.72} ${w*.24},${cH*.50}`,
-      `Q${w*.16},${cH*.12} ${w*.32},0 Z`].join(" "),
-    premolar: [`M${w*.22},0`,`Q${w*.36},${-cH*.06} ${w*.44},0`,`L${w*.50},${cH*.16}`,
-      `Q${w*.62},${-cH*.01} ${w*.70},${cH*.07}`,`Q${w*.82},${cH*.22} ${w*.82},${cH*.5}`,
-      `Q${w*.80},${cH} ${w*.50},${cH}`,`Q${w*.20},${cH} ${w*.18},${cH*.5}`,
-      `Q${w*.16},${cH*.22} ${w*.22},0 Z`].join(" "),
-    molar: [`M${w*.08},0`,`Q${w*.24},${-cH*.07} ${w*.38},0`,`L${w*.46},${cH*.14}`,
-      `Q${w*.60},${-cH*.04} ${w*.72},${cH*.03}`,`Q${w*.90},${cH*.14} ${w*.90},${cH*.38}`,
-      `Q${w*.88},${cH} ${w*.50},${cH}`,`Q${w*.12},${cH} ${w*.10},${cH*.38}`,
-      `Q${w*.08},${cH*.14} ${w*.08},0 Z`].join(" "),
-  };
-
-  return (
-    <svg width={w} height={tH} viewBox={`0 0 ${w} ${tH}`}
-      style={{ display:"block", overflow:"visible", filter:"drop-shadow(0px 1.5px 3px rgba(0,0,0,0.28))" }}>
-      <defs>
-        <radialGradient id={`lg-${gid}`} gradientUnits="objectBoundingBox" cx="0.62" cy="0.20" r="0.68">
-          <stop offset="0%"   stopColor="#faf6ee" /><stop offset="45%" stopColor="#e8d8be" />
-          <stop offset="78%"  stopColor="#cfa87c" /><stop offset="100%" stopColor="#a87848" />
-        </radialGradient>
-        <radialGradient id={`la-${gid}`} gradientUnits="objectBoundingBox" cx="0.50" cy="0.50" r="0.52">
-          <stop offset="40%" stopColor="#1a0e04" stopOpacity="0" />
-          <stop offset="100%" stopColor="#1a0e04" stopOpacity="0.28" />
-        </radialGradient>
-        <radialGradient id={`ls-${gid}`} gradientUnits="objectBoundingBox" cx="0.62" cy="0.24" r="0.38">
-          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.52" />
-          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-        </radialGradient>
-        <linearGradient id={`lrg-${gid}`} gradientUnits="objectBoundingBox" x1="0.12" y1="0" x2="0.88" y2="1">
-          <stop offset="0%"   stopColor="#e0d0b0" /><stop offset="100%" stopColor="#9a7040" />
-        </linearGradient>
-      </defs>
-      <g transform={`translate(0,${translateY}) scale(1,${scaleY})`}>
-        <path
-          d={shape==="molar"
-            ?[`M${w*.10},${cH}`,`L${w*.90},${cH}`,`Q${w*.88},${cH+rH*.44} ${w*.72},${tH}`,`Q${w*.50},${tH+4} ${w*.30},${tH}`,`Q${w*.12},${cH+rH*.44} ${w*.10},${cH} Z`].join(" ")
-            :[`M${w*.26},${cH}`,`L${w*.74},${cH}`,`Q${w*.72},${cH+rH*.60} ${w*.54},${tH}`,`Q${w*.44},${tH} ${w*.28},${tH}`,`Q${w*.22},${cH+rH*.60} ${w*.26},${cH} Z`].join(" ")}
-          fill={`url(#lrg-${gid})`} stroke="#9a7a52" strokeWidth={0.8}
-        />
-        <path d={crown[shape]} fill={`url(#lg-${gid})`} stroke="#7a6050" strokeWidth={0.9} />
-        {(shape==="incisor"||shape==="canine") && (
-          <ellipse cx={w*.50} cy={cH*.82} rx={w*.16} ry={cH*.08} fill="#e8c890" fillOpacity={0.55} />
-        )}
-        {(shape==="premolar"||shape==="molar") && (
-          <line x1={w*.50} y1={0} x2={w*.50} y2={cH*.55}
-            stroke="#9a8060" strokeWidth={0.75} strokeLinecap="round" opacity={0.65} />
-        )}
-        <path d={crown[shape]} fill={`url(#ls-${gid})`} />
-        <path d={crown[shape]} fill={`url(#la-${gid})`} />
-        <path d={crown[shape]} fill="none" stroke="#7a6050" strokeWidth={0.85} />
-        <line x1={shape==="molar"?w*.11:w*.24} y1={cH} x2={shape==="molar"?w*.89:w*.76} y2={cH}
-          stroke="#9a8060" strokeWidth={0.6} opacity={0.55} />
-        <ellipse cx={w*.5} cy={cH} rx={shape==="molar"?w*.40:w*.26} ry={w*.04}
-          fill="#5a3820" fillOpacity={0.18} />
-        {/* Condition overlay — lingual view shows L surface */}
-        {(() => {
-          const col = dominantColor(conditions);
-          if (!col) return null;
-          const isWhole = conditions.some(c => WHOLE_TOOTH.includes(c));
-          if (!surfaces.includes("L") && !isWhole) return null;
-          return <path d={crown[shape]} fill={col} fillOpacity={0.38} />;
-        })()}
-      </g>
-    </svg>
-  );
-}
-
-// ─── Proximal-view SVG (mesial or distal) ─────────────────────────────────────
-function ToothProximalSVG({ shape, isUpper, w = 120, proximalSide = "M", conditions = [], surfaces = [] }: {
-  shape: ToothShape; isUpper: boolean; w?: number;
-  proximalSide?: "M" | "D"; conditions?: ToothCondition[]; surfaces?: ToothSurface[];
-}) {
-  const cH = w * 0.72, rH = w * 0.95, tH = cH + rH;
-  const translateY = !isUpper ? tH : 0, scaleY = !isUpper ? -1 : 1;
-  const gid = `tp-${shape[0]}`;
-
-  const crown: Record<ToothShape, string> = {
-    incisor: [`M${w*.38},0`,`L${w*.62},0`,
-      `Q${w*.72},${cH*.25} ${w*.70},${cH*.65}`,`Q${w*.68},${cH} ${w*.50},${cH}`,
-      `Q${w*.32},${cH} ${w*.30},${cH*.65}`,`Q${w*.28},${cH*.25} ${w*.38},0 Z`].join(" "),
-    canine: [`M${w*.34},0`,`L${w*.66},0`,
-      `Q${w*.76},${cH*.26} ${w*.72},${cH*.62}`,`Q${w*.68},${cH} ${w*.50},${cH}`,
-      `Q${w*.32},${cH} ${w*.28},${cH*.62}`,`Q${w*.24},${cH*.26} ${w*.34},0 Z`].join(" "),
-    premolar: [`M${w*.30},0`,`Q${w*.46},${-cH*.04} ${w*.58},${cH*.02}`,
-      `Q${w*.78},${cH*.18} ${w*.76},${cH*.58}`,`Q${w*.72},${cH} ${w*.50},${cH}`,
-      `Q${w*.28},${cH} ${w*.24},${cH*.58}`,`Q${w*.22},${cH*.18} ${w*.30},0 Z`].join(" "),
-    molar: [`M${w*.22},0`,`Q${w*.36},${-cH*.06} ${w*.52},${cH*.02}`,
-      `Q${w*.66},${-cH*.04} ${w*.72},${cH*.10}`,`Q${w*.84},${cH*.22} ${w*.82},${cH*.54}`,
-      `Q${w*.78},${cH} ${w*.50},${cH}`,`Q${w*.22},${cH} ${w*.18},${cH*.54}`,
-      `Q${w*.16},${cH*.22} ${w*.22},0 Z`].join(" "),
-  };
-
-  return (
-    <svg width={w} height={tH} viewBox={`0 0 ${w} ${tH}`}
-      style={{ display:"block", overflow:"visible", filter:"drop-shadow(0px 1.5px 3px rgba(0,0,0,0.28))" }}>
-      <defs>
-        <radialGradient id={`pg-${gid}`} gradientUnits="objectBoundingBox" cx="0.64" cy="0.20" r="0.70">
-          <stop offset="0%"   stopColor="#fefdf9" /><stop offset="42%" stopColor="#f0e4ce" />
-          <stop offset="78%"  stopColor="#d8bc90" /><stop offset="100%" stopColor="#b88c58" />
-        </radialGradient>
-        <radialGradient id={`pa-${gid}`} gradientUnits="objectBoundingBox" cx="0.50" cy="0.50" r="0.55">
-          <stop offset="40%" stopColor="#1a0e04" stopOpacity="0" />
-          <stop offset="100%" stopColor="#1a0e04" stopOpacity="0.26" />
-        </radialGradient>
-        <radialGradient id={`ps-${gid}`} gradientUnits="objectBoundingBox" cx="0.62" cy="0.22" r="0.38">
-          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.60" />
-          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-        </radialGradient>
-        <linearGradient id={`prg-${gid}`} gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#d8c8a0" /><stop offset="100%" stopColor="#906830" />
-        </linearGradient>
-      </defs>
-      <g transform={`translate(0,${translateY}) scale(1,${scaleY})`}>
-        <path
-          d={[`M${w*.32},${cH}`,`L${w*.68},${cH}`,`Q${w*.66},${cH+rH*.56} ${w*.54},${tH}`,
-            `Q${w*.44},${tH} ${w*.34},${tH}`,`Q${w*.24},${cH+rH*.56} ${w*.32},${cH} Z`].join(" ")}
-          fill={`url(#prg-${gid})`} stroke="#9a7a52" strokeWidth={0.8}
-        />
-        <path d={crown[shape]} fill={`url(#pg-${gid})`} stroke="#7a6050" strokeWidth={0.9} />
-        <ellipse cx={w*.50} cy={cH*.22} rx={w*.06} ry={cH*.04}
-          fill="#8a6030" fillOpacity={0.35} />
-        <path d={crown[shape]} fill={`url(#ps-${gid})`} />
-        <path d={crown[shape]} fill={`url(#pa-${gid})`} />
-        <path d={crown[shape]} fill="none" stroke="#7a6050" strokeWidth={0.85} />
-        <text x={w*.70} y={cH*.32} fontSize={w*.08} fill="#9a8060" opacity={0.80} textAnchor="middle">B</text>
-        <text x={w*.30} y={cH*.32} fontSize={w*.08} fill="#9a8060" opacity={0.80} textAnchor="middle">L</text>
-        <line x1={w*.32} y1={cH} x2={w*.68} y2={cH}
-          stroke="#9a8060" strokeWidth={0.6} opacity={0.55} />
-        <ellipse cx={w*.5} cy={cH} rx={w*.18} ry={w*.03}
-          fill="#5a3820" fillOpacity={0.18} />
-        {/* Condition overlay — proximal view shows M or D surface */}
-        {(() => {
-          const col = dominantColor(conditions);
-          if (!col) return null;
-          const isWhole = conditions.some(c => WHOLE_TOOTH.includes(c));
-          if (!surfaces.includes(proximalSide) && !isWhole) return null;
-          return <path d={crown[shape]} fill={col} fillOpacity={0.38} />;
-        })()}
-      </g>
-    </svg>
-  );
-}
-
 // ─── Selected tooth: enlarged 3D model + surface charting ────────────────────
 // The doctor picks a condition "brush" and clicks a surface - on the 3D tooth or the 2D
 // surface map - to chart it there; clicking it again with the same brush clears it.
@@ -720,31 +559,6 @@ function BopDot({ value, onChange }: { value: string; onChange: (v: string) => v
       }`}
       title={on ? "BOP positive" : "BOP negative"}
     />
-  );
-}
-
-// ─── Perio depth input (for periodontal tab) ──────────────────────────────────
-function DepthInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const n = Number(value);
-  return (
-    <input
-      type="number" min={0} max={20} value={value}
-      onChange={e => onChange(e.target.value)}
-      className={`w-[22px] h-[22px] text-center text-[10px] border rounded-sm p-0 bg-transparent
-        ${n >= 4 ? "text-red-500 font-bold border-red-400" : "border-border/60 text-muted-foreground"}`}
-    />
-  );
-}
-
-// ─── Perio BOP toggle (for periodontal tab) ───────────────────────────────────
-function BopToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const on = value === "1";
-  return (
-    <button type="button" onClick={() => onChange(on ? "0" : "1")}
-      className={`w-[22px] h-[22px] rounded-sm border text-[11px] font-bold transition-colors
-        ${on ? "bg-red-500 text-white border-red-600" : "border-border/60 text-muted-foreground/40"}`}>
-      {on ? "+" : "·"}
-    </button>
   );
 }
 
@@ -1009,34 +823,40 @@ function FurcationRow({
     return "border-border text-muted-foreground";
   }
 
-  function Cell({ t }: { t: string }) {
+  // A render helper rather than a component declared in here - that would be a new type on
+  // every render, remounting the dropdown (and closing it) whenever the row re-renders.
+  const cell = (t: string) => {
     const val = records.get(t)?.furcation ?? "";
     return (
-      <div className="w-[106px] shrink-0 flex items-center justify-center py-1.5">
-        <select
-          value={val}
-          onChange={e => onUpdate(t, "furcation", e.target.value)}
-          className={`text-xs border rounded px-1 py-0.5 bg-background w-[76px] ${furcColor(val)}`}
-        >
-          <option value="">—</option>
-          <option value="None">None</option>
-          <option value="I">Class I</option>
-          <option value="II">Class II</option>
-          <option value="III">Class III</option>
-        </select>
+      <div key={t} className="w-[106px] shrink-0 flex items-center justify-center py-1.5">
+        <div className="w-[76px]">
+          <SearchableSelect
+            value={val}
+            onChange={(v) => onUpdate(t, "furcation", v)}
+            options={[
+              { value: "", label: "—" },
+              { value: "None", label: "None" },
+              { value: "I", label: "Class I" },
+              { value: "II", label: "Class II" },
+              { value: "III", label: "Class III" },
+            ]}
+            className={`${compactSelectClass} h-7 px-1.5 ${furcColor(val)}`}
+            preserveCase
+          />
+        </div>
       </div>
     );
-  }
+  };
 
   return (
     <div className="flex w-full items-center h-[52px] border-b border-border/20">
       <div className="w-[84px] shrink-0 text-right pr-3 text-[10px] text-muted-foreground leading-none">Furcation</div>
       <div className="flex border-r border-border/30">
-        {teeth.slice(0, half).map(t => <Cell key={t} t={t} />)}
+        {teeth.slice(0, half).map(cell)}
       </div>
       <div className="w-5 shrink-0" />
       <div className="flex border-l border-border/30">
-        {teeth.slice(half).map(t => <Cell key={t} t={t} />)}
+        {teeth.slice(half).map(cell)}
       </div>
     </div>
   );
@@ -1131,7 +951,6 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
       }
     } catch { /* leave blank */ }
     finally { setIsLoading(false); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encounterId, patientId, chartType]);
 
   useEffect(() => { loadChart(); }, [loadChart]);

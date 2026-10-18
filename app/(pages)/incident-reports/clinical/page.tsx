@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import EmptyState from "@/components/EmptyState";
 import { AlertTriangle, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { ClinicalIncidentService } from "@/services/clinicalIncident.service";
-import { ReceptionService } from "@/services/reception.service";
 import { DepartmentSerivce } from "@/services/department.service";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { ClinicalIncidentCategory, ClinicalIncidentCreatePayload, ClinicalIncidentType } from "@/types/clinicalIncident.type";
-import { PatientListItemType } from "@/types/appointment.type";
+import { PatientSummaryType } from "@/types/patient.type";
+import PatientPicker, { patientFromOrder } from "@/components/patients/PatientPicker";
 import { DepartmentTypes } from "@/types/department.type";
 import SearchableSelect from "@/components/SearchableSelect";
+import DateTimePicker from "@/components/DateTimePicker";
 
 const CATEGORIES: { value: ClinicalIncidentCategory; label: string }[] = [
   { value: "SentinelEvent", label: "Sentinel Event" },
@@ -199,8 +200,7 @@ export default function ClinicalIncidentsPage() {
   const [form, setForm] = useState(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
 
-  const [patients, setPatients] = useState<PatientListItemType[]>([]);
-  const [patientSearch, setPatientSearch] = useState("");
+  const [selectedPatient, setSelectedPatient] = useState<PatientSummaryType | null>(null);
   const [departments, setDepartments] = useState<DepartmentTypes[]>([]);
   // Set while correcting an existing not-Closed report - reuses the same form as filing a
   // new one, matching every other add-form-doubles-as-edit-form in this feature.
@@ -223,31 +223,12 @@ export default function ClinicalIncidentsPage() {
   }, [filterCategory]);
 
   useEffect(() => {
-    ReceptionService.getAllPatients().then((data) => setPatients(data.patients ?? [])).catch(() => {});
     DepartmentSerivce.getAll().then((data) => setDepartments((data || []).filter((d: DepartmentTypes) => d.isActive))).catch(() => {});
   }, []);
 
-  const filteredPatients = useMemo(() => {
-    if (!patientSearch.trim()) return [];
-    const q = patientSearch.toLowerCase();
-    return patients
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.opNumber?.toLowerCase().includes(q) ||
-          p.opId?.toLowerCase().includes(q) ||
-          p.phone?.toLowerCase().includes(q) ||
-          p.nationalID?.toLowerCase().includes(q) ||
-          p.passportNumber?.toLowerCase().includes(q)
-      )
-      .slice(0, 8);
-  }, [patients, patientSearch]);
-
-  const selectedPatient = patients.find((p) => p.opId === form.patientId) || null;
-
   const resetForm = () => {
     setForm(emptyForm);
-    setPatientSearch("");
+    setSelectedPatient(null);
     setEditingReportId(null);
   };
 
@@ -277,7 +258,7 @@ export default function ClinicalIncidentsPage() {
       stageOtherText: r.stageOtherText || "",
       errorTypeText: r.errorTypeText || "",
     });
-    setPatientSearch(r.patientName || "");
+    setSelectedPatient(patientFromOrder({ patientId: r.patientId, patientName: r.patientName ?? "Patient" }));
     setEditingReportId(r.clinicalIncidentReportId);
     setShowForm(true);
   };
@@ -426,11 +407,11 @@ export default function ClinicalIncidentsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-muted-foreground">Event date/time</label>
-              <input
-                type="datetime-local"
+              <DateTimePicker
                 value={form.eventDateTime}
-                onChange={(e) => setForm((p) => ({ ...p, eventDateTime: e.target.value }))}
-                className="h-10 text-sm"
+                onChange={(v) => setForm((p) => ({ ...p, eventDateTime: v }))}
+                dateClassName="flex h-10 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-background px-3 text-sm text-foreground focus-within:ring-2 focus-within:ring-primary"
+                timeClassName="h-10 w-28 shrink-0 text-sm"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -444,46 +425,17 @@ export default function ClinicalIncidentsPage() {
                 ]}
               />
             </div>
-            <div className="flex flex-col gap-1 sm:col-span-2 relative">
-              <label className="text-xs font-semibold text-muted-foreground">Patient (optional)</label>
-              {selectedPatient ? (
-                <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-                  <span>{selectedPatient.name} ({selectedPatient.opNumber || selectedPatient.opId})</span>
-                  <button
-                    onClick={() => setForm((p) => ({ ...p, patientId: "" }))}
-                    className="text-xs text-muted-foreground hover:underline"
-                  >
-                    Clear
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    placeholder="Search by name, phone, MRN, national ID, or passport..."
-                    value={patientSearch}
-                    onChange={(e) => setPatientSearch(e.target.value)}
-                    className="h-10 text-sm"
-                  />
-                  {filteredPatients.length > 0 && (
-                    <div className="absolute top-full mt-1 z-10 w-full max-h-48 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
-                      {filteredPatients.map((p) => (
-                        <button
-                          key={p.opId}
-                          onClick={() => {
-                            setForm((prev) => ({ ...prev, patientId: p.opId }));
-                            setPatientSearch("");
-                          }}
-                          className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-muted/60"
-                        >
-                          <span>{p.name}</span>
-                          <span className="text-xs text-muted-foreground">{p.opNumber || p.opId}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
+            <div className="sm:col-span-2">
+              <PatientPicker
+                value={selectedPatient}
+                onChange={(patient) => {
+                  setSelectedPatient(patient);
+                  setForm((prev) => ({ ...prev, patientId: patient?.opId ?? "" }));
+                }}
+                allowQuickAdd={false}
+                label="Patient (optional)"
+                labelClassName="text-xs font-semibold text-muted-foreground"
+              />
             </div>
           </div>
 

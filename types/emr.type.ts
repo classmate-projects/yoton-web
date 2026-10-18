@@ -495,10 +495,6 @@ export interface ReferralPayload {
   externalFacility?: string;
 }
 
-export interface ReferralOutcomePayload {
-  dateSeenBySpecialist: string;
-}
-
 export interface DentalVisitExtraPayload {
   encounterId?: string;
   fissureSealantApplied?: boolean;

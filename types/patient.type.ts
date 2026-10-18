@@ -55,9 +55,3 @@ export interface WalkInOrderFields {
   billId?: string | null;
   billStatus?: string | null; // Pending, Paid - null while not on a bill
 }
-
-// Which identifiers count as "the same person" (Settings > Duplicate patient check).
-export const PATIENT_MATCH_FIELDS = ["NationalID", "Passport", "Phone", "Email"] as const;
-export type PatientMatchField = (typeof PATIENT_MATCH_FIELDS)[number];
-// ID numbers are always checked - one ID can only ever belong to one person.
-export const ALWAYS_MATCHED_FIELDS: PatientMatchField[] = ["NationalID", "Passport"];

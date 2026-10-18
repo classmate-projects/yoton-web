@@ -3,14 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
-import axios from "axios";
 import { toast } from "sonner";
 import { Pencil, ScanLine, Settings, Trash2, Undo2, X } from "lucide-react";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload, MdOutlineImage } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
-import { toDateInputValue } from "@/lib/date";
+import DateTimePicker from "@/components/DateTimePicker";
+import { toDateInputValue, formatDateTime } from "@/lib/date";
 import SearchableSelect from "@/components/SearchableSelect";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
@@ -25,12 +25,7 @@ import { backendAssetUrl } from "@/lib/backendAsset";
 import PatientPicker, { patientFromOrder } from "@/components/patients/PatientPicker";
 import PatientStreamTabs, { type PatientStream } from "@/components/patients/PatientStreamTabs";
 import { BillStatusBadge, WalkInPatientBadge, billedLockTitle } from "@/components/patients/PatientBadges";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
-
-const formatDateTime = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleString() : "—";
+import { apiErrorMessage } from "@/lib/apiError";
 
 const STATUS_FLOW = ["Requested", "Scheduled", "Completed", "Delivered"];
 
@@ -118,7 +113,7 @@ export default function RadiologyPage() {
       setSummary(summaryRes.data ?? null);
       setRequests(listRes.data ?? []);
     } catch (error) {
-      if (!silent) toast.error(errorMessage(error, "Failed to load radiology requests"));
+      if (!silent) toast.error(apiErrorMessage(error, "Failed to load radiology requests"));
     } finally {
       if (!silent) setIsLoading(false);
     }
@@ -200,7 +195,7 @@ export default function RadiologyPage() {
           toast.success("Radiology request removed");
           fetchAll();
         } catch (error) {
-          toast.error(errorMessage(error, "Failed to remove radiology request"));
+          toast.error(apiErrorMessage(error, "Failed to remove radiology request"));
         }
       }
     );
@@ -240,7 +235,7 @@ export default function RadiologyPage() {
       fetchAll();
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(errorMessage(error, editingRadiologyRequestId ? "Failed to correct radiology request" : "Failed to create radiology request"));
+      toast.error(apiErrorMessage(error, editingRadiologyRequestId ? "Failed to correct radiology request" : "Failed to create radiology request"));
     } finally {
       setIsSubmitting(false);
     }
@@ -261,7 +256,7 @@ export default function RadiologyPage() {
       toast.success(data.message || "Status updated");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update status"));
+      toast.error(apiErrorMessage(error, "Failed to update status"));
     }
   };
 
@@ -272,7 +267,7 @@ export default function RadiologyPage() {
       toast.success("Reverted to Requested — the doctor can edit it again");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to revert request"));
+      toast.error(apiErrorMessage(error, "Failed to revert request"));
     } finally {
       setRevertingId(null);
     }
@@ -295,7 +290,7 @@ export default function RadiologyPage() {
       fetchAll();
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(errorMessage(error, "Failed to schedule scan"));
+      toast.error(apiErrorMessage(error, "Failed to schedule scan"));
     }
   };
 
@@ -312,7 +307,7 @@ export default function RadiologyPage() {
       toast.success(data.message || "Scan result uploaded");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to upload scan result"));
+      toast.error(apiErrorMessage(error, "Failed to upload scan result"));
     } finally {
       setUploadingId(null);
     }
@@ -326,7 +321,7 @@ export default function RadiologyPage() {
       toast.success(data.message || "Images uploaded");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to upload images"));
+      toast.error(apiErrorMessage(error, "Failed to upload images"));
     } finally {
       setUploadingImagesId(null);
     }
@@ -526,12 +521,12 @@ export default function RadiologyPage() {
               {scheduleFor.patientName} — {scheduleFor.scanType}
             </p>
             <form onSubmit={confirmSchedule} className="flex flex-col gap-4">
-              <input
-                type="datetime-local"
-                required
+              <DateTimePicker
                 value={scheduledDate}
-                onChange={(e) => setScheduledDate(e.target.value)}
-                className="w-full p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                onChange={setScheduledDate}
+                required
+                dateClassName="flex h-12 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-muted px-3 text-foreground focus-within:border-primary"
+                timeClassName="h-12 w-32 shrink-0 rounded-lg border border-border bg-muted px-3 text-foreground outline-none focus:border-primary disabled:opacity-50"
               />
               <div className="flex items-center justify-end gap-3 w-full">
                 <button

@@ -15,14 +15,6 @@ export const BillingService = {
     const { data } = await api.get(ENDPOINTS.BILLING.GET_SUMMARY());
     return data;
   },
-  getById: async (id: string) => {
-    const { data } = await api.get(ENDPOINTS.BILLING.GET_BY_ID(id));
-    return data;
-  },
-  getByPatient: async (patientId: string) => {
-    const { data } = await api.get(ENDPOINTS.BILLING.GET_BY_PATIENT(patientId));
-    return data;
-  },
   create: async (payload: CreateBillPayload) => {
     const { data } = await api.post(ENDPOINTS.BILLING.CREATE, payload);
     return data;

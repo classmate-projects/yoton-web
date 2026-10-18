@@ -9,6 +9,7 @@ import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
 import { ConfigListService } from "@/services/configList.service";
 import { MedicationPayload } from "@/types/emr.type";
+import SearchableSelect from "@/components/SearchableSelect";
 
 type Tab = "Diagnosis" | "Medication" | "Lab" | "Radiology" | "Treatment";
 
@@ -134,7 +135,7 @@ export default function OrderSetEditor({ orderSetId, orderSetName, initialItems,
         {tabItems.length > 0 && (
           <div className="flex flex-col gap-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{tab} items in template</p>
-            {tabItems.map((item, idx) => {
+            {tabItems.map((item) => {
               const globalIdx = items.findIndex((i) => i === item);
               return (
                 <div key={item.orderSetItemId} className="flex items-start justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
@@ -214,15 +215,13 @@ function CatalogAddForm({ tab, onAdd }: { tab: Exclude<Tab, "Medication">; onAdd
         </div>
         <div className="w-28">
           <label className="text-xs text-muted-foreground mb-1 block">Priority</label>
-          <select
-            className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+          <SearchableSelect
             value={priority}
-            onChange={(e) => setPriority(e.target.value)}
-          >
-            <option>Normal</option>
-            <option>Urgent</option>
-            <option>STAT</option>
-          </select>
+            onChange={setPriority}
+            options={["Normal", "Urgent", "STAT"].map((v) => ({ value: v, label: v }))}
+            className="flex h-8 w-full items-center justify-between gap-1 rounded-lg border border-border bg-background px-2 text-left text-sm text-foreground transition-colors hover:border-primary/60"
+            preserveCase
+          />
         </div>
       </div>
       <button

@@ -24,6 +24,8 @@ import { usePlaceholderCatalog } from "@/hooks/usePlaceholderCatalog";
 import { buildInitialValues, countMissingRequired, hasPlaceholders } from "@/lib/medicalForm";
 import MedicalFormRenderer from "./MedicalFormRenderer";
 import MedicalFormPrintout from "./MedicalFormPrintout";
+import { apiErrorMessage } from "@/lib/apiError";
+import SearchableSelect from "@/components/SearchableSelect";
 
 const currentUserId = (): string | undefined => {
   try {
@@ -32,9 +34,6 @@ const currentUserId = (): string | undefined => {
     return undefined;
   }
 };
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
 
 const parseRows = (fieldsJson: string): MedicalFormRow[] => {
   try {
@@ -199,7 +198,7 @@ export default function PatientMedicalFormsSection({
       setFillingTemplate(null);
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to save form"));
+      toast.error(apiErrorMessage(error, "Failed to save form"));
     } finally {
       setIsSavingFill(false);
     }
@@ -228,7 +227,7 @@ export default function PatientMedicalFormsSection({
       setViewingSaved(null);
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update form"));
+      toast.error(apiErrorMessage(error, "Failed to update form"));
     } finally {
       setIsSavingEdit(false);
     }
@@ -260,7 +259,7 @@ export default function PatientMedicalFormsSection({
       setShowHandoverPicker(false);
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to hand over form"));
+      toast.error(apiErrorMessage(error, "Failed to hand over form"));
     } finally {
       setIsHandingOver(false);
     }
@@ -275,7 +274,7 @@ export default function PatientMedicalFormsSection({
       setViewingSaved(null);
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to acknowledge handover"));
+      toast.error(apiErrorMessage(error, "Failed to acknowledge handover"));
     } finally {
       setIsAcknowledgingHandover(false);
     }
@@ -295,7 +294,7 @@ export default function PatientMedicalFormsSection({
         setDeleteLock(saved);
         return;
       }
-      toast.error(errorMessage(error, "Failed to remove form"));
+      toast.error(apiErrorMessage(error, "Failed to remove form"));
     } finally {
       setIsDeleting(false);
     }
@@ -566,14 +565,16 @@ export default function PatientMedicalFormsSection({
                 <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
                   <span className="text-xs font-semibold text-muted-foreground">Hand over to</span>
                   <div className="flex items-center gap-2">
-                    <select value={handoverTargetId} onChange={(e) => setHandoverTargetId(e.target.value)} className="h-9 flex-1 text-sm">
-                      <option value="">Select a user...</option>
-                      {handoverCandidates.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name} ({u.role})
-                        </option>
-                      ))}
-                    </select>
+                    <div className="min-w-0 flex-1">
+                      <SearchableSelect
+                        value={handoverTargetId}
+                        onChange={setHandoverTargetId}
+                        placeholder="Select a user..."
+                        options={handoverCandidates.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))}
+                        className="flex h-9 w-full items-center justify-between gap-1 rounded-lg border border-border bg-background px-3 text-left text-sm text-foreground transition-colors hover:border-primary/60"
+                        preserveCase
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={submitHandover}

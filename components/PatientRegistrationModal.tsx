@@ -23,6 +23,8 @@ import { useExistingPatientMatches } from "@/hooks/useExistingPatientMatches";
 import ExistingPatientNotice from "@/components/patients/ExistingPatientNotice";
 import DuplicatePatientPrompt from "@/components/patients/DuplicatePatientPrompt";
 import type { PatientMatchType } from "@/types/patient.type";
+import { apiErrorMessage } from "@/lib/apiError";
+import SearchableSelect from "@/components/SearchableSelect";
 
 const INSURANCE_SERVICE_CATEGORIES = [
   "Consultation", "Lab", "Radiology", "Treatment", "Medicine", "Dental", "Maternity",
@@ -247,6 +249,13 @@ export default function PatientRegistrationModal({
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const missingSelections = [
+      !formData.sex && "Sex",
+      !formData.nationality && "Nationality",
+      !formData.maritalStatus && "Marital Status",
+      !formData.visaType && "Visa Type",
+    ].filter(Boolean);
+    if (missingSelections.length > 0) { toast.error(`Please select: ${missingSelections.join(", ")}`); return; }
     if (!isValidEmail(formData.email)) { setError("Enter a valid email address (e.g. john@example.com)."); return; }
     if (!formData.nationalID && !formData.passportNumber) { setError("Please provide either National ID or Passport Number"); return; }
     if (formData.nationalID && nationalIdFormat.regex && !nationalIdFormat.regex.test(formData.nationalID)) {
@@ -321,7 +330,7 @@ export default function PatientRegistrationModal({
         setSubmitMatches(err.response.data.data);
         setPendingPayload(null);
       }
-      toast.error(axios.isAxiosError(err) ? err.response?.data?.message || "Failed to register patient" : "Failed to register patient");
+      toast.error(apiErrorMessage(err, "Failed to register patient"));
     } finally {
       setLoading(false);
       setError("");
@@ -387,7 +396,7 @@ export default function PatientRegistrationModal({
       onBooked();
       onClose();
     } catch (err) {
-      toast.error(axios.isAxiosError(err) ? err.response?.data?.message || "Failed to book consultation" : "Failed to book consultation");
+      toast.error(apiErrorMessage(err, "Failed to book consultation"));
     } finally {
       setIsBookingConsult(false);
     }
@@ -396,7 +405,7 @@ export default function PatientRegistrationModal({
   if (!isOpen) return null;
 
   const inputCls = "px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent";
-  const selectCls = "px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card";
+  const selectCls = "flex h-11 w-full items-center justify-between gap-1 px-4 border border-border rounded-lg text-left text-foreground bg-card transition-colors hover:border-primary/60";
   const labelCls = "font-semibold text-foreground/90 text-sm";
 
   // ── Post-registration consultation UI ──
@@ -429,24 +438,18 @@ export default function PatientRegistrationModal({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="flex flex-col gap-2">
                     <label className={labelCls}>Department</label>
-                    <select value={selectedDepartmentId} onChange={(e) => { setSelectedDepartmentId(e.target.value); setSelectedDoctorId(""); setDaySlots(null); setSelectedSlot(null); }} className={selectCls}>
-                      <option value="">Select department</option>
-                      {consultDepartments.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-                    </select>
+                    <SearchableSelect value={selectedDepartmentId} onChange={(v) => { setSelectedDepartmentId(v); setSelectedDoctorId(""); setDaySlots(null); setSelectedSlot(null); }} className={selectCls} preserveCase
+                      options={[{ value: "", label: "Select department" }, ...consultDepartments]} />
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className={labelCls}>Specialty</label>
-                    <select value={selectedSpecializationId} onChange={(e) => { setSelectedSpecializationId(e.target.value); setSelectedDoctorId(""); setDaySlots(null); setSelectedSlot(null); }} className={selectCls}>
-                      <option value="">Select specialty</option>
-                      {consultSpecializations.map((s) => <option key={s.specializationId} value={s.specializationId}>{s.specializationName}</option>)}
-                    </select>
+                    <SearchableSelect value={selectedSpecializationId} onChange={(v) => { setSelectedSpecializationId(v); setSelectedDoctorId(""); setDaySlots(null); setSelectedSlot(null); }} className={selectCls} preserveCase
+                      options={[{ value: "", label: "Select specialty" }, ...consultSpecializations.map((s) => ({ value: s.specializationId, label: s.specializationName }))]} />
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className={labelCls}>Doctor</label>
-                    <select value={selectedDoctorId} onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedSlot(null); }} disabled={!selectedSpecializationId} className={`${selectCls} disabled:opacity-50`}>
-                      <option value="">Select doctor</option>
-                      {doctorsForSpecialization.map((d) => <option key={d.doctorId} value={d.doctorId}>{d.name}</option>)}
-                    </select>
+                    <SearchableSelect value={selectedDoctorId} onChange={(v) => { setSelectedDoctorId(v); setSelectedSlot(null); }} disabled={!selectedSpecializationId} className={selectCls} preserveCase
+                      options={[{ value: "", label: "Select doctor" }, ...doctorsForSpecialization.map((d) => ({ value: d.doctorId, label: d.name }))]} />
                   </div>
                 </div>
 
@@ -527,12 +530,8 @@ export default function PatientRegistrationModal({
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelCls}>Sex <span className="text-red-500">*</span></label>
-                <select name="sex" value={formData.sex} onChange={handleInputChange} required className={selectCls}>
-                  <option value="">Select Gender</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
+                <SearchableSelect value={formData.sex} onChange={(v) => setFormData((p) => ({ ...p, sex: v }))} className={selectCls} preserveCase
+                  options={[{ value: "", label: "Select Gender" }, { value: "Male", label: "Male" }, { value: "Female", label: "Female" }, { value: "Other", label: "Other" }]} />
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelCls}>Date of Birth <span className="text-red-500">*</span></label>
@@ -541,10 +540,8 @@ export default function PatientRegistrationModal({
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelCls}>Nationality <span className="text-red-500">*</span></label>
-                <select name="nationality" value={formData.nationality} onChange={handleInputChange} required className={selectCls}>
-                  <option value="" disabled>Select Country</option>
-                  {countryDetails.map((c) => <option key={c.country} value={c.country}>{c.country}</option>)}
-                </select>
+                <SearchableSelect value={formData.nationality} onChange={(v) => setFormData((p) => ({ ...p, nationality: v }))} className={selectCls} preserveCase placeholder="Select Country"
+                  options={countryDetails.map((c) => ({ value: c.country, label: c.country }))} />
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelCls}>Father Name</label>
@@ -556,13 +553,8 @@ export default function PatientRegistrationModal({
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelCls}>Marital Status <span className="text-red-500">*</span></label>
-                <select name="maritalStatus" value={formData.maritalStatus} onChange={handleInputChange} required className={selectCls}>
-                  <option value="">Select Status</option>
-                  <option value="Single">Single</option>
-                  <option value="Married">Married</option>
-                  <option value="Divorced">Divorced</option>
-                  <option value="Widowed">Widowed</option>
-                </select>
+                <SearchableSelect value={formData.maritalStatus} onChange={(v) => setFormData((p) => ({ ...p, maritalStatus: v }))} className={selectCls} preserveCase
+                  options={[{ value: "", label: "Select Status" }, ...["Single", "Married", "Divorced", "Widowed"].map((v) => ({ value: v, label: v }))]} />
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelCls}>Designation</label>
@@ -626,13 +618,8 @@ export default function PatientRegistrationModal({
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelCls}>Visa Type <span className="text-red-500">*</span></label>
-                <select name="visaType" value={formData.visaType} onChange={handleInputChange} required className={selectCls}>
-                  <option value="">Select Visa Type</option>
-                  <option value="Residency">Residency</option>
-                  <option value="Tourist">Tourist</option>
-                  <option value="Business">Business</option>
-                  <option value="Student">Student</option>
-                </select>
+                <SearchableSelect value={formData.visaType} onChange={(v) => setFormData((p) => ({ ...p, visaType: v }))} className={selectCls} preserveCase
+                  options={[{ value: "", label: "Select Visa Type" }, ...["Residency", "Tourist", "Business", "Student"].map((v) => ({ value: v, label: v }))]} />
               </div>
             </div>
           </div>
@@ -643,11 +630,8 @@ export default function PatientRegistrationModal({
             <div className="flex flex-wrap gap-4 items-end">
               <div className="flex flex-col gap-1.5 w-48">
                 <label className={labelCls}>Patient Type <span className="text-red-500">*</span></label>
-                <select name="patientType" value={formData.patientType} onChange={handleInputChange} required className={selectCls}>
-                  <option value="Normal">Normal</option>
-                  <option value="VIP">VIP</option>
-                  <option value="Emergency">Emergency</option>
-                </select>
+                <SearchableSelect value={formData.patientType} onChange={(v) => setFormData((p) => ({ ...p, patientType: v }))} className={selectCls} preserveCase
+                  options={["Normal", "VIP", "Emergency"].map((v) => ({ value: v, label: v }))} />
               </div>
               <div className="flex items-center gap-3">
                 <label className={`${labelCls} cursor-pointer`}>Chronic Status</label>
@@ -662,11 +646,8 @@ export default function PatientRegistrationModal({
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="flex flex-col gap-1.5">
                 <label className={labelCls}>Payment Type <span className="text-red-500">*</span></label>
-                <select name="paymentType" value={formData.paymentType} onChange={handleInputChange} required className={selectCls}>
-                  <option value="Cash">Cash</option>
-                  <option value="Insurance">Insurance</option>
-                  <option value="Corporate">Corporate</option>
-                </select>
+                <SearchableSelect value={formData.paymentType} onChange={(v) => setFormData((p) => ({ ...p, paymentType: v }))} className={selectCls} preserveCase
+                  options={["Cash", "Insurance", "Corporate"].map((v) => ({ value: v, label: v }))} />
               </div>
             </div>
 
@@ -675,11 +656,8 @@ export default function PatientRegistrationModal({
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="flex flex-col gap-1.5">
                     <label className={labelCls}>Eligibility Mode</label>
-                    <select name="eligibilityMode" value={formData.eligibilityMode} onChange={handleInputChange} className={selectCls}>
-                      <option value="">Not Done</option>
-                      <option value="Online">Online</option>
-                      <option value="Manual">Manual</option>
-                    </select>
+                    <SearchableSelect value={formData.eligibilityMode} onChange={(v) => setFormData((p) => ({ ...p, eligibilityMode: v }))} className={selectCls} preserveCase
+                  options={[{ value: "", label: "Not Done" }, { value: "Online", label: "Online" }, { value: "Manual", label: "Manual" }]} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className={labelCls}>Eligibility Checked Date</label>
@@ -696,10 +674,8 @@ export default function PatientRegistrationModal({
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className={labelCls}>{formData.paymentType} Provider <span className="text-red-500">*</span></label>
-                    <select name="insuranceProvider" value={formData.insuranceProvider} onChange={handleInputChange} required className={selectCls}>
-                      <option value="">{isLoadingProviders ? "Loading..." : "Select Provider"}</option>
-                      {insuranceProviders.map((p) => <option key={p.listItemId} value={p.name}>{p.name}</option>)}
-                    </select>
+                    <SearchableSelect value={formData.insuranceProvider} onChange={(v) => setFormData((p) => ({ ...p, insuranceProvider: v }))} className={selectCls} preserveCase
+                  options={[{ value: "", label: isLoadingProviders ? "Loading..." : "Select Provider" }, ...insuranceProviders.map((ip) => ({ value: ip.name, label: ip.name }))]} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className={labelCls}>Sub Insurance</label>
@@ -707,12 +683,8 @@ export default function PatientRegistrationModal({
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className={labelCls}>Network Type</label>
-                    <select name="networkType" value={formData.networkType} onChange={handleInputChange} className={selectCls}>
-                      <option value="">Select Network Type</option>
-                      <option value="Open Network">Open Network</option>
-                      <option value="Restricted Network">Restricted Network</option>
-                      <option value="Copay Network">Copay Network</option>
-                    </select>
+                    <SearchableSelect value={formData.networkType} onChange={(v) => setFormData((p) => ({ ...p, networkType: v }))} className={selectCls} preserveCase
+                  options={[{ value: "", label: "Select Network Type" }, ...["Open Network", "Restricted Network", "Copay Network"].map((v) => ({ value: v, label: v }))]} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className={labelCls}>{formData.paymentType} Card No <span className="text-red-500">*</span></label>

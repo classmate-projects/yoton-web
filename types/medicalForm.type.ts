@@ -256,11 +256,3 @@ export interface SavedMedicalFormType {
   handoverToName: string | null;
   handoverFromUserId: string | null;
 }
-
-export interface PendingFormHandoverType {
-  savedMedicalFormId: string;
-  formTemplateName: string;
-  patientName: string | null;
-  fromUserName: string | null;
-  createdAt: string;
-}

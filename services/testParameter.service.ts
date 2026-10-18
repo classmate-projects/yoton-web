@@ -11,10 +11,6 @@ export const TestParameterService = {
     const { data } = await api.post(ENDPOINTS.TEST_PARAMETERS.CREATE, payload);
     return data;
   },
-  update: async (id: string, payload: TestParameterPayload) => {
-    const { data } = await api.put(ENDPOINTS.TEST_PARAMETERS.UPDATE(id), payload);
-    return data;
-  },
   remove: async (id: string) => {
     const { data } = await api.delete(ENDPOINTS.TEST_PARAMETERS.DELETE(id));
     return data;

@@ -13,6 +13,8 @@ interface Props {
   // Offer "Register walk-in patient" (minimal details) when the person isn't on file yet.
   allowQuickAdd?: boolean;
   label?: string;
+  // Lets a form with its own label style keep it (defaults to the standard field label).
+  labelClassName?: string;
   required?: boolean;
   disabled?: boolean;
 }
@@ -31,7 +33,15 @@ const initialFromQuery = (query: string): QuickPatientInitial => {
 // The one patient lookup every department uses: search by MRN, mobile, Emirates ID/passport
 // or name (server-side, so it doesn't need the whole patient list), and register a walk-in
 // with minimal details right here when they're new.
-export default function PatientPicker({ value, onChange, allowQuickAdd = true, label = "Patient", required, disabled }: Props) {
+export default function PatientPicker({
+  value,
+  onChange,
+  allowQuickAdd = true,
+  label = "Patient",
+  labelClassName = "text-sm font-bold text-foreground/90",
+  required,
+  disabled,
+}: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PatientSummaryType[]>([]);
   const [searching, setSearching] = useState(false);
@@ -104,7 +114,7 @@ export default function PatientPicker({ value, onChange, allowQuickAdd = true, l
 
   return (
     <div className="relative" ref={boxRef}>
-      <label className={`text-sm font-bold text-foreground/90 ${required ? "required" : ""}`}>{label}</label>
+      <label className={`${labelClassName} ${required ? "required" : ""}`}>{label}</label>
 
       {value ? (
         <div className="mt-1 flex items-start justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5">
@@ -114,9 +124,13 @@ export default function PatientPicker({ value, onChange, allowQuickAdd = true, l
               <WalkInPatientBadge registrationType={value.registrationType} />
             </div>
             <p className="truncate text-xs text-muted-foreground">
-              MRN {value.opNumber || "—"}
-              {value.phone ? ` · ${value.phoneCode ?? ""}${value.phone}` : ""}
-              {value.nationalID ? ` · ${value.nationalID}` : value.passportNumber ? ` · Passport ${value.passportNumber}` : ""}
+              {[
+                value.opNumber ? `MRN ${value.opNumber}` : null,
+                value.phone ? `${value.phoneCode ?? ""}${value.phone}` : null,
+                value.nationalID || (value.passportNumber ? `Passport ${value.passportNumber}` : null),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
           </div>
           {!disabled && (

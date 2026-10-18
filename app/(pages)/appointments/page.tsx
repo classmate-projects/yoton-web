@@ -12,10 +12,7 @@ import {
   CalendarDays,
   CalendarPlus,
   Check,
-  ChevronLeft,
-  ChevronRight,
   Clock,
-  Eye,
   GraduationCap,
   HelpCircle,
   ListChecks,
@@ -25,8 +22,6 @@ import {
   RotateCcw,
   Search,
   Stethoscope,
-  Trash2,
-  Upload,
   UserCheck,
   Users,
   X,
@@ -35,7 +30,6 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
-import { backendAssetUrl } from "@/lib/backendAsset";
 import PatientRegistrationModal from "@/components/PatientRegistrationModal";
 import { ReceptionService } from "@/services/reception.service";
 import { AuthService } from "@/services/auth.service";
@@ -46,17 +40,19 @@ import {
   AppointmentSlotType,
   DoctorDaySlotsType,
   DoctorGridType,
-  PatientListItemType,
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
 import { PendingFollowUpType } from "@/types/emr.type";
-import { VisitType } from "@/types/visit.type";
 import { SpecializationAvailabilityType } from "@/types/doctorAvailability.type";
 import { useAppointmentRequestSignalR } from "@/hooks/useAppointmentRequestSignalR";
 import { getInitials } from "@/lib/getInitials";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { getCurrencySymbol } from "@/lib/currency";
 import { notifySaveStatus } from "@/lib/saveStatus";
+import { apiErrorMessage } from "@/lib/apiError";
+import PatientPicker from "@/components/patients/PatientPicker";
+import { PatientDocumentsModal } from "@/components/patients/PatientDocuments";
+import { PatientSummaryType } from "@/types/patient.type";
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -132,10 +128,11 @@ export default function Appointments() {
     SpecializationDoctorsType[]
   >([]);
 
-  // ---------------- Date range filter (doctor availability + the lists below it) ----------------
+  // ---------------- Date range (doctor availability + the lists below it) ----------------
+  // Fixed to today - the page no longer has a range picker.
   const todayValue = useMemo(() => toDateInputValue(new Date()), []);
-  const [fromDate, setFromDate] = useState(todayValue);
-  const [toDate, setToDate] = useState(todayValue);
+  const fromDate = todayValue;
+  const toDate = todayValue;
 
   // ---------------- Doctor status dots (schedule + live chat presence) ----------------
   const [doctorAvailability, setDoctorAvailability] = useState<SpecializationAvailabilityType[]>([]);
@@ -152,7 +149,6 @@ export default function Appointments() {
   const [daySlots, setDaySlots] = useState<DoctorDaySlotsType | null>(null);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
 
-  const [patients, setPatients] = useState<PatientListItemType[]>([]);
 
   const [bookingSlot, setBookingSlot] = useState<
     DoctorDaySlotsType["slots"][number] | null
@@ -179,37 +175,16 @@ export default function Appointments() {
   // ---------------- Book Appointment modals ----------------
   const [showBookModal, setShowBookModal] = useState(false);
   const [bookModalDeptFilter, setBookModalDeptFilter] = useState("all");
-  const [patientSearch, setPatientSearch] = useState("");
-  const [selectedPatient, setSelectedPatient] =
-    useState<PatientListItemType | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientSummaryType | null>(null);
   const [showNewPatientModal, setShowNewPatientModal] = useState(false);
   const [notes, setNotes] = useState("");
   const [isFollowUp, setIsFollowUp] = useState(false);
   const [urgencyLevel, setUrgencyLevel] = useState("Routine");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [bookingMode, setBookingMode] = useState<"existing" | "new">("existing");
-  const [newPatientName, setNewPatientName] = useState("");
-  const [newPatientPhone, setNewPatientPhone] = useState("");
-  const [newPatientPhoneCode, setNewPatientPhoneCode] = useState("+91");
-  const [newPatientSex, setNewPatientSex] = useState("");
-  const [newPatientDob, setNewPatientDob] = useState("");
-  const [newPatientEmail, setNewPatientEmail] = useState("");
-  const [newPatientNationalId, setNewPatientNationalId] = useState("");
 
-  const [visitQueue, setVisitQueue] = useState<VisitType[]>([]);
-  const [isLoadingQueue, setIsLoadingQueue] = useState(false);
-  const [queuePage, setQueuePage] = useState(1);
-  const QUEUE_PAGE_SIZE = 5;
-
-  // ---------------- Edit visit (Visit queue "Edit") ----------------
-  // Nurses already see checked-in patients waiting for them on their own Nursing dashboard
-  // (Patient Monitoring's "untouched" list), so a "Start Nursing" shortcut here was a
-  // redundant second door into the same queue. Reception's actual day-to-day need on this
-  // table is fixing a visit that's wrong - moved to the wrong doctor, booked for the wrong
-  // time - so this reuses the same PUT /api/reception/visit/{id} reassignment the Patient
-  // Records "Edit Visit" button already calls, just in a lighter modal (this page already
-  // has every doctor loaded for its own booking grid above, so no extra fetch is needed).
-  const [editingQueueVisit, setEditingQueueVisit] = useState<VisitType | null>(null);
+  // ---------------- Doctor/slot picker for the Edit Appointment modal ----------------
+  // This page already has every doctor loaded for its own booking grid above, so no extra
+  // fetch is needed.
   const [editVisitDoctorSearch, setEditVisitDoctorSearch] = useState("");
   const [editVisitSelectedDoctor, setEditVisitSelectedDoctor] = useState<DoctorGridType | null>(null);
   const [editVisitDate, setEditVisitDate] = useState<Date>(new Date());
@@ -217,7 +192,6 @@ export default function Appointments() {
   const [isLoadingEditVisitSlots, setIsLoadingEditVisitSlots] = useState(false);
   const [editVisitSelectedSlot, setEditVisitSelectedSlot] = useState<AppointmentSlotType | null>(null);
   const [editVisitNotes, setEditVisitNotes] = useState("");
-  const [isSavingEditVisit, setIsSavingEditVisit] = useState(false);
   const [editVisitDeptFilter, setEditVisitDeptFilter] = useState("all");
   const [editVisitSpecFilter, setEditVisitSpecFilter] = useState("all");
 
@@ -255,7 +229,7 @@ export default function Appointments() {
   const [isLoadingTodayQueue, setIsLoadingTodayQueue] = useState(false);
   const [appointmentQueueSearch, setAppointmentQueueSearch] = useState("");
 
-  // ---------------- Edit Appointment (pre-registration, reuses edit-visit modal state) ----------------
+  // ---------------- Edit Appointment (pre-registration, uses the doctor/slot picker state above) ----------------
   const [editingQueueAppointment, setEditingQueueAppointment] = useState<ScheduledAppointmentItem | null>(null);
   const [isSavingEditAppointment, setIsSavingEditAppointment] = useState(false);
   const [editUrgencyLevel, setEditUrgencyLevel] = useState("Routine");
@@ -265,91 +239,13 @@ export default function Appointments() {
   const [revertingVisitId, setRevertingVisitId] = useState<string | null>(null);
 
   // ---------------- Attachments modal ----------------
-  type PatientDocItem = {
-    patientDocumentId: string;
-    documentType: string;
-    filePath: string | null;
-    createdAt: string;
-    visitId: string | null;
-  };
-  const DOC_TYPE_LABELS: Record<string, string> = {
-    ExternalLabReport: "External Lab Report",
-    ExternalRadiologyReport: "External Radiology Report",
-    InsuranceEligibility: "Insurance Eligibility",
-    Other: "Other",
-  };
-  const PREVIEWABLE_EXTS = ["jpg", "jpeg", "png", "gif", "webp", "pdf"];
   const [attachmentPatient, setAttachmentPatient] = useState<{ id: string; name: string } | null>(null);
-  const [patientDocs, setPatientDocs] = useState<PatientDocItem[]>([]);
-  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
-  const [docUploadType, setDocUploadType] = useState("Other");
-  const [docUploadFile, setDocUploadFile] = useState<File | null>(null);
-  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
-  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
-
-  const openAttachments = async (patientId: string, patientName: string) => {
-    setAttachmentPatient({ id: patientId, name: patientName });
-    setPatientDocs([]);
-    setDocUploadFile(null);
-    setDocUploadType("Other");
-    setIsLoadingDocs(true);
-    try {
-      const res = await ReceptionService.getPatientDocuments(patientId);
-      setPatientDocs(res.data ?? []);
-    } catch {
-      toast.error("Failed to load attachments");
-    } finally {
-      setIsLoadingDocs(false);
-    }
-  };
-
-  const refreshDocs = async (patientId: string) => {
-    try {
-      const res = await ReceptionService.getPatientDocuments(patientId);
-      setPatientDocs(res.data ?? []);
-    } catch {
-      // leave stale list rather than wiping it on a refresh failure
-    }
-  };
-
-  const handleUploadDoc = async () => {
-    if (!attachmentPatient || !docUploadFile) return;
-    setIsUploadingDoc(true);
-    try {
-      await ReceptionService.uploadDocument(attachmentPatient.id, { documentType: docUploadType, file: docUploadFile });
-      // Re-fetch via GET so every document in state has the same camelCase shape
-      // as the list endpoint — the upload returns the raw EF entity which may not
-      // match (PascalCase PatientDocumentId vs camelCase patientDocumentId).
-      await refreshDocs(attachmentPatient.id);
-      setDocUploadFile(null);
-      toast.success("Document uploaded");
-    } catch {
-      toast.error("Upload failed");
-    } finally {
-      setIsUploadingDoc(false);
-    }
-  };
-
-  const handleDeleteDoc = async (doc: PatientDocItem) => {
-    if (!attachmentPatient) return;
-    setDeletingDocId(doc.patientDocumentId);
-    try {
-      await ReceptionService.deletePatientDocument(attachmentPatient.id, doc.patientDocumentId);
-      setPatientDocs((prev) => prev.filter((d) => d.patientDocumentId !== doc.patientDocumentId));
-      toast.success("Document deleted");
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(msg ?? "Failed to delete document");
-    } finally {
-      setDeletingDocId(null);
-    }
-  };
+  const openAttachments = (patientId: string, patientName: string) => setAttachmentPatient({ id: patientId, name: patientName });
 
   // ---------------- Overlap booking (add a 2nd / 3rd patient to an already-booked slot) ----------------
   const [overlapSlot, setOverlapSlot] = useState<DoctorDaySlotsType["slots"][number] | null>(null);
   const [overlapDoctorId, setOverlapDoctorId] = useState<string | null>(null);
-  const [overlapPatientSearch, setOverlapPatientSearch] = useState("");
-  const [overlapSelectedPatient, setOverlapSelectedPatient] = useState<PatientListItemType | null>(null);
+  const [overlapSelectedPatient, setOverlapSelectedPatient] = useState<PatientSummaryType | null>(null);
   const [overlapNotes, setOverlapNotes] = useState("");
   const [isSubmittingOverlap, setIsSubmittingOverlap] = useState(false);
 
@@ -489,48 +385,6 @@ export default function Appointments() {
   const isSpecialtyAvailable = (spec: SpecializationDoctorsType) =>
     spec.doctors.some((d) => scheduledDoctorIds.has(d.doctorId));
 
-  // ---------------- Fetch patients (for booking search) ----------------
-  const fetchPatients = async () => {
-    try {
-      const data = await ReceptionService.getAllPatients();
-      setPatients(data.patients ?? []);
-    } catch (error) {
-      console.error("Failed to fetch patients:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchPatients();
-  }, []);
-
-  useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
-
-  // ---------------- Fetch visit queue ----------------
-  const fetchVisitQueue = async () => {
-    try {
-      setIsLoadingQueue(true);
-      const data = await ReceptionService.getVisitQueue();
-      setVisitQueue(data.data ?? []);
-    } catch (error) {
-      console.error("Failed to fetch visit queue:", error);
-    } finally {
-      setIsLoadingQueue(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchVisitQueue();
-    // Long-interval safety net only, not the primary refresh mechanism - every stage
-    // transition (check-in, nursing, doctor, investigations, pharmacy, billing) now
-    // broadcasts visitCheckedIn/visitStatusUpdated (see useSignalRRefetch below), so this
-    // is just insurance against a dropped connection instead of the 20s poll this used to
-    // be running unconditionally for every open tab.
-    const interval = setInterval(fetchVisitQueue, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], fetchVisitQueue);
-
   // ---------------- Fetch scheduled appointments for registration ----------------
   const fetchScheduledAppointments = async (date?: string) => {
     try {
@@ -587,34 +441,12 @@ export default function Appointments() {
             : a
         )
       );
-      fetchVisitQueue();
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(axios.isAxiosError(error) ? error.response?.data?.message || "Registration failed" : "Registration failed");
+      toast.error(apiErrorMessage(error, "Registration failed"));
     } finally {
       setRegisteringId(null);
     }
-  };
-
-  const openEditQueueVisit = (visit: VisitType) => {
-    setEditingQueueVisit(visit);
-    setEditVisitDoctorSearch("");
-    setEditVisitSelectedDoctor(null);
-    setEditVisitDate(visit.appointmentDate ? new Date(visit.appointmentDate) : new Date());
-    setEditVisitDaySlots(null);
-    setEditVisitSelectedSlot(null);
-    setEditVisitNotes(visit.notes ?? "");
-    setEditVisitDeptFilter("all");
-    setEditVisitSpecFilter("all");
-  };
-
-  const closeEditQueueVisit = () => {
-    setEditingQueueVisit(null);
-    setEditVisitSelectedDoctor(null);
-    setEditVisitDaySlots(null);
-    setEditVisitSelectedSlot(null);
-    setEditVisitDeptFilter("all");
-    setEditVisitSpecFilter("all");
   };
 
   // Flattened once from the same `specializations` catalog the main booking grid above
@@ -677,39 +509,6 @@ export default function Appointments() {
     if (editVisitSelectedDoctor) fetchEditVisitSlots(editVisitSelectedDoctor.doctorId, editVisitDate);
   }, [editVisitSelectedDoctor, editVisitDate]);
 
-  const handleSaveEditVisit = async () => {
-    if (!editingQueueVisit || !editVisitSelectedDoctor || !editVisitSelectedSlot) {
-      toast.warning("Please select a doctor and an available time slot");
-      return;
-    }
-    notifySaveStatus("saving");
-    try {
-      setIsSavingEditVisit(true);
-      const data = await ReceptionService.reassignVisit(editingQueueVisit.visitId, {
-        doctorId: editVisitSelectedDoctor.doctorId,
-        appointmentDate: editVisitSelectedSlot.start,
-        notes: editVisitNotes || undefined,
-      });
-      if (data.status === false) {
-        notifySaveStatus("error");
-        toast.error(data.message || "This slot has just been booked. Please choose another slot.");
-        fetchEditVisitSlots(editVisitSelectedDoctor.doctorId, editVisitDate);
-        return;
-      }
-      toast.success(data.message || "Visit updated");
-      notifySaveStatus("saved");
-      closeEditQueueVisit();
-      fetchVisitQueue();
-    } catch (error) {
-      notifySaveStatus("error");
-      toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update visit" : "Failed to update visit"
-      );
-    } finally {
-      setIsSavingEditVisit(false);
-    }
-  };
-
   // ---------------- Edit Appointment handlers ----------------
   const openEditAppointment = (apt: ScheduledAppointmentItem) => {
     setEditingQueueAppointment(apt);
@@ -762,7 +561,7 @@ export default function Appointments() {
       fetchScheduledAppointments(registrationDate);
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update appointment" : "Failed to update appointment");
+      toast.error(apiErrorMessage(error, "Failed to update appointment"));
     } finally {
       setIsSavingEditAppointment(false);
     }
@@ -783,10 +582,9 @@ export default function Appointments() {
       notifySaveStatus("saved");
       fetchTodayAppointmentQueue();
       fetchScheduledAppointments(registrationDate);
-      fetchVisitQueue();
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(axios.isAxiosError(error) ? error.response?.data?.message || "Failed to revert registration" : "Failed to revert registration");
+      toast.error(apiErrorMessage(error, "Failed to revert registration"));
     } finally {
       setRevertingVisitId(null);
     }
@@ -883,8 +681,8 @@ export default function Appointments() {
   }, []);
 
   // A full refetch (rather than a bespoke incremental merge) on either event - same
-  // "just reload the small list" approach this page already uses for the grid/patients/
-  // visit queue above, and simpler to keep correct than hand-merging live payloads.
+  // "just reload the small list" approach this page already uses for the grid above, and
+  // simpler to keep correct than hand-merging live payloads.
   useSignalRRefetch(["followUpAdded", "followUpResolved"], fetchPendingFollowUps);
 
   const openConfirmFollowUp = (followUp: PendingFollowUpType) => {
@@ -943,7 +741,7 @@ export default function Appointments() {
     } catch (error) {
       notifySaveStatus("error");
       toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to confirm follow-up" : "Failed to confirm follow-up"
+        apiErrorMessage(error, "Failed to confirm follow-up")
       );
     } finally {
       setIsConfirmingFollowUp(false);
@@ -958,43 +756,12 @@ export default function Appointments() {
       setPendingFollowUps((prev) => prev.filter((f) => f.followUpId !== followUp.followUpId));
     } catch (error) {
       toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to dismiss follow-up" : "Failed to dismiss follow-up"
+        apiErrorMessage(error, "Failed to dismiss follow-up")
       );
     } finally {
       setDismissingFollowUpId(null);
     }
   };
-
-  // Walk-ins have no appointmentDate, so they fall back to when they were actually checked in -
-  // both are "when this visit happened/is happening", just from whichever source the visit has.
-  const dateFilteredVisitQueue = useMemo(
-    () => visitQueue.filter((v) => isDateWithinRange(v.appointmentDate ?? v.checkedInAt, fromDate, toDate)),
-    [visitQueue, fromDate, toDate]
-  );
-
-  const sortedVisitQueue = useMemo(() => {
-    return [...dateFilteredVisitQueue].sort((a, b) => {
-      const aTime = new Date(a.appointmentDate ?? a.checkedInAt).getTime();
-      const bTime = new Date(b.appointmentDate ?? b.checkedInAt).getTime();
-      return aTime - bTime;
-    });
-  }, [dateFilteredVisitQueue]);
-
-  const queueTotalPages = Math.max(
-    1,
-    Math.ceil(sortedVisitQueue.length / QUEUE_PAGE_SIZE)
-  );
-
-  useEffect(() => {
-    if (queuePage > queueTotalPages) {
-      setQueuePage(queueTotalPages);
-    }
-  }, [queuePage, queueTotalPages]);
-
-  const paginatedVisitQueue = sortedVisitQueue.slice(
-    (queuePage - 1) * QUEUE_PAGE_SIZE,
-    queuePage * QUEUE_PAGE_SIZE
-  );
 
   // ---------------- Fetch slots for selected doctor + date ----------------
   const fetchSlots = async (doctorId: string, date: Date) => {
@@ -1078,7 +845,6 @@ export default function Appointments() {
     if (slot.isPast) return;
     if (slot.isAvailable) {
       setBookingSlot(slot);
-      setPatientSearch("");
       setSelectedPatient(null);
       setNotes("");
       setIsFollowUp(false);
@@ -1087,19 +853,6 @@ export default function Appointments() {
       setCancelSlot(slot);
     }
   };
-
-  const filteredPatients = patientSearch.trim()
-    ? patients.filter(
-        (p) =>
-          p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.phone?.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.opNumber?.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.opId?.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.nationalID?.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.passportNumber?.toLowerCase().includes(patientSearch.toLowerCase())
-      )
-    : [];
-
 
   const handleConfirmBooking = async () => {
     if (!bookingSlot || !selectedDoctor) return;
@@ -1137,12 +890,10 @@ export default function Appointments() {
         setBookingSlot(null);
         setShowBookModal(false);
         setSelectedDoctor(null);
-        setPatientSearch("");
         setSelectedPatient(null);
         setNotes("");
         setIsFollowUp(false);
         setUrgencyLevel("Routine");
-        setBookingMode("existing");
       }
       fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
@@ -1185,7 +936,6 @@ export default function Appointments() {
   const openOverlapBooking = (slot: DoctorDaySlotsType["slots"][number], doctorId: string) => {
     setOverlapSlot(slot);
     setOverlapDoctorId(doctorId);
-    setOverlapPatientSearch("");
     setOverlapSelectedPatient(null);
     setOverlapNotes("");
     setCancelSlot(null);
@@ -1219,7 +969,7 @@ export default function Appointments() {
       if (selectedDoctor) fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(axios.isAxiosError(error) ? error.response?.data?.message || "Failed to add patient" : "Failed to add patient");
+      toast.error(apiErrorMessage(error, "Failed to add patient"));
     } finally {
       setIsSubmittingOverlap(false);
     }
@@ -2141,7 +1891,7 @@ export default function Appointments() {
                 </p>
               </div>
               <button
-                onClick={() => { setBookingSlot(null); setBookingMode("existing"); setNewPatientName(""); setNewPatientPhone(""); setNewPatientPhoneCode("+91"); setNewPatientSex(""); setNewPatientDob(""); setNewPatientEmail(""); setNewPatientNationalId(""); }}
+                onClick={() => setBookingSlot(null)}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <X size={20} />
@@ -2166,45 +1916,8 @@ export default function Appointments() {
                 </button>
               </div>
 
-              {/* Patient search */}
-              <div className="relative">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-semibold text-foreground/90">Patient</label>
-                </div>
-                <input
-                  type="text"
-                  value={patientSearch}
-                  onChange={(event) => {
-                    setPatientSearch(event.target.value);
-                    setSelectedPatient(null);
-                  }}
-                  placeholder="Search by name, phone, MRN, national ID, or passport..."
-                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
-                />
-                {!selectedPatient && filteredPatients.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-                    {filteredPatients.map((patient) => (
-                      <button
-                        key={patient.opId}
-                        onClick={() => {
-                          setSelectedPatient(patient);
-                          setPatientSearch(patient.name);
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-primary/5 border-b border-border last:border-b-0 transition-colors"
-                      >
-                        <div className="font-medium text-foreground">{patient.name}</div>
-                        <div className="text-sm text-muted-foreground">{patient.opNumber || patient.opId} • {patient.phone}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {selectedPatient && (
-                  <div className="mt-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
-                    <p className="text-sm text-foreground/90"><span className="font-semibold">Selected: </span>{selectedPatient.name}</p>
-                    <p className="text-xs text-muted-foreground">{selectedPatient.opNumber || selectedPatient.opId} • {selectedPatient.phone}</p>
-                  </div>
-                )}
-              </div>
+              {/* Patient search - new patients use "New patient" (full registration) above */}
+              <PatientPicker value={selectedPatient} onChange={setSelectedPatient} allowQuickAdd={false} required />
 
               <div>
                 <label className="block text-sm font-semibold text-foreground/90 mb-2">Notes</label>
@@ -2375,42 +2088,7 @@ export default function Appointments() {
             </div>
 
             <div className="flex flex-col gap-4">
-              <div className="relative">
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">Patient</label>
-                <input
-                  type="text"
-                  value={overlapPatientSearch}
-                  onChange={(e) => { setOverlapPatientSearch(e.target.value); setOverlapSelectedPatient(null); }}
-                  placeholder="Search by name, phone, MRN..."
-                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-purple-500 text-foreground"
-                />
-                {!overlapSelectedPatient && overlapPatientSearch.trim() && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-                    {patients
-                      .filter((p) =>
-                        p.name.toLowerCase().includes(overlapPatientSearch.toLowerCase()) ||
-                        p.phone?.toLowerCase().includes(overlapPatientSearch.toLowerCase()) ||
-                        p.opNumber?.toLowerCase().includes(overlapPatientSearch.toLowerCase())
-                      )
-                      .map((patient) => (
-                        <button
-                          key={patient.opId}
-                          onClick={() => { setOverlapSelectedPatient(patient); setOverlapPatientSearch(patient.name); }}
-                          className="w-full text-left px-4 py-2 hover:bg-purple-50 dark:hover:bg-purple-950/30 border-b border-border last:border-b-0 transition-colors"
-                        >
-                          <div className="font-medium text-foreground">{patient.name}</div>
-                          <div className="text-xs text-muted-foreground">{patient.opNumber || patient.opId} · {patient.phone}</div>
-                        </button>
-                      ))}
-                  </div>
-                )}
-                {overlapSelectedPatient && (
-                  <div className="mt-2 p-3 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900">
-                    <p className="text-sm font-semibold text-foreground">{overlapSelectedPatient.name}</p>
-                    <p className="text-xs text-muted-foreground">{overlapSelectedPatient.opNumber || overlapSelectedPatient.opId} · {overlapSelectedPatient.phone}</p>
-                  </div>
-                )}
-              </div>
+              <PatientPicker value={overlapSelectedPatient} onChange={setOverlapSelectedPatient} allowQuickAdd={false} required />
 
               <div>
                 <label className="block text-sm font-semibold text-foreground/90 mb-2">Notes (optional)</label>
@@ -2728,181 +2406,6 @@ export default function Appointments() {
         </div>
       )}
 
-      {editingQueueVisit && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-border">
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-semibold text-foreground">Edit visit</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {editingQueueVisit.patientName ?? "Unknown"}
-                </p>
-              </div>
-              <button
-                onClick={closeEditQueueVisit}
-                className="text-muted-foreground hover:text-foreground cursor-pointer"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Department</label>
-                  <SearchableSelect
-                    value={editVisitDeptFilter}
-                    onChange={(v) => {
-                      setEditVisitDeptFilter(v);
-                      setEditVisitSpecFilter("all");
-                      setEditVisitSelectedDoctor(null);
-                    }}
-                    options={[
-                      { value: "all", label: "All departments" },
-                      ...editVisitDeptOptions.map((d) => ({ value: d.id, label: d.name })),
-                    ]}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Specialty</label>
-                  <SearchableSelect
-                    value={editVisitSpecFilter}
-                    onChange={(v) => {
-                      setEditVisitSpecFilter(v);
-                      setEditVisitSelectedDoctor(null);
-                    }}
-                    options={[
-                      { value: "all", label: "All specialties" },
-                      ...editVisitSpecOptions.map((s) => ({ value: s.id, label: s.name })),
-                    ]}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">Doctor</label>
-                <input
-                  type="text"
-                  value={editVisitDoctorSearch}
-                  onChange={(event) => {
-                    setEditVisitDoctorSearch(event.target.value);
-                    setEditVisitSelectedDoctor(null);
-                  }}
-                  placeholder="Search by doctor name or specialization..."
-                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-blue-500 text-foreground"
-                />
-
-                {editVisitSelectedDoctor ? (
-                  <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-900">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{editVisitSelectedDoctor.name}</p>
-                      <p className="text-xs text-muted-foreground">{editVisitSelectedDoctor.specializationName}</p>
-                    </div>
-                    <button
-                      onClick={() => setEditVisitSelectedDoctor(null)}
-                      className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                    >
-                      Change
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                    {editVisitDoctorResults.length > 0 ? (
-                      editVisitDoctorResults.map((doctor) => (
-                        <button
-                          key={doctor.doctorId}
-                          onClick={() => setEditVisitSelectedDoctor(doctor)}
-                          className="w-full text-left px-4 py-2 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer flex items-center gap-2"
-                        >
-                          <Stethoscope size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
-                          <span>
-                            <span className="font-medium text-foreground">{doctor.name}</span>
-                            <span className="text-xs text-muted-foreground ml-2">{doctor.specializationName}</span>
-                          </span>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="px-4 py-3 text-sm text-muted-foreground">No doctors found.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {editVisitSelectedDoctor && (
-                <>
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground/90 mb-2">Date</label>
-                    <DatePicker
-                      value={toDateInputValue(editVisitDate)}
-                      min={toDateInputValue(new Date())}
-                      onChange={(v) => v && setEditVisitDate(new Date(`${v}T00:00:00`))}
-                      dateFormat="dd-MM-yyyy"
-                      placeholder="DD-MM-YYYY"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground/90 mb-2">Available slots</label>
-                    {isLoadingEditVisitSlots ? (
-                      <LoadingSpinner />
-                    ) : (editVisitDaySlots?.slots.filter((s) => s.isAvailable).length ?? 0) === 0 ? (
-                      <p className="text-sm text-muted-foreground">No open slots for this doctor on this day.</p>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-2 max-h-56 overflow-y-auto">
-                        {editVisitDaySlots!.slots
-                          .filter((s) => s.isAvailable)
-                          .map((slot) => (
-                            <button
-                              key={slot.start}
-                              type="button"
-                              onClick={() => setEditVisitSelectedSlot(slot)}
-                              className={`rounded-lg border px-2 py-2 text-xs font-semibold transition-colors cursor-pointer ${
-                                editVisitSelectedSlot?.start === slot.start
-                                  ? "border-primary bg-primary text-white"
-                                  : "border-emerald-600/30 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400"
-                              }`}
-                            >
-                              <Clock size={13} className="inline mr-1" />
-                              {format(new Date(slot.start), "h:mm a")}
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground/90 mb-2">Notes</label>
-                    <textarea
-                      value={editVisitNotes}
-                      onChange={(event) => setEditVisitNotes(event.target.value)}
-                      rows={2}
-                      placeholder="Reason for visit (optional)"
-                      className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-blue-500 text-foreground resize-none"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={closeEditQueueVisit}
-                className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveEditVisit}
-                disabled={isSavingEditVisit || !editVisitSelectedDoctor || !editVisitSelectedSlot}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors cursor-pointer"
-              >
-                {isSavingEditVisit ? "Saving..." : "Save changes"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* New Patient Registration Modal */}
       <PatientRegistrationModal
         isOpen={showNewPatientModal}
@@ -2923,119 +2426,7 @@ export default function Appointments() {
 
       {/* ---- Attachments modal ---- */}
       {attachmentPatient && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col border border-border">
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-              <div>
-                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <Paperclip size={16} className="text-primary" /> Attachments
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">{attachmentPatient.name}</p>
-              </div>
-              <button
-                onClick={() => setAttachmentPatient(null)}
-                className="p-1.5 rounded-full hover:bg-muted transition-colors cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Document list */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-2">
-              {isLoadingDocs ? (
-                <div className="flex justify-center py-8"><LoadingSpinner /></div>
-              ) : patientDocs.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No documents attached yet.</p>
-              ) : (
-                patientDocs.map((doc) => {
-                  const fileUrl = backendAssetUrl(doc.filePath);
-                  const ext = doc.filePath?.split(".").pop()?.toLowerCase() ?? "";
-                  const canPreview = PREVIEWABLE_EXTS.includes(ext);
-                  return (
-                    <div key={doc.patientDocumentId} className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 px-3 py-2.5">
-                      <Paperclip size={14} className="shrink-0 text-muted-foreground" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {DOC_TYPE_LABELS[doc.documentType] ?? doc.documentType}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(doc.createdAt), "dd MMM yyyy, h:mm a")}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {fileUrl && canPreview && (
-                          <a
-                            href={fileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="View"
-                            className="flex items-center justify-center h-7 w-7 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
-                          >
-                            <Eye size={13} />
-                          </a>
-                        )}
-                        {fileUrl && !canPreview && (
-                          <a
-                            href={fileUrl}
-                            download
-                            title="Download"
-                            className="flex items-center justify-center h-7 w-7 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
-                          >
-                            <Eye size={13} />
-                          </a>
-                        )}
-                        <button
-                          onClick={() => handleDeleteDoc(doc)}
-                          disabled={deletingDocId === doc.patientDocumentId}
-                          title="Delete"
-                          className="flex items-center justify-center h-7 w-7 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors disabled:opacity-50 cursor-pointer"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Upload form */}
-            <div className="border-t border-border px-5 py-4 shrink-0 flex flex-col gap-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add document</p>
-              <div className="flex items-center gap-2">
-                <select
-                  value={docUploadType}
-                  onChange={(e) => setDocUploadType(e.target.value)}
-                  className="h-9 flex-1 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  {Object.entries(DOC_TYPE_LABELS).map(([val, label]) => (
-                    <option key={val} value={val}>{label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="flex-1 flex items-center gap-2 h-9 rounded-lg border border-dashed border-border bg-muted/30 hover:bg-muted/50 px-3 text-sm text-muted-foreground cursor-pointer transition-colors">
-                  <Upload size={14} />
-                  <span className="truncate">{docUploadFile ? docUploadFile.name : "Choose file…"}</span>
-                  <input
-                    type="file"
-                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-                    className="hidden"
-                    onChange={(e) => setDocUploadFile(e.target.files?.[0] ?? null)}
-                  />
-                </label>
-                <button
-                  onClick={handleUploadDoc}
-                  disabled={!docUploadFile || isUploadingDoc}
-                  className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                >
-                  {isUploadingDoc ? "Uploading…" : "Upload"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PatientDocumentsModal patient={attachmentPatient} onClose={() => setAttachmentPatient(null)} />
       )}
     </div>
   );

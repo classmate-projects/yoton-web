@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, Suspense } from "react";
 import EmptyState from "@/components/EmptyState";
 import { useRouter, useSearchParams } from "next/navigation";
-import axios from "axios";
 import { toast } from "sonner";
 import { MdPayment, MdAdd } from "react-icons/md";
 import HintTooltip from "@/components/HintTooltip";
@@ -27,12 +26,7 @@ import Link from "next/link";
 import { FileBarChart, Printer, X } from "lucide-react";
 import BillPrintout from "@/components/billing/BillPrintout";
 import BillLines, { AddBillLineForm } from "@/components/billing/BillLines";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
-
-const formatDateTime = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleString() : "—";
+import { apiErrorMessage } from "@/lib/apiError";
 
 const currency = (value: number) => formatCurrency(value);
 // " (10%)" next to Discount/Tax - empty for older flat-amount bills, which have no percent.
@@ -172,7 +166,7 @@ function BillingPageInner() {
       setPendingBills(pendingRes.data ?? []);
       setAllBills(allRes.data ?? []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load bills"));
+      toast.error(apiErrorMessage(error, "Failed to load bills"));
     } finally {
       setIsLoading(false);
     }
@@ -329,7 +323,7 @@ function BillingPageInner() {
       fetchAll();
       await fetchChargeableItems(detailBill);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add item"));
+      toast.error(apiErrorMessage(error, "Failed to add item"));
     } finally {
       setAddingSourceId(null);
     }
@@ -353,7 +347,7 @@ function BillingPageInner() {
       }
       toast.success(`${added} item${added === 1 ? "" : "s"} added to the bill`);
     } catch (error) {
-      toast.error(errorMessage(error, added > 0 ? `Added ${added}, then failed` : "Failed to add items"));
+      toast.error(apiErrorMessage(error, added > 0 ? `Added ${added}, then failed` : "Failed to add items"));
     } finally {
       if (latest) setDetailBill(latest);
       fetchAll();
@@ -416,7 +410,7 @@ function BillingPageInner() {
       setDetailBill(data.data);
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(errorMessage(error, "Failed to create bill"));
+      toast.error(apiErrorMessage(error, "Failed to create bill"));
     } finally {
       setIsSubmitting(false);
     }
@@ -442,7 +436,7 @@ function BillingPageInner() {
       fetchAll();
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(errorMessage(error, "Failed to record payment"));
+      toast.error(apiErrorMessage(error, "Failed to record payment"));
     } finally {
       setIsPaying(false);
     }
@@ -458,7 +452,7 @@ function BillingPageInner() {
       fetchWalkInAwaiting();
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to open bill"));
+      toast.error(apiErrorMessage(error, "Failed to open bill"));
     } finally {
       setIsOpeningWalkIn(null);
     }
@@ -472,7 +466,7 @@ function BillingPageInner() {
       fetchAwaiting();
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to open bill"));
+      toast.error(apiErrorMessage(error, "Failed to open bill"));
     } finally {
       setIsOpeningVisit(null);
     }
@@ -499,7 +493,7 @@ function BillingPageInner() {
       if (cancelTarget.visitId) fetchAwaiting();
       else fetchWalkInAwaiting();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to cancel bill"));
+      toast.error(apiErrorMessage(error, "Failed to cancel bill"));
     } finally {
       setIsCancelling(false);
     }

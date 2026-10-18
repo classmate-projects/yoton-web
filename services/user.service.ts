@@ -40,10 +40,6 @@ export const UserService = {
         const { data } = await api.get(ENDPOINTS.USER.GET_ASSIGNED_DOCTORS)
         return data;
     },
-    get_scheduled_doctors: async (doctorId: string) => {
-        const { data } = await api.get(ENDPOINTS.USER.GET_SCHEDULED_DOCTOR(doctorId))
-        return data;
-    },
     create_assign_doctor: async (payload: UserAssignedDoctorCreateType) => {
         const { data } = await api.post(ENDPOINTS.USER.CREATE_ASSIGN_DOCTOR, payload)
         return data;

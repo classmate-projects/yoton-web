@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import axios from "axios";
 import { toast } from "sonner";
 import { Pencil, Trash2, Plus } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
@@ -10,9 +9,7 @@ import { BillingService } from "@/services/billing.service";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { formatCurrency } from "@/lib/currency";
 import { BILL_ITEM_CATEGORIES, BillItemCategory, BillItemType, BillType } from "@/types/billing.type";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
+import { apiErrorMessage } from "@/lib/apiError";
 
 const CATEGORY_OPTIONS = BILL_ITEM_CATEGORIES.map((c) => ({ value: c, label: c }));
 
@@ -94,7 +91,7 @@ export function AddBillLineForm({ bill, onBillUpdated }: BillLinesProps) {
       onBillUpdated(data.data);
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(errorMessage(error, "Failed to add item"));
+      toast.error(apiErrorMessage(error, "Failed to add item"));
     } finally {
       setIsAdding(false);
     }
@@ -172,7 +169,7 @@ export default function BillLines({ bill, onBillUpdated }: BillLinesProps) {
       setEditing(null);
       onBillUpdated(data.data);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update line"));
+      toast.error(apiErrorMessage(error, "Failed to update line"));
     } finally {
       setIsSaving(false);
     }
@@ -187,7 +184,7 @@ export default function BillLines({ bill, onBillUpdated }: BillLinesProps) {
       setRemoving(null);
       onBillUpdated(data.data);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to remove line"));
+      toast.error(apiErrorMessage(error, "Failed to remove line"));
     } finally {
       setIsSaving(false);
     }

@@ -12,6 +12,7 @@ import {
   MappedField,
   SaveListTemplatePayload,
 } from "@/types/configList.type";
+import SearchableSelect, { compactSelectClass } from "@/components/SearchableSelect";
 
 const DATA_TYPES: { value: ColumnDataType; label: string }[] = [
   { value: "Text", label: "Text" },
@@ -120,7 +121,6 @@ export default function TemplateBuilderModal({ listType, listLabel, onClose, onS
       }
     };
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listType]);
 
   const loadHistory = async () => {
@@ -284,29 +284,22 @@ export default function TemplateBuilderModal({ listType, listLabel, onClose, onS
                       />
 
                       {/* Data type */}
-                      <select
+                      <SearchableSelect
                         value={col.dataType}
-                        onChange={(e) => updateColumn(col.id, { dataType: e.target.value as ColumnDataType })}
-                        className="h-8 text-xs"
-                      >
-                        {DATA_TYPES.map((t) => (
-                          <option key={t.value} value={t.value}>{t.label}</option>
-                        ))}
-                      </select>
+                        onChange={(v) => updateColumn(col.id, { dataType: v as ColumnDataType })}
+                        options={DATA_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+                        className={compactSelectClass}
+                        preserveCase
+                      />
 
                       {/* Maps to */}
-                      <select
+                      <SearchableSelect
                         value={col.mappedField ?? "null"}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          updateColumn(col.id, { mappedField: v === "null" ? null : (v as MappedField) });
-                        }}
-                        className="h-8 text-xs"
-                      >
-                        {MAPPED_FIELDS.map((f) => (
-                          <option key={f.value} value={f.value}>{f.label}</option>
-                        ))}
-                      </select>
+                        onChange={(v) => updateColumn(col.id, { mappedField: v === "null" ? null : (v as MappedField) })}
+                        options={MAPPED_FIELDS.map((f) => ({ value: f.value, label: f.label }))}
+                        className={compactSelectClass}
+                        preserveCase
+                      />
 
                       {/* Not null / mandatory */}
                       <div className="flex items-center justify-center">

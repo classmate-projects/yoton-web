@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ToothRecord, ToothCondition, ToothSurface, ComplexityLevel, ToothNote, ToothTreatment } from "@/types/dental.type";
 import { CONDITION_COLOR, surfaceCondition, surfacesUnavailableReason, withoutCondition } from "./surfaceFindings";
 import { Trash2, Plus } from "lucide-react";
+import SearchableSelect, { compactSelectClass } from "@/components/SearchableSelect";
 
 const ALL_CONDITIONS: ToothCondition[] = [
   "Healthy", "Caries", "Filled", "Missing", "Implant",
@@ -334,15 +335,19 @@ export default function ToothCaseSheet({ toothNumber, record, onChange }: Props)
             {treatments.map((t, i) => (
               <div key={i} className="flex items-center gap-2 px-3 py-2">
                 <p className="flex-1 text-sm">{t.detail}</p>
-                <select
-                  value={t.status}
-                  onChange={e => updateTreatmentStatus(i, e.target.value as ToothTreatment["status"])}
-                  className="text-xs border border-border rounded px-1 py-0.5 bg-background"
-                >
-                  <option value="Planned">Planned</option>
-                  <option value="InProgress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                </select>
+                <div className="w-32 shrink-0">
+                  <SearchableSelect
+                    value={t.status}
+                    onChange={(v) => updateTreatmentStatus(i, v as ToothTreatment["status"])}
+                    options={[
+                      { value: "Planned", label: "Planned" },
+                      { value: "InProgress", label: "In Progress" },
+                      { value: "Completed", label: "Completed" },
+                    ]}
+                    className={compactSelectClass}
+                    preserveCase
+                  />
+                </div>
                 <span className="text-xs text-muted-foreground shrink-0">{t.date}</span>
                 <button type="button" onClick={() => removeTreatment(i)}
                   className="text-muted-foreground hover:text-destructive transition-colors">

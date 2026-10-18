@@ -13,10 +13,6 @@ export async function createOrderSet(name: string): Promise<OrderSetDto> {
   return res.data.data;
 }
 
-export async function renameOrderSet(id: string, name: string): Promise<void> {
-  await api.put(`${BASE}/${id}`, { name });
-}
-
 export async function deleteOrderSet(id: string): Promise<void> {
   await api.delete(`${BASE}/${id}`);
 }

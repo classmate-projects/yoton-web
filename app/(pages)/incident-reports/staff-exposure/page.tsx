@@ -12,6 +12,7 @@ import { notifySaveStatus } from "@/lib/saveStatus";
 import { StaffExposureCreatePayload, StaffExposureType } from "@/types/staffExposure.type";
 import { DepartmentTypes } from "@/types/department.type";
 import SearchableSelect from "@/components/SearchableSelect";
+import DateTimePicker from "@/components/DateTimePicker";
 
 interface StaffOption {
   id: string;
@@ -286,11 +287,11 @@ export default function StaffExposurePage() {
                 ...staffOptions.map((s) => ({ value: s.id, label: s.name })),
               ]}
             />
-            <input
-              type="datetime-local"
+            <DateTimePicker
               value={form.eventDateTime}
-              onChange={(e) => setForm((p) => ({ ...p, eventDateTime: e.target.value }))}
-              className="h-10 text-sm"
+              onChange={(v) => setForm((p) => ({ ...p, eventDateTime: v }))}
+              dateClassName="flex h-10 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-background px-3 text-sm text-foreground focus-within:ring-2 focus-within:ring-primary"
+              timeClassName="h-10 w-28 shrink-0 text-sm"
             />
             <input
               type="text"

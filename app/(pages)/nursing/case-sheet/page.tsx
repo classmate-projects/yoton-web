@@ -2,16 +2,13 @@
 
 import { useEffect, useState } from "react";
 import EmptyState from "@/components/EmptyState";
-import axios from "axios";
 import { toast } from "sonner";
 import { FileText, Search } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import PatientEmrModal from "@/components/PatientEmrModal";
 import { EmrService } from "@/services/emr.service";
 import { EmrPatientListItem } from "@/types/emr.type";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
+import { apiErrorMessage } from "@/lib/apiError";
 
 // Fully read-only render of a patient's record — reuses the same EMR summary endpoint
 // the Doctor Workbench and Nurse Workbench's "Clinical Snapshot" already call. No inputs,
@@ -30,7 +27,7 @@ export default function ElectronicMedicalRecordPage() {
   useEffect(() => {
     EmrService.getPatients()
       .then((res) => setPatients(res.data || []))
-      .catch((error) => toast.error(errorMessage(error, "Failed to load patients")))
+      .catch((error) => toast.error(apiErrorMessage(error, "Failed to load patients")))
       .finally(() => setIsLoadingPatients(false));
   }, []);
 

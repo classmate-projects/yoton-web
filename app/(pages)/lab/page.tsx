@@ -3,14 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
-import axios from "axios";
 import { toast } from "sonner";
 import { FlaskConical, Pencil, Settings, Trash2, Undo2 } from "lucide-react";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
-import { toDateInputValue } from "@/lib/date";
+import { toDateInputValue, formatDateTime, formatDate } from "@/lib/date";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import SearchableSelect from "@/components/SearchableSelect";
 import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
@@ -32,15 +31,7 @@ import { backendAssetUrl } from "@/lib/backendAsset";
 import PatientPicker, { patientFromOrder } from "@/components/patients/PatientPicker";
 import PatientStreamTabs, { type PatientStream } from "@/components/patients/PatientStreamTabs";
 import { BillStatusBadge, WalkInPatientBadge, billedLockTitle } from "@/components/patients/PatientBadges";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
-
-const formatDateTime = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleString() : "—";
-
-const formatDate = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleDateString() : "—";
+import { apiErrorMessage } from "@/lib/apiError";
 
 const STATUS_FLOW = ["Requested", "SampleCollected", "Processing", "Completed", "Delivered"];
 
@@ -143,7 +134,7 @@ export default function LaboratoryPage() {
       setSummary(summaryRes.data ?? null);
       setRequests(listRes.data ?? []);
     } catch (error) {
-      if (!silent) toast.error(errorMessage(error, "Failed to load lab requests"));
+      if (!silent) toast.error(apiErrorMessage(error, "Failed to load lab requests"));
     } finally {
       if (!silent) setIsLoading(false);
     }
@@ -230,7 +221,7 @@ export default function LaboratoryPage() {
           toast.success("Lab request removed");
           fetchAll();
         } catch (error) {
-          toast.error(errorMessage(error, "Failed to remove lab request"));
+          toast.error(apiErrorMessage(error, "Failed to remove lab request"));
         }
       }
     );
@@ -271,7 +262,7 @@ export default function LaboratoryPage() {
       fetchAll();
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(errorMessage(error, editingLabRequestId ? "Failed to correct lab request" : "Failed to create lab request"));
+      toast.error(apiErrorMessage(error, editingLabRequestId ? "Failed to correct lab request" : "Failed to create lab request"));
     } finally {
       setIsSubmitting(false);
     }
@@ -294,7 +285,7 @@ export default function LaboratoryPage() {
       setBarcodeLabId(labRequestId);
       await fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to collect sample"));
+      toast.error(apiErrorMessage(error, "Failed to collect sample"));
     } finally {
       setCollectingId(null);
     }
@@ -307,7 +298,7 @@ export default function LaboratoryPage() {
       toast.success("Reverted to Requested — the doctor can edit it again");
       await fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to revert request"));
+      toast.error(apiErrorMessage(error, "Failed to revert request"));
     } finally {
       setRevertingId(null);
     }
@@ -346,7 +337,7 @@ export default function LaboratoryPage() {
       toast.success(data.message || "Status updated");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update status"));
+      toast.error(apiErrorMessage(error, "Failed to update status"));
     }
   };
 
@@ -358,7 +349,7 @@ export default function LaboratoryPage() {
       toast.success(data.message || "Result uploaded");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to upload result"));
+      toast.error(apiErrorMessage(error, "Failed to upload result"));
     } finally {
       setUploadingId(null);
     }
@@ -382,7 +373,7 @@ export default function LaboratoryPage() {
       });
       setResultEntryValues(prefill);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load test parameters"));
+      toast.error(apiErrorMessage(error, "Failed to load test parameters"));
       setResultEntryParameters([]);
     } finally {
       setIsLoadingResultParams(false);
@@ -416,7 +407,7 @@ export default function LaboratoryPage() {
       fetchAll();
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(errorMessage(error, "Failed to save result values"));
+      toast.error(apiErrorMessage(error, "Failed to save result values"));
     } finally {
       setIsSavingResultValues(false);
     }

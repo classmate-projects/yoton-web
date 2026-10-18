@@ -14,8 +14,3 @@ export interface TopDoctor {
   userImage: string | null;
   count: number;
 }
-
-export interface TopDoctorsResponse {
-  message: string;
-  data: TopDoctor[];
-}

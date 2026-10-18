@@ -55,10 +55,6 @@ export const SUGGESTED_ROLE_ICON_KEYS = [
   "weight-scale",
 ];
 
-export function findRoleIcon(iconKey: string): IconDefinition | undefined {
-  return ICON_BY_NAME.get(iconKey);
-}
-
 export function getRoleIcon(iconKey: string | null | undefined): IconDefinition {
   return (iconKey && ICON_BY_NAME.get(iconKey)) || ICON_BY_NAME.get(DEFAULT_ROLE_ICON_KEY)!;
 }

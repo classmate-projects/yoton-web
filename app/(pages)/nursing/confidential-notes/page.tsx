@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
-import axios from "axios";
 import { toast } from "sonner";
 import { Lock, Pencil, Save, Trash2 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -15,12 +14,8 @@ import { notifySaveStatus } from "@/lib/saveStatus";
 import { EmrPatientListItem } from "@/types/emr.type";
 import { ConfidentialNoteType } from "@/types/nursing.type";
 import SearchableSelect from "@/components/SearchableSelect";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
-
-const formatDateTime = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleString() : "—";
+import { apiErrorMessage } from "@/lib/apiError";
+import { formatDateTime } from "@/lib/date";
 
 // Nurse-only — no admin route, matching the backend, which hard-filters these to the
 // creator and refuses even admin access. See NursingController's confidential-note
@@ -52,7 +47,7 @@ export default function ConfidentialNotesPage() {
     setIsLoadingNotes(true);
     NursingService.getConfidentialNotes()
       .then((res) => setNotes(res.data || []))
-      .catch((error) => toast.error(errorMessage(error, "Failed to load confidential notes")))
+      .catch((error) => toast.error(apiErrorMessage(error, "Failed to load confidential notes")))
       .finally(() => setIsLoadingNotes(false));
   };
 
@@ -88,7 +83,7 @@ export default function ConfidentialNotesPage() {
       fetchNotes();
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(errorMessage(error, "Failed to save confidential note"));
+      toast.error(apiErrorMessage(error, "Failed to save confidential note"));
     } finally {
       setSaving(false);
     }
@@ -111,7 +106,7 @@ export default function ConfidentialNotesPage() {
         toast.success("Confidential note removed");
         fetchNotes();
       } catch (error) {
-        toast.error(errorMessage(error, "Failed to remove confidential note"));
+        toast.error(apiErrorMessage(error, "Failed to remove confidential note"));
       }
     });
   };

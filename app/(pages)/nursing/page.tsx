@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Ban,
   Bandage,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -43,6 +44,7 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import HintTooltip from "@/components/HintTooltip";
 import { notifySaveStatus } from "@/lib/saveStatus";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import PasswordInput from "@/components/PasswordInput";
 import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
@@ -324,6 +326,8 @@ function NurseWorkbenchInner() {
 
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const pendingScrollSection = useRef<string | null>(null);
+  // Filled in once the triage's auto-save is declared further down (see triageAutoSave).
+  const flushTriageRef = useRef<() => Promise<boolean>>(async () => true);
   const [summary, setSummary] = useState<PatientSummaryType | null>(null);
   const [chart, setChart] = useState<NursingChartType | null>(null);
   const [encounterId, setEncounterId] = useState<string | null>(null);
@@ -345,7 +349,6 @@ function NurseWorkbenchInner() {
   // Which vitals are toggled "patient refused" - key present (even with an empty-string
   // reason, before the nurse fills it in) means refused; absence means recorded normally.
   const [triageRefusals, setTriageRefusals] = useState<Partial<Record<TriageVitalField, string>>>({});
-  const [savingTriage, setSavingTriage] = useState(false);
   // Collapsed by default - triage is a one-time intake assessment, not something a nurse
   // reopens on every visit to this patient's chart the way vitals/tasks are, so it shouldn't
   // eat the top of the screen unless a nurse actually clicks in to use or review it.
@@ -624,7 +627,9 @@ function NurseWorkbenchInner() {
     if (patientIdParam) {
       openPatient(patientIdParam);
     } else if (selectedPatientId) {
-      // URL params cleared by browser back button — return to workbench.
+      // URL params cleared by browser back button — return to workbench, sending any pending
+      // triage edits first.
+      void flushTriageRef.current();
       setSelectedPatientId(null);
       setSummary(null);
       setChart(null);
@@ -638,6 +643,14 @@ function NurseWorkbenchInner() {
 
   const endEncounter = async () => {
     if (!encounterId) return;
+    // The triage saves itself - its last edits must be in before the encounter goes to the doctor.
+    if (!(await triageAutoSave.flush())) {
+      toast.error("The triage isn't saved yet", {
+        description:
+          "The encounter wasn't ended. Give every refused vital a reason, or wait for the save problem shown above to clear, then try again.",
+      });
+      return;
+    }
     try {
       setIsEndingEncounter(true);
       await NursingService.endEncounter(encounterId);
@@ -705,23 +718,90 @@ function NurseWorkbenchInner() {
     if (patientIdParam) router.push(pathname);
   };
 
+  // ---------------- TRIAGE (auto-saved) ----------------
+  // One triage per encounter, overwritten on every save - so it saves itself as the nurse fills
+  // it in, with no Save button. Holds off quietly while a refused vital still has no reason
+  // (the server would reject it), and while the chart is loading, so one patient's pending
+  // triage can never be sent while switching to another.
+  const buildTriagePayload = (form: TriageFormState, refusals: Partial<Record<TriageVitalField, string>>): TriagePayload => {
+    const numberOrUndefined = (field: TriageVitalField) => {
+      if (field in refusals) return undefined;
+      const raw = form.values[field];
+      if (!raw || raw.trim() === "") return undefined;
+      const n = Number(raw);
+      return Number.isNaN(n) ? undefined : n;
+    };
+    const dateOrUndefined = (field: TriageVitalField) => {
+      if (field in refusals) return undefined;
+      const raw = form.values[field];
+      return raw ? raw : undefined;
+    };
+
+    return {
+      encounterId: encounterId!,
+      visitId: currentVisitId ?? undefined,
+      priorityLevel: form.priorityLevel ?? undefined,
+      burnOrTrauma: form.burnOrTrauma || undefined,
+      burnOrTraumaDetail: form.burnOrTraumaDetail || undefined,
+      cardiacRespiratoryDigestive: form.cardiacRespiratoryDigestive || undefined,
+      cardiacRespiratoryDigestiveDetail: form.cardiacRespiratoryDigestiveDetail || undefined,
+      otherEmergencySymptoms: form.otherEmergencySymptoms || undefined,
+      otherEmergencySymptomsDetail: form.otherEmergencySymptomsDetail || undefined,
+      heightCm: numberOrUndefined("Height"),
+      weightKg: numberOrUndefined("Weight"),
+      temperature: numberOrUndefined("Temperature"),
+      tempSite: form.tempSite || undefined,
+      heartRate: numberOrUndefined("HeartRate"),
+      bpSystolic: numberOrUndefined("BPSystolic"),
+      bpDiastolic: numberOrUndefined("BPDiastolic"),
+      bpMean: numberOrUndefined("BPMean"),
+      chest: numberOrUndefined("Chest"),
+      waist: numberOrUndefined("Waist"),
+      respiratory: numberOrUndefined("Respiratory"),
+      oxygenSaturation: numberOrUndefined("OxygenSaturation"),
+      bloodSugar: numberOrUndefined("BloodSugar"),
+      hip: numberOrUndefined("Hip"),
+      edd: dateOrUndefined("Edd"),
+      para: numberOrUndefined("Para"),
+      gravida: numberOrUndefined("Gravida"),
+      lmp: dateOrUndefined("Lmp"),
+      patientRefused: form.patientRefused,
+      actionDateTime: form.actionDateTime ? new Date(form.actionDateTime).toISOString() : undefined,
+      refusals: Object.entries(refusals).map(([vitalField, reason]) => ({
+        vitalField: vitalField as TriageVitalField,
+        reason: reason ?? "",
+      })),
+      nurseId: isAdmin ? selectedNurseId : undefined,
+    };
+  };
+
+  const triageAutoSave = useAutoSave({
+    value: { form: triageForm, refusals: triageRefusals },
+    enabled: !!selectedPatientId && !!encounterId && !isLoadingChart && canEdit && (!isAdmin || !!selectedNurseId),
+    canSave: ({ refusals }) => Object.values(refusals).every((reason) => !!reason?.trim()),
+    save: ({ form, refusals }) => NursingService.saveTriage(selectedPatientId!, buildTriagePayload(form, refusals)),
+    label: "triage",
+    delay: 1500,
+  });
+
+  useEffect(() => {
+    flushTriageRef.current = triageAutoSave.flush;
+  });
+
   // Prefills from the active encounter's saved triage (if any) whenever a different patient/
   // encounter is opened - keyed on encounterId rather than chart.triage itself so an
   // unrelated refreshChart() elsewhere (after saving vitals, a note, etc.) can't clobber
   // whatever the nurse is still mid-typing into this form.
   useEffect(() => {
-    if (!encounterId) {
-      setTriageForm(emptyTriageForm());
-      setTriageRefusals({});
-      return;
-    }
-    const t = chart?.triage;
+    const t = encounterId ? chart?.triage : null;
     if (!t) {
-      setTriageForm(emptyTriageForm());
+      const empty = emptyTriageForm();
+      triageAutoSave.markSaved({ form: empty, refusals: {} });
+      setTriageForm(empty);
       setTriageRefusals({});
       return;
     }
-    setTriageForm({
+    const loadedForm: TriageFormState = {
       priorityLevel: t.priorityLevel,
       burnOrTrauma: t.burnOrTrauma ?? "",
       burnOrTraumaDetail: t.burnOrTraumaDetail ?? "",
@@ -751,8 +831,14 @@ function NurseWorkbenchInner() {
         Gravida: t.gravida?.toString() ?? "",
         Lmp: t.lmp ?? "",
       },
-    });
-    setTriageRefusals(Object.fromEntries(t.refusals.map((r) => [r.vitalField, r.reason])));
+    };
+    const loadedRefusals: Partial<Record<TriageVitalField, string>> = Object.fromEntries(
+      t.refusals.map((r) => [r.vitalField, r.reason])
+    );
+    // What was just loaded is already on the server - nothing for auto-save to send.
+    triageAutoSave.markSaved({ form: loadedForm, refusals: loadedRefusals });
+    setTriageForm(loadedForm);
+    setTriageRefusals(loadedRefusals);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encounterId]);
 
@@ -767,79 +853,17 @@ function NurseWorkbenchInner() {
     });
   };
 
-  const handleSaveTriage = async () => {
-    if (!encounterId) return;
-    if (!requireNurseSelected()) return;
-    notifySaveStatus("saving");
-
-    const missingReason = Object.entries(triageRefusals).find(([, reason]) => !reason?.trim());
-    if (missingReason) {
-      toast.error("Enter a reason for every refused vital before saving.");
+  // The triage saves itself - closing it just makes sure the last edits are in first, then
+  // refreshes the chart's triage summary. Stays open while a refused vital has no reason yet,
+  // since that can't be saved.
+  const closeTriage = async () => {
+    if (canEdit && Object.values(triageRefusals).some((reason) => !reason?.trim())) {
+      toast.error("Enter a reason for every refused vital.");
       return;
     }
-
-    const numberOrUndefined = (field: TriageVitalField) => {
-      if (field in triageRefusals) return undefined;
-      const raw = triageForm.values[field];
-      if (!raw || raw.trim() === "") return undefined;
-      const n = Number(raw);
-      return Number.isNaN(n) ? undefined : n;
-    };
-    const dateOrUndefined = (field: TriageVitalField) => {
-      if (field in triageRefusals) return undefined;
-      const raw = triageForm.values[field];
-      return raw ? raw : undefined;
-    };
-
-    const payload: TriagePayload = {
-      encounterId,
-      visitId: currentVisitId ?? undefined,
-      priorityLevel: triageForm.priorityLevel ?? undefined,
-      burnOrTrauma: triageForm.burnOrTrauma || undefined,
-      burnOrTraumaDetail: triageForm.burnOrTraumaDetail || undefined,
-      cardiacRespiratoryDigestive: triageForm.cardiacRespiratoryDigestive || undefined,
-      cardiacRespiratoryDigestiveDetail: triageForm.cardiacRespiratoryDigestiveDetail || undefined,
-      otherEmergencySymptoms: triageForm.otherEmergencySymptoms || undefined,
-      otherEmergencySymptomsDetail: triageForm.otherEmergencySymptomsDetail || undefined,
-      heightCm: numberOrUndefined("Height"),
-      weightKg: numberOrUndefined("Weight"),
-      temperature: numberOrUndefined("Temperature"),
-      tempSite: triageForm.tempSite || undefined,
-      heartRate: numberOrUndefined("HeartRate"),
-      bpSystolic: numberOrUndefined("BPSystolic"),
-      bpDiastolic: numberOrUndefined("BPDiastolic"),
-      bpMean: numberOrUndefined("BPMean"),
-      chest: numberOrUndefined("Chest"),
-      waist: numberOrUndefined("Waist"),
-      respiratory: numberOrUndefined("Respiratory"),
-      oxygenSaturation: numberOrUndefined("OxygenSaturation"),
-      bloodSugar: numberOrUndefined("BloodSugar"),
-      hip: numberOrUndefined("Hip"),
-      edd: dateOrUndefined("Edd"),
-      para: numberOrUndefined("Para"),
-      gravida: numberOrUndefined("Gravida"),
-      lmp: dateOrUndefined("Lmp"),
-      patientRefused: triageForm.patientRefused,
-      actionDateTime: triageForm.actionDateTime ? new Date(triageForm.actionDateTime).toISOString() : undefined,
-      refusals: Object.entries(triageRefusals).map(([vitalField, reason]) => ({
-        vitalField: vitalField as TriageVitalField,
-        reason: reason ?? "",
-      })),
-      nurseId: isAdmin ? selectedNurseId : undefined,
-    };
-
-    try {
-      setSavingTriage(true);
-      await NursingService.saveTriage(selectedPatientId!, payload);
-      toast.success("Triage saved");
-      notifySaveStatus("saved");
-      await refreshChart();
-    } catch (error) {
-      notifySaveStatus("error");
-      toast.error(errorMessage(error, "Failed to save triage"));
-    } finally {
-      setSavingTriage(false);
-    }
+    await triageAutoSave.flush();
+    setShowTriageModal(false);
+    void refreshChart();
   };
 
   const triageBmi = (() => {
@@ -2388,7 +2412,7 @@ function NurseWorkbenchInner() {
                         </p>
                       )}
                     </div>
-                    <button onClick={() => setShowTriageModal(false)} className="p-2 rounded-full hover:bg-muted transition-colors">
+                    <button onClick={() => void closeTriage()} className="p-2 rounded-full hover:bg-muted transition-colors">
                       <X size={18} />
                     </button>
                   </div>
@@ -2546,13 +2570,21 @@ function NurseWorkbenchInner() {
                         </div>
                       </div>
                       {canEdit && (
-                        <button
-                          onClick={async () => { await handleSaveTriage(); setShowTriageModal(false); }}
-                          disabled={savingTriage || !encounterId}
-                          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                        >
-                          <Save size={15} /> Save Triage
-                        </button>
+                        <div className="flex flex-col items-end gap-1.5">
+                          <span className="text-xs text-muted-foreground">
+                            {isAdmin && !selectedNurseId
+                              ? "Select a nurse first — changes can't be saved while viewing across all nurses."
+                              : triageAutoSave.isSaving
+                                ? "Saving…"
+                                : "Changes save automatically"}
+                          </span>
+                          <button
+                            onClick={() => void closeTriage()}
+                            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                          >
+                            <Check size={15} /> Done
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>

@@ -14,6 +14,7 @@ import { toDateInputValue } from "@/lib/date";
 import { ReceptionService } from "@/services/reception.service";
 import type { PatientMatchType, PatientSummaryType } from "@/types/patient.type";
 import { PatientMatchList } from "./DuplicatePatientPrompt";
+import { apiErrorMessage } from "@/lib/apiError";
 
 export interface QuickPatientInitial {
   name?: string;
@@ -154,7 +155,7 @@ export default function QuickPatientModal({ initial, onClose, onSelect }: Props)
         setCanCreateAnyway(!!err.response.data.allowCreate);
         setError(err.response.data.message || "This patient may already be registered.");
       } else {
-        setError(axios.isAxiosError(err) ? err.response?.data?.message || "Failed to register patient" : "Failed to register patient");
+        setError(apiErrorMessage(err, "Failed to register patient"));
       }
     } finally {
       setSaving(false);

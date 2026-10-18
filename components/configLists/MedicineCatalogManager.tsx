@@ -10,6 +10,8 @@ import SearchIcon from "@/public/icons/SearchIcon";
 import { PharmacyService } from "@/services/pharmacy.service";
 import { MedicineBulkRow, MedicineType } from "@/types/pharmacy.type";
 import { formatCurrency } from "@/lib/currency";
+import { apiErrorMessage } from "@/lib/apiError";
+import SearchableSelect, { fieldSelectClass } from "@/components/SearchableSelect";
 
 // Normalizes a header cell for loose, case-insensitive matching against the real DDC/
 // Riayati export files (their exact column names, not something we control), e.g.
@@ -88,14 +90,6 @@ const parseRows = (raw: Record<string, unknown>[], source: "DDC" | "Riayati"): M
     .filter((row) => row.name);
 };
 
-const errorMessage = (error: unknown, fallback: string) => {
-  if (error && typeof error === "object" && "response" in error) {
-    const resp = (error as { response?: { data?: { message?: string } } }).response;
-    return resp?.data?.message || fallback;
-  }
-  return fallback;
-};
-
 // Admin-only bulk import of the DDC and Riayati medication registry exports into the
 // pharmacy's Medicine catalog, plus a read-only browse/search view — the Configurable Lists
 // counterpart to the Procedure/CPT tab, but for medications. Day-to-day stock, pricing
@@ -139,7 +133,7 @@ export default function MedicineCatalogManager() {
       setItems(res.data || []);
       setTotalCount(res.totalCount ?? 0);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load medicine catalog"));
+      toast.error(apiErrorMessage(error, "Failed to load medicine catalog"));
       setItems([]);
       setTotalCount(0);
     } finally {
@@ -318,16 +312,20 @@ export default function MedicineCatalogManager() {
                 className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500 text-sm"
               />
             </div>
-            <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value as "" | "DDC" | "Riayati" | "none")}
-              className="h-10 text-sm"
-            >
-              <option value="">All sources</option>
-              <option value="DDC">DDC</option>
-              <option value="Riayati">Riayati</option>
-              <option value="none">Manually added</option>
-            </select>
+            <div className="w-44 shrink-0">
+              <SearchableSelect
+                value={sourceFilter}
+                onChange={(v) => setSourceFilter(v as "" | "DDC" | "Riayati" | "none")}
+                options={[
+                  { value: "", label: "All sources" },
+                  { value: "DDC", label: "DDC" },
+                  { value: "Riayati", label: "Riayati" },
+                  { value: "none", label: "Manually added" },
+                ]}
+                className={fieldSelectClass}
+                preserveCase
+              />
+            </div>
           </div>
         </div>
         <table>

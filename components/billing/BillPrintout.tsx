@@ -4,8 +4,7 @@ import { BillType } from "@/types/billing.type";
 import { getUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { formatCurrency } from "@/lib/currency";
-
-const formatDateTime = (value: string | null) => (value ? new Date(value).toLocaleString() : "—");
+import { formatDateTime } from "@/lib/date";
 
 // Print-only bill sheet - invisible on screen, and the only thing on the page when the
 // browser prints (call window.print()). Same approach as PrescriptionPrintout, with its own

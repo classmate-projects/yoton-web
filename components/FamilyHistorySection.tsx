@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import axios from "axios";
 import { toast } from "sonner";
 import { Pencil, Trash2, Users } from "lucide-react";
 import { ConfigListService } from "@/services/configList.service";
@@ -12,11 +11,8 @@ import { ListItemType } from "@/types/configList.type";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import EmptyState from "@/components/EmptyState";
 import SearchableSelect, { standaloneSelectClass } from "@/components/SearchableSelect";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
-
-const formatDateTime = (value: string) => new Date(value).toLocaleString();
+import { apiErrorMessage } from "@/lib/apiError";
+import { formatDateTime } from "@/lib/date";
 
 const STATUSES = ["Active", "Inactive"];
 
@@ -123,7 +119,7 @@ export default function FamilyHistorySection({ patientId, familyHistory, doctorI
       setEditingId(null);
       await onSaved();
     } catch (error) {
-      toast.error(errorMessage(error, editingId ? "Failed to correct family history" : "Failed to add family history"));
+      toast.error(apiErrorMessage(error, editingId ? "Failed to correct family history" : "Failed to add family history"));
     } finally {
       setIsSaving(false);
     }
@@ -138,7 +134,7 @@ export default function FamilyHistorySection({ patientId, familyHistory, doctorI
           toast.success("Family history removed");
           await onSaved();
         } catch (error) {
-          toast.error(errorMessage(error, "Failed to remove family history"));
+          toast.error(apiErrorMessage(error, "Failed to remove family history"));
         }
       }
     );

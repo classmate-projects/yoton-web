@@ -8,6 +8,7 @@ import { FormTemplateService } from "@/services/medicalForm.service";
 import { usePlaceholderCatalog } from "@/hooks/usePlaceholderCatalog";
 import { MedicalFormField, MedicalFormFieldOption } from "@/types/medicalForm.type";
 import PlaceholderTextInput from "./PlaceholderTextInput";
+import SearchableSelect from "@/components/SearchableSelect";
 
 const FONT_SIZES = [
   { value: "text-sm", label: "Small" },
@@ -142,15 +143,17 @@ export default function FieldEditorPanel({
         {field.type === "heading" && (
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-semibold text-muted-foreground">Heading size</span>
-            <select
+            <SearchableSelect
               value={field.headingLevel ?? "h2"}
-              onChange={(e) => onChange({ ...field, headingLevel: e.target.value as "h1" | "h2" | "h3" })}
-              className="h-9 text-sm"
-            >
-              <option value="h1">H1</option>
-              <option value="h2">H2</option>
-              <option value="h3">H3</option>
-            </select>
+              onChange={(v) => onChange({ ...field, headingLevel: v as "h1" | "h2" | "h3" })}
+              options={[
+                { value: "h1", label: "H1" },
+                { value: "h2", label: "H2" },
+                { value: "h3", label: "H3" },
+              ]}
+              className="flex h-9 w-full items-center justify-between gap-1 rounded-lg border border-border bg-background px-3 text-left text-sm text-foreground transition-colors hover:border-primary/60"
+              preserveCase
+            />
           </label>
         )}
         {field.type === "group" && (
@@ -369,17 +372,15 @@ export default function FieldEditorPanel({
               <Underline size={15} />
             </button>
           </div>
-          <select
-            value={field.formatting.fontSize}
-            onChange={(e) => onChange({ ...field, formatting: { ...field.formatting, fontSize: e.target.value } })}
-            className="h-9 text-sm"
-          >
-            {FONT_SIZES.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
+          <div className="w-32 shrink-0">
+            <SearchableSelect
+              value={field.formatting.fontSize}
+              onChange={(v) => onChange({ ...field, formatting: { ...field.formatting, fontSize: v } })}
+              options={FONT_SIZES.map((s) => ({ value: s.value, label: s.label }))}
+              className="flex h-9 w-full items-center justify-between gap-1 rounded-lg border border-border bg-background px-3 text-left text-sm text-foreground transition-colors hover:border-primary/60"
+              preserveCase
+            />
+          </div>
           <label className="flex items-center gap-1" title="Text color">
             <span className="text-[11px] text-muted-foreground">Text</span>
             <input

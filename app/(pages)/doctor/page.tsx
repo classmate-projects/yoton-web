@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { notifySaveStatus } from "@/lib/saveStatus";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect, { standaloneSelectClass } from "@/components/SearchableSelect";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
@@ -159,15 +160,11 @@ function DoctorWorkbenchInner() {
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [rosExpanded, setRosExpanded] = useState(false);
   const [patientAlertText, setPatientAlertText] = useState("");
-  const [isSavingAlert, setIsSavingAlert] = useState(false);
   const [patientWarningModal, setPatientWarningModal] = useState<{ allergies: AllergyType[]; alertText: string } | null>(null);
-  const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pastMedicalHistory, setPastMedicalHistory] = useState("");
   const [pastSurgicalHistory, setPastSurgicalHistory] = useState("");
   const [pastTreatmentHistory, setPastTreatmentHistory] = useState("");
   const [socialHistory, setSocialHistory] = useState("");
-  const [isSavingHistory, setIsSavingHistory] = useState(false);
-  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Date.now() can't be called during render (React treats it as impure) - computed instead
   // in the "Print Prescription" click handler below, where reading the clock is allowed.
   const [patientAgeForPrint, setPatientAgeForPrint] = useState<number | null>(null);
@@ -199,6 +196,56 @@ function DoctorWorkbenchInner() {
       return false;
     }
     return true;
+  };
+
+  // ---------------- PATIENT ALERT + MEDICAL HISTORY (auto-saved) ----------------
+  // Only once this patient's own record has loaded - never mid-switch, when these fields
+  // still hold (or were just cleared of) the previous patient's details.
+  const patientRecordReady = !!selectedPatientId && !isLoadingSummary && summary?.opId === selectedPatientId;
+
+  const alertAutoSave = useAutoSave({
+    value: patientAlertText,
+    enabled: patientRecordReady,
+    save: (text) => EmrService.updatePatientAlert(selectedPatientId!, text.trim() || null, doctorIdParam),
+    label: "patient alert",
+    delay: 1200,
+  });
+
+  const medicalHistory = { pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, socialHistory };
+  const historyAutoSave = useAutoSave({
+    value: medicalHistory,
+    enabled: patientRecordReady,
+    save: (h) =>
+      EmrService.updateMedicalHistory(
+        selectedPatientId!,
+        {
+          pastMedicalHistory: h.pastMedicalHistory.trim() || null,
+          pastSurgicalHistory: h.pastSurgicalHistory.trim() || null,
+          pastTreatmentHistory: h.pastTreatmentHistory.trim() || null,
+          socialHistory: h.socialHistory.trim() || null,
+        },
+        doctorIdParam
+      ),
+    label: "medical history",
+    delay: 1200,
+  });
+
+  // Sets the alert/history fields to what the server holds, so they don't count as edits.
+  const loadPatientRecordFields = (record: PatientSummaryType | null) => {
+    const alert = record?.patientAlert ?? "";
+    const history = {
+      pastMedicalHistory: record?.pastMedicalHistory ?? "",
+      pastSurgicalHistory: record?.pastSurgicalHistory ?? "",
+      pastTreatmentHistory: record?.pastTreatmentHistory ?? "",
+      socialHistory: record?.socialHistory ?? "",
+    };
+    alertAutoSave.markSaved(alert);
+    historyAutoSave.markSaved(history);
+    setPatientAlertText(alert);
+    setPastMedicalHistory(history.pastMedicalHistory);
+    setPastSurgicalHistory(history.pastSurgicalHistory);
+    setPastTreatmentHistory(history.pastTreatmentHistory);
+    setSocialHistory(history.socialHistory);
   };
 
   // ---------------- ROLE GUARD ----------------
@@ -373,20 +420,12 @@ function DoctorWorkbenchInner() {
       setIsLoadingSummary(true);
       const res = await EmrService.getPatientSummary(patientId, doctorIdParam, overrideVisitId ?? activeVisitId);
       setSummary(res.data);
-      setPatientAlertText(res.data?.patientAlert ?? "");
-      setPastMedicalHistory(res.data?.pastMedicalHistory ?? "");
-      setPastSurgicalHistory(res.data?.pastSurgicalHistory ?? "");
-      setPastTreatmentHistory(res.data?.pastTreatmentHistory ?? "");
-      setSocialHistory(res.data?.socialHistory ?? "");
+      loadPatientRecordFields(res.data ?? null);
       return res.data ?? null;
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load patient summary"));
       setSummary(null);
-      setPatientAlertText("");
-      setPastMedicalHistory("");
-      setPastSurgicalHistory("");
-      setPastTreatmentHistory("");
-      setSocialHistory("");
+      loadPatientRecordFields(null);
       return null;
     } finally {
       setIsLoadingSummary(false);
@@ -437,33 +476,17 @@ function DoctorWorkbenchInner() {
     }
   };
 
+  // Sends this patient's pending edits right away - before their fields are cleared on leaving.
+  // Filled in further down, once every auto-saved section has been declared.
+  const flushPatientSavesRef = useRef<() => Promise<unknown>>(async () => {});
+
   const backToWorkbench = async () => {
-    // Flush any pending auto-save before clearing state — the effect cleanup would
-    // clearTimeout on the timer, silently dropping edits made in the last 3 seconds.
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    if (selectedPatientId && !isCompletedEncounter && summary?.latestEncounter &&
-        JSON.stringify(encounterForm) !== lastSavedFormRef.current) {
-      notifySaveStatus("saving");
-      try {
-        await EmrService.upsertEncounter(
-          selectedPatientId,
-          { ...encounterForm, visitId: activeVisitId },
-          doctorIdParam
-        );
-        notifySaveStatus("saved");
-      } catch {
-        notifySaveStatus("error");
-      }
-    }
+    await flushPatientSavesRef.current();
     setActiveVisitId(undefined);
     setSelectedPatientId(null);
     setCurrentEncounter(null, null, null);
     setSummary(null);
-    setPatientAlertText("");
-    setPastMedicalHistory("");
-    setPastSurgicalHistory("");
-    setPastTreatmentHistory("");
-    setSocialHistory("");
+    loadPatientRecordFields(null);
     setPatientWarningModal(null);
     setShowDocumentsModal(false);
     setQuickNotes([]);
@@ -485,15 +508,12 @@ function DoctorWorkbenchInner() {
       openPatient(initialPatientIdParam, visitIdParam);
     } else if (selectedPatientId) {
       // URL params were cleared by the browser back button — return to workbench.
+      void flushPatientSavesRef.current();
       setActiveVisitId(undefined);
       setSelectedPatientId(null);
       setCurrentEncounter(null, null, null);
       setSummary(null);
-      setPatientAlertText("");
-      setPastMedicalHistory("");
-      setPastSurgicalHistory("");
-      setPastTreatmentHistory("");
-      setSocialHistory("");
+      loadPatientRecordFields(null);
       setPatientWarningModal(null);
       setShowDocumentsModal(false);
       setQuickNotes([]);
@@ -541,10 +561,18 @@ function DoctorWorkbenchInner() {
   const [isSavingEncounter, setIsSavingEncounter] = useState(false);
   const [isReleasingPatient, setIsReleasingPatient] = useState(false);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedFormRef = useRef<string>("");
 
   const isCompletedEncounter = summary?.latestEncounter?.status === "Completed";
+
+  // Encounter notes save themselves 3 s after the doctor stops typing (active encounters only).
+  // Save Encounter stays as the explicit action on top of this.
+  const encounterAutoSave = useAutoSave({
+    value: encounterForm,
+    enabled: !!selectedPatientId && !!summary?.latestEncounter && !isCompletedEncounter,
+    save: (form) => EmrService.upsertEncounter(selectedPatientId!, { ...form, visitId: activeVisitId }, doctorIdParam),
+    label: "encounter notes",
+    delay: 3000,
+  });
   // Today's finalized encounter reopens with the doctor's own password (Re-Encounter); an
   // earlier visit's goes through the admin-approved Reopen request instead.
   const isTodaysEncounter =
@@ -589,58 +617,16 @@ function DoctorWorkbenchInner() {
       currentManagementPlan: e?.currentManagementPlan || "",
       futureManagementPlan: e?.futureManagementPlan || "",
     };
+    // What was just loaded is already on the server - nothing for auto-save to send.
+    encounterAutoSave.markSaved(loaded);
     setEncounterForm(loaded);
     setEncounterFormSnapshot(loaded);
-    // Seed the last-saved baseline so the auto-save debounce doesn't fire immediately
-    // after the encounter loads (nothing has actually changed yet).
-    lastSavedFormRef.current = JSON.stringify(loaded);
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     // Intentionally re-run only when the encounter identity changes, not on every field edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.latestEncounter?.encounterId]);
 
-  // Auto-save: 3 s after the doctor stops editing, silently persist the encounter.
-  // Only runs for active (non-completed) encounters with a patient selected.
-  useEffect(() => {
-    if (isCompletedEncounter || !selectedPatientId || !summary?.latestEncounter) return;
-    const serialized = JSON.stringify(encounterForm);
-    if (serialized === lastSavedFormRef.current) return; // nothing changed
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(async () => {
-      if (JSON.stringify(encounterForm) === lastSavedFormRef.current) return;
-      notifySaveStatus("saving");
-      try {
-        await EmrService.upsertEncounter(
-          selectedPatientId,
-          { ...encounterForm, visitId: activeVisitId },
-          doctorIdParam
-        );
-        lastSavedFormRef.current = JSON.stringify(encounterForm);
-        notifySaveStatus("saved");
-      } catch {
-        notifySaveStatus("error");
-      }
-    }, 3000);
-    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [encounterForm]);
-
-  // Warn the doctor before a browser refresh or tab close if they have unsaved encounter edits.
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (!selectedPatientId || isCompletedEncounter) return;
-      if (JSON.stringify(encounterForm) !== lastSavedFormRef.current) {
-        e.preventDefault();
-        e.returnValue = "";
-      }
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [selectedPatientId, isCompletedEncounter, encounterForm]);
-
   const saveEncounter = async () => {
     if (!selectedPatientId || !requireDoctorSelected()) return;
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     notifySaveStatus("saving");
     try {
       setIsSavingEncounter(true);
@@ -649,7 +635,7 @@ function DoctorWorkbenchInner() {
         { ...encounterForm, visitId: activeVisitId },
         doctorIdParam
       );
-      lastSavedFormRef.current = JSON.stringify(encounterForm);
+      encounterAutoSave.markSaved(encounterForm);
       toast.success("Encounter saved");
       notifySaveStatus("saved");
       await fetchSummary(selectedPatientId);
@@ -933,6 +919,14 @@ function DoctorWorkbenchInner() {
 
   const finishEncounter = async () => {
     if (!summary?.latestEncounter) return;
+    // Anything typed in the last few seconds must reach the server before the encounter locks.
+    const [notesSaved, dentalSaved] = await Promise.all([encounterAutoSave.flush(), dentalAutoSave.flush()]);
+    if (!notesSaved || !dentalSaved) {
+      toast.error("Your latest changes aren't saved yet", {
+        description: "The encounter wasn't finished. Once the save problem shown above is resolved, try again.",
+      });
+      return;
+    }
     try {
       setIsSavingEncounter(true);
       await EmrService.finishEncounter(summary.latestEncounter.encounterId, doctorIdParam);
@@ -1030,45 +1024,6 @@ function DoctorWorkbenchInner() {
         }
       }
     );
-  };
-
-  // ---------------- PATIENT ALERT ----------------
-
-  const savePatientAlert = async (text: string) => {
-    if (!selectedPatientId) return;
-    if (alertTimerRef.current) { clearTimeout(alertTimerRef.current); alertTimerRef.current = null; }
-    setIsSavingAlert(true);
-    try {
-      await EmrService.updatePatientAlert(selectedPatientId, text.trim() || null, doctorIdParam);
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to save patient alert"));
-    } finally {
-      setIsSavingAlert(false);
-    }
-  };
-
-  // ---------------- MEDICAL HISTORY ----------------
-
-  const saveMedicalHistory = async (medical: string, surgical: string, treatment: string, social: string) => {
-    if (!selectedPatientId) return;
-    if (historyTimerRef.current) { clearTimeout(historyTimerRef.current); historyTimerRef.current = null; }
-    setIsSavingHistory(true);
-    try {
-      await EmrService.updateMedicalHistory(
-        selectedPatientId,
-        {
-          pastMedicalHistory: medical.trim() || null,
-          pastSurgicalHistory: surgical.trim() || null,
-          pastTreatmentHistory: treatment.trim() || null,
-          socialHistory: social.trim() || null,
-        },
-        doctorIdParam
-      );
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to save medical history"));
-    } finally {
-      setIsSavingHistory(false);
-    }
   };
 
   // ---------------- ALLERGIES ----------------
@@ -1674,11 +1629,31 @@ function DoctorWorkbenchInner() {
     smokingCessationEducationGiven: false,
     comprehensiveDentalPlanProvided: false,
   });
-  const [isSavingDentalExtras, setIsSavingDentalExtras] = useState(false);
+
+  // Saved on every toggle into this encounter's own checklist (one per encounter), so it needs
+  // the encounter to exist first - and, for admin, a doctor to record it under.
+  const dentalLockedReason = !summary?.latestEncounter
+    ? "Save the encounter first to fill in the dental checklist."
+    : isAdmin && !selectedDoctorId
+      ? "Select a doctor first — you're viewing across all doctors."
+      : null;
+  const dentalAutoSave = useAutoSave({
+    value: dentalForm,
+    enabled: patientRecordReady && !dentalLockedReason,
+    save: (form) =>
+      EmrService.saveDentalExtras(selectedPatientId!, { encounterId: summary?.latestEncounter?.encounterId, ...form }, doctorIdParam),
+    label: "dental checklist",
+    delay: 800,
+  });
+
+  useEffect(() => {
+    flushPatientSavesRef.current = () =>
+      Promise.all([encounterAutoSave.flush(), alertAutoSave.flush(), historyAutoSave.flush(), dentalAutoSave.flush()]);
+  });
 
   useEffect(() => {
     const latest = summary?.dentalVisitExtras?.[0];
-    setDentalForm({
+    const loaded = {
       fissureSealantApplied: latest?.fissureSealantApplied ?? false,
       fluorideApplied: latest?.fluorideApplied ?? false,
       sdfApplied: latest?.sdfApplied ?? false,
@@ -1686,31 +1661,11 @@ function DoctorWorkbenchInner() {
       lifestyleEducationGiven: latest?.lifestyleEducationGiven ?? false,
       smokingCessationEducationGiven: latest?.smokingCessationEducationGiven ?? false,
       comprehensiveDentalPlanProvided: latest?.comprehensiveDentalPlanProvided ?? false,
-    });
+    };
+    dentalAutoSave.markSaved(loaded);
+    setDentalForm(loaded);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.dentalVisitExtras]);
-
-  const saveDentalExtras = async () => {
-    if (!selectedPatientId) return;
-    if (!requireDoctorSelected()) return;
-    notifySaveStatus("saving");
-    try {
-      setIsSavingDentalExtras(true);
-      await EmrService.saveDentalExtras(
-        selectedPatientId,
-        { encounterId: summary?.latestEncounter?.encounterId, ...dentalForm },
-        doctorIdParam
-      );
-      toast.success("Dental checklist saved");
-      notifySaveStatus("saved");
-      await fetchSummary(selectedPatientId);
-    } catch (error) {
-      notifySaveStatus("error");
-      toast.error(errorMessage(error, "Failed to save dental checklist"));
-    } finally {
-      setIsSavingDentalExtras(false);
-    }
-  };
 
   // ---------------- QUICK NOTE ----------------
   const [noteText, setNoteText] = useState("");
@@ -2031,18 +1986,13 @@ function DoctorWorkbenchInner() {
                 </p>
                 <textarea
                   value={patientAlertText}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setPatientAlertText(v);
-                    if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
-                    alertTimerRef.current = setTimeout(() => void savePatientAlert(v), 1200);
-                  }}
-                  onBlur={(e) => void savePatientAlert(e.target.value)}
+                  onChange={(e) => setPatientAlertText(e.target.value)}
+                  onBlur={() => void alertAutoSave.flush()}
                   placeholder="Enter any clinical alerts visible to all staff — e.g. 'Patient is claustrophobic', 'Known drug seeker'..."
                   rows={3}
                   className="w-full text-sm resize-y"
                 />
-                {isSavingAlert && (
+                {alertAutoSave.isSaving && (
                   <p className="text-xs text-muted-foreground mt-1">Saving…</p>
                 )}
               </div>
@@ -2080,13 +2030,8 @@ function DoctorWorkbenchInner() {
                       value={pastMedicalHistory}
                       rows={3}
                       className="w-full text-sm resize-y"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setPastMedicalHistory(v);
-                        if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(v, pastSurgicalHistory, pastTreatmentHistory, socialHistory), 1200);
-                      }}
-                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, socialHistory)}
+                      onChange={(e) => setPastMedicalHistory(e.target.value)}
+                      onBlur={() => void historyAutoSave.flush()}
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -2095,13 +2040,8 @@ function DoctorWorkbenchInner() {
                       value={pastSurgicalHistory}
                       rows={3}
                       className="w-full text-sm resize-y"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setPastSurgicalHistory(v);
-                        if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, v, pastTreatmentHistory, socialHistory), 1200);
-                      }}
-                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, socialHistory)}
+                      onChange={(e) => setPastSurgicalHistory(e.target.value)}
+                      onBlur={() => void historyAutoSave.flush()}
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -2110,13 +2050,8 @@ function DoctorWorkbenchInner() {
                       value={pastTreatmentHistory}
                       rows={3}
                       className="w-full text-sm resize-y"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setPastTreatmentHistory(v);
-                        if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, v, socialHistory), 1200);
-                      }}
-                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, socialHistory)}
+                      onChange={(e) => setPastTreatmentHistory(e.target.value)}
+                      onBlur={() => void historyAutoSave.flush()}
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -2126,17 +2061,12 @@ function DoctorWorkbenchInner() {
                       rows={3}
                       className="w-full text-sm resize-y"
                       placeholder="Smoking, alcohol, occupation, exercise…"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setSocialHistory(v);
-                        if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
-                        historyTimerRef.current = setTimeout(() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, v), 1200);
-                      }}
-                      onBlur={() => void saveMedicalHistory(pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, socialHistory)}
+                      onChange={(e) => setSocialHistory(e.target.value)}
+                      onBlur={() => void historyAutoSave.flush()}
                     />
                   </div>
                 </div>
-                {isSavingHistory && (
+                {historyAutoSave.isSaving && (
                   <p className="text-xs text-muted-foreground mt-2">Saving…</p>
                 )}
               </div>
@@ -2483,9 +2413,17 @@ function DoctorWorkbenchInner() {
                 {/* Dental Checklist — only shown for dental specialty; follows Encounter Notes */}
                 {dashboard?.isDentalSpecialty && (
                   <div className="card p-6 flex flex-col gap-3">
-                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                      <Stethoscope size={18} className="text-primary" /> Dental Checklist
-                    </h2>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                        <Stethoscope size={18} className="text-primary" /> Dental Checklist
+                      </h2>
+                      <span className="text-xs text-muted-foreground">
+                        {dentalAutoSave.isSaving ? "Saving…" : "Changes save automatically"}
+                      </span>
+                    </div>
+                    {dentalLockedReason && (
+                      <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{dentalLockedReason}</p>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {([
                         ["fissureSealantApplied", "Fissure sealant applied"],
@@ -2499,19 +2437,13 @@ function DoctorWorkbenchInner() {
                         <label key={key} className="flex items-center gap-2 text-sm">
                           <ToggleButton
                             checked={dentalForm[key]}
+                            disabled={!!dentalLockedReason}
                             onChange={(checked) => setDentalForm((p) => ({ ...p, [key]: checked }))}
                           />
                           {label}
                         </label>
                       ))}
                     </div>
-                    <button
-                      onClick={saveDentalExtras}
-                      disabled={isSavingDentalExtras}
-                      className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      Save Dental Checklist
-                    </button>
                   </div>
                 )}
 

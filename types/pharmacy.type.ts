@@ -21,14 +21,6 @@ export interface MedicineType {
   discontinuedDate: string | null;
 }
 
-export interface MedicinePagedResult {
-  data: MedicineType[];
-  totalCount: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-}
-
 // One row of a bulk medication-catalog import — parsed client-side from the DDC or Riayati
 // Excel file, mirroring ConfigListController's ListItemBulkUploadRequest shape.
 export interface MedicineBulkRow {

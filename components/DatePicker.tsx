@@ -464,7 +464,7 @@ export default function DatePicker({
           ref={popupRef}
           role="dialog"
           style={{ position: "fixed", top: coords.top, left: coords.left }}
-          className="z-50 w-72 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          className="z-[300] w-72 overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
         >
           {view === "days" && (
             <>

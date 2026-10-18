@@ -3,14 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
-import axios from "axios";
 import { toast } from "sonner";
 import { Pencil, Pill, Trash2 } from "lucide-react";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdWarning } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
-import { toDateInputValue } from "@/lib/date";
+import { toDateInputValue, formatDate } from "@/lib/date";
 import SearchableSelect from "@/components/SearchableSelect";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
@@ -34,14 +33,9 @@ import { formatCurrency } from "@/lib/currency";
 import PatientPicker, { patientFromOrder } from "@/components/patients/PatientPicker";
 import PatientStreamTabs from "@/components/patients/PatientStreamTabs";
 import { BillStatusBadge, WalkInPatientBadge, billedLockTitle } from "@/components/patients/PatientBadges";
+import { apiErrorMessage } from "@/lib/apiError";
 
 const PRIORITIES = ["Routine", "STAT", "PRN"];
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
-
-const formatDate = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleDateString() : "—";
 
 const currency = (value: number) => formatCurrency(value);
 
@@ -177,7 +171,7 @@ export default function PharmacyPage() {
       setLowStock(lowStockRes.data ?? []);
       setMedicationQueue(queueRes.data ?? []);
     } catch (error) {
-      if (!silent) toast.error(errorMessage(error, "Failed to load pharmacy data"));
+      if (!silent) toast.error(apiErrorMessage(error, "Failed to load pharmacy data"));
     } finally {
       if (!silent) setIsLoading(false);
     }
@@ -205,7 +199,7 @@ export default function PharmacyPage() {
       setInvMedicines(res.data ?? []);
       setInvTotalCount(res.totalCount ?? 0);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load medicine catalog"));
+      toast.error(apiErrorMessage(error, "Failed to load medicine catalog"));
       setInvMedicines([]);
       setInvTotalCount(0);
     } finally {
@@ -240,7 +234,7 @@ export default function PharmacyPage() {
       toast.success(data.message || "Marked as prepared");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to mark as prepared"));
+      toast.error(apiErrorMessage(error, "Failed to mark as prepared"));
     } finally {
       setPreparingId(null);
     }
@@ -255,7 +249,7 @@ export default function PharmacyPage() {
       toast.success(data.message || "Reverted to Pending");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to revert"));
+      toast.error(apiErrorMessage(error, "Failed to revert"));
     } finally {
       setPreparingId(null);
     }
@@ -289,7 +283,7 @@ export default function PharmacyPage() {
       closeMedDispenseModal();
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to dispense medicine"));
+      toast.error(apiErrorMessage(error, "Failed to dispense medicine"));
     } finally {
       setIsDispensingMed(false);
     }
@@ -304,7 +298,7 @@ export default function PharmacyPage() {
       const data = await PharmacyService.getAlternatives(medicine.medicineId);
       setAlternativesList(data.data ?? []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load alternatives"));
+      toast.error(apiErrorMessage(error, "Failed to load alternatives"));
     } finally {
       setLoadingAlternatives(false);
     }
@@ -326,7 +320,7 @@ export default function PharmacyPage() {
       setAddAlternativeId("");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add alternative"));
+      toast.error(apiErrorMessage(error, "Failed to add alternative"));
     } finally {
       setSavingAlternative(false);
     }
@@ -339,7 +333,7 @@ export default function PharmacyPage() {
       setAlternativesList((prev) => prev.filter((a) => a.medicineId !== alternativeId));
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to remove alternative"));
+      toast.error(apiErrorMessage(error, "Failed to remove alternative"));
     }
   };
 
@@ -483,7 +477,7 @@ export default function PharmacyPage() {
       fetchAll();
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(errorMessage(error, editingPrescriptionId ? "Failed to correct prescription" : "Failed to create prescription"));
+      toast.error(apiErrorMessage(error, editingPrescriptionId ? "Failed to correct prescription" : "Failed to create prescription"));
     } finally {
       setIsSubmittingRx(false);
     }
@@ -498,7 +492,7 @@ export default function PharmacyPage() {
           toast.success("Prescription removed");
           fetchAll();
         } catch (error) {
-          toast.error(errorMessage(error, "Failed to remove prescription"));
+          toast.error(apiErrorMessage(error, "Failed to remove prescription"));
         }
       }
     );
@@ -535,7 +529,7 @@ export default function PharmacyPage() {
       fetchAll();
     } catch (error) {
       notifySaveStatus("error");
-      toast.error(errorMessage(error, "Failed to issue medicine"));
+      toast.error(apiErrorMessage(error, "Failed to issue medicine"));
     } finally {
       setIssuingId(null);
     }
@@ -621,7 +615,7 @@ export default function PharmacyPage() {
       closeMedModal();
       refreshMedicines();
     } catch (error) {
-      toast.error(errorMessage(error, editingMedicineId ? "Failed to update medicine" : "Failed to add medicine"));
+      toast.error(apiErrorMessage(error, editingMedicineId ? "Failed to update medicine" : "Failed to add medicine"));
     } finally {
       setIsSubmittingMed(false);
     }
@@ -636,7 +630,7 @@ export default function PharmacyPage() {
           toast.success("Medicine removed");
           refreshMedicines();
         } catch (error) {
-          toast.error(errorMessage(error, "Failed to remove medicine"));
+          toast.error(apiErrorMessage(error, "Failed to remove medicine"));
         }
       }
     );
@@ -648,7 +642,7 @@ export default function PharmacyPage() {
       toast.success(data.message || "Stock updated");
       refreshMedicines();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update stock"));
+      toast.error(apiErrorMessage(error, "Failed to update stock"));
     }
   };
 
@@ -658,7 +652,7 @@ export default function PharmacyPage() {
       toast.success(medicine.isHighRisk ? "Unflagged as high-risk" : "Flagged as high-risk");
       refreshMedicines();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update medicine"));
+      toast.error(apiErrorMessage(error, "Failed to update medicine"));
     }
   };
 

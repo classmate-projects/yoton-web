@@ -1,5 +1,6 @@
 import axios from "axios";
 import { startApiRequest, endApiRequest } from "./apiLoading";
+import { reportServerReachable, reportServerUnreachable } from "./connectionStatus";
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_BASE_URL,
@@ -84,12 +85,19 @@ api.interceptors.request.use(
 // from /login to "/", looping forever.
 api.interceptors.response.use(
   (response) => {
-    if (typeof window !== "undefined") endApiRequest();
+    if (typeof window !== "undefined") {
+      endApiRequest();
+      reportServerReachable();
+    }
     return response;
   },
   async (error) => {
     if (typeof window !== "undefined") {
       endApiRequest();
+
+      // Any HTTP answer at all means the server is up; no answer means it (or the network) isn't.
+      if (error.response) reportServerReachable();
+      else if (!axios.isCancel(error)) reportServerUnreachable();
 
       const originalRequest = error.config;
 

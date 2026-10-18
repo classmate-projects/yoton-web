@@ -6,8 +6,9 @@ import { SpecializationService } from "@/services/specialization.service";
 import { DepartmentSerivce } from "@/services/department.service";
 import { SpecializationTypes } from "@/types/specialization.type";
 import { DepartmentTypes } from "@/types/department.type";
-import axios from "axios";
 import ToggleButton from "@/components/ToggleButton";
+import { apiErrorMessage } from "@/lib/apiError";
+import SearchableSelect from "@/components/SearchableSelect";
 
 
 interface SpecializationModalProps {
@@ -72,6 +73,10 @@ export default function SpecializationModal({
 
   const handleCreateSpecialization = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (!selectedDepartment) {
+      toast.warning("Please select a department");
+      return;
+    }
     setLoading(true)
     try {
       const payload = {
@@ -89,7 +94,7 @@ export default function SpecializationModal({
       // between opening this modal and submitting) so the admin actually sees why, instead
       // of the modal just closing as if it had worked.
       toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to create specialization" : "Failed to create specialization"
+        apiErrorMessage(error, "Failed to create specialization")
       );
     } finally {
       setLoading(false)
@@ -98,6 +103,10 @@ export default function SpecializationModal({
 
   const handleUpdateSpecialization = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (!selectedDepartment) {
+      toast.warning("Please select a department");
+      return;
+    }
     setLoading(true)
 
     if(!editingSpecialization) return;
@@ -116,7 +125,7 @@ export default function SpecializationModal({
       onClose();
     } catch (error) {
       toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update specialization" : "Failed to update specialization"
+        apiErrorMessage(error, "Failed to update specialization")
       );
     } finally {
       setLoading(false)
@@ -171,22 +180,17 @@ export default function SpecializationModal({
             <label htmlFor="spec-department" className="text-sm font-bold text-foreground/90 required">
               Department
             </label>
-            <select
-              id="spec-department"
-              required
-              value={selectedDepartment}
-              onChange={(e) => setSelectedDepartment(e.target.value)}
-              className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-            >
-              <option value="" disabled>
-                Select department
-              </option>
-              {selectableDepartments.map((dept) => (
-                <option key={dept.departmentId} value={dept.departmentId}>
-                  {dept.name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <SearchableSelect
+                id="spec-department"
+                value={selectedDepartment}
+                onChange={setSelectedDepartment}
+                placeholder="Select department"
+                options={selectableDepartments.map((dept) => ({ value: dept.departmentId, label: dept.name }))}
+                className="flex w-full items-center justify-between gap-1 p-3 rounded-lg bg-muted border border-border text-left text-foreground transition-colors hover:border-primary/60"
+                preserveCase
+              />
+            </div>
             <p className="text-xs text-muted-foreground mt-1">
               Only medical departments are listed — specialties can&apos;t be created under a non-medical
               department (e.g. IT, Quality).

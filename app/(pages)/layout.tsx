@@ -17,6 +17,7 @@ import DailyStatsBar from "@/components/DailyStatsBar";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
 import { useSessionRevokedListener } from "@/hooks/useSessionRevokedListener";
+import { useConnectionAlerts } from "@/hooks/useConnectionState";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { matchRoute, isRouteAllowed, getHomeRoute } from "@/lib/routeAccess";
 import { CurrentEncounterProvider, useCurrentEncounter } from "@/lib/currentEncounterContext";
@@ -68,6 +69,7 @@ export default function PageLayout({
   const { warningSecondsLeft, stayLoggedIn } = useIdleLogout();
   useProactiveTokenRefresh();
   useSessionRevokedListener();
+  useConnectionAlerts();
 
   // Mobile-only drawer state. On desktop the sidebar is always in flow (hover
   // rail), so this is inert there; on mobile the hamburger in the top bar opens

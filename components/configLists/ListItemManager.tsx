@@ -15,14 +15,7 @@ import { ConfigListType, ListItemType, ListTemplate } from "@/types/configList.t
 import { TestParameterType } from "@/types/testParameter.type";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import TemplateBuilderModal from "@/components/configLists/TemplateBuilderModal";
-
-const errorMessage = (error: unknown, fallback: string) => {
-  if (error && typeof error === "object" && "response" in error) {
-    const resp = (error as { response?: { data?: { message?: string } } }).response;
-    return resp?.data?.message || fallback;
-  }
-  return fallback;
-};
+import { apiErrorMessage } from "@/lib/apiError";
 
 interface ListItemManagerProps {
   listType: ConfigListType;
@@ -103,7 +96,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setTotalCount(res.totalCount ?? 0);
     } catch (error) {
       console.log("error from here: ", error);
-      toast.error(errorMessage(error, "Failed to load list"));
+      toast.error(apiErrorMessage(error, "Failed to load list"));
       setItems([]);
       setTotalCount(0);
     } finally {
@@ -141,7 +134,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setForm({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
       await fetchItems();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add item"));
+      toast.error(apiErrorMessage(error, "Failed to add item"));
     } finally {
       setIsSubmitting(false);
     }
@@ -175,7 +168,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setEditingId(null);
       await fetchItems();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update item"));
+      toast.error(apiErrorMessage(error, "Failed to update item"));
     }
   };
 
@@ -184,7 +177,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       await ConfigListService.setActive(item.listItemId, !item.isActive);
       setItems((prev) => prev.map((i) => (i.listItemId === item.listItemId ? { ...i, isActive: !i.isActive } : i)));
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update status"));
+      toast.error(apiErrorMessage(error, "Failed to update status"));
     }
   };
 
@@ -199,7 +192,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
           toast.success("Item deleted");
           await fetchItems();
         } catch (error) {
-          toast.error(errorMessage(error, "Failed to delete item"));
+          toast.error(apiErrorMessage(error, "Failed to delete item"));
         }
       }
     );
@@ -229,7 +222,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setShowBulkUpload(false);
       await fetchItems();
     } catch (error) {
-      toast.error(errorMessage(error, "Bulk upload failed"));
+      toast.error(apiErrorMessage(error, "Bulk upload failed"));
     } finally {
       setIsBulkUploading(false);
     }
@@ -427,7 +420,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       const res = await TestParameterService.get(item.listItemId);
       setParameters(res.data || []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load parameters"));
+      toast.error(apiErrorMessage(error, "Failed to load parameters"));
       setParameters([]);
     } finally {
       setIsLoadingParameters(false);
@@ -465,7 +458,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setNewParam({ name: "", unit: "", normalLow: "", normalHigh: "" });
       await fetchParameters(parametersFor);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add parameter"));
+      toast.error(apiErrorMessage(error, "Failed to add parameter"));
     } finally {
       setIsSavingParam(false);
     }
@@ -478,7 +471,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       toast.success("Parameter removed");
       await fetchParameters(parametersFor);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to remove parameter"));
+      toast.error(apiErrorMessage(error, "Failed to remove parameter"));
     }
   };
 

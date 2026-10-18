@@ -12,10 +12,3 @@ export interface AssignedDoctorsInfo {
     consultationServiceName?: string;
     consultationServiceFee?: number;
   }
-  
-  export interface AssignedDoctors {
-    count: number;
-    data: AssignedDoctorsInfo[];
-    message: string;
-    status: boolean;
-  }

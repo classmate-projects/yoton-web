@@ -33,8 +33,8 @@ import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { useViewModePreference } from "@/hooks/useViewModePreference";
 import ViewModeToggle from "@/components/ViewModeToggle";
 import { WalkInPatientBadge } from "@/components/patients/PatientBadges";
+import { PatientDocumentsModal } from "@/components/patients/PatientDocuments";
 
-const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
 
 // Walk-in-only payment/insurance touch-up (see openWalkInModal) - a lighter version of
 // patient-entry's own Payment Details section, same field set minus the per-category Fee
@@ -125,10 +125,8 @@ export default function PatientRecordsPage() {
   const [toDate, setToDate] = useState(todayValue);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Whose attachments are open (list + upload) - see PatientDocumentsModal.
   const [uploadTarget, setUploadTarget] = useState<PatientGetAllType | null>(null);
-  const [documentType, setDocumentType] = useState(DOCUMENT_TYPES[0]);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
 
   // ---------------- EMR modal state ----------------
   const [emrPatient, setEmrPatient] = useState<{ id: string; name: string } | null>(null);
@@ -527,37 +525,6 @@ export default function PatientRecordsPage() {
     }
   };
 
-  const closeUploadModal = () => {
-    setUploadTarget(null);
-    setUploadFile(null);
-    setDocumentType(DOCUMENT_TYPES[0]);
-  };
-
-  const handleUploadDocument = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!uploadTarget || !uploadFile) {
-      toast.warning("Please choose a file to upload");
-      return;
-    }
-    try {
-      setIsUploading(true);
-      const data = await ReceptionService.uploadDocument(uploadTarget.opId, {
-        documentType,
-        file: uploadFile,
-      });
-      toast.success(data.message || "Document uploaded");
-      closeUploadModal();
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || "Failed to upload document");
-      } else {
-        toast.error("Failed to upload document");
-      }
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const handleResendWelcomeEmail = async (id: string, name: string) => {
     try {
       setResendingEmailId(id);
@@ -729,7 +696,7 @@ export default function PatientRecordsPage() {
       <button
         onClick={() => setUploadTarget(patient)}
         className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
-        title="Upload External Document"
+        title="Attachments (view or upload documents)"
       >
         <MdOutlineUploadFile className="text-blue-600" size={18} />
       </button>
@@ -1678,56 +1645,7 @@ export default function PatientRecordsPage() {
       )}
 
       {uploadTarget && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-xl shadow-2xl max-w-sm w-full p-6 border border-border">
-            <h2 className="text-xl font-semibold text-foreground">
-              Upload document
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              {uploadTarget.name}
-            </p>
-            <form onSubmit={handleUploadDocument} className="mt-4 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">
-                  Document type
-                </label>
-                <div>
-                  <SearchableSelect
-                    value={documentType}
-                    onChange={setDocumentType}
-                    options={DOCUMENT_TYPES.map((type) => ({ value: type, label: type }))}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">
-                  File
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                  className="w-full text-sm text-foreground"
-                />
-              </div>
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={closeUploadModal}
-                  className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isUploading}
-                  className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
-                >
-                  {isUploading ? "Uploading..." : "Upload"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <PatientDocumentsModal patient={{ id: uploadTarget.opId, name: uploadTarget.name }} onClose={() => setUploadTarget(null)} />
       )}
 
       {/* EMR modal */}

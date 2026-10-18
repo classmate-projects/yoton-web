@@ -31,11 +31,12 @@ import { toDateInputValue } from "@/lib/date";
 import { isValidEmail } from "@/lib/validation";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { useExistingPatientMatches } from "@/hooks/useExistingPatientMatches";
-import { backendAssetUrl } from "@/lib/backendAsset";
-import { Eye, Footprints, Paperclip, Trash2, Upload } from "lucide-react";
+import { Footprints, Paperclip } from "lucide-react";
 import ExistingPatientNotice from "@/components/patients/ExistingPatientNotice";
+import PatientDocumentsPanel from "@/components/patients/PatientDocuments";
 import DuplicatePatientPrompt from "@/components/patients/DuplicatePatientPrompt";
 import type { PatientMatchType } from "@/types/patient.type";
+import { apiErrorMessage } from "@/lib/apiError";
 
 // Cash needs nothing further; Insurance and Corporate share the exact same
 // eligibility + fee-schedule template, entered once off the patient's card.
@@ -396,68 +397,6 @@ export default function PatientEntryPage() {
   const [consultNotes, setConsultNotes] = useState("");
   const [isBookingConsult, setIsBookingConsult] = useState(false);
 
-  // ---------------- Attachments (edit mode only) ----------------
-  type PatientDocItem = {
-    patientDocumentId: string;
-    documentType: string;
-    filePath: string | null;
-    createdAt: string;
-    visitId: string | null;
-  };
-  const DOC_TYPE_LABELS: Record<string, string> = {
-    ExternalLabReport: "External Lab Report",
-    ExternalRadiologyReport: "External Radiology Report",
-    InsuranceEligibility: "Insurance Eligibility",
-    Other: "Other",
-  };
-  const PREVIEWABLE_EXTS = ["jpg", "jpeg", "png", "gif", "webp", "pdf"];
-  const [patientDocs, setPatientDocs] = useState<PatientDocItem[]>([]);
-  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
-  const [docUploadType, setDocUploadType] = useState("Other");
-  const [docUploadFile, setDocUploadFile] = useState<File | null>(null);
-  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
-  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isEditMode || !editId) return;
-    setIsLoadingDocs(true);
-    ReceptionService.getPatientDocuments(editId)
-      .then((res) => setPatientDocs(res.data ?? []))
-      .catch(() => {})
-      .finally(() => setIsLoadingDocs(false));
-  }, [editId, isEditMode]);
-
-  const handleUploadDoc = async () => {
-    if (!editId || !docUploadFile) return;
-    setIsUploadingDoc(true);
-    try {
-      await ReceptionService.uploadDocument(editId, { documentType: docUploadType, file: docUploadFile });
-      const updated = await ReceptionService.getPatientDocuments(editId);
-      setPatientDocs(updated.data ?? []);
-      setDocUploadFile(null);
-      toast.success("Document uploaded");
-    } catch {
-      toast.error("Upload failed");
-    } finally {
-      setIsUploadingDoc(false);
-    }
-  };
-
-  const handleDeleteDoc = async (doc: PatientDocItem) => {
-    if (!editId) return;
-    setDeletingDocId(doc.patientDocumentId);
-    try {
-      await ReceptionService.deletePatientDocument(editId, doc.patientDocumentId);
-      setPatientDocs((prev) => prev.filter((d) => d.patientDocumentId !== doc.patientDocumentId));
-      toast.success("Document deleted");
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(msg ?? "Failed to delete document");
-    } finally {
-      setDeletingDocId(null);
-    }
-  };
-
   // Deduped from `specializations` itself rather than a separate department fetch - every
   // specialization here already carries its own department, and this modal only ever needs
   // departments that actually have an active, doctor-staffed specialization under them.
@@ -733,7 +672,7 @@ export default function PatientEntryPage() {
         toast.success(data.message || "Patient updated successfully");
         router.push("/patient-records");
       } catch (error) {
-        toast.error(axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update patient" : "Failed to update patient");
+        toast.error(apiErrorMessage(error, "Failed to update patient"));
       } finally {
         setLoading(false);
       }
@@ -781,7 +720,7 @@ export default function PatientEntryPage() {
         setSubmitMatches(error.response.data.data);
         setPendingPayload(null);
       }
-      toast.error(axios.isAxiosError(error) ? error.response?.data?.message || "Failed to register patient" : "Failed to register patient");
+      toast.error(apiErrorMessage(error, "Failed to register patient"));
     } finally {
       setLoading(false);
     }
@@ -1689,105 +1628,12 @@ export default function PatientEntryPage() {
         </div>
 
         {/* Attachments (edit mode only) */}
-        {isEditMode && (
+        {isEditMode && editId && (
           <div className="card p-5 flex flex-col gap-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
               <Paperclip size={16} className="text-primary" /> Attachments
             </h2>
-
-            {/* Document list */}
-            {isLoadingDocs ? (
-              <div className="flex justify-center py-6"><LoadingSpinner /></div>
-            ) : patientDocs.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No documents attached yet.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {patientDocs.map((doc) => {
-                  const fileUrl = backendAssetUrl(doc.filePath);
-                  const ext = doc.filePath?.split(".").pop()?.toLowerCase() ?? "";
-                  const canPreview = PREVIEWABLE_EXTS.includes(ext);
-                  return (
-                    <div key={doc.patientDocumentId} className="flex items-center gap-3 rounded-xl border border-border bg-muted/20 px-3 py-2.5">
-                      <Paperclip size={14} className="shrink-0 text-muted-foreground" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {DOC_TYPE_LABELS[doc.documentType] ?? doc.documentType}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(doc.createdAt), "dd MMM yyyy, h:mm a")}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {fileUrl && canPreview && (
-                          <a
-                            href={fileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="View"
-                            className="flex items-center justify-center h-7 w-7 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
-                          >
-                            <Eye size={13} />
-                          </a>
-                        )}
-                        {fileUrl && !canPreview && (
-                          <a
-                            href={fileUrl}
-                            download
-                            title="Download"
-                            className="flex items-center justify-center h-7 w-7 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
-                          >
-                            <Eye size={13} />
-                          </a>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDoc(doc)}
-                          disabled={deletingDocId === doc.patientDocumentId}
-                          title="Delete"
-                          className="flex items-center justify-center h-7 w-7 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors disabled:opacity-50 cursor-pointer"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Upload form */}
-            <div className="flex flex-col gap-2 pt-2 border-t border-border">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add document</p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <select
-                  value={docUploadType}
-                  onChange={(e) => setDocUploadType(e.target.value)}
-                  className="h-9 sm:w-52 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  {Object.entries(DOC_TYPE_LABELS).map(([val, label]) => (
-                    <option key={val} value={val}>{label}</option>
-                  ))}
-                </select>
-                <label className="flex-1 flex items-center gap-2 h-9 rounded-lg border border-dashed border-border bg-muted/30 hover:bg-muted/50 px-3 text-sm text-muted-foreground cursor-pointer transition-colors">
-                  <Upload size={14} />
-                  <span className="truncate">{docUploadFile ? docUploadFile.name : "Choose file…"}</span>
-                  <input
-                    type="file"
-                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-                    className="hidden"
-                    onChange={(e) => setDocUploadFile(e.target.files?.[0] ?? null)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={handleUploadDoc}
-                  disabled={!docUploadFile || isUploadingDoc}
-                  className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                >
-                  {isUploadingDoc ? "Uploading…" : "Upload"}
-                </button>
-              </div>
-            </div>
+            <PatientDocumentsPanel patientId={editId} />
           </div>
         )}
 
