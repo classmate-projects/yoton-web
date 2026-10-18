@@ -30,8 +30,12 @@ import ToggleButton from "@/components/ToggleButton";
 import { toDateInputValue } from "@/lib/date";
 import { isValidEmail } from "@/lib/validation";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { useExistingPatientMatches } from "@/hooks/useExistingPatientMatches";
 import { backendAssetUrl } from "@/lib/backendAsset";
-import { Eye, Paperclip, Trash2, Upload } from "lucide-react";
+import { Eye, Footprints, Paperclip, Trash2, Upload } from "lucide-react";
+import ExistingPatientNotice from "@/components/patients/ExistingPatientNotice";
+import DuplicatePatientPrompt from "@/components/patients/DuplicatePatientPrompt";
+import type { PatientMatchType } from "@/types/patient.type";
 
 // Cash needs nothing further; Insurance and Corporate share the exact same
 // eligibility + fee-schedule template, entered once off the patient's card.
@@ -67,6 +71,42 @@ const emptyCoverages = (): Record<string, CoverageFormRow> =>
   Object.fromEntries(
     INSURANCE_SERVICE_CATEGORIES.map((category) => [category, { ...emptyCoverageRow }])
   );
+
+// What was typed before switching to an existing patient's record (see continueWithExisting),
+// handed over to the edit form that opens next.
+const ENTRY_DRAFT_KEY = "yoton_patient_entry_draft";
+
+type EntryDraft = { forId: string; data: Record<string, unknown>; coverages?: Record<string, CoverageFormRow> };
+
+const takeEntryDraft = (forId: string): EntryDraft | null => {
+  try {
+    const raw = sessionStorage.getItem(ENTRY_DRAFT_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(ENTRY_DRAFT_KEY);
+    const draft = JSON.parse(raw) as EntryDraft;
+    return draft?.forId === forId ? draft : null;
+  } catch {
+    return null;
+  }
+};
+
+// Fills only the fields still empty on the loaded record. A walk-in's "Cash" was a default,
+// not a choice, so payment details typed for them win.
+function fillBlanks<T extends Record<string, unknown>>(loaded: T, typed: Record<string, unknown>, typedPaymentWins: boolean): T {
+  const merged: Record<string, unknown> = { ...loaded };
+  for (const [key, value] of Object.entries(typed)) {
+    if (typeof value !== "string" || value === "" || !(key in merged)) continue;
+    if (merged[key] === "" || merged[key] == null) merged[key] = value;
+  }
+  if (typedPaymentWins && typeof typed.paymentType === "string" && typed.paymentType !== "Cash") {
+    for (const [key, value] of Object.entries(typed)) {
+      if (key === "paymentType" || /^(eligibility|insurance|subInsurance|networkType|extraCardNo|certificateNo|dependentsNo|maxInsurance|coPay)/.test(key)) {
+        if (typeof value === "string" && value !== "") merged[key] = value;
+      }
+    }
+  }
+  return merged as T;
+}
 
 export default function PatientEntryPage() {
   const router = useRouter();
@@ -127,6 +167,23 @@ export default function PatientEntryPage() {
   const [loading, setLoading] = useState(false);
   const [companyCountry, setCompanyCountry] = useState<string | undefined>(undefined);
   const isInsuranceOrCorporate = formData.paymentType !== "Cash";
+
+  // Set when the record being edited was registered as a walk-in with minimal details -
+  // saving this full form completes their registration (same patient, same MRN).
+  const [loadedRegistrationType, setLoadedRegistrationType] = useState<string | null>(null);
+  // Existing patients sharing an ID / mobile / email with what's typed so far (new
+  // registrations only), and the same check once more on submit.
+  const { visibleMatches, dismiss: dismissMatches } = useExistingPatientMatches({
+    nationalID: formData.nationalID,
+    passportNumber: formData.passportNumber,
+    phone: formData.phone,
+    phoneCode: formData.phoneCode,
+    email: formData.email,
+    enabled: !isEditMode,
+  });
+  const [submitMatches, setSubmitMatches] = useState<PatientMatchType[] | null>(null);
+  const [pendingPayload, setPendingPayload] = useState<ReceptionCreatePatientType | null>(null);
+  const [openingMatchId, setOpeningMatchId] = useState<string | null>(null);
   // Only flagged once something's actually been typed - an empty required field is caught
   // by the browser's own `required` validation on submit, not this live format check.
   const emailInvalid = formData.email.length > 0 && !isValidEmail(formData.email);
@@ -168,7 +225,7 @@ export default function PatientEntryPage() {
           ? p.emergencyContactPhone.slice(emergencyCode.phoneCode.length)
           : p.emergencyContactPhone ?? "";
 
-        setFormData({
+        const loaded = {
           name: p.name ?? "",
           sex: p.sex ?? "",
           dateOfBirth: p.dateOfBirth ?? "",
@@ -210,7 +267,16 @@ export default function PatientEntryPage() {
           maxInsuranceCopay: p.maxInsuranceCopay?.toString() ?? "",
           coPayPatientPercent: p.coPayPatientPercent?.toString() ?? "",
           password: "",
-        });
+        };
+        const isWalkInRecord = p.registrationType === "External";
+        setLoadedRegistrationType(p.registrationType ?? null);
+        // Reached via "Continue with this profile" - what was typed fills the empty fields.
+        const draft = takeEntryDraft(editId);
+        setFormData(draft ? fillBlanks(loaded, draft.data, isWalkInRecord) : loaded);
+        if (draft) {
+          toast.info("The details you typed filled this record's empty fields - review them and save.");
+          if (isWalkInRecord && draft.coverages && draft.data.paymentType !== "Cash") setCoverages(draft.coverages);
+        }
 
         if (p.insuranceCoverages && p.insuranceCoverages.length > 0) {
           setCoverages((prev) => {
@@ -234,9 +300,24 @@ export default function PatientEntryPage() {
         toast.error("Failed to load patient details");
       } finally {
         setIsLoadingPatient(false);
+        setOpeningMatchId(null);
       }
     })();
   }, [editId]);
+
+  // Carries on with the existing record instead of creating a duplicate: it opens here in
+  // edit mode, with whatever was typed so far filling only the fields it doesn't have yet.
+  const continueWithExisting = (match: PatientMatchType) => {
+    setOpeningMatchId(match.opId);
+    try {
+      sessionStorage.setItem(ENTRY_DRAFT_KEY, JSON.stringify({ forId: match.opId, data: formData, coverages }));
+    } catch {
+      // Storage unavailable - the record still opens, just without the typed details.
+    }
+    setSubmitMatches(null);
+    setPendingPayload(null);
+    router.push(`/patient-entry?edit=${match.opId}`);
+  };
 
   // Re-clamps an already-typed phone number if switching to a dialing code with a shorter
   // national number length leaves it over the new limit (e.g. 10 digits typed for +234
@@ -615,6 +696,9 @@ export default function PatientEntryPage() {
     const payload: ReceptionCreatePatientType = {
       ...formData,
       registeredBy,
+      // Saving the full form always means a complete registration - this is what turns a
+      // walk-in's minimal record into a fully registered patient.
+      registrationType: "Full",
       // The API has no separate dialing-code field for the emergency contact (unlike the
       // patient's own phone/phoneCode pair), so the selected code is folded into the one
       // string field it does expect.
@@ -641,32 +725,66 @@ export default function PatientEntryPage() {
         : undefined,
     };
 
-    const wasManualEligibility = formData.eligibilityMode === "Manual";
-
-    try {
-      if (isEditMode) {
+    if (isEditMode) {
+      try {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, ...updatePayload } = payload;
         const data = await ReceptionService.updatePatient(editId!, updatePayload);
         toast.success(data.message || "Patient updated successfully");
         router.push("/patient-records");
+      } catch (error) {
+        toast.error(axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update patient" : "Failed to update patient");
+      } finally {
+        setLoading(false);
+      }
+      setError("");
+      return;
+    }
+
+    // Last check before creating: is this person already on file (e.g. registered as a
+    // walk-in at the pharmacy or lab)? If so, offer their record instead of a duplicate.
+    try {
+      const res = await ReceptionService.matchPatients({
+        nationalID: formData.nationalID || undefined,
+        passportNumber: formData.passportNumber || undefined,
+        phone: formData.phone || undefined,
+        phoneCode: formData.phoneCode,
+        email: formData.email || undefined,
+      });
+      const found: PatientMatchType[] = res.data ?? [];
+      if (found.length > 0) {
+        setSubmitMatches(found);
+        setPendingPayload(payload);
+        setLoading(false);
         return;
       }
-      const data = await ReceptionService.createPatinet(payload)
-      toast.success(data.message)
+    } catch {
+      // Carry on - the server still refuses an ID that's already registered.
+    }
+
+    await createNewPatient(payload);
+    setError("");
+  };
+
+  const createNewPatient = async (payload: ReceptionCreatePatientType) => {
+    const wasManualEligibility = payload.eligibilityMode === "Manual";
+    try {
+      setLoading(true);
+      const data = await ReceptionService.createPatinet(payload);
+      toast.success(data.message);
       resetForm();
       setRegisteredPatient({ opId: data.data.opId, name: data.data.name });
       setNeedsEligibilityDoc(wasManualEligibility);
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || `Failed to ${isEditMode ? "update" : "register"} patient`);
-      } else {
-        toast.error(`Failed to ${isEditMode ? "update" : "register"} patient`);
+      // An ID that's already registered comes back with the matching record.
+      if (axios.isAxiosError(error) && error.response?.data?.duplicate && error.response.data.data?.length) {
+        setSubmitMatches(error.response.data.data);
+        setPendingPayload(null);
       }
+      toast.error(axios.isAxiosError(error) ? error.response?.data?.message || "Failed to register patient" : "Failed to register patient");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-    setError("");
   };
 
   const resetForm = () => {
@@ -743,7 +861,7 @@ export default function PatientEntryPage() {
         {/* Header */}
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl font-bold text-foreground">
-            {isEditMode ? "Edit Patient" : "New Patient Entry"}
+            {isEditMode ? (loadedRegistrationType === "External" ? "Complete Registration" : "Edit Patient") : "New Patient Entry"}
           </h1>
           <p className="text-base text-foreground/80">
             {isEditMode
@@ -751,6 +869,17 @@ export default function PatientEntryPage() {
               : "Complete patient registration form. All fields marked with * are required."}
           </p>
         </div>
+
+        {isEditMode && loadedRegistrationType === "External" && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4">
+            <Footprints size={20} className="mt-0.5 shrink-0 text-amber-500" />
+            <p className="text-sm text-foreground/90">
+              This patient was registered as a <b>walk-in with minimal details</b> (for an outside prescription,
+              lab or radiology order). Fill in the rest and save to complete their registration - their MRN and
+              everything already on their record stay the same.
+            </p>
+          </div>
+        )}
 
         {/* Personal Information Section */}
         <div className="bg-card rounded-lg shadow-md border border-border p-4 sm:p-8">
@@ -1681,6 +1810,36 @@ export default function PatientEntryPage() {
           </button>
         </div>
       </form>
+
+      {submitMatches && (
+        <DuplicatePatientPrompt
+          matches={submitMatches}
+          busyId={openingMatchId}
+          onContinue={continueWithExisting}
+          onCreateNew={
+            pendingPayload
+              ? () => {
+                  const toCreate = pendingPayload;
+                  setSubmitMatches(null);
+                  setPendingPayload(null);
+                  createNewPatient(toCreate);
+                }
+              : undefined
+          }
+          onCancel={() => {
+            setSubmitMatches(null);
+            setPendingPayload(null);
+          }}
+        />
+      )}
+      {!isEditMode && !submitMatches && (
+        <ExistingPatientNotice
+          matches={visibleMatches}
+          onContinue={continueWithExisting}
+          onDismiss={dismissMatches}
+          busyId={openingMatchId}
+        />
+      )}
 
       {/* Post-registration "add consultation?" popup */}
       {registeredPatient && (

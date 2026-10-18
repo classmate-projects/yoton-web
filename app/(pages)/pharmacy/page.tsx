@@ -26,10 +26,14 @@ import {
   PharmacySummaryType,
   PrescriptionType,
 } from "@/types/pharmacy.type";
-import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
+import { DoctorGridType } from "@/types/appointment.type";
+import { PatientSummaryType } from "@/types/patient.type";
 import { UserType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { formatCurrency } from "@/lib/currency";
+import PatientPicker, { patientFromOrder } from "@/components/patients/PatientPicker";
+import PatientStreamTabs from "@/components/patients/PatientStreamTabs";
+import { BillStatusBadge, WalkInPatientBadge, billedLockTitle } from "@/components/patients/PatientBadges";
 
 const PRIORITIES = ["Routine", "STAT", "PRN"];
 
@@ -94,7 +98,6 @@ export default function PharmacyPage() {
   const [addAlternativeId, setAddAlternativeId] = useState("");
   const [savingAlternative, setSavingAlternative] = useState(false);
 
-  const [patients, setPatients] = useState<PatientListItemType[]>([]);
   const [doctors, setDoctors] = useState<DoctorGridType[]>([]);
 
   const [issuingId, setIssuingId] = useState<string | null>(null);
@@ -108,9 +111,10 @@ export default function PharmacyPage() {
   // New prescription form
   const [isRxModalOpen, setIsRxModalOpen] = useState(false);
   const [isSubmittingRx, setIsSubmittingRx] = useState(false);
-  const [patientSearch, setPatientSearch] = useState("");
-  const [selectedPatient, setSelectedPatient] = useState<PatientListItemType | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientSummaryType | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  // Outside prescriber on the prescription a walk-in brought in (no in-house doctor).
+  const [externalProvider, setExternalProvider] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<{ medicineId: string; quantity: number; priority: string }[]>([
     { medicineId: "", quantity: 1, priority: "Routine" },
@@ -382,45 +386,29 @@ export default function PharmacyPage() {
 
   useEffect(() => {
     if (!checkedAuth) return;
-    const fetchPickers = async () => {
+    const fetchDoctors = async () => {
       try {
-        const [patientsRes, gridRes] = await Promise.all([
-          ReceptionService.getAllPatients(),
-          ReceptionService.getSpecializationsWithDoctors(),
-        ]);
-        setPatients(patientsRes.patients ?? []);
+        const gridRes = await ReceptionService.getSpecializationsWithDoctors();
         const allDoctors = (gridRes.specializations ?? []).flatMap(
           (s: { doctors: DoctorGridType[] }) => s.doctors
         );
         setDoctors(allDoctors);
       } catch (error) {
-        console.error("Failed to load patient/doctor pickers:", error);
+        console.error("Failed to load doctor picker:", error);
       }
     };
-    fetchPickers();
+    fetchDoctors();
 
     UserService.getAll()
       .then((res) => setNurses((res.data ?? []).filter((u: UserType) => u.role?.toLowerCase() === "nurse")))
       .catch(() => setNurses([]));
   }, [checkedAuth]);
 
-  const filteredPatients = useMemo(() => {
-    if (!patientSearch.trim()) return [];
-    const q = patientSearch.toLowerCase();
-    return patients.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.phone?.toLowerCase().includes(q) ||
-        p.opNumber?.toLowerCase().includes(q) ||
-        p.opId?.toLowerCase().includes(q)
-    );
-  }, [patientSearch, patients]);
-
   // ---------------- PRESCRIPTION FORM ----------------
   const resetRxForm = () => {
-    setPatientSearch("");
     setSelectedPatient(null);
     setSelectedDoctorId("");
+    setExternalProvider("");
     setNotes("");
     setItems([{ medicineId: "", quantity: 1, priority: "Routine" }]);
   };
@@ -434,12 +422,9 @@ export default function PharmacyPage() {
   const openEditRxModal = (prescription: PrescriptionType) => {
     resetRxForm();
     setEditingPrescriptionId(prescription.prescriptionId);
-    const matchedPatient = patients.find((p) => p.opId === prescription.patientId);
-    if (matchedPatient) {
-      setSelectedPatient(matchedPatient);
-      setPatientSearch(matchedPatient.name);
-    }
+    setSelectedPatient(patientFromOrder(prescription));
     setSelectedDoctorId(prescription.doctorId || "");
+    setExternalProvider(prescription.externalProvider || "");
     setNotes(prescription.notes || "");
     setItems(
       prescription.items.length > 0
@@ -469,6 +454,10 @@ export default function PharmacyPage() {
 
   const handleCreatePrescription = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedPatient) {
+      toast.warning("Select the patient, or register them as a walk-in");
+      return;
+    }
     const validItems = items.filter((i) => i.medicineId && i.quantity > 0);
     if (validItems.length === 0) {
       toast.warning("Please add at least one medicine");
@@ -479,8 +468,9 @@ export default function PharmacyPage() {
     try {
       setIsSubmittingRx(true);
       const payload = {
-        patientId: selectedPatient?.opId,
+        patientId: selectedPatient.opId,
         doctorId: selectedDoctorId || undefined,
+        externalProvider: selectedDoctorId ? undefined : externalProvider.trim() || undefined,
         notes: notes || undefined,
         items: validItems,
       };
@@ -739,24 +729,14 @@ export default function PharmacyPage() {
       {tab === "prescriptions" ? (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div className="flex gap-2">
-              {(
-                [
-                  { key: "doctorOrders", label: "Doctor Orders" },
-                  { key: "walkIn", label: "Walk-in Sales" },
-                ] as const
-              ).map((v) => (
-                <button
-                  key={v.key}
-                  onClick={() => setPrescriptionView(v.key)}
-                  className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors cursor-pointer ${
-                    prescriptionView === v.key ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  }`}
-                >
-                  {v.label}
-                </button>
-              ))}
-            </div>
+            {/* Consultation patients' doctor orders vs walk-ins with an outside prescription. */}
+            <PatientStreamTabs
+              value={prescriptionView === "doctorOrders" ? "consultation" : "walkIn"}
+              onChange={(v) => setPrescriptionView(v === "consultation" ? "doctorOrders" : "walkIn")}
+              consultationCount={medicationGroups.length}
+              walkInCount={prescriptions.length}
+              walkInLabel="Walk-in sales"
+            />
             <div className="flex flex-wrap items-center gap-2">
               {(["pending", "all"] as const).map((f) => (
                 <button
@@ -923,128 +903,119 @@ export default function PharmacyPage() {
                 })
               )}
             </div>
-          ) : (
-          <div className="card">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr>
-                    <th className="text-foreground/90">Patient</th>
-                    <th className="text-foreground/90">Doctor</th>
-                    <th className="text-foreground/90">Medicines</th>
-                    <th className="text-foreground/90">Total</th>
-                    <th className="text-foreground/90">Date</th>
-                    <th className="text-foreground/90">Status</th>
-                    <th className="text-center text-foreground/90">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={7} className="py-16 text-center">
-                        <LoadingSpinner />
-                      </td>
-                    </tr>
-                  ) : prescriptions.length > 0 ? (
-                    prescriptions.map((rx) => {
-                      const total = rx.items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-                      return (
-                        <tr key={rx.prescriptionId} className="hover:bg-muted/30 transition-colors">
-                          <td className="font-semibold text-foreground">{rx.patientName}</td>
-                          <td className="text-foreground/80">{rx.doctorName}</td>
-                          <td className="text-foreground/80">
-                            <div className="flex flex-col gap-0.5">
-                              {rx.items.map((i) => (
-                                <span key={i.prescriptionItemId} className="text-xs flex items-center gap-1">
-                                  {i.medicineName} × {i.quantity}
-                                  {i.priority !== "Routine" && (
-                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${i.priority === "STAT" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
-                                      {i.priority}
-                                    </span>
-                                  )}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="text-foreground font-semibold">{currency(total)}</td>
-                          <td className="text-foreground/70 text-sm">{formatDate(rx.createdAt)}</td>
-                          <td>
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                rx.status === "Dispensed"
-                                  ? "bg-emerald-500/10 text-emerald-500"
-                                  : "bg-amber-500/10 text-amber-500"
-                              }`}
-                            >
-                              {rx.status}
-                            </span>
-                            {rx.status === "Dispensed" && rx.collectedBy && (
-                              <p className="text-[11px] text-muted-foreground mt-1">
-                                Collected by {rx.collectedBy === "Nurse" ? rx.collectorName || "Nurse" : "Patient"}
-                              </p>
-                            )}
-                          </td>
-                          <td>
-                            <div className="flex justify-center items-center gap-1">
-                              {rx.status === "Pending" ? (
-                                <>
-                                  <button
-                                    onClick={() => openDispenseModal(rx)}
-                                    disabled={issuingId === rx.prescriptionId}
-                                    className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
-                                  >
-                                    {issuingId === rx.prescriptionId ? "Dispensing..." : "Dispense"}
-                                  </button>
-                                  <button
-                                    onClick={() => openEditRxModal(rx)}
-                                    title="Correct prescription"
-                                    className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer"
-                                  >
-                                    <Pencil size={14} />
-                                  </button>
-                                  <button
-                                    onClick={() => removePrescriptionEntry(rx)}
-                                    title="Delete prescription"
-                                    className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
-                            </div>
-                            {rx.correctedFrom && (
-                              <CorrectedFromNote>
-                                <div>
-                                  Previous:{" "}
-                                  {rx.correctedFrom.items
-                                    .map((i) => `${i.medicineName} x${i.quantity}`)
-                                    .join(", ")}
-                                  {rx.correctedFrom.notes ? ` — ${rx.correctedFrom.notes}` : ""}
-                                </div>
-                                <div>Recorded {formatDate(rx.correctedFrom.createdAt)}</div>
-                              </CorrectedFromNote>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={7}>
-                        <EmptyState
-                          illustration="documents"
-                          title="No prescriptions found"
-                          description="Prescriptions written by doctors will be listed here."
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          ) : isLoading ? (
+            <div className="card py-16 flex justify-center">
+              <LoadingSpinner />
             </div>
-          </div>
+          ) : prescriptions.length === 0 ? (
+            <div className="card">
+              <EmptyState
+                illustration="documents"
+                title="No walk-in sales"
+                description="Use New Walk-in Sale for a patient who brings an outside prescription or buys over the counter."
+              />
+            </div>
+          ) : (
+            // One card per walk-in sale - same grid as the consultation view.
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {prescriptions.map((rx) => {
+                const total = rx.items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+                return (
+                  <div key={rx.prescriptionId} className="card p-4 flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="font-semibold text-foreground truncate">{rx.patientName}</p>
+                          <WalkInPatientBadge registrationType={rx.patientRegistrationType} />
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {rx.patientOPNumber ? `MRN ${rx.patientOPNumber} · ` : ""}
+                          {rx.doctorId ? rx.doctorName : rx.externalProvider ? `Prescribed by ${rx.externalProvider}` : "Outside prescription / OTC"}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap justify-end items-center gap-1.5">
+                        {!rx.visitId && <BillStatusBadge billStatus={rx.billStatus} />}
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            rx.status === "Dispensed" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"
+                          }`}
+                        >
+                          {rx.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      {rx.items.map((i) => (
+                        <div key={i.prescriptionItemId} className="flex items-center justify-between gap-2 text-sm">
+                          <span className="flex min-w-0 items-center gap-1 text-foreground/80">
+                            <span className="truncate">{i.medicineName} × {i.quantity}</span>
+                            {i.priority !== "Routine" && (
+                              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${i.priority === "STAT" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                                {i.priority}
+                              </span>
+                            )}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-muted-foreground">{currency(i.quantity * i.unitPrice)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {rx.notes && <p className="text-xs text-muted-foreground line-clamp-2">{rx.notes}</p>}
+
+                    <div className="flex items-center justify-between border-t border-border pt-2">
+                      <span className="text-xs text-muted-foreground">{formatDate(rx.createdAt)}</span>
+                      <span className="font-semibold text-foreground tabular-nums">{currency(total)}</span>
+                    </div>
+                    {rx.status === "Dispensed" && rx.collectedBy && (
+                      <p className="-mt-2 text-[11px] text-muted-foreground">
+                        Collected by {rx.collectedBy === "Nurse" ? rx.collectorName || "Nurse" : "Patient"}
+                      </p>
+                    )}
+
+                    {rx.status === "Pending" && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openDispenseModal(rx)}
+                          disabled={issuingId === rx.prescriptionId}
+                          className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
+                        >
+                          {issuingId === rx.prescriptionId ? "Dispensing..." : "Dispense"}
+                        </button>
+                        <button
+                          onClick={() => openEditRxModal(rx)}
+                          disabled={!!rx.billStatus}
+                          title={rx.billStatus ? billedLockTitle(rx.billStatus) : "Correct prescription"}
+                          className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => removePrescriptionEntry(rx)}
+                          disabled={!!rx.billStatus}
+                          title={rx.billStatus ? billedLockTitle(rx.billStatus) : "Delete prescription"}
+                          className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+
+                    {rx.correctedFrom && (
+                      <CorrectedFromNote>
+                        <div>
+                          Previous:{" "}
+                          {rx.correctedFrom.items
+                            .map((i) => `${i.medicineName} x${i.quantity}`)
+                            .join(", ")}
+                          {rx.correctedFrom.notes ? ` — ${rx.correctedFrom.notes}` : ""}
+                        </div>
+                        <div>Recorded {formatDate(rx.correctedFrom.createdAt)}</div>
+                      </CorrectedFromNote>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </>
       ) : (
@@ -1269,39 +1240,7 @@ export default function PharmacyPage() {
             </p>
 
             <form onSubmit={handleCreatePrescription} className="flex flex-col gap-4">
-              <div className="relative">
-                <label className="text-sm font-bold text-foreground/90">Patient</label>
-                <input
-                  type="text"
-                  value={patientSearch}
-                  onChange={(e) => {
-                    setPatientSearch(e.target.value);
-                    setSelectedPatient(null);
-                  }}
-                  placeholder="Search by name, phone or MRN..."
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                />
-                {!selectedPatient && filteredPatients.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
-                    {filteredPatients.map((p) => (
-                      <button
-                        type="button"
-                        key={p.opId}
-                        onClick={() => {
-                          setSelectedPatient(p);
-                          setPatientSearch(p.name);
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-primary/5 border-b border-border last:border-b-0 transition-colors"
-                      >
-                        <div className="font-medium text-foreground">{p.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {p.opNumber || p.opId} • {p.phone}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <PatientPicker value={selectedPatient} onChange={setSelectedPatient} required />
 
               <div>
                 <label className="text-sm font-bold text-foreground/90">Prescribing Doctor</label>
@@ -1310,12 +1249,26 @@ export default function PharmacyPage() {
                     value={selectedDoctorId}
                     onChange={setSelectedDoctorId}
                     options={[
-                      { value: "", label: "Not specified" },
+                      { value: "", label: "Outside doctor / over the counter" },
                       ...doctors.map((d) => ({ value: d.doctorId, label: `${d.name} — ${d.specializationName}` })),
                     ]}
                   />
                 </div>
               </div>
+
+              {!selectedDoctorId && (
+                <div>
+                  <label className="text-sm font-bold text-foreground/90">Prescribed by (outside doctor / facility)</label>
+                  <input
+                    type="text"
+                    value={externalProvider}
+                    onChange={(e) => setExternalProvider(e.target.value)}
+                    maxLength={200}
+                    placeholder="e.g. Dr. Ahmed, City Clinic - leave blank for over the counter"
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="text-sm font-bold text-foreground/90 required">Medicines</label>

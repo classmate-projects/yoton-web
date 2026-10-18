@@ -1,9 +1,11 @@
 import type { OrderLockFields } from "./orderLock.type";
+import type { WalkInOrderFields } from "./patient.type";
 
-export interface RadiologyRequestType extends OrderLockFields {
+export interface RadiologyRequestType extends OrderLockFields, WalkInOrderFields {
   radiologyRequestId: string;
   patientId: string | null;
   patientName: string;
+  patientOPNumber?: string | null;
   doctorId: string | null;
   doctorName: string | null;
   visitId: string | null;
@@ -48,6 +50,7 @@ export interface CreateRadiologyRequestPayload {
   remarks?: string;
   priority: string;
   source?: string; // InHouse, External
+  externalProvider?: string; // outside doctor/facility on a walk-in's order
   price?: number;
   covered?: boolean;
   patientShareAmount?: number;

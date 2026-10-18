@@ -49,6 +49,10 @@ export const ENDPOINTS = {
             return `/api/reception/visits/list${qs ? `?${qs}` : ""}`;
         },
         CREATE_PATIENT: `/api/reception/create-patient`,
+        // POSTs, so mobile numbers and ID numbers never end up in URLs or server logs.
+        SEARCH_PATIENTS: `/api/reception/patient-search`,
+        MATCH_PATIENTS: `/api/reception/patient-match`,
+        CREATE_EXTERNAL_PATIENT: `/api/reception/external-patient`,
         GET_PATIENT_BY_ID: (id: string) => `/api/reception/patient/${id}`,
         UPDATE_PATIENT: (id: string) => `/api/reception/patient/${id}`,
         UPDATE_SCEDULE: `/api/reception/update-schedule`,
@@ -152,6 +156,7 @@ export const ENDPOINTS = {
         GET_DASHBOARD_SUMMARY: (doctorId?: string) => `/api/emr/dashboard-summary${doctorId ? `?doctorId=${doctorId}` : ""}`,
         GET_TODAY_SCHEDULE: (doctorId?: string, date?: string) => { const p = new URLSearchParams(); if (doctorId) p.set("doctorId", doctorId); if (date) p.set("date", date); const q = p.toString(); return `/api/emr/schedule/today${q ? `?${q}` : ""}`; },
         GET_ACTIVE_CASES: (doctorId?: string) => `/api/emr/active-cases${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        GET_TODAY_QUEUE: (doctorId?: string) => `/api/emr/patients/today-queue${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPSERT_ENCOUNTER: (patientId: string, doctorId?: string) => `/api/emr/patient/${patientId}/encounter${doctorId ? `?doctorId=${doctorId}` : ""}`,
         FINISH_ENCOUNTER: (encounterId: string, doctorId?: string) => `/api/emr/encounter/${encounterId}/finish${doctorId ? `?doctorId=${doctorId}` : ""}`,
         RE_ENCOUNTER: (encounterId: string, tzOffset: number) => `/api/emr/encounter/${encounterId}/re-encounter?tzOffset=${tzOffset}`,
@@ -381,6 +386,9 @@ export const ENDPOINTS = {
         PAY: `/api/Billing/pay`,
         CANCEL: (id: string) => `/api/Billing/cancel/${id}`,
         GET_CHARGEABLE_ITEMS: (visitId: string) => `/api/Billing/visit/${visitId}/chargeable-items`,
+        GET_WALK_IN_AWAITING: `/api/Billing/walk-in/awaiting`,
+        GET_WALK_IN_ITEMS: (patientId: string) => `/api/Billing/patient/${patientId}/walk-in-items`,
+        OPEN_WALK_IN_BILL: (patientId: string) => `/api/Billing/patient/${patientId}/walk-in/open`,
         ADD_ITEM_FROM_SOURCE: `/api/Billing/item/from-source`,
         UPDATE_ITEM: (itemId: string) => `/api/Billing/item/${itemId}`,
         REMOVE_ITEM: (itemId: string) => `/api/Billing/item/${itemId}/remove`,

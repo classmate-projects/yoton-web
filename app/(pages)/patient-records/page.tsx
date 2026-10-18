@@ -32,6 +32,7 @@ import { matchesPatientSearch } from "@/lib/patientSearch";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { useViewModePreference } from "@/hooks/useViewModePreference";
 import ViewModeToggle from "@/components/ViewModeToggle";
+import { WalkInPatientBadge } from "@/components/patients/PatientBadges";
 
 const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
 
@@ -658,16 +659,19 @@ export default function PatientRecordsPage() {
 
   // Register List row actions — operate on the patient record itself.
   // Avatar + name + MRN chip - the first column of every list-view table.
-  const renderPatientCell = (name: string, mrn: string, avatarClass = "bg-primary/10 text-primary") => (
+  const renderPatientCell = (name: string, mrn: string, avatarClass = "bg-primary/10 text-primary", registrationType?: string | null) => (
     <div className="flex items-center gap-3">
       <div className={`w-9 h-9 rounded-full font-bold text-xs flex items-center justify-center shrink-0 ${avatarClass}`}>
         {getInitials(name === "—" ? "?" : name)}
       </div>
       <div className="min-w-0 max-w-[220px]">
         <p className="font-semibold text-foreground truncate" title={name}>{name}</p>
-        <span className="inline-block max-w-full truncate align-bottom font-mono text-[12px] text-foreground bg-muted px-1.5 py-0.5 rounded">
-          {mrn}
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-block max-w-full truncate align-bottom font-mono text-[12px] text-foreground bg-muted px-1.5 py-0.5 rounded">
+            {mrn}
+          </span>
+          <WalkInPatientBadge registrationType={registrationType} />
+        </div>
       </div>
     </div>
   );
@@ -704,7 +708,7 @@ export default function PatientRecordsPage() {
       <Link
         href={`/patient-entry?edit=${patient.opId}`}
         className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer inline-flex"
-        title="Edit Patient"
+        title={patient.registrationType === "External" ? "Complete registration (walk-in with minimal details)" : "Edit Patient"}
       >
         <MdOutlineEdit className="text-blue-600" size={18} />
       </Link>
@@ -929,7 +933,7 @@ export default function PatientRecordsPage() {
                 <tbody>
                   {pagedPatients.map((patient) => (
                     <tr key={patient.opId} className="border-b border-border last:border-b-0 hover:bg-muted/40">
-                      <td className={TD_CLASS}>{renderPatientCell(patient.name, patient.opNumber || patient.opId)}</td>
+                      <td className={TD_CLASS}>{renderPatientCell(patient.name, patient.opNumber || patient.opId, undefined, patient.registrationType)}</td>
                       <td className={`${TD_CLASS} max-w-[220px] truncate text-muted-foreground`} title={patient.email}>{patient.email || "—"}</td>
                       <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{patient.phone || "—"}</td>
                       <td className={`${TD_CLASS} max-w-[280px] truncate text-muted-foreground`} title={patient.address}>{patient.address || "—"}</td>
@@ -951,9 +955,12 @@ export default function PatientRecordsPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-foreground truncate">{patient.name}</p>
-                        <span className="inline-block max-w-full truncate align-bottom font-mono text-[13px] text-foreground bg-muted px-1.5 py-0.5 rounded">
-                          {patient.opNumber || patient.opId}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="inline-block max-w-full truncate align-bottom font-mono text-[13px] text-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {patient.opNumber || patient.opId}
+                          </span>
+                          <WalkInPatientBadge registrationType={patient.registrationType} />
+                        </div>
                       </div>
                     </div>
                     <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">

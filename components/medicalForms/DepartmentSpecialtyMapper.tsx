@@ -65,7 +65,8 @@ export default function DepartmentSpecialtyMapper({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-xs text-muted-foreground">
-        Leave both empty to make this form visible to everyone. Otherwise it shows for a matching department <span className="font-semibold">or</span> specialty.
+        Only the departments (or specialties) you tick here will see this form. Leave both empty to show it for all
+        departments.
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">

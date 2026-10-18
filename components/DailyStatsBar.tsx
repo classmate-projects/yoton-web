@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Clock, CheckCircle2 } from "lucide-react";
+import { Clock, CheckCircle2, Stethoscope, Activity } from "lucide-react";
 import { getUserDetail } from "@/lib/userDetail";
 import { ReceptionService } from "@/services/reception.service";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
@@ -84,26 +84,38 @@ function PatientListPopup({
   );
 }
 
+type PopupKey = "waiting" | "consulted" | "pendingNurse" | "inProgress";
+
 export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "inline" }) {
   const [visible, setVisible] = useState(false);
   const [waiting, setWaiting] = useState<number | null>(null);
   const [completedToday, setCompletedToday] = useState<number | null>(null);
-  // The popups' lists come back with the counts from the same daily-stats call (same
-  // today/role/doctor scoping), so a count and its list can never disagree.
+  const [pendingNurse, setPendingNurse] = useState<number | null>(null);
+  const [inProgress, setInProgress] = useState<number | null>(null);
+  const [roleType, setRoleType] = useState<string | null>(null);
   const [waitingPatients, setWaitingPatients] = useState<VisitType[]>([]);
   const [consultedPatients, setConsultedPatients] = useState<VisitType[]>([]);
-  const [activePopup, setActivePopup] = useState<"waiting" | "consulted" | null>(null);
+  const [pendingNursePatients, setPendingNursePatients] = useState<VisitType[]>([]);
+  const [inProgressPatients, setInProgressPatients] = useState<VisitType[]>([]);
+  const [activePopup, setActivePopup] = useState<PopupKey | null>(null);
 
   const waitingRef = useRef<HTMLDivElement>(null);
   const consultedRef = useRef<HTMLDivElement>(null);
+  const pendingNurseRef = useRef<HTMLDivElement>(null);
+  const inProgressRef = useRef<HTMLDivElement>(null);
 
   const fetchStats = useCallback(async () => {
     try {
       const result = await ReceptionService.getDailyVisitStats();
       setWaiting(result.waiting);
       setCompletedToday(result.completedToday);
+      setRoleType(result.roleType ?? null);
+      setPendingNurse(result.pendingNurse ?? null);
+      setInProgress(result.inProgress ?? null);
       setWaitingPatients(result.waitingVisits ?? []);
       setConsultedPatients(result.completedVisits ?? []);
+      setPendingNursePatients(result.pendingNurseVisits ?? []);
+      setInProgressPatients(result.inProgressVisits ?? []);
     } catch {
       // silently ignore — stats bar is informational
     }
@@ -119,17 +131,42 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
 
   useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], fetchStats);
 
-  const handleMouseEnter = (type: "waiting" | "consulted") => {
-    setActivePopup(type);
-  };
-
-  const handleMouseLeave = () => {
-    setActivePopup(null);
-  };
+  const handleMouseEnter = (type: PopupKey) => setActivePopup(type);
+  const handleMouseLeave = () => setActivePopup(null);
 
   if (!visible) return null;
 
-  const anchorRef = activePopup === "waiting" ? waitingRef : consultedRef;
+  const getAnchorRef = () => {
+    if (activePopup === "waiting") return waitingRef;
+    if (activePopup === "consulted") return consultedRef;
+    if (activePopup === "pendingNurse") return pendingNurseRef;
+    return inProgressRef;
+  };
+
+  const getPopupPatients = () => {
+    if (activePopup === "waiting") return waitingPatients;
+    if (activePopup === "consulted") return consultedPatients;
+    if (activePopup === "pendingNurse") return pendingNursePatients;
+    return inProgressPatients;
+  };
+
+  const getPopupTitle = () => {
+    if (activePopup === "waiting") return roleType === "doctor" ? "Waiting for You" : "Currently Waiting";
+    if (activePopup === "consulted") return "Completed Today";
+    if (activePopup === "pendingNurse") return "Pending Nurse Encounter";
+    return "In Progress";
+  };
+
+  const waitingLabel = roleType === "doctor" ? "waiting" :
+    roleType === "nurse" ? "pending" :
+    roleType === "pharmacy" ? "pending" :
+    roleType === "lab" ? "pending" :
+    roleType === "billing" ? "pending" :
+    "waiting";
+
+  const completedLabel = roleType === "doctor" ? "consulted" :
+    roleType === "nurse" ? "completed" :
+    "completed";
 
   if (variant === "inline") {
     return (
@@ -138,6 +175,35 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
           <span className="text-muted-foreground font-medium text-[10px] uppercase tracking-wide hidden sm:block">
             Today
           </span>
+
+          {/* Doctor only: Pending Nurse badge */}
+          {roleType === "doctor" && pendingNurse !== null && (
+            <div
+              ref={pendingNurseRef}
+              className="flex items-center gap-1 text-purple-600 dark:text-purple-400 cursor-pointer select-none"
+              onMouseEnter={() => handleMouseEnter("pendingNurse")}
+              onMouseLeave={handleMouseLeave}
+            >
+              <Stethoscope className="h-3.5 w-3.5" />
+              <span className="font-semibold text-xs">{pendingNurse}</span>
+              <span className="text-muted-foreground text-xs hidden sm:inline">nurse pending</span>
+            </div>
+          )}
+
+          {/* Nurse only: In Progress badge */}
+          {roleType === "nurse" && inProgress !== null && (
+            <div
+              ref={inProgressRef}
+              className="flex items-center gap-1 text-blue-600 dark:text-blue-400 cursor-pointer select-none"
+              onMouseEnter={() => handleMouseEnter("inProgress")}
+              onMouseLeave={handleMouseLeave}
+            >
+              <Activity className="h-3.5 w-3.5" />
+              <span className="font-semibold text-xs">{inProgress}</span>
+              <span className="text-muted-foreground text-xs hidden sm:inline">in progress</span>
+            </div>
+          )}
+
           <div
             ref={waitingRef}
             className="flex items-center gap-1 text-amber-600 dark:text-amber-400 cursor-pointer select-none"
@@ -146,7 +212,7 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
           >
             <Clock className="h-3.5 w-3.5" />
             <span className="font-semibold text-xs">{waiting === null ? "—" : waiting}</span>
-            <span className="text-muted-foreground text-xs hidden sm:inline">waiting</span>
+            <span className="text-muted-foreground text-xs hidden sm:inline">{waitingLabel}</span>
           </div>
           <div
             ref={consultedRef}
@@ -156,16 +222,16 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
             <span className="font-semibold text-xs">{completedToday === null ? "—" : completedToday}</span>
-            <span className="text-muted-foreground text-xs hidden sm:inline">consulted</span>
+            <span className="text-muted-foreground text-xs hidden sm:inline">{completedLabel}</span>
           </div>
         </div>
 
         {activePopup && (
           <PatientListPopup
-            anchorRef={anchorRef}
-            title={activePopup === "waiting" ? "Currently Waiting" : "Consulted Today"}
-            patients={activePopup === "waiting" ? waitingPatients : consultedPatients}
-            showDuration={activePopup === "waiting"}
+            anchorRef={getAnchorRef()}
+            title={getPopupTitle()}
+            patients={getPopupPatients()}
+            showDuration={activePopup === "waiting" || activePopup === "pendingNurse" || activePopup === "inProgress"}
             onClose={() => setActivePopup(null)}
           />
         )}
@@ -177,6 +243,35 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
     <>
       <div className="flex items-center gap-6 border-b border-border bg-muted/40 px-4 py-1.5 text-sm">
         <span className="text-muted-foreground font-medium text-xs uppercase tracking-wide">Today</span>
+
+        {/* Doctor only: Pending Nurse badge */}
+        {roleType === "doctor" && pendingNurse !== null && (
+          <div
+            ref={pendingNurseRef}
+            className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 cursor-pointer select-none"
+            onMouseEnter={() => handleMouseEnter("pendingNurse")}
+            onMouseLeave={handleMouseLeave}
+          >
+            <Stethoscope className="h-4 w-4" />
+            <span className="font-semibold">{pendingNurse}</span>
+            <span className="text-muted-foreground">nurse pending</span>
+          </div>
+        )}
+
+        {/* Nurse only: In Progress badge */}
+        {roleType === "nurse" && inProgress !== null && (
+          <div
+            ref={inProgressRef}
+            className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 cursor-pointer select-none"
+            onMouseEnter={() => handleMouseEnter("inProgress")}
+            onMouseLeave={handleMouseLeave}
+          >
+            <Activity className="h-4 w-4" />
+            <span className="font-semibold">{inProgress}</span>
+            <span className="text-muted-foreground">in progress</span>
+          </div>
+        )}
+
         <div
           ref={waitingRef}
           className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 cursor-pointer select-none"
@@ -185,7 +280,7 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
         >
           <Clock className="h-4 w-4" />
           <span className="font-semibold">{waiting === null ? "—" : waiting}</span>
-          <span className="text-muted-foreground">waiting</span>
+          <span className="text-muted-foreground">{waitingLabel}</span>
         </div>
         <div
           ref={consultedRef}
@@ -195,16 +290,16 @@ export default function DailyStatsBar({ variant = "bar" }: { variant?: "bar" | "
         >
           <CheckCircle2 className="h-4 w-4" />
           <span className="font-semibold">{completedToday === null ? "—" : completedToday}</span>
-          <span className="text-muted-foreground">consulted</span>
+          <span className="text-muted-foreground">{completedLabel}</span>
         </div>
       </div>
 
       {activePopup && (
         <PatientListPopup
-          anchorRef={anchorRef}
-          title={activePopup === "waiting" ? "Currently Waiting" : "Consulted Today"}
-          patients={activePopup === "waiting" ? waitingPatients : consultedPatients}
-          showDuration={activePopup === "waiting"}
+          anchorRef={getAnchorRef()}
+          title={getPopupTitle()}
+          patients={getPopupPatients()}
+          showDuration={activePopup === "waiting" || activePopup === "pendingNurse" || activePopup === "inProgress"}
           onClose={() => setActivePopup(null)}
         />
       )}

@@ -68,4 +68,17 @@ export const BillingService = {
     const { data } = await api.get(ENDPOINTS.BILLING.REPORTS(from, to));
     return data;
   },
+  // Walk-in (external service) patients - billed per patient, not per visit.
+  getWalkInAwaiting: async () => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_WALK_IN_AWAITING);
+    return data;
+  },
+  getWalkInItems: async (patientId: string) => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_WALK_IN_ITEMS(patientId));
+    return data;
+  },
+  openWalkInBill: async (patientId: string) => {
+    const { data } = await api.post(ENDPOINTS.BILLING.OPEN_WALK_IN_BILL(patientId));
+    return data;
+  },
 };

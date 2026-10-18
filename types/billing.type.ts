@@ -84,10 +84,26 @@ export interface UpdateBillItemPayload {
 }
 
 export interface ChargeableItemType {
-  sourceType: string; // Prescription, LabRequest, RadiologyRequest
+  sourceType: string; // Prescription, LabRequest, RadiologyRequest, Medication, Treatment
   sourceId: string;
   description: string;
   suggestedAmount: number;
+  status?: string | null; // the order's own status - walk-in items can be billed before they're done
+  orderedAt?: string | null;
+}
+
+// A patient with walk-in (external service) orders not on a bill yet - Billing's Walk-in list.
+export interface WalkInAwaitingType {
+  patientId: string;
+  patientName: string;
+  patientOPNumber: string | null;
+  phone: string | null;
+  registrationType: "Full" | "External";
+  itemCount: number;
+  suggestedTotal: number;
+  departments: string[]; // Lab, Radiology, Pharmacy
+  latestOrderAt: string;
+  openBill: BillType | null;
 }
 
 export interface AwaitingBillingItemType {

@@ -23,11 +23,15 @@ import { ConfigListService } from "@/services/configList.service";
 import { TestParameterService } from "@/services/testParameter.service";
 import { UserService } from "@/services/user.service";
 import { LabRequestType, LabSummaryType } from "@/types/lab.type";
-import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
+import { DoctorGridType } from "@/types/appointment.type";
+import { PatientSummaryType } from "@/types/patient.type";
 import { TestParameterType } from "@/types/testParameter.type";
 import { UserType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import PatientPicker, { patientFromOrder } from "@/components/patients/PatientPicker";
+import PatientStreamTabs, { type PatientStream } from "@/components/patients/PatientStreamTabs";
+import { BillStatusBadge, WalkInPatientBadge, billedLockTitle } from "@/components/patients/PatientBadges";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -71,14 +75,16 @@ export default function LaboratoryPage() {
   const [filter, setFilter] = useState<"all" | "pending">("pending");
   const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
 
-  const [patients, setPatients] = useState<PatientListItemType[]>([]);
   const [doctors, setDoctors] = useState<DoctorGridType[]>([]);
+  // Orders from a consultation here vs walk-ins with an outside request - separate grids.
+  const [stream, setStream] = useState<PatientStream>("consultation");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [patientSearch, setPatientSearch] = useState("");
-  const [selectedPatient, setSelectedPatient] = useState<PatientListItemType | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientSummaryType | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  // Outside doctor/facility on a walk-in's own lab request (when no in-house doctor ordered it).
+  const [externalProvider, setExternalProvider] = useState("");
   const [testType, setTestType] = useState("");
   const [testListItemId, setTestListItemId] = useState<string | undefined>(undefined);
   const [priority, setPriority] = useState("Normal");
@@ -159,40 +165,29 @@ export default function LaboratoryPage() {
 
   useEffect(() => {
     if (!checkedAuth) return;
-    const fetchPickers = async () => {
+    const fetchDoctors = async () => {
       try {
-        const [patientsRes, gridRes] = await Promise.all([
-          ReceptionService.getAllPatients(),
-          ReceptionService.getSpecializationsWithDoctors(),
-        ]);
-        setPatients(patientsRes.patients ?? []);
+        const gridRes = await ReceptionService.getSpecializationsWithDoctors();
         const allDoctors = (gridRes.specializations ?? []).flatMap(
           (s: { doctors: DoctorGridType[] }) => s.doctors
         );
         setDoctors(allDoctors);
       } catch (error) {
-        console.error("Failed to load patient/doctor pickers:", error);
+        console.error("Failed to load doctor picker:", error);
       }
     };
-    fetchPickers();
+    fetchDoctors();
   }, [checkedAuth]);
 
-  const filteredPatients = useMemo(() => {
-    if (!patientSearch.trim()) return [];
-    const q = patientSearch.toLowerCase();
-    return patients.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.phone?.toLowerCase().includes(q) ||
-        p.opNumber?.toLowerCase().includes(q) ||
-        p.opId?.toLowerCase().includes(q)
-    );
-  }, [patientSearch, patients]);
+  // A consultation order carries its visit; a walk-in's outside request doesn't.
+  const consultationRequests = useMemo(() => requests.filter((r) => r.visitId), [requests]);
+  const walkInRequests = useMemo(() => requests.filter((r) => !r.visitId), [requests]);
+  const visibleRequests = stream === "consultation" ? consultationRequests : walkInRequests;
 
   const resetForm = () => {
-    setPatientSearch("");
     setSelectedPatient(null);
     setSelectedDoctorId("");
+    setExternalProvider("");
     setTestType("");
     setTestListItemId(undefined);
     setPriority("Normal");
@@ -209,12 +204,9 @@ export default function LaboratoryPage() {
   const openEditModal = (request: LabRequestType) => {
     resetForm();
     setEditingLabRequestId(request.labRequestId);
-    const matchedPatient = patients.find((p) => p.opId === request.patientId);
-    if (matchedPatient) {
-      setSelectedPatient(matchedPatient);
-      setPatientSearch(matchedPatient.name);
-    }
+    setSelectedPatient(patientFromOrder(request));
     setSelectedDoctorId(request.doctorId || "");
+    setExternalProvider(request.externalProvider || "");
     setTestType(request.testType || "");
     setTestListItemId(request.listItemId || undefined);
     setPriority(request.priority);
@@ -246,6 +238,10 @@ export default function LaboratoryPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedPatient) {
+      toast.warning("Select the patient, or register them as a walk-in");
+      return;
+    }
     if (!testType.trim()) {
       toast.warning("Please enter a test type");
       return;
@@ -255,8 +251,9 @@ export default function LaboratoryPage() {
     try {
       setIsSubmitting(true);
       const payload = {
-        patientId: selectedPatient?.opId,
+        patientId: selectedPatient.opId,
         doctorId: selectedDoctorId || undefined,
+        externalProvider: selectedDoctorId ? undefined : externalProvider.trim() || undefined,
         testType,
         listItemId: testListItemId,
         priority,
@@ -268,6 +265,8 @@ export default function LaboratoryPage() {
         : await LabService.create(payload);
       toast.success(data.message || (editingLabRequestId ? "Lab request corrected" : "Lab request created"));
       notifySaveStatus("saved");
+      // Requests raised here have no visit behind them - they belong to the walk-in list.
+      if (!editingLabRequestId) setStream("walkIn");
       closeModal();
       fetchAll();
     } catch (error) {
@@ -520,39 +519,7 @@ export default function LaboratoryPage() {
             </p>
 
             <form onSubmit={handleCreate} className="flex flex-col gap-4">
-              <div className="relative">
-                <label className="text-sm font-bold text-foreground/90">Patient</label>
-                <input
-                  type="text"
-                  value={patientSearch}
-                  onChange={(e) => {
-                    setPatientSearch(e.target.value);
-                    setSelectedPatient(null);
-                  }}
-                  placeholder="Search by name, phone or MRN..."
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                />
-                {!selectedPatient && filteredPatients.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
-                    {filteredPatients.map((p) => (
-                      <button
-                        type="button"
-                        key={p.opId}
-                        onClick={() => {
-                          setSelectedPatient(p);
-                          setPatientSearch(p.name);
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-primary/5 border-b border-border last:border-b-0 transition-colors"
-                      >
-                        <div className="font-medium text-foreground">{p.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {p.opNumber || p.opId} • {p.phone}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <PatientPicker value={selectedPatient} onChange={setSelectedPatient} required />
 
               <div>
                 <label className="text-sm font-bold text-foreground/90">Ordering Doctor</label>
@@ -561,12 +528,26 @@ export default function LaboratoryPage() {
                     value={selectedDoctorId}
                     onChange={setSelectedDoctorId}
                     options={[
-                      { value: "", label: "Not specified" },
+                      { value: "", label: "Outside doctor / not specified" },
                       ...doctors.map((d) => ({ value: d.doctorId, label: `${d.name} — ${d.specializationName}` })),
                     ]}
                   />
                 </div>
               </div>
+
+              {!selectedDoctorId && (
+                <div>
+                  <label className="text-sm font-bold text-foreground/90">Requested by (outside doctor / facility)</label>
+                  <input
+                    type="text"
+                    value={externalProvider}
+                    onChange={(e) => setExternalProvider(e.target.value)}
+                    maxLength={200}
+                    placeholder="e.g. Dr. Ahmed, City Clinic"
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="text-sm font-bold text-foreground/90 required">Test Type</label>
@@ -677,25 +658,52 @@ export default function LaboratoryPage() {
         </div>
       )}
 
+      <div className="mb-4">
+        <PatientStreamTabs
+          value={stream}
+          onChange={setStream}
+          consultationCount={consultationRequests.length}
+          walkInCount={walkInRequests.length}
+        />
+      </div>
+
       {isLoading ? (
         <div className="card py-16 flex justify-center">
           <LoadingSpinner />
         </div>
-      ) : requests.length === 0 ? (
-        <div className="card py-16 text-center text-muted-foreground">No lab requests found.</div>
+      ) : visibleRequests.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            illustration="lab"
+            title={stream === "consultation" ? "No lab requests from consultations" : "No walk-in lab requests"}
+            description={
+              stream === "consultation"
+                ? "Tests ordered by doctors show up here once they finish the encounter."
+                : "Use New Lab Request for a patient who brings an outside lab request."
+            }
+          />
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {requests.map((r) => {
+          {visibleRequests.map((r) => {
             const nextStatus = STATUS_FLOW[STATUS_FLOW.indexOf(r.status) + 1];
+            const isWalkIn = !r.visitId;
             return (
               <div key={r.labRequestId} className="card p-4 flex flex-col gap-3">
                 {/* Header: patient + badges */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-semibold text-foreground truncate">{r.patientName}</p>
-                    <p className="text-xs text-muted-foreground truncate">{r.doctorName}</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="font-semibold text-foreground truncate">{r.patientName}</p>
+                      <WalkInPatientBadge registrationType={r.patientRegistrationType} />
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {r.patientOPNumber ? `MRN ${r.patientOPNumber} · ` : ""}
+                      {isWalkIn && !r.doctorId ? (r.externalProvider ? `Requested by ${r.externalProvider}` : "Outside request") : r.doctorName}
+                    </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
+                  <div className="flex shrink-0 flex-wrap justify-end items-center gap-1.5">
+                    {isWalkIn && <BillStatusBadge billStatus={r.billStatus} />}
                     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                       r.priority === "Urgent" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
                     }`}>
@@ -784,10 +792,20 @@ export default function LaboratoryPage() {
                   )}
                   {!isNurse && r.status !== "Completed" && r.status !== "Delivered" && (
                     <>
-                      <button onClick={() => openEditModal(r)} title="Correct request" className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer">
+                      <button
+                        onClick={() => openEditModal(r)}
+                        disabled={!!r.billStatus}
+                        title={r.billStatus ? billedLockTitle(r.billStatus) : "Correct request"}
+                        className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      >
                         <Pencil size={14} />
                       </button>
-                      <button onClick={() => removeLabRequest(r)} title="Delete request" className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer">
+                      <button
+                        onClick={() => removeLabRequest(r)}
+                        disabled={!!r.billStatus}
+                        title={r.billStatus ? billedLockTitle(r.billStatus) : "Delete request"}
+                        className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      >
                         <Trash2 size={14} />
                       </button>
                     </>
