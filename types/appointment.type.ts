@@ -75,6 +75,7 @@ export interface PatientListItemType {
   dateOfBirth: string | null;
   nationalID?: string | null;
   passportNumber?: string | null;
+  registrationType?: "Full" | "External";
 }
 
 export interface AppointmentRequestType {

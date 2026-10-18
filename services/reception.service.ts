@@ -1,6 +1,7 @@
 import api from "@/lib/axios"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { ReceptionCreatePatientType } from "@/types/reception.type";
+import { CreateExternalPatientPayload, PatientMatchPayload } from "@/types/patient.type";
 import { compressImageForUpload } from "@/lib/resizeImage";
 import { CreateAppointmentPayload } from "@/types/appointment.type";
 import { UpdateDoctorSchedulePayload } from "@/types/doctorAvailability.type";
@@ -17,6 +18,22 @@ export const ReceptionService = {
     },
     createPatinet: async (payload: ReceptionCreatePatientType) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CREATE_PATIENT, payload)
+        return data;
+    },
+    // MRN, mobile, Emirates ID/passport or name - the lookup behind every patient picker.
+    searchPatients: async (query: string, limit = 20) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.SEARCH_PATIENTS, { query, limit })
+        return data;
+    },
+    // Existing patients sharing an ID / mobile / email with the one being entered.
+    matchPatients: async (payload: PatientMatchPayload) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.MATCH_PATIENTS, payload)
+        return data;
+    },
+    // Walk-in with minimal details. Answers 409 (duplicate: true, data: matches) when the
+    // person may already be registered - see QuickPatientModal.
+    createExternalPatient: async (payload: CreateExternalPatientPayload) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.CREATE_EXTERNAL_PATIENT, payload)
         return data;
     },
     getPatientById: async (id: string) => {
@@ -162,6 +179,11 @@ export const ReceptionService = {
         completedToday: number;
         waitingVisits: VisitType[];
         completedVisits: VisitType[];
+        roleType?: string;
+        pendingNurse?: number;
+        inProgress?: number;
+        pendingNurseVisits?: VisitType[];
+        inProgressVisits?: VisitType[];
     }> => {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DAILY_VISIT_STATS)
         return data;

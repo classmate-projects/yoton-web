@@ -36,6 +36,7 @@ export const CompanyService = {
         eclaimlinkUsername?: string;
         eclaimlinkPassword?: string;
         staffCheckInRequired?: boolean;
+        patientMatchFields?: string[];
     }) => {
         const { data } = await api.put(ENDPOINTS.COMPANY.UPDATE_SETTINGS, payload);
         return data;

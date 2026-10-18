@@ -8,8 +8,9 @@ export interface LabResultValueType {
 }
 
 import type { OrderLockFields } from "./orderLock.type";
+import type { WalkInOrderFields } from "./patient.type";
 
-export interface LabRequestType extends OrderLockFields {
+export interface LabRequestType extends OrderLockFields, WalkInOrderFields {
   labRequestId: string;
   patientId: string | null;
   patientName: string;
@@ -60,6 +61,7 @@ export interface CreateLabRequestPayload {
   remarks?: string;
   priority: string;
   source?: string; // InHouse, External
+  externalProvider?: string; // outside doctor/facility on a walk-in's request
   price?: number;
   covered?: boolean;
   patientShareAmount?: number;

@@ -60,6 +60,10 @@ export const EmrService = {
     const { data } = await api.get(ENDPOINTS.EMR.GET_ACTIVE_CASES(doctorId));
     return data;
   },
+  getTodayQueue: async (doctorId?: string) => {
+    const { data } = await api.get(ENDPOINTS.EMR.GET_TODAY_QUEUE(doctorId));
+    return data;
+  },
   upsertEncounter: async (patientId: string, payload: EncounterUpsertPayload, doctorId?: string) => {
     const { data } = await api.post(ENDPOINTS.EMR.UPSERT_ENCOUNTER(patientId, doctorId), payload);
     return data;

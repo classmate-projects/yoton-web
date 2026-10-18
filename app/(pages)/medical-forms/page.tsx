@@ -91,7 +91,12 @@ export default function MedicalFormsPage() {
         const data = await FormTemplateService.create(payload);
         setSavedTemplateId(data.data.formTemplateId);
         setTemplates((prev) => [...prev, data.data]);
-        toast.success("Template created — map it to a department or specialty below");
+        toast.success("New form has been created", {
+          description:
+            "Kindly assign it to departments below - only those departments will see this form. If no department is assigned, it shows for all departments.",
+          duration: 8000,
+        });
+        setTimeout(() => document.getElementById("form-template-mapping")?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
       }
       notifySaveStatus("saved");
     } catch {
@@ -217,7 +222,7 @@ export default function MedicalFormsPage() {
           </button>
 
           {savedTemplateId && (
-            <div className="card p-5">
+            <div id="form-template-mapping" className="card p-5">
               <h2 className="mb-4 text-lg font-semibold text-foreground">Department &amp; specialty mapping</h2>
               <DepartmentSpecialtyMapper
                 formTemplateId={savedTemplateId}

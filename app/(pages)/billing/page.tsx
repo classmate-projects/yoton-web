@@ -12,8 +12,12 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import { BillingService } from "@/services/billing.service";
 import { ReceptionService } from "@/services/reception.service";
 import SearchableSelect from "@/components/SearchableSelect";
-import { AwaitingBillingItemType, BillingSummaryType, BillType, ChargeableItemType } from "@/types/billing.type";
+import { AwaitingBillingItemType, BillingSummaryType, BillType, ChargeableItemType, WalkInAwaitingType } from "@/types/billing.type";
 import { PatientListItemType } from "@/types/appointment.type";
+import { PatientSummaryType } from "@/types/patient.type";
+import PatientPicker from "@/components/patients/PatientPicker";
+import PatientStreamTabs, { type PatientStream } from "@/components/patients/PatientStreamTabs";
+import { WalkInPatientBadge } from "@/components/patients/PatientBadges";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { formatCurrency } from "@/lib/currency";
 import SearchIcon from "@/public/icons/SearchIcon";
@@ -61,13 +65,17 @@ function BillingPageInner() {
 
   const [awaitingItems, setAwaitingItems] = useState<AwaitingBillingItemType[]>([]);
   const [isOpeningVisit, setIsOpeningVisit] = useState<string | null>(null);
+  // Awaiting Billing has two lists: visits from a consultation here, and walk-ins whose
+  // outside prescription / lab / radiology orders aren't on a bill yet.
+  const [awaitingStream, setAwaitingStream] = useState<PatientStream>("consultation");
+  const [walkInAwaiting, setWalkInAwaiting] = useState<WalkInAwaitingType[]>([]);
+  const [isOpeningWalkIn, setIsOpeningWalkIn] = useState<string | null>(null);
 
   const [patients, setPatients] = useState<PatientListItemType[]>([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [patientSearch, setPatientSearch] = useState("");
-  const [selectedPatient, setSelectedPatient] = useState<PatientListItemType | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientSummaryType | null>(null);
   const [appointmentId, setAppointmentId] = useState("");
   const [visitId, setVisitId] = useState(visitIdParam);
   // Kept as the raw text typed so the fields can be cleared (a number state snaps an
@@ -100,6 +108,7 @@ function BillingPageInner() {
   const [chargeableItems, setChargeableItems] = useState<ChargeableItemType[]>([]);
   const [isLoadingChargeable, setIsLoadingChargeable] = useState(false);
   const [addingSourceId, setAddingSourceId] = useState<string | null>(null);
+  const [isAddingAll, setIsAddingAll] = useState(false);
 
   // The signed-in user's personal billing discount limit (set by admin in User Management).
   // Null means no personal cap.
@@ -125,6 +134,15 @@ function BillingPageInner() {
       setAwaitingItems(res.data ?? []);
     } catch (error) {
       console.error("Failed to load awaiting visits:", error);
+    }
+  };
+
+  const fetchWalkInAwaiting = async () => {
+    try {
+      const res = await BillingService.getWalkInAwaiting();
+      setWalkInAwaiting(res.data ?? []);
+    } catch (error) {
+      console.error("Failed to load walk-in patients awaiting billing:", error);
     }
   };
 
@@ -157,6 +175,7 @@ function BillingPageInner() {
   useEffect(() => {
     if (!checkedAuth) return;
     fetchAwaiting();
+    fetchWalkInAwaiting();
     fetchSummary();
   }, [checkedAuth]);
 
@@ -169,6 +188,18 @@ function BillingPageInner() {
   useSignalRRefetch(["visitStatusUpdated"], fetchAwaiting);
 
   useSignalRRefetch(["billCreated", "billPaid", "billCancelled", "billItemAdded"], fetchAll);
+
+  // Walk-in orders are billable the moment a department raises them, so the list follows
+  // every create/correct/remove in Pharmacy, Lab and Radiology live.
+  useSignalRRefetch(
+    [
+      "labRequestCreated", "labRequestUpdated", "labRequestRemoved", "labStatusUpdated",
+      "radiologyRequestCreated", "radiologyRequestUpdated", "radiologyRequestRemoved", "radiologyStatusUpdated",
+      "prescriptionCreated", "prescriptionUpdated", "prescriptionRemoved", "prescriptionDispensed",
+      "billCreated", "billItemAdded", "billPaid", "billCancelled", "patientRegistered", "PatientUpdated",
+    ],
+    fetchWalkInAwaiting
+  );
 
   const fetchPatients = async () => {
     try {
@@ -186,20 +217,8 @@ function BillingPageInner() {
 
   useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
 
-  const filteredPatients = useMemo(() => {
-    if (!patientSearch.trim()) return [];
-    const q = patientSearch.toLowerCase();
-    return patients.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.phone?.toLowerCase().includes(q) ||
-        p.opNumber?.toLowerCase().includes(q) ||
-        p.opId?.toLowerCase().includes(q)
-    );
-  }, [patientSearch, patients]);
-
   // Front-desk lookup over the bill list: a bill only carries patientId/patientName, so
-  // phone and MRN come from the patient list already loaded above for the New Bill picker.
+  // phone and MRN come from the patient list loaded above.
   const filteredBills = useMemo(() => {
     const q = billSearch.trim().toLowerCase();
     if (!q) return bills;
@@ -230,11 +249,16 @@ function BillingPageInner() {
     });
   }, [bills]);
 
-  // fetch dispensed/completed items not yet billed for this bill's visit
-  const fetchChargeableItems = async (targetVisitId: string) => {
+  // Items not yet billed: a visit bill pulls the visit's dispensed/completed orders; a bill
+  // with no visit pulls the patient's walk-in (external service) orders.
+  const fetchChargeableItems = async (bill: Pick<BillType, "visitId" | "patientId">) => {
     try {
       setIsLoadingChargeable(true);
-      const data = await BillingService.getChargeableItems(targetVisitId);
+      const data = bill.visitId
+        ? await BillingService.getChargeableItems(bill.visitId)
+        : bill.patientId
+          ? await BillingService.getWalkInItems(bill.patientId)
+          : { data: [] };
       setChargeableItems(data.data ?? []);
     } catch (error) {
       console.error("Failed to load chargeable items:", error);
@@ -245,16 +269,29 @@ function BillingPageInner() {
   };
 
   useEffect(() => {
-    if (detailBill?.visitId) {
-      fetchChargeableItems(detailBill.visitId);
+    if (detailBill && (detailBill.visitId || detailBill.patientId)) {
+      fetchChargeableItems(detailBill);
     } else {
       setChargeableItems([]);
     }
-  }, [detailBill?.billId, detailBill?.visitId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailBill?.billId, detailBill?.visitId, detailBill?.patientId]);
 
-  useSignalRRefetch(["prescriptionDispensed", "labStatusUpdated", "radiologyStatusUpdated"], () => {
-    if (detailBill?.visitId) fetchChargeableItems(detailBill.visitId);
-  });
+  // Doctor's orders become chargeable as the departments finish them - dispensed, completed,
+  // given by nursing (injections/infusions) or done (procedures) - and walk-in orders as soon
+  // as they're raised.
+  useSignalRRefetch(
+    [
+      "prescriptionDispensed", "prescriptionCreated", "prescriptionUpdated", "prescriptionRemoved",
+      "labStatusUpdated", "labRequestCreated", "labRequestUpdated", "labRequestRemoved",
+      "radiologyStatusUpdated", "radiologyRequestCreated", "radiologyRequestUpdated", "radiologyRequestRemoved",
+      "medicationDispensed", "medicationAdministered", "medicationAdministrationCancelled",
+      "treatmentMarkedDone", "treatmentReverted", "treatmentUpdated", "treatmentRemoved",
+    ],
+    () => {
+      if (detailBill && detailBill.status === "Pending") fetchChargeableItems(detailBill);
+    }
+  );
 
   const handleAddFromSource = async (item: ChargeableItemType) => {
     if (!detailBill) return;
@@ -268,7 +305,7 @@ function BillingPageInner() {
       toast.success(data.message || "Item added to bill");
       setDetailBill(data.data);
       fetchAll();
-      if (detailBill.visitId) await fetchChargeableItems(detailBill.visitId);
+      await fetchChargeableItems(detailBill);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to add item"));
     } finally {
@@ -276,8 +313,34 @@ function BillingPageInner() {
     }
   };
 
+  // Walk-ins usually settle everything at once - one click instead of one per item.
+  const handleAddAllFromSource = async () => {
+    if (!detailBill || chargeableItems.length === 0) return;
+    setIsAddingAll(true);
+    let latest: BillType | null = null;
+    let added = 0;
+    try {
+      for (const item of chargeableItems) {
+        const data = await BillingService.addItemFromSource({
+          billId: detailBill.billId,
+          sourceType: item.sourceType,
+          sourceId: item.sourceId,
+        });
+        latest = data.data;
+        added++;
+      }
+      toast.success(`${added} item${added === 1 ? "" : "s"} added to the bill`);
+    } catch (error) {
+      toast.error(errorMessage(error, added > 0 ? `Added ${added}, then failed` : "Failed to add items"));
+    } finally {
+      if (latest) setDetailBill(latest);
+      fetchAll();
+      await fetchChargeableItems(detailBill);
+      setIsAddingAll(false);
+    }
+  };
+
   const resetForm = () => {
-    setPatientSearch("");
     setSelectedPatient(null);
     setAppointmentId("");
     setVisitId(visitIdParam);
@@ -342,7 +405,7 @@ function BillingPageInner() {
   const handleBillLinesUpdated = (bill: BillType) => {
     setDetailBill(bill);
     fetchAll();
-    if (bill.visitId) fetchChargeableItems(bill.visitId);
+    fetchChargeableItems(bill);
   };
 
   const handlePay = async () => {
@@ -360,6 +423,22 @@ function BillingPageInner() {
       toast.error(errorMessage(error, "Failed to record payment"));
     } finally {
       setIsPaying(false);
+    }
+  };
+
+  // Opens the walk-in patient's pending bill (or starts one) with their unbilled services
+  // listed alongside, ready to add.
+  const handleOpenWalkIn = async (patientId: string) => {
+    try {
+      setIsOpeningWalkIn(patientId);
+      const res = await BillingService.openWalkInBill(patientId);
+      setDetailBill(res.data);
+      fetchWalkInAwaiting();
+      fetchAll();
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to open bill"));
+    } finally {
+      setIsOpeningWalkIn(null);
     }
   };
 
@@ -393,8 +472,10 @@ function BillingPageInner() {
       if (detailBill?.billId === cancelTarget.billId) setDetailBill(data.data);
       setCancelTarget(null);
       fetchAll();
-      // A cancelled visit bill leaves the visit waiting for a fresh bill.
+      // A cancelled visit bill leaves the visit waiting for a fresh bill; a cancelled walk-in
+      // bill puts the patient's services back on the walk-in list.
       if (cancelTarget.visitId) fetchAwaiting();
+      else fetchWalkInAwaiting();
     } catch (error) {
       toast.error(errorMessage(error, "Failed to cancel bill"));
     } finally {
@@ -461,9 +542,9 @@ function BillingPageInner() {
             {f === "awaiting" ? (
               <span className="flex items-center gap-1.5">
                 Awaiting Billing
-                {awaitingItems.length > 0 && (
+                {awaitingItems.length + walkInAwaiting.length > 0 && (
                   <span className="bg-white/20 text-inherit rounded-full px-1.5 py-0 text-xs font-bold leading-4">
-                    {awaitingItems.length}
+                    {awaitingItems.length + walkInAwaiting.length}
                   </span>
                 )}
               </span>
@@ -498,7 +579,70 @@ function BillingPageInner() {
         )}
       </div>
 
-      {filter === "awaiting" ? (
+      {filter === "awaiting" && (
+        <div className="mb-4">
+          <PatientStreamTabs
+            value={awaitingStream}
+            onChange={setAwaitingStream}
+            consultationCount={awaitingItems.length}
+            walkInCount={walkInAwaiting.length}
+          />
+        </div>
+      )}
+
+      {filter === "awaiting" && awaitingStream === "walkIn" ? (
+        walkInAwaiting.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {walkInAwaiting.map((item) => (
+              <div key={item.patientId} className="card p-5 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground truncate">{item.patientName}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      MRN {item.patientOPNumber || "—"}
+                      {item.phone ? ` · ${item.phone}` : ""}
+                    </p>
+                  </div>
+                  <WalkInPatientBadge registrationType={item.registrationType} />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {item.departments.map((d) => (
+                    <span key={d} className="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                      {d}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      {item.itemCount} unbilled service{item.itemCount === 1 ? "" : "s"}
+                    </p>
+                    <p className="text-sm font-semibold text-foreground">{currency(item.suggestedTotal)}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{formatDateTime(item.latestOrderAt)}</p>
+                </div>
+                <div className="pt-1 border-t border-border">
+                  <button
+                    onClick={() => handleOpenWalkIn(item.patientId)}
+                    disabled={isOpeningWalkIn === item.patientId}
+                    className="w-full py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {isOpeningWalkIn === item.patientId ? "Opening..." : item.openBill ? "Manage Bill" : "Open Bill"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="card">
+            <EmptyState
+              illustration="billing"
+              title="No walk-in patients awaiting billing"
+              description="Outside prescriptions, lab and radiology requests raised for walk-ins show up here until they're billed."
+            />
+          </div>
+        )
+      ) : filter === "awaiting" ? (
         awaitingItems.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {awaitingItems.map((item) => (
@@ -609,40 +753,7 @@ function BillingPageInner() {
             <p className="text-sm text-muted-foreground mb-6">Start a new bill for a patient.</p>
 
             <form onSubmit={handleCreate} className="flex flex-col gap-4">
-              <div className="relative">
-                <label className="text-sm font-bold text-foreground/90 required">Patient</label>
-                <input
-                  type="text"
-                  required
-                  value={patientSearch}
-                  onChange={(e) => {
-                    setPatientSearch(e.target.value);
-                    setSelectedPatient(null);
-                  }}
-                  placeholder="Search by name, phone or MRN..."
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                />
-                {!selectedPatient && filteredPatients.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
-                    {filteredPatients.map((p) => (
-                      <button
-                        type="button"
-                        key={p.opId}
-                        onClick={() => {
-                          setSelectedPatient(p);
-                          setPatientSearch(p.name);
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-primary/5 border-b border-border last:border-b-0 transition-colors"
-                      >
-                        <div className="font-medium text-foreground">{p.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {p.opNumber || p.opId} • {p.phone}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <PatientPicker value={selectedPatient} onChange={setSelectedPatient} required />
 
               <div>
                 <label className="text-sm font-bold text-foreground/90">Appointment ID (optional)</label>
@@ -773,13 +884,30 @@ function BillingPageInner() {
               {/* ---- Left: add items (pending bills only) ---- */}
               {detailBill.status === "Pending" && (
                 <div className="min-h-0 overflow-y-auto border-b border-border p-5 lg:border-b-0 lg:border-r bg-muted/20">
-                  {detailBill.visitId && (
+                  {(detailBill.visitId || detailBill.patientId) && (
                     <div className="mb-5">
-                      <p className="mb-2 text-sm font-bold text-foreground/90">Chargeable Items</p>
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-sm font-bold text-foreground/90">
+                          {detailBill.visitId ? "Chargeable Items" : "Walk-in services not yet billed"}
+                        </p>
+                        {chargeableItems.length > 1 && (
+                          <button
+                            onClick={handleAddAllFromSource}
+                            disabled={isAddingAll || addingSourceId != null}
+                            className="px-2.5 py-1 text-xs font-semibold rounded-md border border-primary/40 text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-60"
+                          >
+                            {isAddingAll ? "Adding..." : "Add all"}
+                          </button>
+                        )}
+                      </div>
                       {isLoadingChargeable ? (
                         <p className="text-sm text-muted-foreground">Loading...</p>
                       ) : chargeableItems.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">Nothing dispensed or completed for this visit yet.</p>
+                        <p className="text-sm text-muted-foreground">
+                          {detailBill.visitId
+                            ? "Nothing dispensed or completed for this visit yet."
+                            : "No unbilled walk-in prescriptions, lab or radiology requests for this patient."}
+                        </p>
                       ) : (
                         <div className="flex flex-col gap-2">
                           {chargeableItems.map((item) => (
@@ -789,11 +917,14 @@ function BillingPageInner() {
                             >
                               <div className="min-w-0">
                                 <p className="font-medium text-foreground">{item.description}</p>
-                                <p className="text-xs text-muted-foreground">{currency(item.suggestedAmount)}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {currency(item.suggestedAmount)}
+                                  {!detailBill.visitId && item.status ? ` · ${item.status}` : ""}
+                                </p>
                               </div>
                               <button
                                 onClick={() => handleAddFromSource(item)}
-                                disabled={addingSourceId === item.sourceId}
+                                disabled={addingSourceId === item.sourceId || isAddingAll}
                                 className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
                               >
                                 {addingSourceId === item.sourceId ? "Adding..." : "Add to bill"}

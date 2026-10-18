@@ -73,6 +73,7 @@ interface MeResponse {
   companyEclaimlinkPasswordSet: boolean;
   branchId: string | null;
   staffCheckInRequired: boolean;
+  patientMatchFields?: string[];
 }
 
 // Each tile on the landing grid drills into one settings category. Adding a new
@@ -125,6 +126,10 @@ export default function SettingsPage() {
 
   const [staffCheckInRequired, setStaffCheckInRequired] = useState(false);
   const [savingCheckInRequired, setSavingCheckInRequired] = useState(false);
+
+  // Which details identify an already-registered patient (registration and walk-in quick add).
+  const [patientMatchFields, setPatientMatchFields] = useState<string[]>(["NationalID", "Passport", "Phone"]);
+  const [savingMatchFields, setSavingMatchFields] = useState(false);
 
   const [includeLoginCredentials, setIncludeLoginCredentials] = useState(true);
   const [savingPatientEmailMode, setSavingPatientEmailMode] = useState(false);
@@ -188,6 +193,7 @@ export default function SettingsPage() {
         setGeriatricMinAgeInput(String(data.geriatricMinAgeYears ?? 65));
         setIdleTimeoutInput(String(data.idleTimeoutMinutes ?? 15));
         setStaffCheckInRequired(data.staffCheckInRequired ?? false);
+        setPatientMatchFields(data.patientMatchFields ?? ["NationalID", "Passport", "Phone"]);
         setIncludeLoginCredentials(data.includeLoginCredentialsInPatientEmail ?? true);
         setCredentialsSubject(data.patientEmailCredentialsSubject || "");
         setCredentialsBody(data.patientEmailCredentialsBody || "");
@@ -416,6 +422,25 @@ export default function SettingsPage() {
       toast.error("Failed to update check-in setting");
     } finally {
       setSavingCheckInRequired(false);
+    }
+  };
+
+  // ID numbers always count (one ID is one person); mobile and email are the clinic's call -
+  // families often share a mobile number.
+  const handlePatientMatchFieldToggle = async (field: "Phone" | "Email", checked: boolean) => {
+    const previous = patientMatchFields;
+    const next = checked ? Array.from(new Set([...previous, field])) : previous.filter((f) => f !== field);
+    setPatientMatchFields(next);
+    setSavingMatchFields(true);
+    try {
+      const data = await CompanyService.updateSettings({ patientMatchFields: next });
+      setPatientMatchFields(data.patientMatchFields ?? next);
+      toast.success("Duplicate patient check updated");
+    } catch {
+      setPatientMatchFields(previous);
+      toast.error("Failed to update duplicate patient check");
+    } finally {
+      setSavingMatchFields(false);
     }
   };
 
@@ -1132,6 +1157,48 @@ export default function SettingsPage() {
                 check-out is marked on Staff Attendance, recorded in the Audit Log, and
                 the staff member and admins are notified.
               </p>
+            </div>
+          </div>
+
+          {/* Duplicate patient check */}
+          <div className="bg-card border border-border rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-foreground mb-1">Duplicate patient check</h2>
+            <p className="text-sm text-muted-foreground mb-5">
+              When reception registers a patient, or Pharmacy, Lab, Radiology or Billing adds a
+              walk-in, anyone already on file with the same details is offered first, so each
+              patient keeps one record.
+            </p>
+            <div className="flex flex-col gap-4">
+              {[
+                { key: "NationalID", label: "Emirates ID / National ID", hint: "Always checked - an ID belongs to one person" },
+                { key: "Passport", label: "Passport number", hint: "Always checked - an ID belongs to one person" },
+              ].map((row) => (
+                <div key={row.key} className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{row.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{row.hint}</p>
+                  </div>
+                  <ToggleButton checked onChange={() => {}} disabled />
+                </div>
+              ))}
+              {(
+                [
+                  { key: "Phone", label: "Mobile number", hint: "Suggests a match - family members may share one" },
+                  { key: "Email", label: "Email address", hint: "Suggests a match" },
+                ] as const
+              ).map((row) => (
+                <div key={row.key} className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{row.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{row.hint}</p>
+                  </div>
+                  <ToggleButton
+                    checked={patientMatchFields.includes(row.key)}
+                    onChange={(checked) => handlePatientMatchFieldToggle(row.key, checked)}
+                    disabled={savingMatchFields}
+                  />
+                </div>
+              ))}
             </div>
           </div>
 

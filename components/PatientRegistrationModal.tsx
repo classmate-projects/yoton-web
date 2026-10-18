@@ -16,9 +16,13 @@ import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { AppointmentSlotType, DoctorDaySlotsType, SpecializationDoctorsType } from "@/types/appointment.type";
-import { InsuranceCoverageRow, ReceptionCreatePatientType } from "@/types/reception.type";
+import { InsuranceCoverageRow, PatientFullDetailsType, ReceptionCreatePatientType } from "@/types/reception.type";
 import { ListItemType } from "@/types/configList.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { useExistingPatientMatches } from "@/hooks/useExistingPatientMatches";
+import ExistingPatientNotice from "@/components/patients/ExistingPatientNotice";
+import DuplicatePatientPrompt from "@/components/patients/DuplicatePatientPrompt";
+import type { PatientMatchType } from "@/types/patient.type";
 
 const INSURANCE_SERVICE_CATEGORIES = [
   "Consultation", "Lab", "Radiology", "Treatment", "Medicine", "Dental", "Maternity",
@@ -95,6 +99,21 @@ export default function PatientRegistrationModal({
   const [consultNotes, setConsultNotes] = useState("");
   const [isBookingConsult, setIsBookingConsult] = useState(false);
 
+  // ── Already registered? ──
+  // Someone on file with the same ID / mobile / email (e.g. a walk-in from the pharmacy or
+  // lab) is offered instead of creating a duplicate - live while typing, and again on submit.
+  const { visibleMatches, dismiss: dismissMatches } = useExistingPatientMatches({
+    nationalID: formData.nationalID,
+    passportNumber: formData.passportNumber,
+    phone: formData.phone,
+    phoneCode: formData.phoneCode,
+    email: formData.email,
+    enabled: isOpen && !registeredPatient,
+  });
+  const [submitMatches, setSubmitMatches] = useState<PatientMatchType[] | null>(null);
+  const [pendingPayload, setPendingPayload] = useState<ReceptionCreatePatientType | null>(null);
+  const [openingMatchId, setOpeningMatchId] = useState<string | null>(null);
+
   // ── Init ──
   useEffect(() => {
     const stored = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
@@ -109,6 +128,8 @@ export default function PatientRegistrationModal({
       setError("");
       setRegisteredPatient(null);
       setShowConsultForm(false);
+      setSubmitMatches(null);
+      setPendingPayload(null);
       resetConsult();
       presetApplied.current = false;
       presetsFilledRef.current = false;
@@ -268,16 +289,85 @@ export default function PatientRegistrationModal({
 
     try {
       setLoading(true);
+      const res = await ReceptionService.matchPatients({
+        nationalID: formData.nationalID || undefined,
+        passportNumber: formData.passportNumber || undefined,
+        phone: formData.phone || undefined,
+        phoneCode: formData.phoneCode,
+        email: formData.email || undefined,
+      });
+      const found: PatientMatchType[] = res.data ?? [];
+      if (found.length > 0) {
+        setSubmitMatches(found);
+        setPendingPayload(payload);
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Carry on - the server still refuses an ID that's already registered.
+    }
+    await createNewPatient(payload);
+  };
+
+  const createNewPatient = async (payload: ReceptionCreatePatientType) => {
+    try {
+      setLoading(true);
       const data = await ReceptionService.createPatinet(payload);
       toast.success(data.message);
       resetForm();
       setRegisteredPatient({ opId: data.data.opId, name: data.data.name });
     } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data?.duplicate && err.response.data.data?.length) {
+        setSubmitMatches(err.response.data.data);
+        setPendingPayload(null);
+      }
       toast.error(axios.isAxiosError(err) ? err.response?.data?.message || "Failed to register patient" : "Failed to register patient");
     } finally {
       setLoading(false);
       setError("");
     }
+  };
+
+  // A walk-in's minimal record is completed with the details just typed - only where it has
+  // nothing yet, except payment, where a walk-in's "Cash" was only ever a default.
+  const completeWalkInRecord = async (patientId: string, typed: ReceptionCreatePatientType) => {
+    const res = await ReceptionService.getPatientById(patientId);
+    const existing: PatientFullDetailsType = res.data;
+    const merged: Record<string, unknown> = { ...existing };
+    for (const [key, value] of Object.entries(typed)) {
+      if (key === "password" || key === "registeredBy" || value === undefined || value === "") continue;
+      if (merged[key] === "" || merged[key] == null) merged[key] = value;
+    }
+    if (typed.paymentType !== "Cash") {
+      for (const [key, value] of Object.entries(typed)) {
+        if (key === "paymentType" || key === "insuranceCoverages" || /^(eligibility|insurance|subInsurance|networkType|extraCardNo|certificateNo|dependentsNo|maxInsurance|coPay)/.test(key))
+          if (value !== undefined && value !== "") merged[key] = value;
+      }
+    }
+    await ReceptionService.updatePatient(patientId, {
+      ...(merged as Omit<ReceptionCreatePatientType, "password">),
+      registrationType: "Full",
+    });
+  };
+
+  // Books the consultation for the existing record instead of creating a second one.
+  const continueWithExisting = async (match: PatientMatchType) => {
+    setOpeningMatchId(match.opId);
+    if (pendingPayload && match.registrationType === "External") {
+      try {
+        await completeWalkInRecord(match.opId, pendingPayload);
+        toast.success(`${match.name}'s walk-in record is now fully registered`);
+      } catch {
+        toast.warning(`Continuing with ${match.name}'s existing record - complete their details from Patient Records.`);
+      }
+    } else {
+      toast.success(`Continuing with ${match.name}'s existing record`);
+    }
+    setSubmitMatches(null);
+    setPendingPayload(null);
+    setOpeningMatchId(null);
+    resetForm();
+    setRegisteredPatient({ opId: match.opId, name: match.name });
   };
 
   const handleBookConsultation = async () => {
@@ -723,6 +813,36 @@ export default function PatientRegistrationModal({
           </div>
         </form>
       </div>
+
+      {submitMatches ? (
+        <DuplicatePatientPrompt
+          matches={submitMatches}
+          busyId={openingMatchId}
+          continueLabel="Use this patient"
+          onContinue={continueWithExisting}
+          onCreateNew={
+            pendingPayload
+              ? () => {
+                  const toCreate = pendingPayload;
+                  setSubmitMatches(null);
+                  setPendingPayload(null);
+                  createNewPatient(toCreate);
+                }
+              : undefined
+          }
+          onCancel={() => {
+            setSubmitMatches(null);
+            setPendingPayload(null);
+          }}
+        />
+      ) : (
+        <ExistingPatientNotice
+          matches={visibleMatches}
+          onContinue={continueWithExisting}
+          onDismiss={dismissMatches}
+          busyId={openingMatchId}
+        />
+      )}
     </div>
   );
 }

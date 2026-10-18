@@ -1,3 +1,5 @@
+import type { WalkInOrderFields } from "./patient.type";
+
 export interface MedicineType {
   medicineId: string;
   name: string;
@@ -57,10 +59,11 @@ export interface PrescriptionItemType {
   unitPrice: number;
 }
 
-export interface PrescriptionType {
+export interface PrescriptionType extends WalkInOrderFields {
   prescriptionId: string;
   patientId: string | null;
   patientName: string;
+  patientOPNumber?: string | null;
   doctorId: string | null;
   doctorName: string | null;
   visitId: string | null;
@@ -101,6 +104,7 @@ export interface CreatePrescriptionPayload {
   patientId?: string;
   doctorId?: string;
   visitId?: string;
+  externalProvider?: string; // outside prescriber on a walk-in's prescription
   notes?: string;
   items: { medicineId: string; quantity: number; priority?: string }[];
 }

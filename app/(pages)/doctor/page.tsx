@@ -146,6 +146,10 @@ function DoctorWorkbenchInner() {
   const [activeCases, setActiveCases] = useState<ActiveCaseItemType[]>([]);
   const [patients, setPatients] = useState<EmrPatientListItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+
+  type QueuePatient = { visitId: string; patientId: string; patientName: string; checkedInAt: string; visitType: string };
+  const [pendingNurseQueue, setPendingNurseQueue] = useState<QueuePatient[]>([]);
+  const [waitingForDoctorQueue, setWaitingForDoctorQueue] = useState<QueuePatient[]>([]);
   const [patientsPage, setPatientsPage] = useState(1);
   const [isLoadingWorkbench, setIsLoadingWorkbench] = useState(true);
 
@@ -231,6 +235,16 @@ function DoctorWorkbenchInner() {
     }
   };
 
+  const fetchTodayQueue = async () => {
+    try {
+      const res = await EmrService.getTodayQueue(doctorIdParam);
+      setPendingNurseQueue(res.pendingNurse ?? []);
+      setWaitingForDoctorQueue(res.waitingForDoctor ?? []);
+    } catch {
+      // queue is informational — silently ignore
+    }
+  };
+
   const fetchWorkbench = async () => {
     try {
       setIsLoadingWorkbench(true);
@@ -249,6 +263,7 @@ function DoctorWorkbenchInner() {
     } finally {
       setIsLoadingWorkbench(false);
     }
+    fetchTodayQueue();
   };
 
   useEffect(() => {
@@ -291,6 +306,8 @@ function DoctorWorkbenchInner() {
     ],
     fetchWorkbench
   );
+
+  useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], fetchTodayQueue);
 
   useEffect(() => {
     if (!checkedAuth) return;
@@ -4003,6 +4020,63 @@ function DoctorWorkbenchInner() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Today's Patient Queue — doctor-only real-time queue */}
+          {(pendingNurseQueue.length > 0 || waitingForDoctorQueue.length > 0) && (
+            <div className="card p-5">
+              <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
+                <Stethoscope size={17} className="text-primary" /> Today&apos;s Patient Queue
+              </h2>
+              <div className="flex flex-col gap-5">
+                {/* Waiting for doctor */}
+                {waitingForDoctorQueue.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-2">
+                      Waiting for You ({waitingForDoctorQueue.length})
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {waitingForDoctorQueue.map((p) => (
+                        <div key={p.visitId} className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{p.patientName}</p>
+                            <p className="text-xs text-muted-foreground">{p.visitType} · {formatWait(p.checkedInAt)} waiting</p>
+                          </div>
+                          <button
+                            onClick={() => openPatient(p.patientId, p.visitId)}
+                            className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                          >
+                            See Patient
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Pending nurse encounter */}
+                {pendingNurseQueue.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-2">
+                      Pending Nurse Encounter ({pendingNurseQueue.length})
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {pendingNurseQueue.map((p) => (
+                        <div key={p.visitId} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5 opacity-70">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{p.patientName}</p>
+                            <p className="text-xs text-muted-foreground">{p.visitType} · {formatWait(p.checkedInAt)} waiting · nurse not done yet</p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-purple-100 dark:bg-purple-900/30 px-2.5 py-1 text-[11px] font-semibold text-purple-700 dark:text-purple-300">
+                            With Nurse
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

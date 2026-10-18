@@ -57,6 +57,10 @@ export interface ReceptionCreatePatientType {
 
     password: string;
     registeredBy: string;
+
+    // Sent as "Full" by the full registration form: completing a walk-in's minimal
+    // (External) record through it promotes them to a fully registered patient.
+    registrationType?: "Full" | "External";
 }
 
 // GET /api/reception/patient/{id} - full decrypted field set for prefilling the edit form.
@@ -78,6 +82,7 @@ export interface PatientGetAllType {
     address: string;
     nationalID?: string | null;
     passportNumber?: string | null;
+    registrationType?: "Full" | "External";
 }
 
 // One row in the front-office referral queue - see ReceptionController.GetPendingReferrals.
