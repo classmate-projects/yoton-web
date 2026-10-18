@@ -58,8 +58,11 @@ function BillingPageInner() {
   const [checkedAuth, setCheckedAuth] = useState(false);
 
   const [summary, setSummary] = useState<BillingSummaryType | null>(null);
-  const [bills, setBills] = useState<BillType[]>([]);
   const [filter, setFilter] = useState<"awaiting" | "pending" | "all">("awaiting");
+  // Both lists are always loaded (not just the open tab's) so the search can show how
+  // many matches every tab has.
+  const [pendingBills, setPendingBills] = useState<BillType[]>([]);
+  const [allBills, setAllBills] = useState<BillType[]>([]);
   const [billSearch, setBillSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
@@ -161,11 +164,13 @@ function BillingPageInner() {
   const fetchAll = async () => {
     try {
       setIsLoading(true);
-      const [, listRes] = await Promise.all([
+      const [, pendingRes, allRes] = await Promise.all([
         fetchSummary(),
-        filter === "pending" ? BillingService.getPending(selectedDate || undefined) : BillingService.getAll(selectedDate || undefined),
+        BillingService.getPending(selectedDate || undefined),
+        BillingService.getAll(selectedDate || undefined),
       ]);
-      setBills(listRes.data ?? []);
+      setPendingBills(pendingRes.data ?? []);
+      setAllBills(allRes.data ?? []);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load bills"));
     } finally {
@@ -181,10 +186,10 @@ function BillingPageInner() {
   }, [checkedAuth]);
 
   useEffect(() => {
-    if (!checkedAuth || filter === "awaiting") return;
+    if (!checkedAuth) return;
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkedAuth, filter, selectedDate]);
+  }, [checkedAuth, selectedDate]);
 
   useSignalRRefetch(["visitStatusUpdated"], fetchAwaiting);
 
@@ -218,23 +223,39 @@ function BillingPageInner() {
 
   useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
 
-  // Front-desk lookup over the bill list: a bill only carries patientId/patientName, so
-  // phone and MRN come from the patient list loaded above.
-  const filteredBills = useMemo(() => {
-    const q = billSearch.trim().toLowerCase();
-    if (!q) return bills;
-    const patientsById = new Map(patients.map((p) => [p.opId, p]));
-    return bills.filter((bill) => {
-      const patient = bill.patientId ? patientsById.get(bill.patientId) : undefined;
-      return !!(
-        bill.patientName?.toLowerCase().includes(q) ||
-        patient?.phone?.toLowerCase().includes(q) ||
-        patient?.opNumber?.toLowerCase().includes(q)
-      );
-    });
-  }, [billSearch, bills, patients]);
+  // One front-desk search across every tab - Awaiting (consultation + walk-in), Pending and
+  // All. Each tab shows how many patients/bills match, so e.g. two "Vishal"s waiting in one
+  // tab and one in another are both visible from wherever the clerk is. Bills and visits
+  // only carry patientId/patientName, so phone and MRN come from the patient list.
+  const patientsById = useMemo(() => new Map(patients.map((p) => [p.opId, p])), [patients]);
+  const searchQuery = billSearch.trim().toLowerCase();
+  const isSearching = searchQuery !== "";
 
-  // Keep the detail pop-up in sync whenever the bill LIST refreshes - only on `bills`
+  const search = useMemo(() => {
+    const matches = (patientId: string | null | undefined, name: string | null | undefined, phone?: string | null, mrn?: string | null) => {
+      if (!searchQuery) return true;
+      const patient = patientId ? patientsById.get(patientId) : undefined;
+      return [name, phone ?? patient?.phone, mrn ?? patient?.opNumber].some((v) => v?.toLowerCase().includes(searchQuery));
+    };
+    return {
+      awaiting: awaitingItems.filter((i) => matches(i.patientId, i.patientName)),
+      walkIn: walkInAwaiting.filter((i) => matches(i.patientId, i.patientName, i.phone, i.patientOPNumber)),
+      pending: pendingBills.filter((b) => matches(b.patientId, b.patientName)),
+      all: allBills.filter((b) => matches(b.patientId, b.patientName)),
+    };
+  }, [searchQuery, patientsById, awaitingItems, walkInAwaiting, pendingBills, allBills]);
+
+  const filteredBills = filter === "pending" ? search.pending : search.all;
+  const tabCount = {
+    awaiting: search.awaiting.length + search.walkIn.length,
+    pending: search.pending.length,
+    all: search.all.length,
+  };
+
+  // Same-name patients are told apart by MRN on every card.
+  const mrnOf = (patientId: string | null | undefined) => (patientId ? patientsById.get(patientId)?.opNumber : undefined);
+
+  // Keep the detail pop-up in sync whenever the bill LISTS refresh - only on the lists
   // changing, never on detailBill itself. Running on detailBill too meant that right after
   // Mark as Paid set the pop-up to the paid bill, this copied the list's still-stale
   // Pending copy straight back over it, so the button reappeared. Also never lets a list
@@ -243,12 +264,12 @@ function BillingPageInner() {
   useEffect(() => {
     setDetailBill((current) => {
       if (!current) return current;
-      const fresh = bills.find((b) => b.billId === current.billId);
+      const fresh = allBills.find((b) => b.billId === current.billId) ?? pendingBills.find((b) => b.billId === current.billId);
       if (!fresh) return current;
       if (current.status !== "Pending" && fresh.status === "Pending") return current;
       return fresh;
     });
-  }, [bills]);
+  }, [allBills, pendingBills]);
 
   // Items not yet billed: a visit bill pulls the visit's dispensed/completed orders; a bill
   // with no visit pulls the patient's walk-in (external service) orders.
@@ -549,61 +570,97 @@ function BillingPageInner() {
               filter === f ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
           >
-            {f === "awaiting" ? (
-              <span className="flex items-center gap-1.5">
-                Awaiting Billing
-                {awaitingItems.length + walkInAwaiting.length > 0 && (
-                  <span className="bg-white/20 text-inherit rounded-full px-1.5 py-0 text-xs font-bold leading-4">
-                    {awaitingItems.length + walkInAwaiting.length}
-                  </span>
-                )}
-              </span>
-            ) : f === "pending" ? "Pending Bills" : "All Bills"}
+            {(() => {
+              // While searching every tab shows its match count (0 included, so the clerk
+              // sees at a glance which tabs hold that patient); otherwise only Awaiting
+              // shows its queue size.
+              const count = isSearching ? tabCount[f] : f === "awaiting" ? tabCount.awaiting : 0;
+              const showCount = isSearching || count > 0;
+              return (
+                <span className="flex items-center gap-1.5">
+                  {f === "awaiting" ? "Awaiting Billing" : f === "pending" ? "Pending Bills" : "All Bills"}
+                  {showCount && (
+                    <span
+                      className={`rounded-full px-1.5 py-0 text-xs font-bold leading-4 ${
+                        filter === f
+                          ? "bg-white/20 text-inherit"
+                          : isSearching && count > 0
+                            ? "bg-primary text-white"
+                            : "bg-foreground/10 text-inherit"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </span>
+              );
+            })()}
           </button>
         ))}
         {filter !== "awaiting" && (
-          <>
-            <div className="w-48">
-              <DatePicker
-                value={selectedDate}
-                onChange={setSelectedDate}
-                max={toDateInputValue(new Date())}
-                placeholder="All dates"
-                className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-(--color-highlight) px-3 py-1.5 text-sm text-foreground ring-offset-background transition-all focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
-              />
-            </div>
-            <div className="relative w-full sm:flex-1 sm:min-w-64 sm:max-w-xl sm:ml-auto">
-              <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                <SearchIcon color="#555" />
-              </span>
-              <input
-                type="text"
-                autoComplete="off"
-                placeholder="Search by patient name, phone or MRN..."
-                value={billSearch}
-                onChange={(e) => setBillSearch(e.target.value)}
-                className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </>
+          <div className="w-48">
+            <DatePicker
+              value={selectedDate}
+              onChange={setSelectedDate}
+              max={toDateInputValue(new Date())}
+              placeholder="All dates"
+              className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-(--color-highlight) px-3 py-1.5 text-sm text-foreground ring-offset-background transition-all focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+            />
+          </div>
         )}
+        <div className="relative w-full sm:flex-1 sm:min-w-64 sm:max-w-xl sm:ml-auto">
+          <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
+            <SearchIcon color="#555" />
+          </span>
+          <input
+            type="text"
+            autoComplete="off"
+            placeholder="Search patients in billing by name, phone or MRN..."
+            value={billSearch}
+            onChange={(e) => setBillSearch(e.target.value)}
+            className="w-full pl-12! pr-9 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
+          />
+          {isSearching && (
+            <button
+              type="button"
+              onClick={() => setBillSearch("")}
+              title="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted cursor-pointer"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
+
+      {isSearching && (
+        <p className="mb-4 -mt-1 text-sm text-muted-foreground">
+          {tabCount.awaiting + tabCount.pending + tabCount.all === 0 ? (
+            <>No patient in billing matches &ldquo;{billSearch.trim()}&rdquo;.</>
+          ) : (
+            <>
+              Matches for &ldquo;{billSearch.trim()}&rdquo;: {tabCount.awaiting} awaiting billing · {tabCount.pending} pending
+              {" "}· {tabCount.all} in all bills{selectedDate ? " (for the selected date)" : ""}. Click a tab to see them.
+            </>
+          )}
+        </p>
+      )}
 
       {filter === "awaiting" && (
         <div className="mb-4">
           <PatientStreamTabs
             value={awaitingStream}
             onChange={setAwaitingStream}
-            consultationCount={awaitingItems.length}
-            walkInCount={walkInAwaiting.length}
+            consultationCount={search.awaiting.length}
+            walkInCount={search.walkIn.length}
           />
         </div>
       )}
 
       {filter === "awaiting" && awaitingStream === "walkIn" ? (
-        walkInAwaiting.length > 0 ? (
+        search.walkIn.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {walkInAwaiting.map((item) => (
+            {search.walkIn.map((item) => (
               <div key={item.patientId} className="card p-5 flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -645,20 +702,27 @@ function BillingPageInner() {
           </div>
         ) : (
           <div className="card">
-            <EmptyState
-              illustration="billing"
-              title="No walk-in patients awaiting billing"
-              description="Outside prescriptions, lab and radiology requests raised for walk-ins show up here until they're billed."
-            />
+            {isSearching ? (
+              <SearchEmptyState query={billSearch.trim()} onClear={() => setBillSearch("")} />
+            ) : (
+              <EmptyState
+                illustration="billing"
+                title="No walk-in patients awaiting billing"
+                description="Outside prescriptions, lab and radiology requests raised for walk-ins show up here until they're billed."
+              />
+            )}
           </div>
         )
       ) : filter === "awaiting" ? (
-        awaitingItems.length > 0 ? (
+        search.awaiting.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {awaitingItems.map((item) => (
+            {search.awaiting.map((item) => (
               <div key={item.visitId} className="card p-5 flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold text-foreground truncate">{item.patientName}</p>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground truncate">{item.patientName}</p>
+                    <PatientIdLine mrn={mrnOf(item.patientId)} />
+                  </div>
                   <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
                     {item.visitType === "WalkIn" ? "Walk-in" : "Appointment"}
                   </span>
@@ -681,11 +745,15 @@ function BillingPageInner() {
           </div>
         ) : (
           <div className="card">
-            <EmptyState
-              illustration="billing"
-              title="No patients awaiting billing"
-              description="Visits show up here once the doctor, lab and pharmacy steps are done."
-            />
+            {isSearching ? (
+              <SearchEmptyState query={billSearch.trim()} onClear={() => setBillSearch("")} />
+            ) : (
+              <EmptyState
+                illustration="billing"
+                title="No patients awaiting billing"
+                description="Visits show up here once the doctor, lab and pharmacy steps are done."
+              />
+            )}
           </div>
         )
       ) : isLoading ? (
@@ -695,7 +763,10 @@ function BillingPageInner() {
           {filteredBills.map((bill) => (
             <div key={bill.billId} className="card p-5 flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
-                <p className="font-semibold text-foreground truncate">{bill.patientName}</p>
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground truncate">{bill.patientName}</p>
+                  <PatientIdLine mrn={mrnOf(bill.patientId)} />
+                </div>
                 <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadgeClass(bill.status)}`}>
                   {bill.status}
                 </span>
@@ -732,13 +803,8 @@ function BillingPageInner() {
         </div>
       ) : (
         <div className="card">
-          {billSearch.trim() ? (
-            <EmptyState
-              illustration="billing"
-              title={`No bills match "${billSearch.trim()}"`}
-              description="Try a different patient name."
-              action={{ label: "Clear search", onClick: () => setBillSearch("") }}
-            />
+          {isSearching ? (
+            <SearchEmptyState query={billSearch.trim()} onClear={() => setBillSearch("")} />
           ) : (
             <EmptyState
               illustration="billing"
@@ -1072,6 +1138,23 @@ function BillingPageInner() {
       {/* The card's Print button wins over an open pop-up; only one sheet ever renders. */}
       {(printBill ?? detailBill) && <BillPrintout bill={(printBill ?? detailBill)!} />}
     </div>
+  );
+}
+
+// Shown under the patient name on every card, so patients who share a name can be told apart.
+function PatientIdLine({ mrn }: { mrn: string | null | undefined }) {
+  if (!mrn) return null;
+  return <p className="text-xs text-muted-foreground truncate">MRN {mrn}</p>;
+}
+
+function SearchEmptyState({ query, onClear }: { query: string; onClear: () => void }) {
+  return (
+    <EmptyState
+      illustration="search"
+      title={`No match for "${query}" here`}
+      description="Check the counts on the other tabs, or try a different name, phone or MRN."
+      action={{ label: "Clear search", onClick: onClear }}
+    />
   );
 }
 
