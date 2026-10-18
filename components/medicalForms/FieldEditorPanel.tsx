@@ -5,7 +5,9 @@ import { toast } from "sonner";
 import { AlignCenter, AlignLeft, AlignRight, Bold, Italic, Underline, Upload, X } from "lucide-react";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { FormTemplateService } from "@/services/medicalForm.service";
+import { usePlaceholderCatalog } from "@/hooks/usePlaceholderCatalog";
 import { MedicalFormField, MedicalFormFieldOption } from "@/types/medicalForm.type";
+import PlaceholderTextInput from "./PlaceholderTextInput";
 
 const FONT_SIZES = [
   { value: "text-sm", label: "Small" },
@@ -18,6 +20,17 @@ const FONT_SIZES = [
 const CHOICE_TYPES = new Set(["checkbox", "radio", "dropdown"]);
 const SCORABLE_TYPES = new Set(["checkbox", "radio", "dropdown", "text", "number"]);
 const REPEATABLE_TYPES = new Set(["text", "textarea", "number", "date", "datetime", "dropdown"]);
+const TEXT_BLOCK_TYPES = new Set(["heading", "subheading", "paragraph"]);
+const DEFAULT_VALUE_TYPES = new Set(["text", "textarea", "number", "date", "datetime"]);
+const READ_ONLY_TYPES = new Set(["text", "textarea", "number", "date", "datetime", "dropdown", "radio", "checkbox"]);
+
+const DEFAULT_VALUE_HINTS: Record<string, string> = {
+  date: "Optional - a date (2026-01-31) or one from the patient's record. \"Date & time filled\" gives today.",
+  datetime: "Optional - a date and time from the patient's record. \"Date & time filled\" gives now.",
+  number: "Optional - a number, or one from the patient's record such as their latest weight.",
+  text: "Optional - filled in when the form opens. Insert patient data to copy it from the patient's record.",
+  textarea: "Optional - filled in when the form opens. Insert patient data to copy it from the patient's record.",
+};
 
 // Formatting + scoring controls for whichever field is currently selected on the builder
 // canvas - every field type shares the same formatting block; options/scoring only render
@@ -33,6 +46,14 @@ export default function FieldEditorPanel({
   const isScorable = SCORABLE_TYPES.has(field.type);
   const options = field.options ?? [];
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const catalog = usePlaceholderCatalog();
+  // A date input can only take a date, and a number input a number.
+  const defaultValueCatalog =
+    field.type === "date" || field.type === "datetime"
+      ? catalog.filter((p) => p.type === "date" || p.type === "datetime")
+      : field.type === "number"
+        ? catalog.filter((p) => p.type === "number")
+        : catalog;
 
   const uploadImage = async (file: File) => {
     setIsUploadingImage(true);
@@ -86,15 +107,27 @@ export default function FieldEditorPanel({
     <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/30 p-4">
       {/* ---------------- Label / placeholder / required ---------------- */}
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold text-muted-foreground">Label</span>
-          <input
-            type="text"
-            value={field.label}
-            onChange={(e) => onChange({ ...field, label: e.target.value })}
-            className="h-9 text-sm"
-          />
-        </label>
+        {TEXT_BLOCK_TYPES.has(field.type) ? (
+          <div className={`flex flex-col gap-1.5 ${field.type === "paragraph" ? "sm:col-span-2" : ""}`}>
+            <span className="text-xs font-semibold text-muted-foreground">Text</span>
+            <PlaceholderTextInput
+              value={field.label}
+              onChange={(label) => onChange({ ...field, label })}
+              catalog={catalog}
+              multiline={field.type === "paragraph"}
+            />
+          </div>
+        ) : (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-muted-foreground">Label</span>
+            <input
+              type="text"
+              value={field.label}
+              onChange={(e) => onChange({ ...field, label: e.target.value })}
+              className="h-9 text-sm"
+            />
+          </label>
+        )}
         {["text", "textarea", "number", "date", "datetime"].includes(field.type) && (
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-semibold text-muted-foreground">Placeholder</span>
@@ -134,6 +167,19 @@ export default function FieldEditorPanel({
           </label>
         )}
       </div>
+
+      {/* ---------------- Default value (with patient-data placeholders) ---------------- */}
+      {DEFAULT_VALUE_TYPES.has(field.type) && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-muted-foreground">Default value</span>
+          <PlaceholderTextInput
+            value={field.defaultValue ?? ""}
+            onChange={(defaultValue) => onChange({ ...field, defaultValue: defaultValue || undefined })}
+            catalog={defaultValueCatalog}
+          />
+          <p className="text-[11px] text-muted-foreground">{DEFAULT_VALUE_HINTS[field.type]}</p>
+        </div>
+      )}
 
       {/* ---------------- Image upload (type "image" only) ---------------- */}
       {field.type === "image" && (
@@ -175,6 +221,17 @@ export default function FieldEditorPanel({
                 className="h-4 w-4"
               />
               Repeatable
+            </label>
+          )}
+          {READ_ONLY_TYPES.has(field.type) && (
+            <label className="flex items-center gap-2 text-sm" title="Shown but can't be changed while filling - pair it with a default value">
+              <input
+                type="checkbox"
+                checked={field.readOnly ?? false}
+                onChange={(e) => onChange({ ...field, readOnly: e.target.checked || undefined })}
+                className="h-4 w-4"
+              />
+              Read-only
             </label>
           )}
         </div>

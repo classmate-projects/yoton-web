@@ -3,6 +3,7 @@
 import { createPortal } from "react-dom";
 import { Pencil, Printer, X } from "lucide-react";
 import { MedicalFormRow, MedicalFormValues } from "@/types/medicalForm.type";
+import { PlaceholderContext } from "@/lib/medicalForm";
 import MedicalFormRenderer from "./MedicalFormRenderer";
 
 export interface MedicalFormPrintoutProps {
@@ -15,6 +16,7 @@ export interface MedicalFormPrintoutProps {
   hasAbnormalValue?: boolean;
   rows: MedicalFormRow[];
   values: MedicalFormValues;
+  placeholders?: PlaceholderContext;
   onClose: () => void;
   // Shown only to whoever filled and saved this particular form (server-computed - see
   // SavedMedicalFormController: CanEdit = CreatedByUserId == CurrentUserId). Anyone else can
@@ -45,6 +47,7 @@ export default function MedicalFormPrintout({
   hasAbnormalValue,
   rows,
   values,
+  placeholders,
   onClose,
   canEdit = false,
   onEdit,
@@ -86,7 +89,7 @@ export default function MedicalFormPrintout({
       </div>
 
       <div className="mt-5">
-        <MedicalFormRenderer rows={rows} mode="view" values={values} />
+        <MedicalFormRenderer rows={rows} mode="view" values={values} placeholders={placeholders} />
       </div>
     </div>
   );

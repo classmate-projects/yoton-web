@@ -2,21 +2,32 @@
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { Save, RefreshCw, X } from "lucide-react";
+import { Save, RefreshCw, X, Box, LayoutGrid, Eraser, ScanEye } from "lucide-react";
 import dynamic from "next/dynamic";
-import SurfaceBox, { CONDITION_COLOR } from "./SurfaceBox";
+import SurfaceBox from "./SurfaceBox";
 import ToothCaseSheet from "./ToothCaseSheet";
 import { DentalService } from "@/services/dental.service";
+import {
+  CONDITION_COLOR,
+  SURFACE_CONDITIONS,
+  ALL_SURFACES,
+  paintSurface,
+  primarySurfaceCondition,
+  surfaceCondition,
+  surfaceSummary,
+  surfacesUnavailableReason,
+} from "./surfaceFindings";
+import { surfaceName, toothInfo } from "./toothCatalog";
+import type { DetailView } from "./ToothDetail3D";
 
-const Tooth3DCanvas = dynamic(() => import("./Tooth3DCanvas"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center rounded-xl bg-muted/30 text-xs text-muted-foreground"
-      style={{ width: 240, height: 280 }}>
-      Loading 3D…
-    </div>
-  ),
-});
+const Loading3D = ({ height }: { height: number }) => (
+  <div className="flex w-full items-center justify-center rounded-xl border border-border bg-muted/30 text-xs text-muted-foreground" style={{ height }}>
+    <RefreshCw size={14} className="mr-2 animate-spin" /> Loading 3D model…
+  </div>
+);
+// WebGL only runs in the browser, and three.js is large - loaded only when the 3D view shows.
+const DentalArch3D = dynamic(() => import("./DentalArch3D"), { ssr: false, loading: () => <Loading3D height={480} /> });
+const ToothDetail3D = dynamic(() => import("./ToothDetail3D"), { ssr: false, loading: () => <Loading3D height={340} /> });
 import { ToothRecord, PerioRecord, DentalChartType, ToothCondition, ToothSurface } from "@/types/dental.type";
 
 // ─── Universal (US) adult numbering & alphabetic pediatric ───────────────────
@@ -29,26 +40,8 @@ const PEDO_LOWER  = ["t","s","r","q","p","o","n","m","l","k"];
 
 type ToothShape = "incisor" | "canine" | "premolar" | "molar";
 
-// Shape lookup by Universal number / pediatric letter
-const TOOTH_SHAPE_MAP: Record<string, ToothShape> = {
-  // Adult upper
-  "1":"molar","2":"molar","3":"molar","4":"premolar","5":"premolar",
-  "6":"canine","7":"incisor","8":"incisor","9":"incisor","10":"incisor",
-  "11":"canine","12":"premolar","13":"premolar","14":"molar","15":"molar","16":"molar",
-  // Adult lower
-  "17":"molar","18":"molar","19":"molar","20":"premolar","21":"premolar",
-  "22":"canine","23":"incisor","24":"incisor","25":"incisor","26":"incisor",
-  "27":"canine","28":"premolar","29":"premolar","30":"molar","31":"molar","32":"molar",
-  // Pediatric upper  (a=upper-right 2nd molar … e=upper-right central; f=upper-left central … j=upper-left 2nd molar)
-  "a":"molar","b":"molar","c":"canine","d":"incisor","e":"incisor",
-  "f":"incisor","g":"incisor","h":"canine","i":"molar","j":"molar",
-  // Pediatric lower  (t=lower-right 2nd molar … p=lower-right central; o=lower-left central … k=lower-left 2nd molar)
-  "t":"molar","s":"molar","r":"canine","q":"incisor","p":"incisor",
-  "o":"incisor","n":"incisor","m":"canine","l":"molar","k":"molar",
-};
-
 function toothShape(n: string): ToothShape {
-  return TOOTH_SHAPE_MAP[n] ?? "incisor";
+  return toothInfo(n).kind;
 }
 
 type ToothView = "Buccal" | "Lingual" | "Mesial" | "Distal" | "Occlusal";
@@ -556,74 +549,155 @@ function ToothProximalSVG({ shape, isUpper, w = 120, proximalSide = "M", conditi
   );
 }
 
-// ─── 3D tooth viewer (WebGL via Three.js) ────────────────────────────────────
-function Tooth3DViewer({ toothNumber, shape, isUpper, record, onChange }: {
+// ─── Selected tooth: enlarged 3D model + surface charting ────────────────────
+// The doctor picks a condition "brush" and clicks a surface - on the 3D tooth or the 2D
+// surface map - to chart it there; clicking it again with the same brush clears it.
+const SNAP_VIEWS: { view: DetailView; surface?: ToothSurface; label?: string }[] = [
+  { view: "buccal", surface: "B" },
+  { view: "lingual", surface: "L" },
+  { view: "mesial", surface: "M" },
+  { view: "distal", surface: "D" },
+  { view: "occlusal", surface: "O" },
+  { view: "reset", label: "3/4 view" },
+];
+
+function Tooth3DViewer({ toothNumber, record, onChange }: {
   toothNumber: string;
-  shape: ToothShape;
-  isUpper: boolean;
   record: ToothRecord;
   onChange?: (r: ToothRecord) => void;
 }) {
-  // Use {view, ver} so clicking the same snap button twice still re-triggers the animation.
-  const [snap, setSnap] = useState<{ view: string; ver: number } | undefined>(undefined);
+  const info = toothInfo(toothNumber);
+  const [view, setView] = useState<{ name: DetailView; ver: number } | undefined>(undefined);
+  const [brush, setBrush] = useState<ToothCondition | null>(() => {
+    const current = primarySurfaceCondition(record.conditions);
+    return current && SURFACE_CONDITIONS.includes(current) ? current : "Caries";
+  });
+  const [xray, setXray] = useState(() => record.conditions.includes("RCT"));
+  const unavailable = surfacesUnavailableReason(record.conditions);
 
-  const toggleSurface = (s: ToothSurface) => {
+  const chart = (surface: ToothSurface) => {
     if (!onChange) return;
-    const has = record.surfaces.includes(s);
-    onChange({ ...record, surfaces: has ? record.surfaces.filter(x => x !== s) : [...record.surfaces, s] });
+    if (unavailable) {
+      toast.info(unavailable);
+      return;
+    }
+    onChange(paintSurface(record, surface, brush));
   };
+
+  const pill = "rounded-md border px-2 py-1 text-xs font-medium transition-colors";
 
   return (
     <div className="rounded-lg border border-border bg-muted/10 p-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 pr-6">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold">Tooth {toothNumber}</span>
-          <span className="text-xs text-muted-foreground capitalize px-1.5 py-0.5 rounded bg-muted">{shape}</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{info.name}</span>
         </div>
-        <span className="text-[10px] text-muted-foreground italic hidden sm:block">Drag to rotate · Scroll to zoom</span>
+        <div className="flex flex-wrap gap-1">
+          {SNAP_VIEWS.map(({ view: name, surface, label }) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setView((v) => ({ name, ver: (v?.ver ?? 0) + 1 }))}
+              className={`${pill} border-border text-muted-foreground hover:border-primary/60 hover:text-foreground`}
+            >
+              {surface ? surfaceName(surface, info) : label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setXray((x) => !x)}
+            title="See through the tooth to the pulp and root canals"
+            className={`${pill} flex items-center gap-1 ${xray ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary/60 hover:text-foreground"}`}
+          >
+            <ScanEye size={12} /> X-ray
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 items-start">
-        {/* True WebGL 3D tooth */}
-        <Tooth3DCanvas
-          shape={shape}
-          isUpper={isUpper}
-          conditions={record.conditions}
-          surfaces={record.surfaces}
-          width={240}
-          height={280}
-          cameraView={snap}
-        />
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <div className="min-w-0 flex-1">
+          <ToothDetail3D
+            toothNumber={toothNumber}
+            record={record}
+            onSurfaceClick={onChange ? chart : undefined}
+            view={view}
+            xray={xray}
+          />
+        </div>
 
-        {/* View snap buttons + surface map */}
-        <div className="flex flex-col gap-3 shrink-0">
-          <div className="flex flex-col gap-1.5">
-            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide mb-0.5">Snap View</p>
-            {(["Buccal","Lingual","Mesial","Distal","Occlusal"] as const).map(v => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setSnap(s => ({ view: v.toLowerCase(), ver: (s?.ver ?? 0) + 1 }))}
-                className="px-3 py-1.5 text-xs rounded border border-border text-muted-foreground hover:border-primary/60 hover:text-foreground transition-colors text-left min-w-[80px]"
-              >
-                {v}
-              </button>
-            ))}
+        <div className="flex w-full flex-col gap-3 lg:w-72">
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Mark surfaces as</p>
+            {unavailable ? (
+              <p className="text-xs italic text-muted-foreground">{unavailable}</p>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {SURFACE_CONDITIONS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setBrush(c)}
+                    style={brush === c ? { backgroundColor: CONDITION_COLOR[c], borderColor: CONDITION_COLOR[c] } : undefined}
+                    className={`${pill} ${brush === c ? "text-white" : "border-border text-muted-foreground hover:border-foreground/40"}`}
+                  >
+                    {c}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setBrush(null)}
+                  className={`${pill} flex items-center gap-1 ${brush === null ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:border-foreground/40"}`}
+                >
+                  <Eraser size={12} /> Erase
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Surface map — occlusal diagram showing affected surfaces */}
-          <div className="flex flex-col gap-1">
-            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Surface Map</p>
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Surfaces</p>
+            <ul className="flex flex-col gap-1 text-xs">
+              {ALL_SURFACES.map((s) => {
+                const c = surfaceCondition(record, s);
+                return (
+                  <li key={s}>
+                    <button
+                      type="button"
+                      disabled={!onChange}
+                      onClick={() => chart(s)}
+                      className="flex w-full items-center justify-between rounded border border-border/60 px-2 py-1 text-left hover:border-primary/60 disabled:hover:border-border/60"
+                    >
+                      <span>
+                        <b>{s}</b> <span className="text-muted-foreground">{surfaceName(s, info)}</span>
+                      </span>
+                      {c ? (
+                        <span className="flex items-center gap-1">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CONDITION_COLOR[c] }} />
+                          {c}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/60">—</span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <div className="flex items-center gap-3">
             <SurfaceBox
               conditions={record.conditions}
               surfaces={record.surfaces}
-              shape={shape}
-              size={80}
+              surfaceConditions={record.surfaceConditions}
+              shape={info.kind}
+              size={72}
               onClick={() => {}}
-              onSurfaceClick={onChange ? toggleSurface : undefined}
+              onSurfaceClick={onChange ? chart : undefined}
             />
-            <p className="text-[9px] text-muted-foreground/60 text-center">
-              {onChange ? "Click surface to toggle" : ""}
+            <p className="text-[10px] leading-snug text-muted-foreground">
+              Surface map — click a surface here or on the 3D tooth to chart the selected condition.
             </p>
           </div>
         </div>
@@ -807,6 +881,7 @@ function ToothCol({
             <SurfaceBox
               conditions={record.conditions}
               surfaces={record.surfaces}
+              surfaceConditions={record.surfaceConditions}
               isSelected={isSelected}
               onClick={onToothClick}
               size={TOOTH_W - 4}
@@ -822,6 +897,7 @@ function ToothCol({
             <SurfaceBox
               conditions={record.conditions}
               surfaces={record.surfaces}
+              surfaceConditions={record.surfaceConditions}
               isSelected={isSelected}
               onClick={onToothClick}
               size={TOOTH_W - 4}
@@ -970,6 +1046,8 @@ function FurcationRow({
 function emptyPerio(toothNumber: string): PerioRecord { return { toothNumber }; }
 
 // ─── Main component ───────────────────────────────────────────────────────────
+const CHART_VIEW_KEY = "yoton_dental_chart_view";
+
 interface Props { encounterId: string; patientId: string; }
 type TabId = "chart" | "perio" | "details" | "history";
 
@@ -992,6 +1070,29 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
   // the doctor can see the patient's last-known dental state and update it. This banner
   // date drives a visible callout so the doctor knows the data isn't yet saved for THIS visit.
   const [preFillDate, setPreFillDate] = useState<string | null>(null);
+
+  // 3D model or the classic 2D chart - remembered per browser. This section only ever
+  // renders client-side (inside the dental modal), so reading storage here is safe.
+  const [chartView, setChartView] = useState<"3d" | "2d">(() => {
+    try {
+      return typeof window !== "undefined" && localStorage.getItem(CHART_VIEW_KEY) === "2d" ? "2d" : "3d";
+    } catch {
+      return "3d";
+    }
+  });
+  const chooseChartView = (view: "3d" | "2d") => {
+    setChartView(view);
+    try {
+      localStorage.setItem(CHART_VIEW_KEY, view);
+    } catch {
+      // storage unavailable (private mode) - the choice just isn't remembered
+    }
+  };
+
+  const toothPanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selectedTooth) toothPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selectedTooth]);
 
   const upperTeeth = chartType === "Adult" ? ADULT_UPPER : PEDO_UPPER;
   const lowerTeeth = chartType === "Adult" ? ADULT_LOWER : PEDO_LOWER;
@@ -1152,6 +1253,37 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
           {/* ════════════════ TOOTH CHART TAB ════════════════ */}
           {tab === "chart" && (
             <div className="p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex rounded-lg border border-border p-0.5 text-xs">
+                  {([
+                    ["3d", "3D model", Box],
+                    ["2d", "2D chart", LayoutGrid],
+                  ] as const).map(([view, label, Icon]) => (
+                    <button
+                      key={view}
+                      type="button"
+                      onClick={() => chooseChartView(view)}
+                      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors ${
+                        chartView === view ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Icon size={13} /> {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Click a tooth to open its {chartView === "3d" ? "enlarged 3D view and " : ""}case sheet
+                </p>
+              </div>
+
+              {chartView === "3d" ? (
+                <DentalArch3D
+                  teeth={[...upperTeeth, ...lowerTeeth]}
+                  records={toothRecords}
+                  selectedTooth={selectedTooth}
+                  onSelectTooth={handleToothClick}
+                />
+              ) : (
               <div className="overflow-x-auto">
                 <div className="flex gap-4 w-fit mx-auto items-stretch">
 
@@ -1209,10 +1341,11 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                   </div>{/* end chart column */}
                 </div>{/* end flex gap-4 */}
               </div>
+              )}
 
               {/* ── Inline case sheet + 3D viewer when tooth selected ── */}
               {selectedTooth && (
-                <div className="mt-4 border border-border rounded-lg bg-background relative">
+                <div ref={toothPanelRef} className="mt-4 border border-border rounded-lg bg-background relative scroll-mt-4">
                   <button type="button" onClick={() => setSelectedTooth(null)}
                     className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors z-10">
                     <X size={16} />
@@ -1221,8 +1354,6 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                   <div className="p-4 border-b border-border">
                     <Tooth3DViewer
                       toothNumber={selectedTooth}
-                      shape={toothShape(selectedTooth)}
-                      isUpper={upperTeeth.includes(selectedTooth)}
                       record={toothRecords.get(selectedTooth) ?? { toothNumber: selectedTooth, conditions: [], surfaces: [] }}
                       onChange={updateTooth}
                     />
@@ -1355,7 +1486,7 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                               ))}
                             </div>
                           </td>
-                          <td className="py-2 pr-3">{r.surfaces.join(", ") || "—"}</td>
+                          <td className="py-2 pr-3">{surfaceSummary(r) || "—"}</td>
                           <td className="py-2 pr-3 text-xs">
                             {r.complexity?.replace(/([A-Z])/g, " $1").trim() ?? "—"}
                           </td>

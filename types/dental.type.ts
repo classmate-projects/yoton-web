@@ -24,6 +24,9 @@ export interface ToothRecord {
   toothNumber: string;
   conditions: ToothCondition[];
   surfaces: ToothSurface[];
+  // Which condition each marked surface shows. A marked surface with no entry falls back
+  // to the tooth's first surface-level condition (how older charts are drawn).
+  surfaceConditions?: Partial<Record<ToothSurface, ToothCondition>>;
   mobility?: number;
   examination?: string;
   complexity?: ComplexityLevel;

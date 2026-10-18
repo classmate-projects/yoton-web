@@ -468,12 +468,15 @@ export const ENDPOINTS = {
         SET_SPECIALTIES: (id: string) => `/api/form-templates/${id}/specialties`,
         GET_AVAILABLE: (doctorId?: string) => `/api/form-templates/available${doctorId ? `?doctorId=${doctorId}` : ""}`,
         UPLOAD_IMAGE: `/api/form-templates/upload-image`,
+        GET_PLACEHOLDERS: `/api/form-templates/placeholders`,
     },
     SAVED_MEDICAL_FORM: {
         CREATE: `/api/saved-medical-forms`,
         UPDATE: (id: string) => `/api/saved-medical-forms/${id}`,
         DELETE: (id: string, password?: string) => `/api/saved-medical-forms/${id}${password ? `?password=${encodeURIComponent(password)}` : ""}`,
         GET_BY_PATIENT: (patientId: string) => `/api/saved-medical-forms/patient/${patientId}`,
+        GET_PLACEHOLDER_VALUES: (formTemplateId: string, patientId: string, visitId?: string | null) =>
+            `/api/saved-medical-forms/placeholder-values?formTemplateId=${encodeURIComponent(formTemplateId)}&patientId=${encodeURIComponent(patientId)}${visitId ? `&visitId=${encodeURIComponent(visitId)}` : ""}`,
         HANDOVER: (id: string) => `/api/saved-medical-forms/${id}/handover`,
         GET_MY_PENDING_HANDOVERS: `/api/saved-medical-forms/my-pending-handovers`,
         ACKNOWLEDGE_HANDOVER: (id: string) => `/api/saved-medical-forms/${id}/handover/acknowledge`,

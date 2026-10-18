@@ -4,32 +4,9 @@
 // drop-shadow that give a convincing 3D depth effect.
 
 import { ToothCondition, ToothSurface } from "@/types/dental.type";
+import { CONDITION_COLOR, surfaceCondition, wholeToothCondition } from "./surfaceFindings";
 
 export type ToothShape = "incisor" | "canine" | "premolar" | "molar";
-
-// ── Condition colours ──────────────────────────────────────────────────────────
-export const CONDITION_COLOR: Record<ToothCondition, string> = {
-  Healthy:             "#ffffff",
-  Caries:              "#ef4444",
-  Filled:              "#3b82f6",
-  Missing:             "#9ca3af",
-  Implant:             "#6b7280",
-  Crown:               "#f59e0b",
-  BridgeAbutment:      "#d97706",
-  BridgePontic:        "#fde68a",
-  RCT:                 "#a855f7",
-  ExtractionIndicated: "#dc2626",
-  Fracture:            "#f97316",
-  Watch:               "#eab308",
-  Attrition:           "#92400e",
-  Abrasion:            "#0d9488",
-  Erosion:             "#65a30d",
-  Calculus:            "#b45309",
-};
-
-const WHOLE_TOOTH_CONDITIONS: ToothCondition[] = [
-  "Missing", "Implant", "Crown", "BridgeAbutment", "BridgePontic", "ExtractionIndicated",
-];
 
 // ── Tooth outlines (54×54 viewBox) ────────────────────────────────────────────
 // Coordinate convention: M (mesial) = top (y≈0), D (distal) = bottom (y≈54),
@@ -157,6 +134,7 @@ const CUSP_HIGHLIGHTS: Record<ToothShape, CuspSpot[]> = {
 interface Props {
   conditions: ToothCondition[];
   surfaces: ToothSurface[];
+  surfaceConditions?: Partial<Record<ToothSurface, ToothCondition>>;
   isSelected?: boolean;
   onClick: () => void;
   onSurfaceClick?: (surface: ToothSurface) => void;
@@ -167,22 +145,19 @@ interface Props {
 export default function SurfaceBox({
   conditions,
   surfaces,
+  surfaceConditions,
   isSelected,
   onClick,
   onSurfaceClick,
   size = 44,
   shape = "molar",
 }: Props) {
-  const wholeCondition   = conditions.find(c => WHOLE_TOOTH_CONDITIONS.includes(c));
-  const surfaceCondition = conditions.find(c =>
-    c === "Caries" || c === "Filled" || c === "RCT" || c === "Fracture" || c === "Watch" ||
-    c === "Attrition" || c === "Abrasion" || c === "Erosion" || c === "Calculus",
-  );
+  const wholeCondition = wholeToothCondition(conditions);
 
   const getSurfaceFill = (surface: ToothSurface): string | null => {
     if (wholeCondition) return CONDITION_COLOR[wholeCondition];
-    if (surfaces.includes(surface) && surfaceCondition) return CONDITION_COLOR[surfaceCondition];
-    return null;
+    const condition = surfaceCondition({ conditions, surfaces, surfaceConditions }, surface);
+    return condition ? CONDITION_COLOR[condition] : null;
   };
 
   const allSurfaces: ToothSurface[] = ["M", "D", "B", "L", "O"];
@@ -193,7 +168,7 @@ export default function SurfaceBox({
   // Stable IDs shared by all instances of the same shape (identical defs → safe)
   const uid = `sb-${shape[0]}`;
 
-  const hasCondition = !!wholeCondition || (surfaces.length > 0 && !!surfaceCondition);
+  const hasCondition = !!wholeCondition || surfaces.some((s) => getSurfaceFill(s) !== null);
   const showAnatomy  = !wholeCondition;
 
   return (

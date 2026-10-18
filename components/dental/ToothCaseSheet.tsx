@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ToothRecord, ToothCondition, ToothSurface, ComplexityLevel, ToothNote, ToothTreatment } from "@/types/dental.type";
-import { CONDITION_COLOR } from "./SurfaceBox";
+import { CONDITION_COLOR, surfaceCondition, surfacesUnavailableReason, withoutCondition } from "./surfaceFindings";
 import { Trash2, Plus } from "lucide-react";
 
 const ALL_CONDITIONS: ToothCondition[] = [
@@ -26,12 +26,6 @@ const COMPLEXITY_OPTIONS: { value: ComplexityLevel; label: string }[] = [
 const WHOLE_TOOTH_CONDITIONS: ToothCondition[] = [
   "Missing", "Implant", "Crown", "BridgeAbutment", "BridgePontic", "ExtractionIndicated",
 ];
-// Surface-specific pathologies — require a natural tooth surface to exist
-const SURFACE_SPECIFIC: ToothCondition[] = ["Caries", "Filled", "RCT", "Fracture", "Watch"];
-// Tooth-absent conditions: no natural crown tissue → surfaces not applicable
-const ABSENT_TOOTH: ToothCondition[] = ["Missing", "BridgePontic"];
-// Conditions where decay-type pathologies can't occur
-const NO_DECAY: ToothCondition[] = ["Missing", "BridgePontic", "Implant"];
 
 interface Props {
   toothNumber: string;
@@ -54,9 +48,9 @@ export default function ToothCaseSheet({ toothNumber, record, onChange }: Props)
 
   // ─── Clinical condition toggle with enforcement ───────────────────────────
   const toggleCondition = (c: ToothCondition) => {
-    // Deselect — always allowed
+    // Deselect — always allowed; surfaces charted with this condition are cleared with it
     if (record.conditions.includes(c)) {
-      update({ conditions: record.conditions.filter(x => x !== c) });
+      onChange(withoutCondition(record, c));
       return;
     }
 
@@ -98,7 +92,11 @@ export default function ToothCaseSheet({ toothNumber, record, onChange }: Props)
       newConditions = newConditions.filter(x => x !== "Healthy");
     }
 
-    update({ conditions: newConditions, surfaces: newSurfaces });
+    update({
+      conditions: newConditions,
+      surfaces: newSurfaces,
+      surfaceConditions: newSurfaces.length > 0 ? record.surfaceConditions : {},
+    });
   };
 
   // ─── Which conditions are disabled (not applicable given current state) ───
@@ -114,20 +112,17 @@ export default function ToothCaseSheet({ toothNumber, record, onChange }: Props)
   };
 
   // ─── Surface availability ─────────────────────────────────────────────────
-  const surfacesDisabled = record.conditions.some(c => ABSENT_TOOTH.includes(c)) ||
-                           record.conditions.includes("Implant");
-  const surfacesDisabledReason = record.conditions.includes("Missing")
-    ? "No surfaces — tooth is missing"
-    : record.conditions.includes("BridgePontic")
-    ? "No surfaces — bridge pontic has no natural tooth tissue"
-    : record.conditions.includes("Implant")
-    ? "No natural enamel surfaces — implant crown surfaces not charted here"
-    : null;
+  const surfacesDisabledReason = surfacesUnavailableReason(record.conditions);
 
   const toggleSurface = (s: ToothSurface) => {
-    if (surfacesDisabled) return;
-    const has = record.surfaces.includes(s);
-    update({ surfaces: has ? record.surfaces.filter(x => x !== s) : [...record.surfaces, s] });
+    if (surfacesDisabledReason) return;
+    if (!record.surfaces.includes(s)) {
+      update({ surfaces: [...record.surfaces, s] });
+      return;
+    }
+    const surfaceConditions = { ...(record.surfaceConditions ?? {}) };
+    delete surfaceConditions[s];
+    update({ surfaces: record.surfaces.filter(x => x !== s), surfaceConditions });
   };
 
   const addNote = () => {
@@ -214,20 +209,30 @@ export default function ToothCaseSheet({ toothNumber, record, onChange }: Props)
           <p className="text-xs text-muted-foreground/60 italic py-1">{surfacesDisabledReason}</p>
         ) : (
           <div className="flex gap-2">
-            {ALL_SURFACES.map(s => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => toggleSurface(s)}
-                className={`w-9 h-9 rounded border text-sm font-semibold transition-colors ${
-                  record.surfaces.includes(s)
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-border text-muted-foreground hover:border-primary"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
+            {ALL_SURFACES.map(s => {
+              const charted = surfaceCondition(record, s);
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => toggleSurface(s)}
+                  title={charted ? `${s}: ${charted}` : undefined}
+                  className={`relative w-9 h-9 rounded border text-sm font-semibold transition-colors ${
+                    record.surfaces.includes(s)
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border text-muted-foreground hover:border-primary"
+                  }`}
+                >
+                  {s}
+                  {charted && (
+                    <span
+                      className="absolute -right-1 -top-1 h-3 w-3 rounded-full ring-2 ring-background"
+                      style={{ backgroundColor: CONDITION_COLOR[charted] }}
+                    />
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
       </section>
