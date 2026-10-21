@@ -54,6 +54,7 @@ interface MeResponse {
   currencyIsManual: boolean;
   pediatricMaxAgeYears: number;
   geriatricMinAgeYears: number;
+  immunizationReminderDays: number;
   idleTimeoutMinutes: number;
   includeLoginCredentialsInPatientEmail: boolean;
   patientEmailCredentialsSubject: string;
@@ -120,6 +121,9 @@ export default function SettingsPage() {
   const [pediatricMaxAgeInput, setPediatricMaxAgeInput] = useState("18");
   const [geriatricMinAgeInput, setGeriatricMinAgeInput] = useState("65");
   const ageRangesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [reminderDaysInput, setReminderDaysInput] = useState("7");
+  const reminderDaysTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [idleTimeoutInput, setIdleTimeoutInput] = useState("15");
   const idleTimeoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -191,6 +195,7 @@ export default function SettingsPage() {
         setCurrencyIsManual(!!data.currencyIsManual);
         setPediatricMaxAgeInput(String(data.pediatricMaxAgeYears ?? 18));
         setGeriatricMinAgeInput(String(data.geriatricMinAgeYears ?? 65));
+        setReminderDaysInput(String(data.immunizationReminderDays ?? 7));
         setIdleTimeoutInput(String(data.idleTimeoutMinutes ?? 15));
         setStaffCheckInRequired(data.staffCheckInRequired ?? false);
         setPatientMatchFields(data.patientMatchFields ?? ["NationalID", "Passport", "Phone"]);
@@ -377,6 +382,30 @@ export default function SettingsPage() {
       } catch {
         notifySaveStatus("error");
         toast.error("Failed to update age category ranges");
+      }
+    }, 800);
+  };
+
+  // How many days ahead staff start being reminded about a scheduled vaccination.
+  const handleReminderDaysChange = (raw: string) => {
+    setReminderDaysInput(raw);
+    if (!me) return;
+    if (reminderDaysTimer.current) clearTimeout(reminderDaysTimer.current);
+    notifySaveStatus("saving");
+    reminderDaysTimer.current = setTimeout(async () => {
+      const days = Number(raw.trim());
+      if (!Number.isInteger(days) || days < 0 || days > 90) {
+        notifySaveStatus("error");
+        toast.error("Enter a whole number of days between 0 and 90");
+        return;
+      }
+      try {
+        const data = await CompanyService.updateSettings({ immunizationReminderDays: days });
+        setMe((prev) => (prev ? { ...prev, immunizationReminderDays: data.immunizationReminderDays } : prev));
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+        toast.error("Failed to update immunization reminders");
       }
     }, 800);
   };
@@ -1096,6 +1125,33 @@ export default function SettingsPage() {
             <p className="mt-2 text-xs text-muted-foreground">
               Adult: {pediatricMaxAgeInput || "0"} to {geriatricMinAgeInput || "0"} years.
             </p>
+          </div>
+
+          {/* Immunization reminders */}
+          <div className="bg-card border border-border rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-foreground mb-1">Immunization reminders</h2>
+            <p className="text-sm text-muted-foreground mb-5">
+              The Pediatric Immunization Schedule is available for patients under the Pediatric age above.
+              Doctors and nurses are reminded about a scheduled vaccination this many days before it&apos;s
+              due, and again if it becomes overdue.
+            </p>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Remind staff</label>
+              <div className="relative w-36">
+                <input
+                  type="number"
+                  min={0}
+                  max={90}
+                  step="1"
+                  value={reminderDaysInput}
+                  onChange={(e) => handleReminderDaysChange(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-20 text-sm text-foreground"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                  days ahead
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Idle timeout */}

@@ -481,4 +481,27 @@ export const ENDPOINTS = {
         GET_MY_PENDING_HANDOVERS: `/api/saved-medical-forms/my-pending-handovers`,
         ACKNOWLEDGE_HANDOVER: (id: string) => `/api/saved-medical-forms/${id}/handover/acknowledge`,
     },
+    // Reads pass the browser's timezone offset so "due today"/"overdue" follow the user's own day.
+    IMMUNIZATION: {
+        GET_VACCINES: (includeInactive?: boolean) => `/api/immunization/vaccines${includeInactive ? "?includeInactive=true" : ""}`,
+        CREATE_VACCINE: `/api/immunization/vaccine`,
+        UPDATE_VACCINE: (vaccineId: string) => `/api/immunization/vaccine/${vaccineId}`,
+        DELETE_VACCINE: (vaccineId: string) => `/api/immunization/vaccine/${vaccineId}`,
+        GET_SCHEDULE: (patientId: string) => `/api/immunization/patient/${patientId}?tz=${new Date().getTimezoneOffset()}`,
+        SCHEDULE_VACCINATION: (patientId: string, doctorId?: string) =>
+            `/api/immunization/patient/${patientId}/schedule-vaccination${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        UPDATE_ORDER: (orderId: string, doctorId?: string) =>
+            `/api/immunization/vaccination-order/${orderId}${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        CANCEL_ORDER: (orderId: string, doctorId?: string) =>
+            `/api/immunization/vaccination-order/${orderId}/cancel${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        RECORD_MISSED_DOSE: (patientId: string, doctorId?: string) =>
+            `/api/immunization/patient/${patientId}/missed-dose${doctorId ? `?doctorId=${doctorId}` : ""}`,
+        ADMINISTER: (orderId: string) => `/api/immunization/vaccination-order/${orderId}/administer-vaccine`,
+        UNDO_ADMINISTRATION: (orderId: string) => `/api/immunization/vaccination-order/${orderId}/undo-administration`,
+        MARK_MISSED: (orderId: string) => `/api/immunization/vaccination-order/${orderId}/mark-missed`,
+        RECORD_PAST_DOSE: (patientId: string) => `/api/immunization/patient/${patientId}/past-dose`,
+        RECORD_PRINT: (patientId: string) => `/api/immunization/patient/${patientId}/print-history`,
+        GET_REMINDERS: (doctorId?: string) =>
+            `/api/immunization/reminders?tz=${new Date().getTimezoneOffset()}${doctorId ? `&doctorId=${doctorId}` : ""}`,
+    },
 }

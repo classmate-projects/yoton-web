@@ -20,6 +20,7 @@ export const CompanyService = {
         currencyCode?: string;
         pediatricMaxAgeYears?: number;
         geriatricMinAgeYears?: number;
+        immunizationReminderDays?: number;
         idleTimeoutMinutes?: number;
         includeLoginCredentialsInPatientEmail?: boolean;
         patientEmailCredentialsSubject?: string;
