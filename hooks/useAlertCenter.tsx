@@ -8,7 +8,9 @@ import { EmrService } from "@/services/emr.service";
 import { PharmacyService } from "@/services/pharmacy.service";
 import { SavedMedicalFormService } from "@/services/medicalForm.service";
 import { AttendanceService } from "@/services/attendance.service";
+import { ImmunizationService } from "@/services/immunization.service";
 import { AutoCheckOutType } from "@/types/attendance.type";
+import type { ImmunizationRemindersType } from "@/types/immunization.type";
 import { parseDateInputValue } from "@/lib/date";
 import { ensureNotificationPermission, showAlertNotification } from "@/lib/notifications";
 
@@ -34,14 +36,15 @@ function listNames(names: string[]): string {
 // popover. Each source below normalizes into the same AlertItem shape and gets pushed onto
 // one rolling list; who sees which sources is gated per-role inline (not a single
 // "canSeeAlerts" flag) since a doctor's alerts (corrections, results) are entirely different
-// from admin/reception's (appointment requests, documents, resolved corrections) or a
-// pharmacist's (low stock).
+// from admin/reception's (appointment requests, documents, resolved corrections), a
+// pharmacist's (low stock) or a nurse's (vaccinations due).
 export function useAlertCenter(role: string, userId: string | undefined) {
   const isAdmin = role === "admin";
   const isReception = role === "reception";
   const isDoctor = role === "doctor";
   const isPharmacist = role === "pharmacist";
-  const canSeeAlerts = isAdmin || isReception || isDoctor || isPharmacist;
+  const isNurse = role === "nurse";
+  const canSeeAlerts = isAdmin || isReception || isDoctor || isPharmacist || isNurse;
 
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   // Derived, not its own state - unreadCount used to be tracked separately and incremented
@@ -78,6 +81,9 @@ export function useAlertCenter(role: string, userId: string | undefined) {
 
   // Which automatic check-outs already have an alert, so a live refetch only rings for new ones.
   const knownAutoCheckOutIds = useRef(new Set<string>());
+
+  // Last-seen immunization reminder counts (-1 = not loaded yet), so only a rise rings the bell.
+  const immunizationCounts = useRef({ overdue: -1, soon: -1 });
 
   // ---------------- Appointment requests (admin, reception) ----------------
   useEffect(() => {
@@ -534,6 +540,95 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       }).catch(() => {});
     };
   }, [isAdmin]);
+
+  // ---------------- Immunization reminders (doctor - doses they ordered; nurse, admin - everyone's) ----------------
+  // Two rolling alerts (overdue, and due today/soon) rather than one per vaccination, so a busy
+  // pediatric list can't flood the bell. Refetched whenever an order changes or the reminder
+  // job raises new ones (ImmunizationReminderService); only a rise in either count rings.
+  useEffect(() => {
+    if (!isDoctor && !isNurse && !isAdmin) return;
+    let isMounted = true;
+    const navLink = isDoctor ? "/doctor" : "/nursing";
+
+    const upsert = (id: string, count: number, previous: number, item: Omit<AlertItem, "read">, toastNode: ReactNode) => {
+      if (count === 0) {
+        dropAlert(id);
+      } else if (previous >= 0 && count > previous) {
+        pushAlert(item, toastNode);
+      } else {
+        setAlerts((prev) => {
+          const existing = prev.find((a) => a.id === id);
+          return [{ ...item, read: existing?.read ?? false }, ...prev.filter((a) => a.id !== id)].slice(0, MAX_ALERTS);
+        });
+      }
+    };
+
+    const load = () =>
+      ImmunizationService.getReminders()
+        .then((res) => {
+          if (!isMounted) return;
+          const data: ImmunizationRemindersType | null = res.data ?? null;
+          const overdue = data?.overdue ?? 0;
+          const dueToday = data?.dueToday ?? 0;
+          const upcoming = data?.upcoming ?? 0;
+          const soon = dueToday + upcoming;
+          const previous = immunizationCounts.current;
+          immunizationCounts.current = { overdue, soon };
+
+          upsert(
+            "immunization-overdue",
+            overdue,
+            previous.overdue,
+            {
+              id: "immunization-overdue",
+              navLink,
+              title: "Vaccinations overdue",
+              message: `${overdue} scheduled vaccination${overdue === 1 ? " is" : "s are"} overdue`,
+              timestamp: Date.now(),
+            },
+            <span><b>{overdue}</b> scheduled vaccination{overdue === 1 ? " is" : "s are"} overdue</span>
+          );
+          const soonParts = [
+            dueToday > 0 ? `${dueToday} due today` : null,
+            upcoming > 0 ? `${upcoming} in the next ${data?.windowDays ?? 7} days` : null,
+          ].filter(Boolean).join(", ");
+          upsert(
+            "immunization-due-soon",
+            soon,
+            previous.soon,
+            {
+              id: "immunization-due-soon",
+              navLink,
+              title: "Vaccinations due soon",
+              message: `Scheduled vaccinations: ${soonParts}`,
+              timestamp: Date.now(),
+            },
+            <span>Scheduled vaccinations: <b>{soonParts}</b></span>
+          );
+        })
+        .catch(() => {});
+
+    load();
+    const handleChanged = () => load();
+
+    const connect = async () => {
+      const connection = await getSignalRConnection();
+      if (!isMounted) return;
+      connection.off("immunizationOrderChanged", handleChanged);
+      connection.off("immunizationRemindersUpdated", handleChanged);
+      connection.on("immunizationOrderChanged", handleChanged);
+      connection.on("immunizationRemindersUpdated", handleChanged);
+    };
+    connect().catch(() => {});
+
+    return () => {
+      isMounted = false;
+      getSignalRConnection().then((connection) => {
+        connection.off("immunizationOrderChanged", handleChanged);
+        connection.off("immunizationRemindersUpdated", handleChanged);
+      }).catch(() => {});
+    };
+  }, [isDoctor, isNurse, isAdmin]);
 
   // ---------------- Lab/radiology results ready (doctor - the one who ordered it) ----------------
   useEffect(() => {

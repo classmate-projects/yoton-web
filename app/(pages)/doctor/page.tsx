@@ -32,6 +32,7 @@ import {
   Stethoscope,
   Stamp,
   StickyNote,
+  Syringe,
   Trash2,
   Unlock as UnlockIcon,
   Upload,
@@ -111,6 +112,9 @@ import { RadiologyRequestType } from "@/types/radiology.type";
 import { TreatmentType } from "@/types/treatment.type";
 import { ListItemType } from "@/types/configList.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { useImmunizationSchedule } from "@/hooks/useImmunizationSchedule";
+import ImmunizationScheduleModal from "@/components/immunization/ImmunizationScheduleModal";
+import ImmunizationRemindersCard from "@/components/immunization/ImmunizationRemindersCard";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -369,6 +373,16 @@ function DoctorWorkbenchInner() {
   const [unviewedDocumentCount, setUnviewedDocumentCount] = useState(0);
   const [showDocuments, setShowDocuments] = useState(false);
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+
+  // ---------------- PEDIATRIC IMMUNIZATION ----------------
+  // Offered for a pediatric patient (under the Settings age limit), and kept reachable
+  // read-only for one who has aged out but already has a record.
+  const [showImmunization, setShowImmunization] = useState(false);
+  const immunizationEnabled =
+    !!summary && summary.opId === selectedPatientId && (summary.isPediatric || summary.hasImmunizationRecords);
+  const { schedule: immunizationSchedule } = useImmunizationSchedule(selectedPatientId, immunizationEnabled);
+  const immunizationOverdue = immunizationSchedule?.counts.overdue ?? 0;
+  const immunizationDue = (immunizationSchedule?.counts.due ?? 0) + immunizationOverdue;
   const [uploadDocFile, setUploadDocFile] = useState<File | null>(null);
   const [uploadDocType, setUploadDocType] = useState("Report");
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
@@ -489,6 +503,7 @@ function DoctorWorkbenchInner() {
     loadPatientRecordFields(null);
     setPatientWarningModal(null);
     setShowDocumentsModal(false);
+    setShowImmunization(false);
     setQuickNotes([]);
     setConfidentialNotes([]);
     setVitalsHistory([]);
@@ -516,6 +531,7 @@ function DoctorWorkbenchInner() {
       loadPatientRecordFields(null);
       setPatientWarningModal(null);
       setShowDocumentsModal(false);
+      setShowImmunization(false);
       setQuickNotes([]);
       setConfidentialNotes([]);
       setVitalsHistory([]);
@@ -1788,6 +1804,12 @@ function DoctorWorkbenchInner() {
                   </h1>
                   <p className="text-sm text-muted-foreground mt-1">
                     MRN {summary.opNumber || summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
+                    {summary.ageText ? ` · ${summary.ageText}` : ""}
+                    {summary.isPediatric && (
+                      <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+                        Pediatric
+                      </span>
+                    )}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {summary.phone ? `${summary.phoneCode ? `${summary.phoneCode} ` : ""}${summary.phone}` : "No phone"} · {summary.email || "No email"}
@@ -1928,6 +1950,27 @@ function DoctorWorkbenchInner() {
                       </span>
                     )}
                   </button>
+                  {immunizationEnabled && (
+                    <button
+                      onClick={() => setShowImmunization(true)}
+                      title={summary.isPediatric ? "Recommended vaccines, orders and history" : "Immunization history (read-only - past the pediatric age limit)"}
+                      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        immunizationOverdue > 0
+                          ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 hover:bg-red-100"
+                          : immunizationDue > 0
+                            ? "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 hover:bg-amber-100"
+                            : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      <Syringe size={13} />
+                      {summary.isPediatric ? "Immunization Schedule" : "Immunization History"}
+                      {immunizationDue > 0 && (
+                        <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${immunizationOverdue > 0 ? "bg-red-600" : "bg-amber-500"}`}>
+                          {immunizationDue}
+                        </span>
+                      )}
+                    </button>
+                  )}
                   {summary.latestEncounter && (
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -3224,6 +3267,20 @@ function DoctorWorkbenchInner() {
           </div>
         )}
 
+        {showImmunization && selectedPatientId && (
+          <ImmunizationScheduleModal
+            patientId={selectedPatientId}
+            role="doctor"
+            doctorId={doctorIdParam}
+            requireDoctorSelected={requireDoctorSelected}
+            encounterId={summary?.latestEncounter?.encounterId ?? null}
+            visitId={activeVisitId ?? summary?.latestEncounter?.visitId ?? null}
+            isAdmin={isAdmin}
+            currentUserId={getUserDetail()?.userId}
+            onClose={() => setShowImmunization(false)}
+          />
+        )}
+
         {showPrescriptionPrint && summary && (
           <PrescriptionPrintout
             patientName={summary.name}
@@ -3955,6 +4012,9 @@ function DoctorWorkbenchInner() {
               </div>
             </div>
           )}
+
+          {/* Scheduled vaccinations that are overdue or coming up - see ImmunizationReminderService. */}
+          <ImmunizationRemindersCard doctorId={doctorIdParam} onOpenPatient={(id) => void openPatient(id)} />
 
           {/* Today's Patient Queue — doctor-only real-time queue */}
           {(pendingNurseQueue.length > 0 || waitingForDoctorQueue.length > 0) && (

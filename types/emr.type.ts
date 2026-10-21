@@ -160,6 +160,9 @@ export interface EncounterType {
   currentManagementPlan: string | null;
   futureManagementPlan: string | null;
   status: string;
+  // The patient's age group and age when this encounter began (kept as of that day).
+  ageCategory: string | null;
+  patientAgeYears: number | null;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -252,6 +255,13 @@ export interface PatientSummaryType {
   pastSurgicalHistory: string | null;
   pastTreatmentHistory: string | null;
   socialHistory: string | null;
+  // From the date of birth and the company's age ranges (Settings); null without a DOB.
+  // isPediatric turns on the Pediatric Immunization Schedule, hasImmunizationRecords keeps an
+  // aged-out patient's record reachable (read-only).
+  ageText: string | null;
+  ageCategory: string | null;
+  isPediatric: boolean;
+  hasImmunizationRecords: boolean;
   chronicConditions: ChronicConditionType[];
   allergies: AllergyType[];
   familyHistory: FamilyHistoryType[];

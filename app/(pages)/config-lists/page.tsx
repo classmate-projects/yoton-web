@@ -4,13 +4,14 @@ import { useState } from "react";
 import { ListPlus } from "lucide-react";
 import ListItemManager from "@/components/configLists/ListItemManager";
 import MedicineCatalogManager from "@/components/configLists/MedicineCatalogManager";
+import VaccineMasterManager from "@/components/configLists/VaccineMasterManager";
 import { ConfigListType } from "@/types/configList.type";
 
 // "Medication" isn't a real ConfigListType/ListItem-backed list like the others below - the
 // Medicine catalog is its own dedicated model (see PharmacyController) - but it's curated
 // here, admin-only, for the same reason Procedure's bulk upload lives here: catalog curation
 // is an admin/IT job, distinct from Pharmacy's day-to-day stock/dispensing work.
-type TabValue = ConfigListType | "Medication" | "FamilyHistory";
+type TabValue = ConfigListType | "Medication" | "FamilyHistory" | "Vaccine";
 
 const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
   {
@@ -34,6 +35,11 @@ const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
   { value: "DrugType", label: "Drug Type", hint: "Tablet, Syrup, Injection, Cream — selectable when prescribing on the doctor workbench" },
   { value: "CancerSite", label: "Cancer Site", hint: "Selectable on an urgent suspected-cancer referral in the doctor workbench" },
   { value: "FamilyHistory", label: "Family History", hint: "The Relation and Condition dropdowns on the Family History section (doctor and nurse workbenches) — managed together here." },
+  {
+    value: "Vaccine",
+    label: "Vaccines",
+    hint: "The vaccine master behind the Pediatric Immunization Schedule. Routine vaccines carry the recommended schedule every pediatric patient gets (seeded from Qatar's national childhood immunization schedule - review it against the current MoPH schedule); other categories, such as Influenza, Meningococcal for Hajj/Umrah and travel vaccines, are ordered on demand. Add your organization's own vaccines here; a vaccine already on patients' records can be deactivated but not deleted.",
+  },
 ];
 
 export default function ConfigListsPage() {
@@ -73,6 +79,8 @@ export default function ConfigListsPage() {
 
       {listType === "Medication" ? (
         <MedicineCatalogManager key={listType} />
+      ) : listType === "Vaccine" ? (
+        <VaccineMasterManager />
       ) : listType === "FamilyHistory" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <ListItemManager listType="FamilyRelation" itemLabel="Relation" />

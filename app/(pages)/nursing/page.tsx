@@ -70,6 +70,10 @@ import { TreatmentType } from "@/types/treatment.type";
 import { LabRequestType } from "@/types/lab.type";
 import { RadiologyRequestType } from "@/types/radiology.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { useImmunizationSchedule } from "@/hooks/useImmunizationSchedule";
+import ImmunizationScheduleModal from "@/components/immunization/ImmunizationScheduleModal";
+import ImmunizationChartCard from "@/components/immunization/ImmunizationChartCard";
+import ImmunizationRemindersCard from "@/components/immunization/ImmunizationRemindersCard";
 import {
   CartesianGrid,
   Legend,
@@ -340,6 +344,13 @@ function NurseWorkbenchInner() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [unviewedDocumentCount, setUnviewedDocumentCount] = useState(0);
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+
+  // Pediatric Immunization Schedule - the chart card and full schedule show for a pediatric
+  // patient, and stay reachable (read-only) for one who has aged out with a record.
+  const [showImmunization, setShowImmunization] = useState(false);
+  const immunizationEnabled =
+    !!summary && summary.opId === selectedPatientId && (summary.isPediatric || summary.hasImmunizationRecords);
+  const { schedule: immunizationSchedule, reload: reloadImmunization } = useImmunizationSchedule(selectedPatientId, immunizationEnabled);
   const [uploadDocFile, setUploadDocFile] = useState<File | null>(null);
   const [uploadDocType, setUploadDocType] = useState("Report");
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
@@ -636,6 +647,7 @@ function NurseWorkbenchInner() {
       setEncounterId(null);
       setCurrentVisitId(null);
       setDateFilter("");
+      setShowImmunization(false);
       fetchWorkbench();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -714,6 +726,7 @@ function NurseWorkbenchInner() {
     setEncounterId(null);
     setCurrentVisitId(null);
     setDateFilter("");
+    setShowImmunization(false);
     fetchWorkbench();
     if (patientIdParam) router.push(pathname);
   };
@@ -2059,6 +2072,12 @@ function NurseWorkbenchInner() {
                   </h1>
                   <p className="text-sm text-muted-foreground mt-1">
                     MRN {summary.opNumber || summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
+                    {summary.ageText ? ` · ${summary.ageText}` : ""}
+                    {summary.isPediatric && (
+                      <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+                        Pediatric
+                      </span>
+                    )}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {summary.phone ? `${summary.phoneCode ? `${summary.phoneCode} ` : ""}${summary.phone}` : "No phone"} · {summary.email || "No email"}
@@ -3500,6 +3519,19 @@ function NurseWorkbenchInner() {
                   <EmptyState size="compact" illustration="pharmacy" title="No active prescriptions" />
                 )}
               </div>
+
+              {/* Immunizations - doctor-ordered vaccines waiting to be given, administered here */}
+              {immunizationEnabled && immunizationSchedule && (
+                <ImmunizationChartCard
+                  schedule={immunizationSchedule}
+                  canEdit={canEdit}
+                  isAdmin={isAdmin}
+                  actingNurseId={selectedNurseId}
+                  nurses={nurses.map((n) => ({ id: n.id, name: n.name }))}
+                  onOpenSchedule={() => setShowImmunization(true)}
+                  onChanged={() => void reloadImmunization()}
+                />
+              )}
             </div>
 
           </div>
@@ -3914,6 +3946,19 @@ function NurseWorkbenchInner() {
         )}
       </HistoryDrawer>
 
+      {showImmunization && selectedPatientId && (
+        <ImmunizationScheduleModal
+          patientId={selectedPatientId}
+          role={canEdit ? "nurse" : "view"}
+          isAdmin={isAdmin}
+          actingNurseId={selectedNurseId}
+          nurses={nurses.map((n) => ({ id: n.id, name: n.name }))}
+          currentUserId={currentUserId}
+          onClose={() => setShowImmunization(false)}
+          onChanged={() => void reloadImmunization()}
+        />
+      )}
+
       {/* Administer Medication Modal */}
       {administerTarget && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
@@ -4203,6 +4248,9 @@ function NurseWorkbenchInner() {
               )}
             </div>
           )}
+
+          {/* Scheduled vaccinations that are overdue or coming up - see ImmunizationReminderService. */}
+          <ImmunizationRemindersCard onOpenPatient={(id) => void openPatient(id)} />
 
           {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
