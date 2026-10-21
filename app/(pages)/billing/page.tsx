@@ -21,7 +21,7 @@ import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { formatCurrency } from "@/lib/currency";
 import SearchIcon from "@/public/icons/SearchIcon";
 import DatePicker from "@/components/DatePicker";
-import { toDateInputValue } from "@/lib/date";
+import { formatDateTime, toDateInputValue } from "@/lib/date";
 import Link from "next/link";
 import { FileBarChart, Printer, X } from "lucide-react";
 import BillPrintout from "@/components/billing/BillPrintout";
