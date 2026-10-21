@@ -128,6 +128,23 @@ api.interceptors.response.use(
         }
       }
 
+      // No country chosen for this installation (a fresh install, or its setup was reset) -
+      // nothing clinic-side works until the super administrator picks one, so the session ends
+      // and the login page explains why on the next sign-in attempt.
+      if (
+        error.response?.status === 423 &&
+        error.response.data?.code === "SYSTEM_UNCONFIGURED" &&
+        !isRedirectingToLogin &&
+        window.location.pathname !== "/login"
+      ) {
+        isRedirectingToLogin = true;
+        localStorage.removeItem("yoton_token");
+        localStorage.removeItem("yoton_user_detail");
+        await fetch("/api/logout", { method: "POST" });
+        window.location.href = "/login";
+        return new Promise(() => {});
+      }
+
       if (error.response?.status === 401 && window.location.pathname !== "/login") {
         isRedirectingToLogin = true;
         localStorage.removeItem("yoton_token");

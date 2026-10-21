@@ -1,4 +1,6 @@
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
+import { getRegion, hasRegionFeature } from "@/lib/region";
+import type { RegionFeature } from "@/types/region.type";
 
 // Pages that are reachable by URL (e.g. from a button on an admin page) but
 // intentionally left out of the sidebar itself - still need the same
@@ -14,6 +16,13 @@ export interface ProtectedRoute {
   // admin-only meta pages that control the permission system itself, and Confidential
   // Notes' nurse-only rule, which excludes even admin.
   hardcodedRoles?: string[];
+  // Country-only module (see SidebarMenuItem.regionFeature) - closed for everyone, admin
+  // included, when the installation's region doesn't have the feature.
+  regionFeature?: RegionFeature;
+}
+
+function regionAllows(route: { regionFeature?: RegionFeature }) {
+  return !route.regionFeature || hasRegionFeature(getRegion(), route.regionFeature);
 }
 
 const extraProtectedRoutes: ProtectedRoute[] = [
@@ -32,7 +41,7 @@ export const protectedRoutes: ProtectedRoute[] = [
         ? { navLink: item.navLink, hardcodedRoles: ["nurse"] }
         : item.navLink === "/staff-attendance"
           ? { navLink: item.navLink, hardcodedRoles: ["admin"] }
-          : { navLink: item.navLink },
+          : { navLink: item.navLink, regionFeature: item.regionFeature },
     ),
   ...extraProtectedRoutes,
 ];
@@ -50,6 +59,7 @@ export function matchRoute(pathname: string) {
 }
 
 export function isRouteAllowed(route: ProtectedRoute, role: string, allowedModules: string[]) {
+  if (!regionAllows(route)) return false;
   if (route.hardcodedRoles) return route.hardcodedRoles.includes(role);
   // Admin always has every module - mirrors the backend's ModuleAccessChecker bypass,
   // so admin can never be locked out by a missing/misconfigured allow-list row.
@@ -63,6 +73,7 @@ export function firstAllowedRoute(role: string, allowedModules: string[]) {
       (item) =>
         item.navLink !== "/settings" &&
         item.navLink !== "/nursing/confidential-notes" &&
+        regionAllows(item) &&
         (role === "admin" || allowedModules.includes(item.navLink)),
     ) ?? sidebarMenuItems.find((item) => item.navLink === "/settings")
   );

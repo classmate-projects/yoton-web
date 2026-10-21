@@ -1,5 +1,5 @@
 import { parseDateInputValue, parseServerUtcDate } from "@/lib/date";
-import type { ImmunizationOrderType, ImmunizationStatus, VaccineType } from "@/types/immunization.type";
+import type { ImmunizationOrderType, ImmunizationStatus, VaccineAgeUnit, VaccineType } from "@/types/immunization.type";
 import type { SearchableSelectOption } from "@/components/SearchableSelect";
 
 // Shared bits of the Pediatric Immunization Schedule screens (doctor, nurse, admin, print).
@@ -13,6 +13,11 @@ const STATUS_STYLES: Record<ImmunizationStatus, { label: string; className: stri
   Cancelled: { label: "Cancelled", className: "bg-muted text-muted-foreground line-through" },
   Upcoming: { label: "Upcoming", className: "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300" },
 };
+
+export const statusLabel = (status: ImmunizationStatus) => (STATUS_STYLES[status] ?? STATUS_STYLES.Scheduled).label;
+export const statusClass = (status: ImmunizationStatus) => (STATUS_STYLES[status] ?? STATUS_STYLES.Scheduled).className;
+// Display order for legends.
+export const STATUS_ORDER: ImmunizationStatus[] = ["Administered", "Scheduled", "Due", "Overdue", "Missed", "Upcoming", "Cancelled"];
 
 export function ImmunizationStatusBadge({ status }: { status: ImmunizationStatus }) {
   const style = STATUS_STYLES[status] ?? STATUS_STYLES.Scheduled;
@@ -63,6 +68,17 @@ export const formatStamp = (value: string | null | undefined) =>
 // An outside dose only has a date; one given here has the exact time.
 export const formatGiven = (order: ImmunizationOrderType) =>
   order.isExternal ? formatDay(order.scheduledDate) : formatStamp(order.administeredAt);
+
+// Just the day a dose was given (for compact places like the chart).
+export const formatGivenDay = (order: ImmunizationOrderType) =>
+  order.isExternal || !order.administeredAt
+    ? formatDay(order.scheduledDate)
+    : parseServerUtcDate(order.administeredAt).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+
+// Same approximation as the API's ImmunizationScheduleHelper.ApproxAgeDays - only used to put
+// age milestones in order.
+export const approxAgeDays = (value: number, unit: VaccineAgeUnit) =>
+  unit === "Days" ? value : unit === "Weeks" ? value * 7 : unit === "Years" ? value * 365 : value * 30;
 
 export const isOpenOrder = (order: ImmunizationOrderType) => order.status === "Scheduled" || order.status === "Missed";
 

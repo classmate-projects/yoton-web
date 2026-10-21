@@ -19,6 +19,7 @@ import PatientStreamTabs, { type PatientStream } from "@/components/patients/Pat
 import { WalkInPatientBadge } from "@/components/patients/PatientBadges";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { formatCurrency } from "@/lib/currency";
+import { useRegion } from "@/lib/region";
 import SearchIcon from "@/public/icons/SearchIcon";
 import DatePicker from "@/components/DatePicker";
 import { formatDateTime, toDateInputValue } from "@/lib/date";
@@ -80,6 +81,11 @@ function BillingPageInner() {
   // emptied box straight back to 0); parsed on submit, where empty means 0%.
   const [discount, setDiscount] = useState("");
   const [tax, setTax] = useState("");
+  // Bills carry tax only where the installation's country has one (VAT in the UAE, GST in
+  // India - none in Qatar, where the API refuses a tax percentage).
+  const region = useRegion();
+  const taxName = region?.tax.name ?? "Tax";
+  const hasTax = region?.tax.applicable ?? false;
 
   const [detailBill, setDetailBill] = useState<BillType | null>(null);
   // Set by a bill card's Print button: renders that bill's print sheet, then the effect
@@ -872,8 +878,9 @@ function BillingPageInner() {
                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
                   </div>
                 </div>
+                {hasTax && (
                 <div className="w-full">
-                  <label className="text-sm font-bold text-foreground/90">Default tax (%)</label>
+                  <label className="text-sm font-bold text-foreground/90">Default {taxName} (%)</label>
                   <div className="relative mt-1">
                     <input
                       type="number"
@@ -882,15 +889,18 @@ function BillingPageInner() {
                       step={0.01}
                       value={tax}
                       onChange={(e) => setTax(e.target.value)}
-                      placeholder="0"
+                      placeholder={region?.tax.standardPercent != null ? `0 or ${region.tax.standardPercent}` : "0"}
                       className="w-full p-3 pr-9 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                     />
                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
                   </div>
                 </div>
+                )}
               </div>
               <p className="-mt-2 text-xs text-muted-foreground">
-                Discount applies to every line on this bill. Default tax is pre-filled on each line and can be changed per line; it is always charged on the discounted amount.
+                {hasTax
+                  ? `Discount applies to every line on this bill. Default ${taxName} is pre-filled on each line and can be changed per line; it is always charged on the discounted amount.`
+                  : `Discount applies to every line on this bill. Bills in ${region?.country ?? "this country"} carry no tax.`}
               </p>
 
               <div className="flex items-center justify-end gap-3 mt-2 w-full">
@@ -1037,10 +1047,12 @@ function BillingPageInner() {
                       <span>Discount{billDiscountNote(detailBill.discountPercent)}</span>
                       <span className="tabular-nums">-{currency(detailBill.discount)}</span>
                     </div>
-                    <div className="flex justify-between text-foreground/70">
-                      <span>Tax</span>
-                      <span className="tabular-nums">+{currency(detailBill.tax)}</span>
-                    </div>
+                    {(hasTax || detailBill.tax > 0) && (
+                      <div className="flex justify-between text-foreground/70">
+                        <span>{taxName}</span>
+                        <span className="tabular-nums">+{currency(detailBill.tax)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between border-t border-border pt-1.5 text-lg font-bold text-foreground">
                       <span>Net Amount</span>
                       <span className="tabular-nums">{currency(detailBill.netAmount)}</span>

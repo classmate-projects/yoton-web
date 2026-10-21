@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import { useTheme } from "next-themes";
 import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight, Search, MessageCircle } from "lucide-react";
 import { CurrentUserDetail } from "@/types/user.type";
+import { hasRegionFeature, useRegion } from "@/lib/region";
 import { getInitials } from "@/lib/getInitials";
 import { useAlertCenter } from "@/hooks/useAlertCenter";
 import { useConnectionState } from "@/hooks/useConnectionState";
@@ -50,6 +51,8 @@ interface NavigableEntry {
   navLink: string;
   name: string;
   icon: React.ComponentType;
+  // Country-only module (see SidebarMenuItem.regionFeature) - sub-items share their parent's.
+  regionFeature?: SidebarMenuItem["regionFeature"];
   // Which allowedModules entry governs this entry - undefined means "use navLink itself".
   // Sub-items share their parent's module key since SidebarSubItem doesn't carry its own
   // (matches app/(pages)/layout.tsx's extraProtectedRoutes.moduleKey usage, e.g. the
@@ -61,8 +64,8 @@ interface NavigableEntry {
 // their sub-items alike — used to resolve "recently visited" entries back to
 // an icon/name/link regardless of which level they live at.
 const NAVIGABLE_ENTRIES: NavigableEntry[] = sidebarMenuItems.flatMap((item) => [
-  { navLink: item.navLink, name: item.name, icon: item.icon },
-  ...(item.subItems?.map((sub) => ({ navLink: sub.navLink, name: sub.name, icon: sub.icon, moduleKey: item.navLink })) ?? []),
+  { navLink: item.navLink, name: item.name, icon: item.icon, regionFeature: item.regionFeature },
+  ...(item.subItems?.map((sub) => ({ navLink: sub.navLink, name: sub.name, icon: sub.icon, moduleKey: item.navLink, regionFeature: item.regionFeature })) ?? []),
 ]);
 
 const MAX_RECENTS = 6;
@@ -74,6 +77,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const [mounted, setMounted] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<CurrentUserDetail | null>(null);
+  const region = useRegion();
   // Desktop: click-driven, collapsed to icons-only by default, expands only when
   // the hamburger toggle in the header is clicked. No pinned/persisted state, so
   // server and client both start collapsed — no hydration risk. On mobile there
@@ -336,6 +340,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         (item) =>
           item.group === "User Modules" &&
           item.navLink !== "/nursing/confidential-notes" &&
+          (!item.regionFeature || hasRegionFeature(region, item.regionFeature)) &&
           (roleAllowedModulesCache[expandedRole.roleId] ?? []).includes(item.navLink)
       )
     : [];
@@ -350,8 +355,10 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
     if (navLink === "/staff-attendance") return isAdmin;
     return isAdmin || allowedModules.includes(navLink);
   };
-  const isVisible = (item: SidebarMenuItem) => isModuleAllowed(item.navLink);
-  const isEntryVisible = (entry: NavigableEntry) => isModuleAllowed(entry.moduleKey ?? entry.navLink);
+  // Country-only modules (e.g. Qatar's MoPH KPI reports) only where the region has them.
+  const regionAllows = (feature?: SidebarMenuItem["regionFeature"]) => !feature || hasRegionFeature(region, feature);
+  const isVisible = (item: SidebarMenuItem) => regionAllows(item.regionFeature) && isModuleAllowed(item.navLink);
+  const isEntryVisible = (entry: NavigableEntry) => regionAllows(entry.regionFeature) && isModuleAllowed(entry.moduleKey ?? entry.navLink);
 
   const visibleGroups = SIDEBAR_GROUPS.map((group) => ({
     group,

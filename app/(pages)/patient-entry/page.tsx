@@ -11,7 +11,18 @@ import {
 } from "react-icons/md";
 import { format } from "date-fns";
 import { countryDetails } from "@/helpers/countyDetails";
-import { getNationalIdFormat, passportNumberRegex } from "@/helpers/nationalIdFormats";
+import { passportNumberRegex } from "@/lib/validation";
+import {
+  addressErrors,
+  defaultDialCode,
+  hasAnyAddressValue,
+  nationalIdError,
+  nationalIdLabel,
+  phoneError,
+  useRegion,
+  type AddressValues,
+} from "@/lib/region";
+import RegionAddressFields from "@/components/patients/RegionAddressFields";
 import { ReceptionService } from "@/services/reception.service";
 import { ConfigListService } from "@/services/configList.service";
 import { toast } from "sonner";
@@ -123,7 +134,7 @@ export default function PatientEntryPage() {
     sex: "",
     dateOfBirth: "",
     phone: "",
-    phoneCode: "+971",
+    phoneCode: defaultDialCode(),
     email: "",
     address: "",
     nationality: "",
@@ -139,7 +150,7 @@ export default function PatientEntryPage() {
     chronicStatus: false,
     emergencyContact: "",
     emergencyContactPhone: "",
-    emergencyContactPhoneCode: "+971",
+    emergencyContactPhoneCode: defaultDialCode(),
     paymentType: "Cash",
     eligibilityMode: "",
     eligibilityCheckedDate: "",
@@ -161,12 +172,19 @@ export default function PatientEntryPage() {
     coPayPatientPercent: "",
     password: "",
   });
+  // The installation's country: phone code, national ID format and the address structure.
+  const region = useRegion();
+  const structuredAddress = (region?.addressFields.length ?? 0) > 0;
+  const [addressFields, setAddressFields] = useState<AddressValues>({});
+  // The one-line address already on file for a record saved without the structured fields
+  // (or under another country) - kept as it is unless the fields are filled in.
+  const [savedAddressLine, setSavedAddressLine] = useState("");
+  const [showAddressErrors, setShowAddressErrors] = useState(false);
   const [coverages, setCoverages] = useState<Record<string, CoverageFormRow>>(emptyCoverages);
   const [insuranceProviders, setInsuranceProviders] = useState<ListItemType[]>([]);
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [companyCountry, setCompanyCountry] = useState<string | undefined>(undefined);
   const isInsuranceOrCorporate = formData.paymentType !== "Cash";
 
   // Set when the record being edited was registered as a walk-in with minimal details -
@@ -188,22 +206,20 @@ export default function PatientEntryPage() {
   // Only flagged once something's actually been typed - an empty required field is caught
   // by the browser's own `required` validation on submit, not this live format check.
   const emailInvalid = formData.email.length > 0 && !isValidEmail(formData.email);
-  // National ID format follows the clinic's own admin-configured Country (Settings), not
-  // whichever nationality is picked for this particular patient - a UAE clinic always
-  // expects Emirates ID, regardless of the patient's own nationality.
-  const nationalIdFormat = getNationalIdFormat(companyCountry);
+  // The national ID follows the installation's country (Qatar ID, Emirates ID, Aadhaar, ...),
+  // not whichever nationality is picked for this particular patient.
+  const idLabel = nationalIdLabel(region);
   // National significant number length for whichever dialing code is currently selected -
-  // caps how many digits the phone field accepts. Falls back to 15 (E.164's global max
-  // significant-digit count) if the code somehow isn't in the list.
-  const selectedPhoneLength =
-    countryDetails.find((c) => c.phoneCode === formData.phoneCode)?.phoneLength ?? 15;
-  const selectedEmergencyPhoneLength =
-    countryDetails.find((c) => c.phoneCode === formData.emergencyContactPhoneCode)?.phoneLength ?? 15;
-
-  useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
-    setCompanyCountry(stored.country);
-  }, []);
+  // caps how many digits the phone field accepts. The region's own code uses its exact
+  // length; others fall back to the country list, then 15 (E.164's global maximum).
+  const phoneLengthFor = (code: string) =>
+    region && code === region.phone.dialCode
+      ? region.phone.nationalNumberLength
+      : countryDetails.find((c) => c.phoneCode === code)?.phoneLength ?? 15;
+  const phonePlaceholderFor = (code: string) =>
+    region && code === region.phone.dialCode ? region.phone.example.replace(/\s/g, "") : "".padEnd(phoneLengthFor(code), "0");
+  const selectedPhoneLength = phoneLengthFor(formData.phoneCode);
+  const selectedEmergencyPhoneLength = phoneLengthFor(formData.emergencyContactPhoneCode);
 
   // Prefills the whole form from the existing patient's saved details when reached in edit
   // mode - the API has no separate dialing-code field for the emergency contact (see
@@ -221,7 +237,7 @@ export default function PatientEntryPage() {
         const emergencyCode = [...countryDetails]
           .sort((a, b) => b.phoneCode.length - a.phoneCode.length)
           .find((c) => p.emergencyContactPhone?.startsWith(c.phoneCode));
-        const emergencyContactPhoneCode = emergencyCode?.phoneCode ?? "+971";
+        const emergencyContactPhoneCode = emergencyCode?.phoneCode ?? defaultDialCode();
         const emergencyContactPhone = emergencyCode
           ? p.emergencyContactPhone.slice(emergencyCode.phoneCode.length)
           : p.emergencyContactPhone ?? "";
@@ -231,7 +247,7 @@ export default function PatientEntryPage() {
           sex: p.sex ?? "",
           dateOfBirth: p.dateOfBirth ?? "",
           phone: p.phone ?? "",
-          phoneCode: p.phoneCode || "+971",
+          phoneCode: p.phoneCode || defaultDialCode(),
           email: p.email ?? "",
           address: p.address ?? "",
           nationality: p.nationality ?? "",
@@ -271,6 +287,8 @@ export default function PatientEntryPage() {
         };
         const isWalkInRecord = p.registrationType === "External";
         setLoadedRegistrationType(p.registrationType ?? null);
+        setAddressFields(p.addressFields ?? {});
+        setSavedAddressLine(p.addressFields ? "" : p.address ?? "");
         // Reached via "Continue with this profile" - what was typed fills the empty fields.
         const draft = takeEntryDraft(editId);
         setFormData(draft ? fillBlanks(loaded, draft.data, isWalkInRecord) : loaded);
@@ -587,17 +605,32 @@ export default function PatientEntryPage() {
 
     // Validate that at least one of National ID or Passport Number is filled
     if (!formData.nationalID && !formData.passportNumber) {
-      setError("Please provide either National ID or Passport Number");
+      setError(`Please provide either ${idLabel} or Passport Number`);
       setLoading(false);
       return;
     }
 
-    // Format is nationality-specific for National ID (Emirates ID for UAE, Aadhaar for
-    // India, ...) and one standard pattern for Passport Number regardless of nationality.
-    if (formData.nationalID && nationalIdFormat.regex && !nationalIdFormat.regex.test(formData.nationalID)) {
-      setError(
-        `${nationalIdFormat.label} format looks incorrect. Expected format: ${nationalIdFormat.placeholder}`
-      );
+    // The national ID follows the installation's country (an edited record's ID that was
+    // saved earlier is left to the API, which keeps an unchanged one as it is); the passport
+    // has one standard pattern regardless of nationality.
+    const idProblem = nationalIdError(region, formData.nationalID);
+    if (idProblem && !isEditMode) {
+      setError(idProblem);
+      setLoading(false);
+      return;
+    }
+
+    const phoneProblem = phoneError(region, formData.phoneCode, formData.phone);
+    if (phoneProblem) {
+      setError(phoneProblem);
+      toast.error(phoneProblem);
+      setLoading(false);
+      return;
+    }
+
+    if (structuredAddress && Object.keys(addressErrors(region?.addressFields ?? [], addressFields)).length > 0) {
+      setShowAddressErrors(true);
+      toast.error("Check the highlighted address fields");
       setLoading(false);
       return;
     }
@@ -642,6 +675,13 @@ export default function PatientEntryPage() {
       // patient's own phone/phoneCode pair), so the selected code is folded into the one
       // string field it does expect.
       emergencyContactPhone: formData.emergencyContactPhoneCode + formData.emergencyContactPhone,
+      // Structured fields when any are filled (the API builds the address line from them);
+      // otherwise whatever single line is already on file stays as it is.
+      ...(structuredAddress
+        ? hasAnyAddressValue(addressFields)
+          ? { address: "", addressFields }
+          : { address: savedAddressLine, addressFields: null }
+        : { address: formData.address }),
       eligibilityCheckedDate: toDateOrUndefined(formData.eligibilityCheckedDate),
       insuranceEffectiveFrom: toDateOrUndefined(formData.insuranceEffectiveFrom),
       insuranceExpiryDate: toDateOrUndefined(formData.insuranceExpiryDate),
@@ -732,7 +772,7 @@ export default function PatientEntryPage() {
       sex: "",
       dateOfBirth: "",
       phone: "",
-      phoneCode: "+971",
+      phoneCode: defaultDialCode(),
       email: "",
       address: "",
       nationality: "",
@@ -748,7 +788,7 @@ export default function PatientEntryPage() {
       chronicStatus: false,
       emergencyContact: "",
       emergencyContactPhone: "",
-      emergencyContactPhoneCode: "+971",
+      emergencyContactPhoneCode: defaultDialCode(),
       paymentType: "Cash",
       eligibilityMode: "",
       eligibilityCheckedDate: "",
@@ -770,6 +810,9 @@ export default function PatientEntryPage() {
       coPayPatientPercent: "",
       password: "",
     });
+    setAddressFields({});
+    setSavedAddressLine("");
+    setShowAddressErrors(false);
     setCoverages(emptyCoverages());
   };
 
@@ -1022,7 +1065,7 @@ export default function PatientEntryPage() {
                   onChange={handlePhoneChange}
                   required
                   maxLength={selectedPhoneLength}
-                  placeholder={"5".padEnd(selectedPhoneLength, "0")}
+                  placeholder={phonePlaceholderFor(formData.phoneCode)}
                   className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent rounded-none!"
                 />
               </div>
@@ -1053,20 +1096,30 @@ export default function PatientEntryPage() {
               )}
             </div>
 
-            {/* Address */}
+            {/* Address - in the installation's country's own structure */}
             <div className="flex flex-col gap-2 md:col-span-2">
-              <label htmlFor="Address" className="font-semibold text-foreground/90">
+              <label htmlFor={structuredAddress ? undefined : "address"} className="font-semibold text-foreground/90">
                 Address
               </label>
-              <textarea
-                id="address"
-                name="address"
-                value={formData.address}
-                onChange={handleInputChange}
-                placeholder="Abu Dhabi"
-                rows={2}
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent resize-y min-h-11"
-              />
+              {structuredAddress ? (
+                <RegionAddressFields
+                  region={region}
+                  values={addressFields}
+                  onChange={setAddressFields}
+                  savedLine={savedAddressLine}
+                  showErrors={showAddressErrors}
+                />
+              ) : (
+                <textarea
+                  id="address"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleInputChange}
+                  placeholder="Address"
+                  rows={2}
+                  className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent resize-y min-h-11"
+                />
+              )}
             </div>
 
             {/* Emergency Contact */}
@@ -1117,7 +1170,7 @@ export default function PatientEntryPage() {
                   onChange={handleEmergencyContactPhoneChange}
                   required
                   maxLength={selectedEmergencyPhoneLength}
-                  placeholder={"5".padEnd(selectedEmergencyPhoneLength, "0")}
+                  placeholder={phonePlaceholderFor(formData.emergencyContactPhoneCode)}
                   className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent rounded-none!"
                 />
               </div>
@@ -1134,7 +1187,7 @@ export default function PatientEntryPage() {
           <hr className="mb-6 border-border" />
           <p className="mb-6 text-sm text-foreground/80">
             <span className="text-red-500">*</span> Please provide either{" "}
-            {nationalIdFormat.label} or Passport Number
+            {idLabel} or Passport Number
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1144,7 +1197,7 @@ export default function PatientEntryPage() {
                 htmlFor="nationalID"
                 className="font-semibold text-foreground/90"
               >
-                {nationalIdFormat.label}
+                {idLabel}
               </label>
               <input
                 type="text"
@@ -1152,7 +1205,7 @@ export default function PatientEntryPage() {
                 name="nationalID"
                 value={formData.nationalID}
                 onChange={handleInputChange}
-                placeholder={nationalIdFormat.placeholder ?? "National ID"}
+                placeholder={region?.nationalId.placeholder ?? "National ID"}
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>

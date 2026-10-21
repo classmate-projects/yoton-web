@@ -14,6 +14,7 @@ import { notifySaveStatus } from "@/lib/saveStatus";
 import { FetchedRoles } from "@/types/role.type";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
+import { hasRegionFeature, useRegion } from "@/lib/region";
 import { DEFAULT_ROLE_ICON_KEY, getRoleIcon } from "@/helpers/roleIcons";
 import RoleIconPicker from "@/components/RoleIconPicker";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
@@ -48,6 +49,7 @@ const allToggleableModules = sidebarMenuItems.filter(
 const ADMIN_ONLY_MODULES = new Set(["/user-management", "/departments", "/config-lists", "/reports/kpi"]);
 
 export default function RoleManagementPage() {
+  const region = useRegion();
   const [roles, setRoles] = useState<FetchedRoles[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -301,15 +303,24 @@ export default function RoleManagementPage() {
   // the modal shows every module ticked and read-only for admin instead.
   const isAdminRole = permissionsRole?.name.trim().toLowerCase() === "admin";
 
-  const grantableModules = allToggleableModules.filter((item) => !ADMIN_ONLY_MODULES.has(item.navLink));
+  // Country-only modules (e.g. Qatar's MoPH KPI reports) are only offered where the
+  // installation's region has them. An existing grant stays saved untouched (see
+  // handleToggleAllModules) in case the country is switched back.
+  const toggleableModules = allToggleableModules.filter(
+    (item) => !item.regionFeature || hasRegionFeature(region, item.regionFeature),
+  );
+  const grantableModules = toggleableModules.filter((item) => !ADMIN_ONLY_MODULES.has(item.navLink));
   const allModulesSelected =
     grantableModules.length > 0 &&
     grantableModules.every((item) => visibleModules.has(item.navLink));
   const someModulesSelected = grantableModules.some((item) => visibleModules.has(item.navLink));
 
   const handleToggleAllModules = () => {
+    const notListed = [...visibleModules].filter((navLink) => !grantableModules.some((item) => item.navLink === navLink));
     setVisibleModules(
-      allModulesSelected ? new Set() : new Set(grantableModules.map((item) => item.navLink)),
+      allModulesSelected
+        ? new Set(notListed)
+        : new Set([...notListed, ...grantableModules.map((item) => item.navLink)]),
     );
   };
 
@@ -545,7 +556,7 @@ export default function RoleManagementPage() {
                   <span className="text-sm font-semibold">Select All</span>
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 max-h-[50dvh] overflow-y-auto pr-1">
-                {allToggleableModules.map((item) => {
+                {toggleableModules.map((item) => {
                   if (isAdminRole) {
                     return (
                       <label

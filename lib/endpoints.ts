@@ -3,6 +3,13 @@ export const ENDPOINTS = {
         ME: `/api/auth/me`,
         UPLOAD_AVATAR: `/api/auth/upload-avatar`,
         DELETE_AVATAR: `/api/auth/avatar`,
+        CHANGE_PASSWORD: `/api/auth/change-password`,
+    },
+    // Super administrator only - the installation's country/region (SystemController).
+    SYSTEM: {
+        STATUS: `/api/system/status`,
+        REGIONS: `/api/system/regions`,
+        APPLY_REGION: `/api/system/region`,
     },
     COMPANY: {
         UPLOAD_LOGO: `/api/company/upload-logo`,

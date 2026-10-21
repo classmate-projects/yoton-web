@@ -14,6 +14,7 @@ import { BillingReportType } from "@/types/billingReport.type";
 import { formatCurrency } from "@/lib/currency";
 import { parseDateInputValue, toDateInputValue } from "@/lib/date";
 import { getUserDetail } from "@/lib/userDetail";
+import { useRegion } from "@/lib/region";
 
 // ---------------- report model ----------------
 // Every tab is described once as tiles + tables, and that one description drives the
@@ -99,7 +100,8 @@ function buildTabs(r: BillingReportType): ReportTab[] {
   const x = r.cancellations;
   const d = r.discounts;
   const rev = r.revenue;
-  const g = r.gst;
+  const g = r.tax;
+  const splitNames = g.components;
 
   return [
     {
@@ -344,47 +346,66 @@ function buildTabs(r: BillingReportType): ReportTab[] {
         }),
       ],
     },
-    {
-      key: "gst",
-      label: "GST Summary",
-      description: "Taxable value and tax on bills paid in the period, by rate and by SAC/HSN code, for filing.",
-      tiles: [
-        { label: "Taxable value", value: formatCurrency(g.taxableValue) },
-        { label: "Total tax", value: formatCurrency(g.totalTax) },
-        { label: "CGST + SGST", value: `${formatCurrency(g.totalTax / 2)} + ${formatCurrency(g.totalTax / 2)}`, hint: "Intra-state split (half each)" },
-      ],
-      tables: [
-        table({
-          title: "By tax rate",
-          note: "CGST/SGST assume intra-state supply (tax split half and half); for inter-state supply the whole tax is IGST. \"No rate\" is older bills that recorded tax as a flat amount.",
-          columns: [
-            { header: "Rate", get: (row) => (row.rate === null ? "No rate" : `${trimNumber(row.rate)}%`) },
-            { header: "Lines", kind: "number", get: (row) => row.lines },
-            { header: "Taxable value", kind: "money", get: (row) => row.taxableValue },
-            { header: "CGST", kind: "money", get: (row) => row.cgst },
-            { header: "SGST", kind: "money", get: (row) => row.sgst },
-            { header: "Total tax", kind: "money", get: (row) => row.tax },
-            { header: "Invoice value", kind: "money", get: (row) => row.total },
-          ],
-          rows: g.byRate,
-          totals: true,
-        }),
-        table({
-          title: "By SAC/HSN code",
-          note: "Lines without a code are grouped under \"Not set\" - add the SAC/HSN code on bill lines to fill this in.",
-          columns: [
-            { header: "SAC/HSN", get: (row) => row.code },
-            { header: "Category", get: (row) => row.category },
-            { header: "Rate", kind: "percent", get: (row) => row.rate },
-            { header: "Qty", kind: "number", get: (row) => row.quantity },
-            { header: "Taxable value", kind: "money", get: (row) => row.taxableValue },
-            { header: "Tax", kind: "money", get: (row) => row.tax },
-          ],
-          rows: g.byCode,
-          totals: true,
-        }),
-      ],
-    },
+    // The installation's own tax (VAT in the UAE, GST with its CGST/SGST split in India) -
+    // no tab at all where bills carry no tax (Qatar).
+    ...(g.applicable
+      ? [
+          {
+            key: "tax",
+            label: `${g.name} Summary`,
+            description: `Taxable value and tax on bills paid in the period, by rate${g.serviceCodeLabel ? ` and by ${g.serviceCodeLabel}` : ""}, for filing.`,
+            tiles: [
+              { label: "Taxable value", value: formatCurrency(g.taxableValue) },
+              { label: `Total ${g.name}`, value: formatCurrency(g.totalTax) },
+              ...(splitNames.length > 0
+                ? [{
+                    label: splitNames.join(" + "),
+                    value: g.split.map((s) => formatCurrency(s.amount)).join(" + "),
+                    hint: "Intra-state split (equal parts)",
+                  }]
+                : []),
+            ],
+            tables: [
+              table({
+                title: "By tax rate",
+                note: (splitNames.length > 0
+                  ? `${splitNames.join("/")} assume intra-state supply (tax split equally); for inter-state supply the whole tax is IGST. `
+                  : "") + "\"No rate\" is older bills that recorded tax as a flat amount.",
+                columns: [
+                  { header: "Rate", get: (row) => (row.rate === null ? "No rate" : `${trimNumber(row.rate)}%`) },
+                  { header: "Lines", kind: "number", get: (row) => row.lines },
+                  { header: "Taxable value", kind: "money", get: (row) => row.taxableValue },
+                  ...splitNames.map((name, i) => ({
+                    header: name,
+                    kind: "money" as const,
+                    get: (row: (typeof g.byRate)[number]) => row.split[i]?.amount ?? 0,
+                  })),
+                  { header: `Total ${g.name}`, kind: "money", get: (row) => row.tax },
+                  { header: "Invoice value", kind: "money", get: (row) => row.total },
+                ],
+                rows: g.byRate,
+                totals: true,
+              }),
+              ...(g.serviceCodeLabel
+                ? [table({
+                    title: `By ${g.serviceCodeLabel}`,
+                    note: `Lines without a code are grouped under "Not set" - add the ${g.serviceCodeLabel} on bill lines to fill this in.`,
+                    columns: [
+                      { header: g.serviceCodeLabel, get: (row) => row.code },
+                      { header: "Category", get: (row) => row.category },
+                      { header: "Rate", kind: "percent", get: (row) => row.rate },
+                      { header: "Qty", kind: "number", get: (row) => row.quantity },
+                      { header: "Taxable value", kind: "money", get: (row) => row.taxableValue },
+                      { header: g.name, kind: "money", get: (row) => row.tax },
+                    ],
+                    rows: g.byCode,
+                    totals: true,
+                  })]
+                : []),
+            ],
+          } satisfies ReportTab,
+        ]
+      : []),
   ];
 }
 
@@ -428,6 +449,8 @@ const errorMessage = (error: unknown, fallback: string) =>
 // ---------------- page ----------------
 
 export default function BillingReportsPage() {
+  // The tax report is named for the installation's own tax (VAT / GST), and absent where there is none.
+  const region = useRegion();
   const today = toDateInputValue(new Date());
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
@@ -538,7 +561,9 @@ export default function BillingReportsPage() {
           <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
             <FileBarChart className="text-primary" size={34} /> Billing Reports
           </h1>
-          <p className="text-sm text-muted-foreground">Collections, dues, cancellations, discounts, revenue and GST.</p>
+          <p className="text-sm text-muted-foreground">
+            Collections, dues, cancellations, discounts, revenue{region?.tax.applicable ? ` and ${region.tax.name}` : ""}.
+          </p>
         </div>
         <div className="flex shrink-0 gap-2">
           <button

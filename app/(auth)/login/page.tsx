@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import {
   Activity,
   ArrowRight,
+  Globe2,
   Eye,
   EyeOff,
   Loader2,
@@ -67,6 +68,9 @@ export default function LoginPage() {
   const [emailOrUserName, setEmailOrUserName] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  // Set when the API refuses clinic sign-ins because the super administrator hasn't chosen
+  // the installation's country yet (423 SYSTEM_UNCONFIGURED).
+  const [unconfiguredMessage, setUnconfiguredMessage] = useState<string | null>(null);
 
   const [recentAccounts, setRecentAccounts] = useState<RecentAccount[]>([]);
   // Set while the username came from tapping a recent account - the field then shows the
@@ -126,8 +130,16 @@ export default function LoginPage() {
       });
 
       const data = await res.json().catch(() => ({}));
+      if (res.status === 423 && data.code === "SYSTEM_UNCONFIGURED") {
+        setUnconfiguredMessage(data.message || "This system hasn't been set up yet.");
+        submittingRef.current = false;
+        setLoading(false);
+        return;
+      }
       if (!res.ok) throw new Error(data.message || "Login failed");
+      setUnconfiguredMessage(null);
 
+      const isSuperAdmin = data.body.role === "superadmin";
       localStorage.setItem("yoton_token", data.body.token);
       clearOtherUsersViewModes(data.body.userId);
 
@@ -140,8 +152,12 @@ export default function LoginPage() {
           companyId: data.body.companyId,
           companyName: data.body.companyName,
           companyLogoUrl: data.body.companyLogoUrl,
+          companyTaxRegistrationNumber: data.body.companyTaxRegistrationNumber ?? null,
           userImage: data.body.userImage,
           allowedModules: data.body.allowedModules ?? [],
+          region: data.body.region ?? null,
+          systemConfigured: data.body.systemConfigured ?? true,
+          mustChangePassword: data.body.mustChangePassword ?? false,
           country: data.body.country,
           currencyCode: data.body.currencyCode,
           currencySymbol: data.body.currencySymbol,
@@ -154,17 +170,22 @@ export default function LoginPage() {
         }),
       );
 
-      rememberAccount({
-        userId: data.body.userId,
-        identifier: emailOrUserName.trim(),
-        initials: getInitials(data.body.name ?? ""),
-        userImage: data.body.userImage,
-      });
+      // The installation's super administrator isn't offered as a one-tap "recent account"
+      // on what is usually a shared clinic computer.
+      if (!isSuperAdmin) {
+        rememberAccount({
+          userId: data.body.userId,
+          identifier: emailOrUserName.trim(),
+          initials: getInitials(data.body.name ?? ""),
+          userImage: data.body.userImage,
+        });
+      }
 
       toast.success(`Welcome back, ${data.body.name}!`);
       // replace, not push: login must never become a back-navigation target
-      // once the user is signed in.
-      router.replace("/");
+      // once the user is signed in. An issued password is replaced first; the super
+      // administrator only ever works on the system setup page.
+      router.replace(data.body.mustChangePassword ? "/change-password" : isSuperAdmin ? "/system-setup" : "/");
     } catch (error) {
       if (error instanceof Error) toast.error(error.message);
       submittingRef.current = false;
@@ -271,6 +292,16 @@ export default function LoginPage() {
                   hospital dashboard.
                 </p>
               </div>
+
+              {unconfiguredMessage && (
+                <div role="alert" className="mb-6 flex gap-3 rounded-2xl border border-amber-500/40 bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                  <Globe2 size={18} className="mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-semibold">System not set up yet</p>
+                    <p className="mt-1 leading-5">{unconfiguredMessage}</p>
+                  </div>
+                </div>
+              )}
 
               <form onSubmit={handleLogin} autoComplete="off" className="space-y-5">
                 <div className="space-y-2">

@@ -33,6 +33,7 @@ import { formatCurrency } from "@/lib/currency";
 import PatientPicker, { patientFromOrder } from "@/components/patients/PatientPicker";
 import PatientStreamTabs from "@/components/patients/PatientStreamTabs";
 import { BillStatusBadge, WalkInPatientBadge, billedLockTitle } from "@/components/patients/PatientBadges";
+import { useRegion } from "@/lib/region";
 import { apiErrorMessage } from "@/lib/apiError";
 
 const PRIORITIES = ["Routine", "STAT", "PRN"];
@@ -57,6 +58,8 @@ export default function PharmacyPage() {
   const [invSearch, setInvSearch] = useState("");
   const [invDebouncedSearch, setInvDebouncedSearch] = useState("");
   const [invSource, setInvSource] = useState<"" | "DDC" | "Riayati" | "none">("");
+  // Registry imports (the UAE's DDC / Riayati) exist only in countries that have them.
+  const medicationRegistries = useRegion()?.regulatory.medicationRegistries ?? [];
   const [invPage, setInvPage] = useState(1);
   const [invTotalCount, setInvTotalCount] = useState(0);
   const [invLoading, setInvLoading] = useState(false);
@@ -1015,10 +1018,12 @@ export default function PharmacyPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 card">
-            <p className="text-xs text-muted-foreground px-4 pt-4">
-              Bulk-importing the DDC/Riayati medication registries is managed by admin under Configurable Lists →
-              Medication. This table is for day-to-day stock, pricing, and dispensing management.
-            </p>
+            {medicationRegistries.length > 0 && (
+              <p className="text-xs text-muted-foreground px-4 pt-4">
+                Bulk-importing the {medicationRegistries.join("/")} medication registries is managed by admin under Configurable Lists →
+                Medication. This table is for day-to-day stock, pricing, and dispensing management.
+              </p>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-border">
               <input
                 type="text"
@@ -1033,8 +1038,7 @@ export default function PharmacyPage() {
                   onChange={(v) => setInvSource(v as "" | "DDC" | "Riayati" | "none")}
                   options={[
                     { value: "", label: "All sources" },
-                    { value: "DDC", label: "DDC" },
-                    { value: "Riayati", label: "Riayati" },
+                    ...medicationRegistries.map((r) => ({ value: r, label: r })),
                     { value: "none", label: "Manually added" },
                   ]}
                 />

@@ -113,6 +113,7 @@ import { TreatmentType } from "@/types/treatment.type";
 import { ListItemType } from "@/types/configList.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { useImmunizationSchedule } from "@/hooks/useImmunizationSchedule";
+import { formatCurrency } from "@/lib/currency";
 import ImmunizationScheduleModal from "@/components/immunization/ImmunizationScheduleModal";
 import ImmunizationRemindersCard from "@/components/immunization/ImmunizationRemindersCard";
 
@@ -1218,7 +1219,7 @@ function DoctorWorkbenchInner() {
     if (!insuranceCoverage || insuranceCoverage.paymentType === "Cash") return null;
     const match = insuranceCoverage.coverages.find((c) => c.serviceCategory === category);
     return match
-      ? `${insuranceCoverage.paymentType} on file for ${category}: Co-Insurance ${match.coPayPercent ?? "—"}%, Deductible ${match.deductible ?? "—"} AED (${match.deductibleAppliesTo || "—"})`
+      ? `${insuranceCoverage.paymentType} on file for ${category}: Co-Insurance ${match.coPayPercent ?? "—"}%, Deductible ${match.deductible != null ? formatCurrency(match.deductible) : "—"} (${match.deductibleAppliesTo || "—"})`
       : `${insuranceCoverage.paymentType} patient — no ${category} coverage on file`;
   };
 
@@ -4133,7 +4134,8 @@ function DoctorWorkbenchInner() {
                           : schedule;
                         return filtered.length > 0 ? (
                         filtered.map((item) => (
-                          <tr key={item.appointmentId}>
+                          // A walk-in can come without an appointment id - fall back to its visit.
+                          <tr key={item.appointmentId || item.visitId || `${item.patientId}-${item.appointmentDate}`}>
                             <td className="font-semibold">{item.patientName}</td>
                             <td className="whitespace-nowrap">{new Date(item.appointmentDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
                             <td>

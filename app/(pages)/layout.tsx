@@ -17,6 +17,7 @@ import DailyStatsBar from "@/components/DailyStatsBar";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
 import { useProactiveTokenRefresh } from "@/hooks/useProactiveTokenRefresh";
 import { useSessionRevokedListener } from "@/hooks/useSessionRevokedListener";
+import { useRegionSync } from "@/hooks/useRegionSync";
 import { useConnectionAlerts } from "@/hooks/useConnectionState";
 import { getUserDetail, onUserDetailChange } from "@/lib/userDetail";
 import { matchRoute, isRouteAllowed, getHomeRoute } from "@/lib/routeAccess";
@@ -69,6 +70,7 @@ export default function PageLayout({
   const { warningSecondsLeft, stayLoggedIn } = useIdleLogout();
   useProactiveTokenRefresh();
   useSessionRevokedListener();
+  useRegionSync();
   useConnectionAlerts();
 
   // Mobile-only drawer state. On desktop the sidebar is always in flow (hover
@@ -95,12 +97,22 @@ export default function PageLayout({
 
       let role = "";
       let allowedModules: string[] = [];
+      let mustChangePassword = false;
       try {
         const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
         role = detail.role || "";
         allowedModules = detail.allowedModules || [];
+        mustChangePassword = detail.mustChangePassword === true;
       } catch {
         role = "";
+      }
+
+      // An issued password is replaced before anything else, and the super administrator
+      // never sees the clinic pages - only the system setup (choosing the country).
+      if (mustChangePassword || role === "superadmin") {
+        setStatus("redirecting");
+        router.replace(mustChangePassword ? "/change-password" : "/system-setup");
+        return;
       }
 
       setHomeRoute(getHomeRoute(role, allowedModules));

@@ -9,7 +9,8 @@ import CountryCodeSelect from "@/components/CountryCodeSelect";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
 import { countryDetails } from "@/helpers/countyDetails";
-import { getNationalIdFormat, passportNumberRegex } from "@/helpers/nationalIdFormats";
+import { passportNumberRegex } from "@/lib/validation";
+import { defaultDialCode, nationalIdError, nationalIdLabel, normalizeNationalId, phoneError, useRegion } from "@/lib/region";
 import { toDateInputValue } from "@/lib/date";
 import { ReceptionService } from "@/services/reception.service";
 import type { PatientMatchType, PatientSummaryType } from "@/types/patient.type";
@@ -30,26 +31,6 @@ interface Props {
   onSelect: (patient: PatientSummaryType) => void;
 }
 
-const companyCountry = (): string | undefined => {
-  try {
-    return JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").country;
-  } catch {
-    return undefined;
-  }
-};
-
-// Emirates IDs are often typed as 15 plain digits - put into the 784-XXXX-XXXXXXX-X form the
-// rest of the system stores (mirrors PatientIdentityHelper.NormalizeNationalId on the API).
-const normalizeNationalId = (raw: string, country?: string) => {
-  const trimmed = raw.trim();
-  if (country === "United Arab Emirates") {
-    const digits = trimmed.replace(/\D/g, "");
-    if (digits.length === 15 && digits.startsWith("784"))
-      return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7, 14)}-${digits.slice(14)}`;
-  }
-  return trimmed;
-};
-
 const inputCls =
   "w-full mt-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground";
 const labelCls = "text-sm font-bold text-foreground/90";
@@ -59,12 +40,12 @@ const labelCls = "text-sm font-bold text-foreground/90";
 // later consultation continues the same record - and while typing, anyone already registered
 // with the same ID or mobile number is offered instead of creating a duplicate.
 export default function QuickPatientModal({ initial, onClose, onSelect }: Props) {
-  const [country] = useState(companyCountry);
-  const idFormat = getNationalIdFormat(country);
+  // The installation's country: its dialing code, national ID and the ID's stored form (an
+  // Emirates ID typed as 15 plain digits gets its dashes, an Aadhaar its spaces).
+  const region = useRegion();
+  const idLabel = nationalIdLabel(region);
   const [name, setName] = useState(initial?.name ?? "");
-  const [phoneCode, setPhoneCode] = useState(
-    () => countryDetails.find((c) => c.country === country)?.phoneCode ?? "+971"
-  );
+  const [phoneCode, setPhoneCode] = useState(defaultDialCode);
   const [phone, setPhone] = useState(initial?.phone ?? "");
   const [nationalID, setNationalID] = useState(initial?.nationalID ?? "");
   const [passportNumber, setPassportNumber] = useState(initial?.passportNumber ?? "");
@@ -78,7 +59,10 @@ export default function QuickPatientModal({ initial, onClose, onSelect }: Props)
   const [error, setError] = useState("");
   const lookupSeq = useRef(0);
 
-  const phoneLength = countryDetails.find((c) => c.phoneCode === phoneCode)?.phoneLength ?? 15;
+  const isLocalCode = region != null && phoneCode === region.phone.dialCode;
+  const phoneLength = isLocalCode
+    ? region.phone.nationalNumberLength
+    : countryDetails.find((c) => c.phoneCode === phoneCode)?.phoneLength ?? 15;
 
   // Live "already registered?" check as identifiers are typed.
   useEffect(() => {
@@ -94,7 +78,7 @@ export default function QuickPatientModal({ initial, onClose, onSelect }: Props)
     const handle = setTimeout(async () => {
       try {
         const res = await ReceptionService.matchPatients({
-          nationalID: nid.length >= 6 ? normalizeNationalId(nid, country) : undefined,
+          nationalID: nid.length >= 6 ? normalizeNationalId(region, nid) : undefined,
           passportNumber: passport.length >= 6 ? passport : undefined,
           phone: mobile.length >= 6 ? mobile : undefined,
           phoneCode,
@@ -105,29 +89,31 @@ export default function QuickPatientModal({ initial, onClose, onSelect }: Props)
       }
     }, 450);
     return () => clearTimeout(handle);
-  }, [nationalID, passportNumber, phone, phoneCode, country]);
+  }, [nationalID, passportNumber, phone, phoneCode, region]);
 
   const hasStrongMatch = matches.some((m) => m.isStrongMatch);
 
   const submit = async (confirmNew: boolean) => {
     setError("");
     const trimmedName = name.trim();
-    const nid = nationalID.trim() ? normalizeNationalId(nationalID, country) : "";
+    const nid = nationalID.trim() ? normalizeNationalId(region, nationalID) : "";
     const passport = passportNumber.trim().replace(/\s/g, "").toUpperCase();
     if (!trimmedName) {
       setError("Enter the patient's name.");
       return;
     }
     if (!phone.trim() && !nid && !passport) {
-      setError(`Enter a mobile number or an ID (${idFormat.label} / passport) so this patient can be found again next time.`);
+      setError(`Enter a mobile number or an ID (${idLabel} / passport) so this patient can be found again next time.`);
       return;
     }
-    if (phone.trim() && phone.trim().length < 6) {
-      setError("Mobile number looks too short.");
+    const phoneProblem = phone.trim() ? phoneError(region, phoneCode, phone) : null;
+    if (phoneProblem) {
+      setError(phoneProblem);
       return;
     }
-    if (nid && idFormat.regex && !idFormat.regex.test(nid)) {
-      setError(`${idFormat.label} format looks incorrect. Expected format: ${idFormat.placeholder}`);
+    const idProblem = nid ? nationalIdError(region, nid) : null;
+    if (idProblem) {
+      setError(idProblem);
       return;
     }
     if (passport && !passportNumberRegex.test(passport)) {
@@ -218,7 +204,7 @@ export default function QuickPatientModal({ initial, onClose, onSelect }: Props)
                   autoComplete="off"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, phoneLength))}
-                  placeholder={"5".padEnd(phoneLength, "0")}
+                  placeholder={isLocalCode ? region.phone.example.replace(/\s/g, "") : "".padEnd(phoneLength, "0")}
                   className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-foreground outline-none"
                 />
               </div>
@@ -226,14 +212,14 @@ export default function QuickPatientModal({ initial, onClose, onSelect }: Props)
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className={labelCls}>{idFormat.label}</label>
+                <label className={labelCls}>{idLabel}</label>
                 <input
                   type="text"
                   autoComplete="off"
                   value={nationalID}
                   onChange={(e) => setNationalID(e.target.value)}
-                  onBlur={() => nationalID.trim() && setNationalID(normalizeNationalId(nationalID, country))}
-                  placeholder={idFormat.placeholder ?? "ID number"}
+                  onBlur={() => nationalID.trim() && setNationalID(normalizeNationalId(region, nationalID))}
+                  placeholder={region?.nationalId.placeholder ?? "ID number"}
                   className={inputCls}
                 />
               </div>

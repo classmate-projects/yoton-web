@@ -6,6 +6,8 @@ import { ReceptionService } from "@/services/reception.service";
 import type { PatientSummaryType } from "@/types/patient.type";
 import { WalkInPatientBadge } from "./PatientBadges";
 import QuickPatientModal, { type QuickPatientInitial } from "./QuickPatientModal";
+import { nationalIdError, nationalIdLabel, useRegion } from "@/lib/region";
+import type { Region } from "@/types/region.type";
 
 interface Props {
   value: PatientSummaryType | null;
@@ -19,18 +21,19 @@ interface Props {
   disabled?: boolean;
 }
 
-// Turns whatever was typed into a head start for the quick-add form: a long digit run is a
-// mobile number, an Emirates-ID-looking value is the ID, anything else is the name.
-const initialFromQuery = (query: string): QuickPatientInitial => {
+// Turns whatever was typed into a head start for the quick-add form: a value in the
+// installation's national ID format is the ID, a long digit run is a mobile number,
+// anything else is the name.
+const initialFromQuery = (query: string, region: Region | null): QuickPatientInitial => {
   const q = query.trim();
   const digits = q.replace(/\D/g, "");
-  if (/^784[\d-]{10,}$/.test(q)) return { nationalID: q };
+  if (region && /\d/.test(q) && nationalIdError(region, q) === null) return { nationalID: q };
   if (/^[\d\s+()-]+$/.test(q) && digits.length >= 6) return { phone: digits };
   if (/^[A-Za-z]{1,2}\d{5,8}$/.test(q)) return { passportNumber: q.toUpperCase() };
   return { name: q };
 };
 
-// The one patient lookup every department uses: search by MRN, mobile, Emirates ID/passport
+// The one patient lookup every department uses: search by MRN, mobile, national ID/passport
 // or name (server-side, so it doesn't need the whole patient list), and register a walk-in
 // with minimal details right here when they're new.
 export default function PatientPicker({
@@ -42,6 +45,7 @@ export default function PatientPicker({
   required,
   disabled,
 }: Props) {
+  const region = useRegion();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PatientSummaryType[]>([]);
   const [searching, setSearching] = useState(false);
@@ -158,7 +162,7 @@ export default function PatientPicker({
               }}
               onFocus={() => setOpen(true)}
               onKeyDown={onKeyDown}
-              placeholder="Search by name, mobile, MRN or Emirates ID..."
+              placeholder={`Search by name, mobile, MRN or ${nationalIdLabel(region)}...`}
               className="w-full rounded-lg border border-border bg-muted p-3 pl-9 pr-9 text-foreground outline-none focus:border-primary"
             />
             {query && (
@@ -208,7 +212,7 @@ export default function PatientPicker({
                 <button
                   type="button"
                   onClick={() => {
-                    setQuickAdd(initialFromQuery(trimmed));
+                    setQuickAdd(initialFromQuery(trimmed, region));
                     setOpen(false);
                   }}
                   className="flex w-full items-center gap-2 border-t border-border bg-muted/40 px-4 py-2.5 text-left text-sm font-semibold text-primary hover:bg-primary/10 cursor-pointer"

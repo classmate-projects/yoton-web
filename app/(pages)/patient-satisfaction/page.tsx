@@ -10,6 +10,7 @@ import DatePicker from "@/components/DatePicker";
 import { ReceptionService } from "@/services/reception.service";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { notifySaveStatus } from "@/lib/saveStatus";
+import { useRegion } from "@/lib/region";
 import { PatientSatisfactionCreatePayload, PatientSatisfactionType } from "@/types/patientSatisfaction.type";
 import { PatientListItemType } from "@/types/appointment.type";
 
@@ -54,6 +55,8 @@ const emptyForm = {
 };
 
 export default function PatientSatisfactionPage() {
+  // National / non-national, named for the installation's country (Qatari / Non-Qatari, ...).
+  const demonym = useRegion()?.demonym ?? "National";
   const [responses, setResponses] = useState<PatientSatisfactionType[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -244,8 +247,8 @@ export default function PatientSatisfactionPage() {
               onChange={(v) => setForm((p) => ({ ...p, nationalityCode: v }))}
               options={[
                 { value: "", label: "Nationality" },
-                { value: "1", label: "Qatari" },
-                { value: "2", label: "Non-Qatari" },
+                { value: "1", label: demonym },
+                { value: "2", label: `Non-${demonym}` },
               ]}
             />
           </div>

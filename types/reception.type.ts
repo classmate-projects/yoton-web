@@ -17,7 +17,10 @@ export interface ReceptionCreatePatientType {
     phone: string;
     phoneCode: string;
     email: string;
+    // The one-line address. When addressFields is sent the API builds this itself from them.
     address: string;
+    // The address in the installation's country's own structure (see RegionAddressFields).
+    addressFields?: Record<string, string> | null;
     nationality: string;
     passportNumber: string;
     nationalID: string;

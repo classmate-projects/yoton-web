@@ -24,11 +24,10 @@ import { patchUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { resizeImageFile } from "@/lib/resizeImage";
 import { getAvatarColor } from "@/lib/avatarColor";
-import { SUPPORTED_CURRENCIES } from "@/lib/currency";
+import { hasRegionFeature, nationalIdLabel, useRegion } from "@/lib/region";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SearchableSelect from "@/components/SearchableSelect";
-import CountrySearchSelect from "@/components/CountrySearchSelect";
 import PasswordInput from "@/components/PasswordInput";
 import AvatarCropModal from "@/components/AvatarCropModal";
 import ToggleButton from "@/components/ToggleButton";
@@ -48,10 +47,6 @@ interface MeResponse {
   companyName: string | null;
   companyLogoUrl: string | null;
   maxDiscountPercent: number | null;
-  country: string | null;
-  currencyCode: string;
-  currencySymbol: string;
-  currencyIsManual: boolean;
   pediatricMaxAgeYears: number;
   geriatricMinAgeYears: number;
   immunizationReminderDays: number;
@@ -70,6 +65,7 @@ interface MeResponse {
   companyWebsite: string | null;
   companyFaxNumber: string | null;
   companyFacilityId: string | null;
+  companyTaxRegistrationNumber: string | null;
   companyEclaimlinkUsername: string | null;
   companyEclaimlinkPasswordSet: boolean;
   branchId: string | null;
@@ -87,6 +83,11 @@ type SettingsSection = "profile" | "company";
 type PatientEmailVariant = "credentials" | "simple";
 
 export default function SettingsPage() {
+  // The installation's country (chosen by the super administrator) decides which regulatory
+  // fields apply here - the facility licence wording, a tax registration number, eClaimLink.
+  const region = useRegion();
+  const hasTax = region?.tax.applicable ?? false;
+  const hasEClaimLink = hasRegionFeature(region, "eClaimLink");
   const [me, setMe] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<SettingsSection | null>(null);
@@ -97,7 +98,8 @@ export default function SettingsPage() {
 
   // Facility profile - matches the client's data-collection sheet field-for-field. Every
   // field here (except the eClaimLink password) round-trips in full and simply saves
-  // whatever's currently typed; the password is write-only, see its own input below.
+  // whatever's currently typed; the password is write-only, see its own input below. The tax
+  // number and eClaimLink fields only exist in countries that use them.
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [addressInput, setAddressInput] = useState("");
   const [contactEmailInput, setContactEmailInput] = useState("");
@@ -105,6 +107,7 @@ export default function SettingsPage() {
   const [websiteInput, setWebsiteInput] = useState("");
   const [faxNumberInput, setFaxNumberInput] = useState("");
   const [facilityIdInput, setFacilityIdInput] = useState("");
+  const [taxRegistrationInput, setTaxRegistrationInput] = useState("");
   const [eclaimlinkUsernameInput, setEclaimlinkUsernameInput] = useState("");
   const [eclaimlinkPasswordInput, setEclaimlinkPasswordInput] = useState("");
   const [eclaimlinkPasswordSet, setEclaimlinkPasswordSet] = useState(false);
@@ -112,11 +115,6 @@ export default function SettingsPage() {
 
   const [maxDiscountInput, setMaxDiscountInput] = useState("");
   const discountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [country, setCountry] = useState("");
-
-  const [currencyCode, setCurrencyCode] = useState("INR");
-  const [currencyIsManual, setCurrencyIsManual] = useState(false);
 
   const [pediatricMaxAgeInput, setPediatricMaxAgeInput] = useState("18");
   const [geriatricMinAgeInput, setGeriatricMinAgeInput] = useState("65");
@@ -187,12 +185,10 @@ export default function SettingsPage() {
         setWebsiteInput(data.companyWebsite || "");
         setFaxNumberInput(data.companyFaxNumber || "");
         setFacilityIdInput(data.companyFacilityId || "");
+        setTaxRegistrationInput(data.companyTaxRegistrationNumber || "");
         setEclaimlinkUsernameInput(data.companyEclaimlinkUsername || "");
         setEclaimlinkPasswordSet(!!data.companyEclaimlinkPasswordSet);
         setMaxDiscountInput(data.maxDiscountPercent != null ? String(data.maxDiscountPercent) : "");
-        setCountry(data.country || "");
-        setCurrencyCode(data.currencyCode || "INR");
-        setCurrencyIsManual(!!data.currencyIsManual);
         setPediatricMaxAgeInput(String(data.pediatricMaxAgeYears ?? 18));
         setGeriatricMinAgeInput(String(data.geriatricMinAgeYears ?? 65));
         setReminderDaysInput(String(data.immunizationReminderDays ?? 7));
@@ -267,10 +263,15 @@ export default function SettingsPage() {
         website: websiteInput.trim(),
         faxNumber: faxNumberInput.trim(),
         facilityId: facilityIdInput.trim(),
-        eclaimlinkUsername: eclaimlinkUsernameInput.trim(),
-        // Blank means "leave the saved password alone" (see CompanyController.UpdateSettings) -
-        // only send it when the admin actually typed a new one.
-        ...(eclaimlinkPasswordInput.trim() ? { eclaimlinkPassword: eclaimlinkPasswordInput.trim() } : {}),
+        ...(hasTax ? { taxRegistrationNumber: taxRegistrationInput.trim() } : {}),
+        ...(hasEClaimLink
+          ? {
+              eclaimlinkUsername: eclaimlinkUsernameInput.trim(),
+              // Blank means "leave the saved password alone" (see CompanyController.UpdateSettings) -
+              // only send it when the admin actually typed a new one.
+              ...(eclaimlinkPasswordInput.trim() ? { eclaimlinkPassword: eclaimlinkPasswordInput.trim() } : {}),
+            }
+          : {}),
       });
       setDisplayNameInput(data.displayName || "");
       setAddressInput(data.address || "");
@@ -279,6 +280,8 @@ export default function SettingsPage() {
       setWebsiteInput(data.website || "");
       setFaxNumberInput(data.faxNumber || "");
       setFacilityIdInput(data.facilityId || "");
+      setTaxRegistrationInput(data.taxRegistrationNumber || "");
+      patchUserDetail({ companyTaxRegistrationNumber: data.taxRegistrationNumber ?? null });
       setEclaimlinkUsernameInput(data.eclaimlinkUsername || "");
       setEclaimlinkPasswordSet(!!data.eclaimlinkPasswordSet);
       setEclaimlinkPasswordInput("");
@@ -306,7 +309,9 @@ export default function SettingsPage() {
         return;
       }
       try {
-        await CompanyService.updateSettings({ maxDiscountPercent: parsed });
+        // A blank cap is sent as an explicit clear - a plain null means "unchanged" to the
+        // API, the same as every other field this partial update leaves out.
+        await CompanyService.updateSettings(parsed === null ? { clearMaxDiscountPercent: true } : { maxDiscountPercent: parsed });
         setMe((prev) => (prev ? { ...prev, maxDiscountPercent: parsed } : prev));
         notifySaveStatus("saved");
       } catch {
@@ -314,45 +319,6 @@ export default function SettingsPage() {
         toast.error("Failed to update discount cap");
       }
     }, 800);
-  };
-
-  const handleCountryChange = async (newCountry: string) => {
-    setCountry(newCountry);
-    if (!me || !newCountry) return;
-    notifySaveStatus("saving");
-    try {
-      const data = await CompanyService.updateSettings({ country: newCountry });
-      setMe({
-        ...me,
-        country: data.country,
-        currencyCode: data.currencyCode,
-        currencySymbol: data.currencySymbol,
-        currencyIsManual: data.currencyIsManual,
-      });
-      setCurrencyCode(data.currencyCode);
-      setCurrencyIsManual(!!data.currencyIsManual);
-      patchUserDetail({ currencyCode: data.currencyCode, currencySymbol: data.currencySymbol });
-      notifySaveStatus("saved");
-    } catch {
-      notifySaveStatus("error");
-      toast.error("Failed to update country");
-    }
-  };
-
-  const handleCurrencyChange = async (newCode: string) => {
-    setCurrencyCode(newCode);
-    if (!me) return;
-    notifySaveStatus("saving");
-    try {
-      const data = await CompanyService.updateSettings({ currencyCode: newCode });
-      setMe({ ...me, currencyCode: data.currencyCode, currencySymbol: data.currencySymbol, currencyIsManual: data.currencyIsManual });
-      setCurrencyIsManual(!!data.currencyIsManual);
-      patchUserDetail({ currencyCode: data.currencyCode, currencySymbol: data.currencySymbol });
-      notifySaveStatus("saved");
-    } catch {
-      notifySaveStatus("error");
-      toast.error("Failed to update currency");
-    }
   };
 
   const scheduleAgeRangesSave = (pediatricMax: string, geriatricMin: string) => {
@@ -800,7 +766,7 @@ export default function SettingsPage() {
             <SettingsTile
               icon={<Building2 size={22} />}
               title="Company settings"
-              description="Branding, billing, currency, branches, and age category ranges."
+              description="Branding, billing, branches, and age category ranges."
               onClick={() => setActiveSection("company")}
             />
           )}
@@ -899,7 +865,7 @@ export default function SettingsPage() {
           <div className="bg-card border border-border rounded-xl p-6 lg:col-span-2 xl:col-span-3">
             <h2 className="text-xl font-semibold text-foreground mb-1">Facility profile</h2>
             <p className="text-sm text-muted-foreground mb-5">
-              Contact details, regulatory identifiers, and the eClaimLink portal login for this
+              Contact details and regulatory identifiers{hasEClaimLink ? ", and the eClaimLink portal login" : ""} for this
               facility. Company name itself is edited under Branches below (the main branch IS
               the company).
             </p>
@@ -953,7 +919,9 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility ID (DHA/MOH/HAAD)</label>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  {region?.regulatory.facilityLicenseLabel ?? "Facility licence no."}
+                </label>
                 <input
                   type="text"
                   value={facilityIdInput}
@@ -961,6 +929,20 @@ export default function SettingsPage() {
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
                 />
               </div>
+              {hasTax && region?.tax.registrationLabel && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    {region.tax.name} registration ({region.tax.registrationLabel})
+                  </label>
+                  <input
+                    type="text"
+                    value={taxRegistrationInput}
+                    onChange={(e) => setTaxRegistrationInput(e.target.value)}
+                    placeholder="Printed on bills"
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                  />
+                </div>
+              )}
               <div className="sm:col-span-2 lg:col-span-3">
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">Address</label>
                 <input
@@ -970,25 +952,29 @@ export default function SettingsPage() {
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility username (eclaimlink)</label>
-                <input
-                  type="text"
-                  value={eclaimlinkUsernameInput}
-                  onChange={(e) => setEclaimlinkUsernameInput(e.target.value)}
-                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility password (eclaimlink)</label>
-                <PasswordInput
-                  value={eclaimlinkPasswordInput}
-                  onChange={(e) => setEclaimlinkPasswordInput(e.target.value)}
-                  placeholder={eclaimlinkPasswordSet ? "•••••••• (saved — leave blank to keep)" : "Not set"}
-                  autoComplete="new-password"
-                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-                />
-              </div>
+              {hasEClaimLink && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility username (eclaimlink)</label>
+                    <input
+                      type="text"
+                      value={eclaimlinkUsernameInput}
+                      onChange={(e) => setEclaimlinkUsernameInput(e.target.value)}
+                      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility password (eclaimlink)</label>
+                    <PasswordInput
+                      value={eclaimlinkPasswordInput}
+                      onChange={(e) => setEclaimlinkPasswordInput(e.target.value)}
+                      placeholder={eclaimlinkPasswordSet ? "•••••••• (saved — leave blank to keep)" : "Not set"}
+                      autoComplete="new-password"
+                      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             <button
@@ -1027,52 +1013,35 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Country & Currency */}
+          {/* Country & region - read-only, owned by the super administrator */}
           <div className="bg-card border border-border rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-foreground mb-1">Country & currency</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-1">Country &amp; region</h2>
             <p className="text-sm text-muted-foreground mb-5">
-              Currency controls how amounts are displayed across billing, pharmacy, appointments,
-              and prescription printouts for every user at {me.companyName ?? "your organization"}.
-              Picking a country fills in its currency automatically, unless one has already been
-              set below.
+              Set for the whole system by its super administrator. Currency, phone and ID formats,
+              address fields and tax all follow it.
             </p>
-
-            <div className="flex flex-col gap-4">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Country
-                </label>
-                <div className="flex items-center gap-3">
-                  <div className="w-full max-w-xs">
-                    <CountrySearchSelect
-                      value={country}
-                      onChange={handleCountryChange}
-                      placeholder="Select country"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Currency
-                </label>
-                <div className="flex items-center gap-3">
-                  <div className="w-full max-w-xs">
-                    <SearchableSelect
-                      value={currencyCode}
-                      onChange={handleCurrencyChange}
-                      options={SUPPORTED_CURRENCIES.map((c) => ({ value: c.code, label: c.label }))}
-                    />
-                  </div>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {currencyIsManual
-                    ? "Set manually — changing country above won't override it."
-                    : "Following the selected country. Saving a currency here locks it in."}
-                </p>
-              </div>
-            </div>
+            {region ? (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                <dt className="text-muted-foreground">Country</dt>
+                <dd className="font-medium text-foreground">{region.country}</dd>
+                <dt className="text-muted-foreground">Currency</dt>
+                <dd className="text-foreground">{region.currency.code} ({region.currency.symbol})</dd>
+                <dt className="text-muted-foreground">Mobile</dt>
+                <dd className="text-foreground">{region.phone.dialCode} · {region.phone.nationalNumberLength} digits</dd>
+                <dt className="text-muted-foreground">National ID</dt>
+                <dd className="text-foreground">{region.nationalId.label}</dd>
+                <dt className="text-muted-foreground">Tax</dt>
+                <dd className="text-foreground">
+                  {region.tax.applicable
+                    ? `${region.tax.name}${region.tax.standardPercent != null ? ` (standard ${region.tax.standardPercent}%)` : ""}`
+                    : "None"}
+                </dd>
+                <dt className="text-muted-foreground">Authority</dt>
+                <dd className="text-foreground">{region.regulatory.healthAuthority}</dd>
+              </dl>
+            ) : (
+              <p className="text-sm text-muted-foreground">Not set yet.</p>
+            )}
           </div>
 
           {/* Age category ranges */}
@@ -1226,7 +1195,7 @@ export default function SettingsPage() {
             </p>
             <div className="flex flex-col gap-4">
               {[
-                { key: "NationalID", label: "Emirates ID / National ID", hint: "Always checked - an ID belongs to one person" },
+                { key: "NationalID", label: nationalIdLabel(region), hint: "Always checked - an ID belongs to one person" },
                 { key: "Passport", label: "Passport number", hint: "Always checked - an ID belongs to one person" },
               ].map((row) => (
                 <div key={row.key} className="flex items-center justify-between gap-4">

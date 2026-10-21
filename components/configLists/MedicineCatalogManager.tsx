@@ -12,6 +12,7 @@ import { MedicineBulkRow, MedicineType } from "@/types/pharmacy.type";
 import { formatCurrency } from "@/lib/currency";
 import { apiErrorMessage } from "@/lib/apiError";
 import SearchableSelect, { fieldSelectClass } from "@/components/SearchableSelect";
+import { useRegion } from "@/lib/region";
 
 // Normalizes a header cell for loose, case-insensitive matching against the real DDC/
 // Riayati export files (their exact column names, not something we control), e.g.
@@ -95,7 +96,19 @@ const parseRows = (raw: Record<string, unknown>[], source: "DDC" | "Riayati"): M
 // counterpart to the Procedure/CPT tab, but for medications. Day-to-day stock, pricing
 // overrides, high-risk flagging, and alternatives stay on the Pharmacy page (that's
 // pharmacist operational work, not catalog curation, hence the separate module gate).
+// What each registry's import button says.
+const REGISTRY_LABELS: Record<"DDC" | "Riayati", string> = {
+  Riayati: "Riayati Medication Codes",
+  DDC: "DDC Release (Public)",
+};
+
 export default function MedicineCatalogManager() {
+  // The registries this installation's country imports from (the UAE's DDC and Riayati) -
+  // none elsewhere, where medicines are added one at a time on the Pharmacy page.
+  const region = useRegion();
+  const registries = (region?.regulatory.medicationRegistries ?? []).filter(
+    (r): r is "DDC" | "Riayati" => r === "DDC" || r === "Riayati",
+  );
   const [source, setSource] = useState<"DDC" | "Riayati">("Riayati");
   const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<MedicineBulkRow[]>([]);
@@ -231,31 +244,37 @@ export default function MedicineCatalogManager() {
 
   return (
     <>
+      {registries.length === 0 ? (
+      <div className="card p-6 mb-6 flex flex-col gap-1">
+        <h2 className="text-sm font-semibold text-foreground/90">Adding medications</h2>
+        <p className="text-xs text-muted-foreground">
+          {region?.country ?? "This country"} has no national medication registry to import, so medicines are added
+          individually on the Pharmacy page (Add Medicine). Everything added appears in the catalog below.
+        </p>
+      </div>
+      ) : (
       <div className="card p-6 mb-6 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground/90">Bulk Upload Medications</h2>
         <p className="text-xs text-muted-foreground -mt-1">
-          Upload the DDC or Riayati medication registry export as-is — columns are matched automatically.
+          Upload the {registries.join(" or ")} medication registry export as-is — columns are matched automatically.
           Re-uploading a refreshed file updates existing entries (matched by code) in place; stock levels,
           pricing overrides, and high-risk flags set on the Pharmacy page are never touched by an import.
         </p>
 
         <div className="flex gap-2">
-          <button
-            onClick={() => { setSource("Riayati"); clearFile(); }}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-              source === "Riayati" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"
-            }`}
-          >
-            Riayati Medication Codes
-          </button>
-          <button
-            onClick={() => { setSource("DDC"); clearFile(); }}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-              source === "DDC" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"
-            }`}
-          >
-            DDC Release (Public)
-          </button>
+          {(["Riayati", "DDC"] as const)
+            .filter((r) => registries.includes(r))
+            .map((r) => (
+              <button
+                key={r}
+                onClick={() => { setSource(r); clearFile(); }}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  source === r ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"
+                }`}
+              >
+                {REGISTRY_LABELS[r]}
+              </button>
+            ))}
         </div>
 
         <label className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors">
@@ -295,6 +314,7 @@ export default function MedicineCatalogManager() {
           <Upload size={15} /> Upload {rows.length || ""} Medication(s)
         </button>
       </div>
+      )}
 
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-border">
@@ -318,8 +338,7 @@ export default function MedicineCatalogManager() {
                 onChange={(v) => setSourceFilter(v as "" | "DDC" | "Riayati" | "none")}
                 options={[
                   { value: "", label: "All sources" },
-                  { value: "DDC", label: "DDC" },
-                  { value: "Riayati", label: "Riayati" },
+                  ...registries.map((r) => ({ value: r, label: r })),
                   { value: "none", label: "Manually added" },
                 ]}
                 className={fieldSelectClass}

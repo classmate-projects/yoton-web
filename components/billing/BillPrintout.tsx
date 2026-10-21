@@ -5,6 +5,7 @@ import { getUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { formatCurrency } from "@/lib/currency";
 import { formatDateTime } from "@/lib/date";
+import { getRegion } from "@/lib/region";
 
 // Print-only bill sheet - invisible on screen, and the only thing on the page when the
 // browser prints (call window.print()). Same approach as PrescriptionPrintout, with its own
@@ -16,6 +17,16 @@ export default function BillPrintout({ bill }: { bill: BillType }) {
   const companyName = currentUser?.companyName || "Yoton Health";
   const companyLogo = backendAssetUrl(currentUser?.companyLogoUrl);
   const liveItems = bill.items.filter((i) => !i.isRemoved);
+  // The country's tax wording and the clinic's registration (e.g. "VAT" and its TRN) - no tax
+  // lines at all where the country has no tax and the bill carries none.
+  const region = getRegion();
+  const taxName = region?.tax.name ?? "Tax";
+  const showTax = (region?.tax.applicable ?? false) || bill.tax > 0;
+  const showServiceCode = !!region?.tax.serviceCodeLabel;
+  const taxRegistration =
+    region?.tax.applicable && region.tax.registrationLabel && currentUser?.companyTaxRegistrationNumber
+      ? `${region.tax.registrationLabel}: ${currentUser.companyTaxRegistrationNumber}`
+      : null;
 
   return (
     <>
@@ -28,7 +39,8 @@ export default function BillPrintout({ bill }: { bill: BillType }) {
             )}
             <div>
               <p className="text-xl font-bold">{companyName}</p>
-              <p className="text-xs text-gray-600">Bill / Invoice</p>
+              <p className="text-xs text-gray-600">{taxRegistration ? "Tax Invoice" : "Bill / Invoice"}</p>
+              {taxRegistration && <p className="text-xs text-gray-600">{taxRegistration}</p>}
             </div>
           </div>
           <p className="rounded border border-black px-3 py-1 text-sm font-bold uppercase">{bill.status}</p>
@@ -62,11 +74,11 @@ export default function BillPrintout({ bill }: { bill: BillType }) {
             <tr className="border-b-2 border-black text-left">
               <th className="py-2 pr-2 w-8">#</th>
               <th className="py-2 pr-2">Description</th>
-              <th className="py-2 pr-2">SAC/HSN</th>
+              {showServiceCode && <th className="py-2 pr-2">{region?.tax.serviceCodeLabel}</th>}
               <th className="py-2 pr-2 text-right">Qty</th>
               <th className="py-2 pr-2 text-right">Rate</th>
               <th className="py-2 pr-2 text-right">Disc.</th>
-              <th className="py-2 pr-2 text-right">Tax</th>
+              {showTax && <th className="py-2 pr-2 text-right">{taxName}</th>}
               <th className="py-2 text-right">Amount</th>
             </tr>
           </thead>
@@ -83,20 +95,22 @@ export default function BillPrintout({ bill }: { bill: BillType }) {
                     {item.description ?? "—"}
                     <span className="block text-xs text-gray-600">{item.category}</span>
                   </td>
-                  <td className="py-2 pr-2">{item.serviceCode ?? "—"}</td>
+                  {showServiceCode && <td className="py-2 pr-2">{item.serviceCode ?? "—"}</td>}
                   <td className="py-2 pr-2 text-right">{Number(item.quantity.toFixed(2))}</td>
                   <td className="py-2 pr-2 text-right">{formatCurrency(item.unitPrice)}</td>
                   <td className="py-2 pr-2 text-right">{item.discountAmount > 0 ? `-${formatCurrency(item.discountAmount)}` : "—"}</td>
-                  <td className="py-2 pr-2 text-right">
-                    {item.taxAmount > 0 ? (
-                      <>
-                        {formatCurrency(item.taxAmount)}
-                        <span className="block text-xs text-gray-600">{Number(item.taxPercent.toFixed(2))}%</span>
-                      </>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
+                  {showTax && (
+                    <td className="py-2 pr-2 text-right">
+                      {item.taxAmount > 0 ? (
+                        <>
+                          {formatCurrency(item.taxAmount)}
+                          <span className="block text-xs text-gray-600">{Number(item.taxPercent.toFixed(2))}%</span>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  )}
                   <td className="py-2 text-right">{formatCurrency(item.amount)}</td>
                 </tr>
               ))
@@ -113,10 +127,12 @@ export default function BillPrintout({ bill }: { bill: BillType }) {
             <span>Discount{bill.discountPercent ? ` (incl. ${bill.discountPercent}% bill discount)` : ""}</span>
             <span>-{formatCurrency(bill.discount)}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Tax</span>
-            <span>+{formatCurrency(bill.tax)}</span>
-          </div>
+          {showTax && (
+            <div className="flex justify-between">
+              <span>{taxName}</span>
+              <span>+{formatCurrency(bill.tax)}</span>
+            </div>
+          )}
           <div className="flex justify-between border-t-2 border-black pt-1 text-base font-bold">
             <span>Net Amount</span>
             <span>{formatCurrency(bill.netAmount)}</span>

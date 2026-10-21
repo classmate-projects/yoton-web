@@ -20,4 +20,8 @@ export const AuthService = {
         const { data } = await api.delete(ENDPOINTS.AUTH.DELETE_AVATAR);
         return data;
     },
+    changePassword: async (currentPassword: string, newPassword: string) => {
+        const { data } = await api.post(ENDPOINTS.AUTH.CHANGE_PASSWORD, { currentPassword, newPassword });
+        return data as { message: string };
+    },
 }

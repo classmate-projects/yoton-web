@@ -6,7 +6,18 @@ import { toast } from "sonner";
 import { X } from "lucide-react";
 import { MdClose } from "react-icons/md";
 import { countryDetails } from "@/helpers/countyDetails";
-import { getNationalIdFormat, passportNumberRegex } from "@/helpers/nationalIdFormats";
+import { passportNumberRegex } from "@/lib/validation";
+import {
+  addressErrors,
+  defaultDialCode,
+  hasAnyAddressValue,
+  nationalIdError,
+  nationalIdLabel,
+  phoneError,
+  useRegion,
+  type AddressValues,
+} from "@/lib/region";
+import RegionAddressFields from "@/components/patients/RegionAddressFields";
 import { ReceptionService } from "@/services/reception.service";
 import { ConfigListService } from "@/services/configList.service";
 import { isValidEmail } from "@/lib/validation";
@@ -54,19 +65,20 @@ interface Props {
   specializations: SpecializationDoctorsType[];
 }
 
-const INITIAL_FORM = {
-  name: "", sex: "", dateOfBirth: "", phone: "", phoneCode: "+971", email: "",
+// Phone fields start on the installation's own dialing code (lib/region.ts).
+const initialForm = () => ({
+  name: "", sex: "", dateOfBirth: "", phone: "", phoneCode: defaultDialCode(), email: "",
   address: "", nationality: "", passportNumber: "", nationalID: "",
   fatherName: "", motherName: "", patientType: "Normal", visaType: "",
   maritalStatus: "", designation: "", referralStatus: false, chronicStatus: false,
-  emergencyContact: "", emergencyContactPhone: "", emergencyContactPhoneCode: "+971",
+  emergencyContact: "", emergencyContactPhone: "", emergencyContactPhoneCode: defaultDialCode(),
   paymentType: "Cash", eligibilityMode: "", eligibilityCheckedDate: "",
   eligibilityID: "", eligibilityVisitID: "", insuranceProvider: "", subInsurance: "",
   networkType: "", insuranceCardNo: "", extraCardNo: "", insuranceEffectiveFrom: "",
   insuranceExpiryDate: "", certificateNo: "", dependentsNo: "", insuranceClaimNo: "",
   maxInsuranceLiability: "", insuranceApprovalLimit: "", maxInsuranceCopay: "",
   coPayPatientPercent: "", password: "",
-};
+});
 
 export default function PatientRegistrationModal({
   isOpen, onClose, onBooked,
@@ -74,19 +86,29 @@ export default function PatientRegistrationModal({
   doctorName, slotDisplayTime, specializations,
 }: Props) {
   // ── Registration form state ──
-  const [formData, setFormData] = useState({ ...INITIAL_FORM });
+  const [formData, setFormData] = useState(initialForm);
+  // The installation's country: phone code, national ID format and the address structure.
+  const region = useRegion();
+  const structuredAddress = (region?.addressFields.length ?? 0) > 0;
+  const [addressFields, setAddressFields] = useState<AddressValues>({});
+  const [showAddressErrors, setShowAddressErrors] = useState(false);
   const [coverages, setCoverages] = useState<Record<string, CoverageFormRow>>(emptyCoverages());
   const [insuranceProviders, setInsuranceProviders] = useState<ListItemType[]>([]);
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [companyCountry, setCompanyCountry] = useState<string | undefined>(undefined);
 
   const isInsuranceOrCorporate = formData.paymentType !== "Cash";
   const emailInvalid = formData.email.length > 0 && !isValidEmail(formData.email);
-  const nationalIdFormat = getNationalIdFormat(companyCountry);
-  const selectedPhoneLength = countryDetails.find((c) => c.phoneCode === formData.phoneCode)?.phoneLength ?? 15;
-  const selectedEmergencyPhoneLength = countryDetails.find((c) => c.phoneCode === formData.emergencyContactPhoneCode)?.phoneLength ?? 15;
+  const idLabel = nationalIdLabel(region);
+  const phoneLengthFor = (code: string) =>
+    region && code === region.phone.dialCode
+      ? region.phone.nationalNumberLength
+      : countryDetails.find((c) => c.phoneCode === code)?.phoneLength ?? 15;
+  const phonePlaceholderFor = (code: string) =>
+    region && code === region.phone.dialCode ? region.phone.example.replace(/\s/g, "") : "".padEnd(phoneLengthFor(code), "0");
+  const selectedPhoneLength = phoneLengthFor(formData.phoneCode);
+  const selectedEmergencyPhoneLength = phoneLengthFor(formData.emergencyContactPhoneCode);
 
   // ── Post-registration consultation state ──
   const [registeredPatient, setRegisteredPatient] = useState<{ opId: string; name: string } | null>(null);
@@ -116,16 +138,12 @@ export default function PatientRegistrationModal({
   const [pendingPayload, setPendingPayload] = useState<ReceptionCreatePatientType | null>(null);
   const [openingMatchId, setOpeningMatchId] = useState<string | null>(null);
 
-  // ── Init ──
-  useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
-    setCompanyCountry(stored.country);
-  }, []);
-
   // Reset everything when modal opens/closes
   useEffect(() => {
     if (!isOpen) {
-      setFormData({ ...INITIAL_FORM });
+      setFormData(initialForm());
+      setAddressFields({});
+      setShowAddressErrors(false);
       setCoverages(emptyCoverages());
       setError("");
       setRegisteredPatient(null);
@@ -242,7 +260,9 @@ export default function PatientRegistrationModal({
     setCoverages((prev) => ({ ...prev, [category]: { ...prev[category], [field]: value } }));
 
   const resetForm = () => {
-    setFormData({ ...INITIAL_FORM });
+    setFormData(initialForm());
+    setAddressFields({});
+    setShowAddressErrors(false);
     setCoverages(emptyCoverages());
     setError("");
   };
@@ -257,9 +277,15 @@ export default function PatientRegistrationModal({
     ].filter(Boolean);
     if (missingSelections.length > 0) { toast.error(`Please select: ${missingSelections.join(", ")}`); return; }
     if (!isValidEmail(formData.email)) { setError("Enter a valid email address (e.g. john@example.com)."); return; }
-    if (!formData.nationalID && !formData.passportNumber) { setError("Please provide either National ID or Passport Number"); return; }
-    if (formData.nationalID && nationalIdFormat.regex && !nationalIdFormat.regex.test(formData.nationalID)) {
-      setError(`${nationalIdFormat.label} format looks incorrect. Expected format: ${nationalIdFormat.placeholder}`); return;
+    if (!formData.nationalID && !formData.passportNumber) { setError(`Please provide either ${idLabel} or Passport Number`); return; }
+    const idProblem = nationalIdError(region, formData.nationalID);
+    if (idProblem) { setError(idProblem); return; }
+    const phoneProblem = phoneError(region, formData.phoneCode, formData.phone);
+    if (phoneProblem) { setError(phoneProblem); toast.error(phoneProblem); return; }
+    if (structuredAddress && Object.keys(addressErrors(region?.addressFields ?? [], addressFields)).length > 0) {
+      setShowAddressErrors(true);
+      toast.error("Check the highlighted address fields");
+      return;
     }
     if (formData.passportNumber && !passportNumberRegex.test(formData.passportNumber)) {
       setError("Passport Number format looks incorrect. Expected 6-9 letters/digits."); return;
@@ -276,6 +302,10 @@ export default function PatientRegistrationModal({
       ...formData,
       registeredBy,
       emergencyContactPhone: formData.emergencyContactPhoneCode + formData.emergencyContactPhone,
+      // Structured fields when any are filled - the API builds the address line from them.
+      ...(structuredAddress
+        ? hasAnyAddressValue(addressFields) ? { address: "", addressFields } : { address: "" }
+        : { address: formData.address }),
       eligibilityCheckedDate: toDate(formData.eligibilityCheckedDate),
       insuranceEffectiveFrom: toDate(formData.insuranceEffectiveFrom),
       insuranceExpiryDate: toDate(formData.insuranceExpiryDate),
@@ -573,7 +603,7 @@ export default function PatientRegistrationModal({
                   <CountryCodeSelect name="phoneCode" value={formData.phoneCode} onChange={(code) => setFormData((p) => ({ ...p, phoneCode: code }))} required
                     className="flex h-11 shrink-0 items-center gap-1 border-r border-border px-3 text-foreground transition-colors hover:bg-muted" />
                   <input type="tel" name="phone" inputMode="numeric" value={formData.phone} onChange={(e) => { setFormData((p) => ({ ...p, phone: digitsOnly(e.target.value, selectedPhoneLength) })); setError(""); }}
-                    required maxLength={selectedPhoneLength} placeholder={"5".padEnd(selectedPhoneLength, "0")} className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent" />
+                    required maxLength={selectedPhoneLength} placeholder={phonePlaceholderFor(formData.phoneCode)} className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent" />
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
@@ -584,7 +614,11 @@ export default function PatientRegistrationModal({
               </div>
               <div className="flex flex-col gap-1.5 md:col-span-2">
                 <label className={labelCls}>Address</label>
-                <textarea name="address" value={formData.address} onChange={handleInputChange} placeholder="Abu Dhabi" rows={2} className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent resize-y min-h-11" />
+                {structuredAddress ? (
+                  <RegionAddressFields region={region} values={addressFields} onChange={setAddressFields} showErrors={showAddressErrors} />
+                ) : (
+                  <textarea name="address" value={formData.address} onChange={handleInputChange} placeholder="Address" rows={2} className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent resize-y min-h-11" />
+                )}
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelCls}>Emergency Contact Name <span className="text-red-500">*</span></label>
@@ -596,7 +630,7 @@ export default function PatientRegistrationModal({
                   <CountryCodeSelect name="emergencyContactPhoneCode" value={formData.emergencyContactPhoneCode} onChange={(code) => setFormData((p) => ({ ...p, emergencyContactPhoneCode: code }))} required
                     className="flex h-11 shrink-0 items-center gap-1 border-r border-border px-3 text-foreground transition-colors hover:bg-muted" />
                   <input type="tel" name="emergencyContactPhone" inputMode="numeric" value={formData.emergencyContactPhone} onChange={(e) => { setFormData((p) => ({ ...p, emergencyContactPhone: digitsOnly(e.target.value, selectedEmergencyPhoneLength) })); setError(""); }}
-                    required maxLength={selectedEmergencyPhoneLength} placeholder={"5".padEnd(selectedEmergencyPhoneLength, "0")} className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent" />
+                    required maxLength={selectedEmergencyPhoneLength} placeholder={phonePlaceholderFor(formData.emergencyContactPhoneCode)} className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent" />
                 </div>
               </div>
             </div>
@@ -605,11 +639,11 @@ export default function PatientRegistrationModal({
           {/* Identification */}
           <div className="bg-background rounded-lg border border-border p-5">
             <h3 className="text-base font-bold text-foreground mb-1">Identification</h3>
-            <p className="text-xs text-muted-foreground mb-4"><span className="text-red-500">*</span> Please provide either {nationalIdFormat.label} or Passport Number</p>
+            <p className="text-xs text-muted-foreground mb-4"><span className="text-red-500">*</span> Please provide either {idLabel} or Passport Number</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
-                <label className={labelCls}>{nationalIdFormat.label}</label>
-                <input type="text" name="nationalID" value={formData.nationalID} onChange={handleInputChange} placeholder={nationalIdFormat.placeholder ?? "National ID"} className={inputCls} />
+                <label className={labelCls}>{idLabel}</label>
+                <input type="text" name="nationalID" value={formData.nationalID} onChange={handleInputChange} placeholder={region?.nationalId.placeholder ?? "National ID"} className={inputCls} />
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelCls}>Passport Number</label>

@@ -20,7 +20,7 @@ export const ReceptionService = {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CREATE_PATIENT, payload)
         return data;
     },
-    // MRN, mobile, Emirates ID/passport or name - the lookup behind every patient picker.
+    // MRN, mobile, national ID/passport or name - the lookup behind every patient picker.
     searchPatients: async (query: string, limit = 20) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.SEARCH_PATIENTS, { query, limit })
         return data;

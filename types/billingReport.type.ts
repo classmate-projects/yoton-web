@@ -64,10 +64,23 @@ export interface BillingReportType {
     byCategory: { category: string; lines: number; revenue: number }[];
     byService: { service: string; category: string; quantity: number; revenue: number }[];
   };
-  gst: {
+  // The installation's tax (VAT in the UAE, GST in India; none in Qatar) - see
+  // BillingReportController. `split` divides tax equally across the country's components
+  // (India: CGST + SGST), empty where the tax isn't split.
+  tax: {
+    name: string;
+    applicable: boolean;
+    components: string[];
+    serviceCodeLabel: string | null;
     taxableValue: number;
     totalTax: number;
-    byRate: { rate: number | null; lines: number; taxableValue: number; tax: number; cgst: number; sgst: number; total: number }[];
+    split: TaxSplitPart[];
+    byRate: { rate: number | null; lines: number; taxableValue: number; tax: number; split: TaxSplitPart[]; total: number }[];
     byCode: { code: string; category: string; rate: number; quantity: number; taxableValue: number; tax: number }[];
   };
+}
+
+export interface TaxSplitPart {
+  name: string;
+  amount: number;
 }

@@ -1,5 +1,6 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
+import type { RegionFeature } from "@/types/region.type";
 import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList, UserCheck } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
@@ -20,6 +21,10 @@ export interface SidebarMenuItem {
     // Admin-only: when present, clicking this tile (while expanded) drills into these
     // instead of navigating straight to navLink. Leave unset for a plain direct link.
     subItems?: SidebarSubItem[];
+    // A country-only module: hidden everywhere (sidebar, route guard, role permissions) unless
+    // the installation's region has this feature - see lib/region.ts. The API refuses it
+    // too ([RequireRegionFeature]).
+    regionFeature?: RegionFeature;
 }
 
 // Which modules a role can reach is entirely dynamic now - a per-role allow-list managed in
@@ -169,13 +174,14 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     },
 
     // HSPA-2 compliance KPI reports (see Services/Reports/ on the API side) - a normal
-    // admin-grantable module, not a permanent exemption.
+    // admin-grantable module, not a permanent exemption. Qatar (MoPH) only.
     {
         id: 25,
         name: "Reports",
         navLink: "/reports/kpi",
         icon: FileSpreadsheet,
-        group: "Configuration"
+        group: "Configuration",
+        regionFeature: "qualityKpiReports"
     },
 
     // Sentinel Events / Medication Errors / Dental Errors reporting - a normal
@@ -221,7 +227,8 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Compliance Data",
         navLink: "/compliance-data",
         icon: ShieldCheck,
-        group: "Configuration"
+        group: "Configuration",
+        regionFeature: "qualityKpiReports"
     },
 
     // Every user action, login to logout - see Yoton-API/Middlewares/AuditLogMiddleware.cs.

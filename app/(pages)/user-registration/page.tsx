@@ -29,6 +29,8 @@ import React, { useState, useEffect, useRef, Suspense } from "react";
 import { toast } from "sonner";
 import axios from "axios";
 import { apiErrorMessage } from "@/lib/apiError";
+import { defaultDialCode } from "@/lib/region";
+import { formatCurrency } from "@/lib/currency";
 
 function UserRegistrationForm() {
   const [name, setName] = useState("");
@@ -37,7 +39,7 @@ function UserRegistrationForm() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("");
   const [phone, setPhone] = useState("");
-  const [phoneCode, setPhoneCode] = useState("+971");
+  const [phoneCode, setPhoneCode] = useState(defaultDialCode);
   const [isActive, setIsActive] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [gender, setGender] = useState("");
@@ -228,7 +230,7 @@ function UserRegistrationForm() {
     setName("");
     setUsername("");
     setPhone("");
-    setPhoneCode("+971");
+    setPhoneCode(defaultDialCode());
     setPassword("");
     setRole("");
   }
@@ -923,7 +925,7 @@ function UserRegistrationForm() {
                       id: i.listItemId,
                       name: i.name,
                       code: i.code,
-                      meta: [i.department, i.cashPrice != null ? `AED ${i.cashPrice}` : null].filter(Boolean).join(" · ") || undefined,
+                      meta: [i.department, i.cashPrice != null ? formatCurrency(i.cashPrice) : null].filter(Boolean).join(" · ") || undefined,
                     }));
                   }}
                   onSelect={(opt) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   Ban,
@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
+import ViewModeToggle from "@/components/ViewModeToggle";
+import { useViewModePreference } from "@/hooks/useViewModePreference";
 import { ImmunizationService } from "@/services/immunization.service";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { apiErrorMessage } from "@/lib/apiError";
@@ -32,7 +34,17 @@ import AdministerVaccineModal from "./AdministerVaccineModal";
 import PastDoseModal from "./PastDoseModal";
 import ImmunizationReasonModal from "./ImmunizationReasonModal";
 import ImmunizationHistoryPrintout from "./ImmunizationHistoryPrintout";
-import { ACTION_LABELS, ImmunizationStatusBadge, formatDay, formatGiven, formatStamp, isOpenOrder } from "./immunizationUi";
+import ImmunizationChart, { ImmunizationChartLegend, type ChartCell, type ChartColumn, type ChartRow } from "./ImmunizationChart";
+import {
+  ACTION_LABELS,
+  ImmunizationStatusBadge,
+  approxAgeDays,
+  formatDay,
+  formatGiven,
+  formatGivenDay,
+  formatStamp,
+  isOpenOrder,
+} from "./immunizationUi";
 
 // "doctor" orders/changes/cancels, "nurse" administers; both record outside doses and
 // missed appointments. "view" is read-only (print only).
@@ -61,9 +73,20 @@ type ReasonAction =
   | { kind: "undo"; order: ImmunizationOrderType }
   | { kind: "notGiven"; dose: RecommendedDoseType };
 
+// Chart column for doses that aren't tied to an age on the routine schedule (optional and
+// travel vaccines, additional doses).
+const OTHER_COLUMN = "__other";
+
+const doseKey = (d: { vaccineId: string; doseNumber: number }) => `${d.vaccineId}#${d.doseNumber}`;
+
+// The date a chart box shows: the day it was given, else the day it's (or was) booked for.
+const orderDateText = (o: ImmunizationOrderType) => (o.status === "Administered" ? formatGivenDay(o) : formatDay(o.scheduledDate));
+
 // The Pediatric Immunization Schedule for one patient: the routine doses recommended for
 // their age (with whatever order covers each), and the full vaccination record with each
-// order's audit trail. Shared by the Doctor and Nurse Workbenches.
+// order's audit trail. Shared by the Doctor and Nurse Workbenches. Both tabs show either a
+// vaccine-by-age chart (grid - the default) or the original list; the choice is remembered
+// per user.
 export default function ImmunizationScheduleModal({
   patientId,
   role,
@@ -83,6 +106,16 @@ export default function ImmunizationScheduleModal({
   const [vaccines, setVaccines] = useState<VaccineType[]>([]);
   const [tab, setTab] = useState<"schedule" | "record">("schedule");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useViewModePreference("immunization.viewMode");
+  // The box picked in each tab's chart - a dose key / order id on Schedule, an order id on
+  // the record.
+  const [selectedScheduleItem, setSelectedScheduleItem] = useState<string | null>(null);
+  const [selectedRecordOrder, setSelectedRecordOrder] = useState<string | null>(null);
+  // The details shown under the chart - brought into view when a box is picked lower down.
+  const selectionRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (selectedScheduleItem || selectedRecordOrder) selectionRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedScheduleItem, selectedRecordOrder]);
 
   const [scheduleForm, setScheduleForm] = useState<{ order?: ImmunizationOrderType; prefill?: { vaccineId: string; doseNumber: number; date: string } } | null>(null);
   const [administerTarget, setAdministerTarget] = useState<ImmunizationOrderType | null>(null);
@@ -152,6 +185,84 @@ export default function ImmunizationScheduleModal({
     const covered = new Set((schedule?.recommended ?? []).map((r) => r.immunizationOrderId).filter(Boolean));
     return (schedule?.orders ?? []).filter((o) => !covered.has(o.immunizationOrderId) && o.status !== "Cancelled");
   }, [schedule]);
+
+  // ---------------- CHART (grid view) ----------------
+
+  // Schedule tab: the recommended doses by vaccine and age, plus a column for the vaccines
+  // ordered outside the routine schedule.
+  const scheduleChart = useMemo(() => {
+    const columns: ChartColumn[] = milestones.map((g) => ({
+      key: g.ageLabel,
+      label: g.ageLabel,
+      hint: g.until ? `${formatDay(g.date)} - ${formatDay(g.until)}` : formatDay(g.date),
+    }));
+    const rows: ChartRow[] = [];
+    const rowKeys = new Set<string>();
+    const addRow = (vaccineId: string, label: string, hint: string | null) => {
+      if (rowKeys.has(vaccineId)) return;
+      rowKeys.add(vaccineId);
+      rows.push({ key: vaccineId, label, hint });
+    };
+    const cells: ChartCell[] = [];
+    for (const dose of schedule?.recommended ?? []) {
+      addRow(dose.vaccineId, dose.vaccineName, dose.vaccineDescription);
+      const order = dose.immunizationOrderId ? ordersById.get(dose.immunizationOrderId) : undefined;
+      cells.push({
+        id: doseKey(dose),
+        rowKey: dose.vaccineId,
+        colKey: dose.ageLabel,
+        title: dose.doseLabel,
+        status: dose.status,
+        detail: order ? orderDateText(order) : formatDay(dose.recommendedDate),
+      });
+    }
+    if (otherOrders.length > 0) {
+      columns.push({ key: OTHER_COLUMN, label: "Other doses", hint: "not on the routine schedule" });
+      for (const o of otherOrders) {
+        addRow(o.vaccineId, o.vaccineName, o.vaccineDescription);
+        cells.push({ id: o.immunizationOrderId, rowKey: o.vaccineId, colKey: OTHER_COLUMN, title: o.doseLabel, status: o.displayStatus, detail: orderDateText(o) });
+      }
+    }
+    return { columns, rows, cells };
+  }, [schedule, milestones, otherOrders, ordersById]);
+
+  // Record tab: every order (cancelled ones too) in the box for its vaccine and age. An
+  // order's age comes from the recommended schedule, else from the vaccine master's dose
+  // (e.g. an older child's record), else it goes under "Other doses".
+  const recordChart = useMemo(() => {
+    const recommendedByDose = new Map((schedule?.recommended ?? []).map((r) => [doseKey(r), r]));
+    const masterDose = new Map(
+      vaccines.flatMap((v) => v.doses.map((d) => [doseKey({ vaccineId: v.vaccineId, doseNumber: d.doseNumber }), d] as const))
+    );
+    const vaccineRank = new Map(vaccines.map((v) => [v.vaccineId, v.sortOrder]));
+    const columnsByKey = new Map<string, { column: ChartColumn; days: number }>();
+    const rowsByKey = new Map<string, { row: ChartRow; rank: number }>();
+    const cells: ChartCell[] = [];
+    for (const o of schedule?.orders ?? []) {
+      const rec = recommendedByDose.get(doseKey(o));
+      const master = masterDose.get(doseKey(o));
+      const colKey = rec ? rec.ageLabel : master ? master.ageLabel : OTHER_COLUMN;
+      if (!columnsByKey.has(colKey)) {
+        columnsByKey.set(colKey, {
+          column:
+            colKey === OTHER_COLUMN
+              ? { key: OTHER_COLUMN, label: "Other doses", hint: "not on the routine schedule" }
+              : { key: colKey, label: colKey, hint: rec ? formatDay(rec.recommendedDate) : null },
+          days: rec ? rec.ageDays : master ? approxAgeDays(master.ageValue, master.ageUnit) : Number.MAX_SAFE_INTEGER,
+        });
+      }
+      if (!rowsByKey.has(o.vaccineId)) {
+        rowsByKey.set(o.vaccineId, {
+          row: { key: o.vaccineId, label: o.vaccineName, hint: o.vaccineDescription },
+          rank: vaccineRank.get(o.vaccineId) ?? Number.MAX_SAFE_INTEGER,
+        });
+      }
+      cells.push({ id: o.immunizationOrderId, rowKey: o.vaccineId, colKey, title: o.doseLabel, status: o.displayStatus, detail: orderDateText(o) });
+    }
+    const columns = [...columnsByKey.values()].sort((a, b) => a.days - b.days).map((c) => c.column);
+    const rows = [...rowsByKey.values()].sort((a, b) => a.rank - b.rank || a.row.label.localeCompare(b.row.label)).map((r) => r.row);
+    return { columns, rows, cells };
+  }, [schedule, vaccines]);
 
   // Offer active vaccines, plus an inactive one only when it's already on the order being edited.
   const formVaccines = (current?: string) => vaccines.filter((v) => v.isActive || v.vaccineId === current);
@@ -275,10 +386,148 @@ export default function ImmunizationScheduleModal({
     return buttons.length > 0 ? <div className="flex flex-wrap justify-end gap-1.5">{buttons}</div> : null;
   };
 
+  // ---------------- ROWS (list view, and the picked box under the chart) ----------------
+
+  const renderDoseRow = (dose: RecommendedDoseType) => {
+    const order = dose.immunizationOrderId ? ordersById.get(dose.immunizationOrderId) : undefined;
+    return (
+      <div key={doseKey(dose)} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
+        <div className="min-w-[180px] flex-1">
+          <p className="text-sm font-semibold text-foreground">
+            {dose.vaccineName} <span className="font-normal text-muted-foreground">· {dose.doseLabel}</span>
+          </p>
+          {dose.vaccineDescription && <p className="text-xs text-muted-foreground">{dose.vaccineDescription}</p>}
+        </div>
+        <div className="min-w-[200px] flex-1 text-xs text-muted-foreground">
+          {order ? <OrderSummaryLine order={order} /> : <>Not scheduled yet</>}
+        </div>
+        <ImmunizationStatusBadge status={dose.status} />
+        <div className="ml-auto">{order ? orderActions(order, false) : recommendedActions(dose)}</div>
+      </div>
+    );
+  };
+
+  const renderOtherOrderRow = (o: ImmunizationOrderType) => (
+    <div key={o.immunizationOrderId} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
+      <div className="min-w-[180px] flex-1">
+        <p className="text-sm font-semibold text-foreground">
+          {o.vaccineName} <span className="font-normal text-muted-foreground">· {o.doseLabel}</span>
+        </p>
+        {o.vaccineDescription && <p className="text-xs text-muted-foreground">{o.vaccineDescription}</p>}
+      </div>
+      <div className="min-w-[200px] flex-1 text-xs text-muted-foreground">
+        <OrderSummaryLine order={o} />
+      </div>
+      <ImmunizationStatusBadge status={o.displayStatus} />
+      <div className="ml-auto">{orderActions(o, false)}</div>
+    </div>
+  );
+
+  const renderRecordCard = (o: ImmunizationOrderType) => {
+    const isOpen = expanded.has(o.immunizationOrderId);
+    return (
+      <div key={o.immunizationOrderId} className={`rounded-lg border border-border px-3 py-2.5 ${o.status === "Cancelled" ? "opacity-70" : ""}`}>
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+          <div className="min-w-[180px] flex-1">
+            <p className="text-sm font-semibold text-foreground">
+              {o.vaccineName} <span className="font-normal text-muted-foreground">· {o.doseLabel}</span>
+              {o.isExternal && (
+                <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">Given elsewhere</span>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {o.isExternal
+                ? `Recorded by ${o.administeredByName || "—"} on ${formatStamp(o.createdAt)}`
+                : `Ordered by ${o.orderedByName || "—"} on ${formatStamp(o.createdAt)} for ${formatDay(o.scheduledDate)}`}
+            </p>
+          </div>
+          <ImmunizationStatusBadge status={o.displayStatus} />
+          <div className="ml-auto">{orderActions(o, true)}</div>
+        </div>
+
+        <div className="mt-1.5 flex flex-col gap-0.5 text-xs text-muted-foreground">
+          {o.status === "Administered" && (
+            <p className="text-foreground/90">
+              Given {formatGiven(o)}
+              {o.isExternal
+                ? o.externalFacility ? ` at ${o.externalFacility}` : " at another facility"
+                : ` by ${o.administeredByName || "—"}`}
+              {o.batchNumber ? ` · Batch ${o.batchNumber}` : ""}
+              {o.expiryDate ? ` (exp ${formatDay(o.expiryDate)})` : ""}
+              {o.route ? ` · ${o.route}` : ""}
+              {o.injectionSite ? ` · ${o.injectionSite}` : ""}
+            </p>
+          )}
+          {o.status === "Administered" && !o.isExternal && (
+            <p className={o.adverseReactions ? "font-semibold text-red-600" : ""}>
+              Adverse reactions: {o.adverseReactions || "none recorded"}
+            </p>
+          )}
+          {o.administrationNotes && <p>Nurse notes: {o.administrationNotes}</p>}
+          {o.remarks && <p>Remarks: {o.remarks}</p>}
+          {(o.status === "Missed" || o.status === "Cancelled") && o.statusReason && (
+            <p className="text-foreground/90">
+              {o.status} by {o.statusChangedByName || "—"} on {formatStamp(o.statusChangedAt)} — {o.statusReason}
+            </p>
+          )}
+        </div>
+
+        <button
+          onClick={() => toggleExpanded(o.immunizationOrderId)}
+          className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+        >
+          {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Audit trail ({o.events.length})
+        </button>
+        {isOpen && (
+          <ol className="mt-1.5 flex flex-col gap-1 border-l-2 border-border pl-3">
+            {o.events.map((e) => (
+              <li key={e.immunizationOrderEventId} className="text-xs">
+                <span className="font-semibold text-foreground">{ACTION_LABELS[e.action] ?? e.action}</span>
+                <span className="text-muted-foreground">
+                  {" "}· {e.userName || "—"}
+                  {e.userRole ? ` (${e.userRole})` : ""} · {formatStamp(e.createdAt)}
+                </span>
+                {e.details && <p className="text-muted-foreground">{e.details}</p>}
+                {e.reason && <p className="text-muted-foreground">Reason: {e.reason}</p>}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    );
+  };
+
+  // What's under the Schedule chart: the picked dose (or other-vaccine order) with its actions.
+  const renderScheduleSelection = () => {
+    if (!selectedScheduleItem) return <ChartHint />;
+    const dose = schedule?.recommended.find((d) => doseKey(d) === selectedScheduleItem);
+    if (dose) {
+      return (
+        <div className="rounded-lg border border-primary/40 bg-primary/5">
+          <p className="px-3 pt-2.5 text-xs font-semibold text-muted-foreground">
+            {dose.ageLabel} ·{" "}
+            {dose.dueUntilDate ? `due ${formatDay(dose.recommendedDate)} - ${formatDay(dose.dueUntilDate)}` : `recommended ${formatDay(dose.recommendedDate)}`}
+          </p>
+          {renderDoseRow(dose)}
+        </div>
+      );
+    }
+    const other = otherOrders.find((o) => o.immunizationOrderId === selectedScheduleItem);
+    return other ? (
+      <div className="rounded-lg border border-primary/40 bg-primary/5">
+        <p className="px-3 pt-2.5 text-xs font-semibold text-muted-foreground">Other doses · not on the routine schedule</p>
+        {renderOtherOrderRow(other)}
+      </div>
+    ) : (
+      <ChartHint />
+    );
+  };
+
   // ---------------- RENDER ----------------
 
   const patient = schedule?.patient;
   const counts = schedule?.counts;
+  const pickedRecord = selectedRecordOrder ? ordersById.get(selectedRecordOrder) : undefined;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -352,20 +601,25 @@ export default function ImmunizationScheduleModal({
                     : "Add the patient's date of birth to use the immunization schedule."}
                 </p>
               )}
-              {counts && (
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <CountChip label="Administered" value={counts.completed} tone="green" />
-                  <CountChip label="Scheduled" value={counts.scheduled} tone="blue" />
-                  <CountChip label="Due" value={counts.due} tone="amber" />
-                  <CountChip label="Overdue" value={counts.overdue} tone="red" />
-                  <CountChip label="Missed" value={counts.missed} tone="orange" />
-                  {isDoctor && counts.notYetScheduled > 0 && (
-                    <span className="self-center text-muted-foreground">
-                      {counts.notYetScheduled} recommended dose{counts.notYetScheduled === 1 ? " isn't" : "s aren't"} scheduled yet
-                    </span>
-                  )}
-                </div>
-              )}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {counts ? (
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <CountChip label="Administered" value={counts.completed} tone="green" />
+                    <CountChip label="Scheduled" value={counts.scheduled} tone="blue" />
+                    <CountChip label="Due" value={counts.due} tone="amber" />
+                    <CountChip label="Overdue" value={counts.overdue} tone="red" />
+                    <CountChip label="Missed" value={counts.missed} tone="orange" />
+                    {isDoctor && counts.notYetScheduled > 0 && (
+                      <span className="self-center text-muted-foreground">
+                        {counts.notYetScheduled} recommended dose{counts.notYetScheduled === 1 ? " isn't" : "s aren't"} scheduled yet
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span />
+                )}
+                <ViewModeToggle value={viewMode} onChange={setViewMode} />
+              </div>
               <div className="flex gap-1 border-b border-border">
                 {([
                   ["schedule", "Schedule"],
@@ -386,68 +640,50 @@ export default function ImmunizationScheduleModal({
 
             <div className="overflow-y-auto flex-1 px-6 py-4">
               {tab === "schedule" ? (
-                <div className="flex flex-col gap-5">
-                  {milestones.length === 0 && otherOrders.length === 0 && (
-                    <EmptyState
-                      size="compact"
-                      illustration="clipboard"
-                      title="No recommended vaccines"
-                      description={patient?.dateOfBirth ? "No routine vaccines are set up for this age range." : "The recommended schedule needs the patient's date of birth."}
+                milestones.length === 0 && otherOrders.length === 0 ? (
+                  <EmptyState
+                    size="compact"
+                    illustration="clipboard"
+                    title="No recommended vaccines"
+                    description={patient?.dateOfBirth ? "No routine vaccines are set up for this age range." : "The recommended schedule needs the patient's date of birth."}
+                  />
+                ) : viewMode === "grid" ? (
+                  <div className="flex flex-col gap-3">
+                    <ImmunizationChartLegend statuses={scheduleChart.cells.map((c) => c.status)} />
+                    <ImmunizationChart
+                      columns={scheduleChart.columns}
+                      rows={scheduleChart.rows}
+                      cells={scheduleChart.cells}
+                      selectedId={selectedScheduleItem}
+                      onSelect={(id) => setSelectedScheduleItem((current) => (current === id ? null : id))}
                     />
-                  )}
-                  {milestones.map((group) => (
-                    <section key={group.ageLabel}>
-                      <h3 className="mb-2 flex items-baseline gap-2 text-sm font-semibold text-foreground">
-                        {group.ageLabel}
-                        <span className="text-xs font-normal text-muted-foreground">
-                          {group.until ? `due ${formatDay(group.date)} - ${formatDay(group.until)}` : `recommended ${formatDay(group.date)}`}
-                        </span>
-                      </h3>
-                      <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
-                        {group.doses.map((dose) => {
-                          const order = dose.immunizationOrderId ? ordersById.get(dose.immunizationOrderId) : undefined;
-                          return (
-                            <div key={`${dose.vaccineId}-${dose.doseNumber}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
-                              <div className="min-w-[180px] flex-1">
-                                <p className="text-sm font-semibold text-foreground">
-                                  {dose.vaccineName} <span className="font-normal text-muted-foreground">· {dose.doseLabel}</span>
-                                </p>
-                                {dose.vaccineDescription && <p className="text-xs text-muted-foreground">{dose.vaccineDescription}</p>}
-                              </div>
-                              <div className="min-w-[200px] flex-1 text-xs text-muted-foreground">
-                                {order ? <OrderSummaryLine order={order} /> : <>Not scheduled yet</>}
-                              </div>
-                              <ImmunizationStatusBadge status={dose.status} />
-                              <div className="ml-auto">{order ? orderActions(order, false) : recommendedActions(dose)}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  ))}
-                  {otherOrders.length > 0 && (
-                    <section>
-                      <h3 className="mb-2 text-sm font-semibold text-foreground">Other vaccines</h3>
-                      <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
-                        {otherOrders.map((o) => (
-                          <div key={o.immunizationOrderId} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
-                            <div className="min-w-[180px] flex-1">
-                              <p className="text-sm font-semibold text-foreground">
-                                {o.vaccineName} <span className="font-normal text-muted-foreground">· {o.doseLabel}</span>
-                              </p>
-                              {o.vaccineDescription && <p className="text-xs text-muted-foreground">{o.vaccineDescription}</p>}
-                            </div>
-                            <div className="min-w-[200px] flex-1 text-xs text-muted-foreground">
-                              <OrderSummaryLine order={o} />
-                            </div>
-                            <ImmunizationStatusBadge status={o.displayStatus} />
-                            <div className="ml-auto">{orderActions(o, false)}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                </div>
+                    <div ref={selectionRef}>{renderScheduleSelection()}</div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-5">
+                    {milestones.map((group) => (
+                      <section key={group.ageLabel}>
+                        <h3 className="mb-2 flex items-baseline gap-2 text-sm font-semibold text-foreground">
+                          {group.ageLabel}
+                          <span className="text-xs font-normal text-muted-foreground">
+                            {group.until ? `due ${formatDay(group.date)} - ${formatDay(group.until)}` : `recommended ${formatDay(group.date)}`}
+                          </span>
+                        </h3>
+                        <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                          {group.doses.map(renderDoseRow)}
+                        </div>
+                      </section>
+                    ))}
+                    {otherOrders.length > 0 && (
+                      <section>
+                        <h3 className="mb-2 text-sm font-semibold text-foreground">Other vaccines</h3>
+                        <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                          {otherOrders.map(renderOtherOrderRow)}
+                        </div>
+                      </section>
+                    )}
+                  </div>
+                )
               ) : schedule.orders.length === 0 ? (
                 <EmptyState
                   size="compact"
@@ -455,82 +691,20 @@ export default function ImmunizationScheduleModal({
                   title="No vaccinations recorded yet"
                   description={isDoctor ? "Schedule a vaccine from the Schedule tab." : undefined}
                 />
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {schedule.orders.map((o) => {
-                    const isOpen = expanded.has(o.immunizationOrderId);
-                    return (
-                      <div key={o.immunizationOrderId} className={`rounded-lg border border-border px-3 py-2.5 ${o.status === "Cancelled" ? "opacity-70" : ""}`}>
-                        <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
-                          <div className="min-w-[180px] flex-1">
-                            <p className="text-sm font-semibold text-foreground">
-                              {o.vaccineName} <span className="font-normal text-muted-foreground">· {o.doseLabel}</span>
-                              {o.isExternal && (
-                                <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">Given elsewhere</span>
-                              )}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {o.isExternal
-                                ? `Recorded by ${o.administeredByName || "—"} on ${formatStamp(o.createdAt)}`
-                                : `Ordered by ${o.orderedByName || "—"} on ${formatStamp(o.createdAt)} for ${formatDay(o.scheduledDate)}`}
-                            </p>
-                          </div>
-                          <ImmunizationStatusBadge status={o.displayStatus} />
-                          <div className="ml-auto">{orderActions(o, true)}</div>
-                        </div>
-
-                        <div className="mt-1.5 flex flex-col gap-0.5 text-xs text-muted-foreground">
-                          {o.status === "Administered" && (
-                            <p className="text-foreground/90">
-                              Given {formatGiven(o)}
-                              {o.isExternal
-                                ? o.externalFacility ? ` at ${o.externalFacility}` : " at another facility"
-                                : ` by ${o.administeredByName || "—"}`}
-                              {o.batchNumber ? ` · Batch ${o.batchNumber}` : ""}
-                              {o.expiryDate ? ` (exp ${formatDay(o.expiryDate)})` : ""}
-                              {o.route ? ` · ${o.route}` : ""}
-                              {o.injectionSite ? ` · ${o.injectionSite}` : ""}
-                            </p>
-                          )}
-                          {o.status === "Administered" && !o.isExternal && (
-                            <p className={o.adverseReactions ? "font-semibold text-red-600" : ""}>
-                              Adverse reactions: {o.adverseReactions || "none recorded"}
-                            </p>
-                          )}
-                          {o.administrationNotes && <p>Nurse notes: {o.administrationNotes}</p>}
-                          {o.remarks && <p>Remarks: {o.remarks}</p>}
-                          {(o.status === "Missed" || o.status === "Cancelled") && o.statusReason && (
-                            <p className="text-foreground/90">
-                              {o.status} by {o.statusChangedByName || "—"} on {formatStamp(o.statusChangedAt)} — {o.statusReason}
-                            </p>
-                          )}
-                        </div>
-
-                        <button
-                          onClick={() => toggleExpanded(o.immunizationOrderId)}
-                          className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-                        >
-                          {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Audit trail ({o.events.length})
-                        </button>
-                        {isOpen && (
-                          <ol className="mt-1.5 flex flex-col gap-1 border-l-2 border-border pl-3">
-                            {o.events.map((e) => (
-                              <li key={e.immunizationOrderEventId} className="text-xs">
-                                <span className="font-semibold text-foreground">{ACTION_LABELS[e.action] ?? e.action}</span>
-                                <span className="text-muted-foreground">
-                                  {" "}· {e.userName || "—"}
-                                  {e.userRole ? ` (${e.userRole})` : ""} · {formatStamp(e.createdAt)}
-                                </span>
-                                {e.details && <p className="text-muted-foreground">{e.details}</p>}
-                                {e.reason && <p className="text-muted-foreground">Reason: {e.reason}</p>}
-                              </li>
-                            ))}
-                          </ol>
-                        )}
-                      </div>
-                    );
-                  })}
+              ) : viewMode === "grid" ? (
+                <div className="flex flex-col gap-3">
+                  <ImmunizationChartLegend statuses={recordChart.cells.map((c) => c.status)} />
+                  <ImmunizationChart
+                    columns={recordChart.columns}
+                    rows={recordChart.rows}
+                    cells={recordChart.cells}
+                    selectedId={selectedRecordOrder}
+                    onSelect={(id) => setSelectedRecordOrder((current) => (current === id ? null : id))}
+                  />
+                  <div ref={selectionRef}>{pickedRecord ? renderRecordCard(pickedRecord) : <ChartHint record />}</div>
                 </div>
+              ) : (
+                <div className="flex flex-col gap-2">{schedule.orders.map(renderRecordCard)}</div>
               )}
             </div>
           </>
@@ -642,6 +816,16 @@ function ReasonActionModal({
         />
       );
   }
+}
+
+function ChartHint({ record }: { record?: boolean }) {
+  return (
+    <p className="rounded-lg border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+      {record
+        ? "Select a dose in the chart to see its full record and audit trail."
+        : "Select a dose in the chart to see its details and actions."}
+    </p>
+  );
 }
 
 function OrderSummaryLine({ order }: { order: ImmunizationOrderType }) {

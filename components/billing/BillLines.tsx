@@ -8,6 +8,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { BillingService } from "@/services/billing.service";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { formatCurrency } from "@/lib/currency";
+import { useRegion } from "@/lib/region";
 import { BILL_ITEM_CATEGORIES, BillItemCategory, BillItemType, BillType } from "@/types/billing.type";
 import { apiErrorMessage } from "@/lib/apiError";
 
@@ -127,6 +128,7 @@ export function AddBillLineForm({ bill, onBillUpdated }: BillLinesProps) {
 // (pending bills only; both need a reason, which the API keeps on the line). Lives in the
 // bill window's right panel.
 export default function BillLines({ bill, onBillUpdated }: BillLinesProps) {
+  const taxName = useRegion()?.tax.name ?? "Tax";
   const editable = bill.status === "Pending";
   const liveLines = bill.items.filter((i) => !i.isRemoved);
   const removedLines = bill.items.filter((i) => i.isRemoved);
@@ -210,7 +212,7 @@ export default function BillLines({ bill, onBillUpdated }: BillLinesProps) {
                   <th className="py-2 pr-2 text-right">Qty</th>
                   <th className="py-2 pr-2 text-right">Rate</th>
                   <th className="py-2 pr-2 text-right">Disc.</th>
-                  <th className="py-2 pr-2 text-right">Tax</th>
+                  <th className="py-2 pr-2 text-right">{taxName}</th>
                   <th className="py-2 text-right">Total</th>
                   {editable && <th className="py-2 pl-2" />}
                 </tr>
@@ -327,6 +329,7 @@ export default function BillLines({ bill, onBillUpdated }: BillLinesProps) {
 }
 
 function LineFields({ form, setForm }: { form: LineForm; setForm: (f: LineForm) => void }) {
+  const region = useRegion();
   const set = (key: keyof LineForm) => (value: string) => setForm({ ...form, [key]: value });
   return (
     // Two columns throughout, so it fits both the narrow add-items panel and the adjust dialog.
@@ -346,18 +349,23 @@ function LineFields({ form, setForm }: { form: LineForm; setForm: (f: LineForm) 
         <LabeledInput label="Qty" value={form.quantity} onChange={set("quantity")} step="1" />
         <LabeledInput label="Unit price" value={form.unitPrice} onChange={set("unitPrice")} />
         <LabeledInput label="Disc. %" value={form.discountPercent} onChange={set("discountPercent")} max={100} />
-        <LabeledInput label="Tax %" value={form.taxPercent} onChange={set("taxPercent")} max={100} />
-        <label className="flex flex-col gap-0.5">
-          <span className="text-[11px] text-muted-foreground">SAC/HSN code</span>
-          <input
-            type="text"
-            maxLength={20}
-            placeholder="Optional"
-            value={form.serviceCode}
-            onChange={(e) => set("serviceCode")(e.target.value)}
-            className={inputClass}
-          />
-        </label>
+        {/* Tax and the tax service code only where the country has them (GST's SAC/HSN in India). */}
+        {region?.tax.applicable && (
+          <LabeledInput label={`${region.tax.name} %`} value={form.taxPercent} onChange={set("taxPercent")} max={100} />
+        )}
+        {region?.tax.serviceCodeLabel && (
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[11px] text-muted-foreground">{region.tax.serviceCodeLabel}</span>
+            <input
+              type="text"
+              maxLength={20}
+              placeholder="Optional"
+              value={form.serviceCode}
+              onChange={(e) => set("serviceCode")(e.target.value)}
+              className={inputClass}
+            />
+          </label>
+        )}
       </div>
     </div>
   );

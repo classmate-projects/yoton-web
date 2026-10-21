@@ -74,6 +74,11 @@ export default function RegisterCompanyPage() {
           companyLogoUrl: data.body.companyLogoUrl,
           userImage: data.body.userImage,
           allowedModules: data.body.allowedModules ?? [],
+          // The installation's country, chosen by the super administrator before any clinic
+          // could be registered (see lib/region.ts).
+          region: data.body.region ?? null,
+          systemConfigured: true,
+          country: data.body.region?.country,
           currencyCode: data.body.currencyCode,
           currencySymbol: data.body.currencySymbol,
           idleTimeoutMinutes: data.body.idleTimeoutMinutes,

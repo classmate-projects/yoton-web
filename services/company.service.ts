@@ -16,8 +16,8 @@ export const CompanyService = {
     updateSettings: async (payload: {
         name?: string;
         maxDiscountPercent?: number | null;
-        country?: string;
-        currencyCode?: string;
+        // Removes the discount cap (a plain null maxDiscountPercent means "unchanged").
+        clearMaxDiscountPercent?: boolean;
         pediatricMaxAgeYears?: number;
         geriatricMinAgeYears?: number;
         immunizationReminderDays?: number;
@@ -34,6 +34,8 @@ export const CompanyService = {
         website?: string;
         faxNumber?: string;
         facilityId?: string;
+        // Only where the installation's region has tax (TRN in the UAE, GSTIN in India).
+        taxRegistrationNumber?: string;
         eclaimlinkUsername?: string;
         eclaimlinkPassword?: string;
         staffCheckInRequired?: boolean;
