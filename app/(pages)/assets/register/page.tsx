@@ -7,8 +7,10 @@ import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 import SearchableSelect, { standaloneSelectClass } from "@/components/SearchableSelect";
+import ViewModeToggle from "@/components/ViewModeToggle";
 import { AssetsService } from "@/services/assets.service";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { useViewModePreference } from "@/hooks/useViewModePreference";
 import { apiErrorMessage } from "@/lib/apiError";
 import { formatCurrency } from "@/lib/currency";
 import type { Asset } from "@/types/assets.type";
@@ -33,6 +35,7 @@ function RegisterInner() {
   const [openId, setOpenId] = useState<string | null>(params.get("open"));
   const [creating, setCreating] = useState(false);
   const [labels, setLabels] = useState<InventoryLabel[] | null>(null);
+  const [viewMode, setViewMode] = useViewModePreference("assets.register.viewMode");
 
   const load = useCallback(() => {
     AssetsService.assets({ search: search.trim() || undefined, category: category || undefined, status: status || undefined, due: due || undefined, page, pageSize: PAGE_SIZE })
@@ -134,11 +137,55 @@ function RegisterInner() {
             preserveCase
           />
         </div>
+        <ViewModeToggle value={viewMode} onChange={setViewMode} className="ml-auto" />
       </div>
       {loading ? (
         <LoadingSpinner />
       ) : rows.length === 0 ? (
         <EmptyState illustration="clipboard" title="No assets here" action={team ? { label: "Register an asset", onClick: () => setCreating(true) } : undefined} />
+      ) : viewMode === "grid" ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+          {rows.map((a) => (
+            <div
+              key={a.assetId}
+              role="button"
+              tabIndex={0}
+              onClick={() => setOpenId(a.assetId)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setOpenId(a.assetId);
+                }
+              }}
+              // .card sets its own background/border outside Tailwind's layers, so the hover
+              // classes need "!" to win over it.
+              className="card flex cursor-pointer flex-col gap-3 p-4 text-left hover:bg-muted! hover:border-primary/50!"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-muted-foreground">{a.assetTag}</p>
+                  <p className="truncate font-medium text-foreground" title={a.name}>{a.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {[CATEGORY_LABELS[a.category], [a.make, a.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+                <StatusBadge status={a.status} />
+              </div>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+                <dt className="text-muted-foreground">Where</dt>
+                <dd className="truncate">{[a.departmentName, a.location].filter(Boolean).join(" · ") || "—"}</dd>
+                <dt className="text-muted-foreground">Servicing</dt>
+                <dd>{a.maintenanceIntervalDays ? <DueText days={a.maintenanceDueInDays} /> : <span className="text-muted-foreground">—</span>}</dd>
+                <dt className="text-muted-foreground">Calibration</dt>
+                <dd>{a.requiresCalibration ? <DueText days={a.calibrationDueInDays} /> : <span className="text-muted-foreground">—</span>}</dd>
+              </dl>
+              <div className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-2.5 text-xs">
+                <span className="text-muted-foreground">{a.openWorkOrders > 0 ? `${a.openWorkOrders} open job${a.openWorkOrders === 1 ? "" : "s"}` : "No open jobs"}</span>
+                <span className="font-semibold tabular-nums text-foreground">{formatCurrency(a.bookValue)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
