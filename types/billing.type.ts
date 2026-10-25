@@ -1,5 +1,5 @@
 // Mirrors Yoton-API's BillItemCategories.
-export const BILL_ITEM_CATEGORIES = ["Consultation", "Pharmacy", "Lab", "Radiology", "Procedure", "Other"] as const;
+export const BILL_ITEM_CATEGORIES = ["Consultation", "Pharmacy", "Lab", "Radiology", "Procedure", "Consumables", "Other"] as const;
 export type BillItemCategory = (typeof BILL_ITEM_CATEGORIES)[number];
 
 export interface BillItemType {

@@ -82,9 +82,7 @@ export interface AddMedicinePayload {
   ingredient?: string;
   dosageForm?: string;
   category?: string;
-  stock: number;
   price: number;
-  expiryDate?: string | null;
   isHighRisk?: boolean;
   code?: string;
   manufacturer?: string;

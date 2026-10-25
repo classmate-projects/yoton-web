@@ -25,6 +25,7 @@ import {
   HeartPulse,
   Lock,
   LogOut,
+  PackagePlus,
   Pencil,
   Pill,
   PlayCircle,
@@ -43,6 +44,7 @@ import {
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import HintTooltip from "@/components/HintTooltip";
+import PatientItemsUsedModal from "@/components/inventory/PatientItemsUsed";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import PasswordInput from "@/components/PasswordInput";
@@ -344,6 +346,7 @@ function NurseWorkbenchInner() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [unviewedDocumentCount, setUnviewedDocumentCount] = useState(0);
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [showItemsUsed, setShowItemsUsed] = useState(false);
 
   // Pediatric Immunization Schedule - the chart card and full schedule show for a pediatric
   // patient, and stay reachable (read-only) for one who has aged out with a record.
@@ -2118,6 +2121,13 @@ function NurseWorkbenchInner() {
                       <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-blue-500 border-2 border-card" />
                     )}
                   </button>
+                  <button
+                    onClick={() => setShowItemsUsed(true)}
+                    className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <PackagePlus size={13} />
+                    Items used
+                  </button>
                   </div>
 
                   {/* Known Allergies · Special Remarks · Chief Complaint — 1 row */}
@@ -3696,6 +3706,10 @@ function NurseWorkbenchInner() {
               </div>
             </div>
           </div>
+        )}
+
+        {showItemsUsed && selectedPatientId && summary && (
+          <PatientItemsUsedModal patientId={selectedPatientId} patientName={summary.name} visitId={currentVisitId} onClose={() => setShowItemsUsed(false)} />
         )}
 
         {/* Patient Documents modal */}

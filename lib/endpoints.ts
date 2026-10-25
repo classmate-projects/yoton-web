@@ -353,7 +353,6 @@ export const ENDPOINTS = {
         BULK_UPLOAD_MEDICINES: `/api/Pharmacy/medicine/bulk`,
         UPDATE_MEDICINE: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}`,
         REMOVE_MEDICINE: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}`,
-        UPDATE_STOCK: `/api/Pharmacy/medicine/stock`,
         GET_PRESCRIPTIONS: (date?: string) => date ? `/api/Pharmacy/prescription?date=${date}` : `/api/Pharmacy/prescription`,
         GET_PENDING_PRESCRIPTIONS: (date?: string) => date ? `/api/Pharmacy/prescription/pending?date=${date}` : `/api/Pharmacy/prescription/pending`,
         CREATE_PRESCRIPTION: `/api/Pharmacy/prescription`,

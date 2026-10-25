@@ -50,6 +50,8 @@ export default function PharmacyPage() {
   const [medicationQueue, setMedicationQueue] = useState<PharmacyMedicationType[]>([]);
   const [medicines, setMedicines] = useState<MedicineType[]>([]);
   const [lowStock, setLowStock] = useState<MedicineType[]>([]);
+  // At or below their reorder level in the pharmacy store (set per medicine in Inventory).
+  const lowStockIds = new Set(lowStock.map((m) => m.medicineId));
 
   // Inventory tab's own browsable/searchable catalog table — decoupled from `medicines`
   // above (which stays a flat picker list for the walk-in-sale/alternatives dropdowns)
@@ -128,9 +130,7 @@ export default function PharmacyPage() {
   const [medIngredient, setMedIngredient] = useState("");
   const [medDosageForm, setMedDosageForm] = useState("");
   const [medCategory, setMedCategory] = useState("");
-  const [medStock, setMedStock] = useState<number>(0);
   const [medPrice, setMedPrice] = useState<number>(0);
-  const [medExpiry, setMedExpiry] = useState("");
   const [medIsHighRisk, setMedIsHighRisk] = useState(false);
   const [medCode, setMedCode] = useState("");
   const [medManufacturer, setMedManufacturer] = useState("");
@@ -553,9 +553,7 @@ export default function PharmacyPage() {
     setMedIngredient("");
     setMedDosageForm("");
     setMedCategory("");
-    setMedStock(0);
     setMedPrice(0);
-    setMedExpiry("");
     setMedIsHighRisk(false);
     setMedCode("");
     setMedManufacturer("");
@@ -570,9 +568,7 @@ export default function PharmacyPage() {
     setMedIngredient(medicine.ingredient || "");
     setMedDosageForm(medicine.dosageForm || "");
     setMedCategory(medicine.category || "");
-    setMedStock(medicine.stock);
     setMedPrice(medicine.price);
-    setMedExpiry(medicine.expiryDate ? medicine.expiryDate.slice(0, 10) : "");
     setMedIsHighRisk(medicine.isHighRisk);
     setMedCode(medicine.code || "");
     setMedManufacturer(medicine.manufacturer || "");
@@ -602,9 +598,7 @@ export default function PharmacyPage() {
         ingredient: medIngredient || undefined,
         dosageForm: medDosageForm || undefined,
         category: medCategory || undefined,
-        stock: medStock,
         price: medPrice,
-        expiryDate: medExpiry || undefined,
         isHighRisk: medIsHighRisk,
         code: medCode || undefined,
         manufacturer: medManufacturer || undefined,
@@ -637,16 +631,6 @@ export default function PharmacyPage() {
         }
       }
     );
-  };
-
-  const adjustStock = async (medicine: MedicineType, delta: number) => {
-    try {
-      const data = await PharmacyService.updateStock(medicine.medicineId, delta);
-      toast.success(data.message || "Stock updated");
-      refreshMedicines();
-    } catch (error) {
-      toast.error(apiErrorMessage(error, "Failed to update stock"));
-    }
   };
 
   const toggleHighRisk = async (medicine: MedicineType) => {
@@ -1021,9 +1005,13 @@ export default function PharmacyPage() {
             {medicationRegistries.length > 0 && (
               <p className="text-xs text-muted-foreground px-4 pt-4">
                 Bulk-importing the {medicationRegistries.join("/")} medication registries is managed by admin under Configurable Lists →
-                Medication. This table is for day-to-day stock, pricing, and dispensing management.
+                Medication. This table is for day-to-day pricing and dispensing.
               </p>
             )}
+            <p className="text-xs text-muted-foreground px-4 pt-4">
+              Stock is what the Pharmacy store holds that hasn&apos;t expired - dispensing takes the earliest expiry first. New stock comes in through Inventory: a
+              delivery received into the Pharmacy store, or a request to the main store.
+            </p>
             <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-border">
               <input
                 type="text"
@@ -1052,9 +1040,9 @@ export default function PharmacyPage() {
                     <th className="text-foreground/90">Code</th>
                     <th className="text-foreground/90">Manufacturer</th>
                     <th className="text-foreground/90">Route</th>
-                    <th className="text-foreground/90">Stock</th>
+                    <th className="text-foreground/90">In stock</th>
                     <th className="text-foreground/90">Price</th>
-                    <th className="text-center text-foreground/90">Adjust</th>
+                    <th className="text-center text-foreground/90">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -1069,7 +1057,7 @@ export default function PharmacyPage() {
                       <tr
                         key={med.medicineId}
                         className={`hover:bg-muted/30 transition-colors ${
-                          med.stock < 10 ? "bg-destructive/5" : ""
+                          lowStockIds.has(med.medicineId) ? "bg-destructive/5" : ""
                         }`}
                       >
                         <td className="font-semibold text-foreground">
@@ -1100,27 +1088,16 @@ export default function PharmacyPage() {
                         <td className="text-foreground/80">{med.code || "—"}</td>
                         <td className="text-foreground/80">{med.manufacturer || "—"}</td>
                         <td className="text-foreground/80">{med.route || "—"}</td>
-                        <td className={med.stock < 10 ? "text-destructive font-semibold" : "text-foreground/80"}>
-                          {med.stock}
+                        <td className={lowStockIds.has(med.medicineId) ? "text-destructive font-semibold" : med.stock > 0 ? "text-foreground/80" : "text-muted-foreground"}>
+                          {med.stock.toLocaleString()}
+                          {med.expiryDate && <span className="block text-xs font-normal text-muted-foreground">exp {formatDate(med.expiryDate)}</span>}
                         </td>
                         <td className="text-foreground/80">{currency(med.price)}</td>
                         <td>
                           <div className="flex justify-center items-center gap-1">
                             <button
-                              onClick={() => adjustStock(med, -1)}
-                              className="w-7 h-7 rounded-md bg-muted hover:bg-muted/80 text-foreground font-bold cursor-pointer"
-                            >
-                              −
-                            </button>
-                            <button
-                              onClick={() => adjustStock(med, 1)}
-                              className="w-7 h-7 rounded-md bg-muted hover:bg-muted/80 text-foreground font-bold cursor-pointer"
-                            >
-                              +
-                            </button>
-                            <button
                               onClick={() => openAlternativesManager(med)}
-                              className="ml-1 px-2 py-1 text-xs font-semibold rounded-md border border-border text-foreground/80 hover:bg-muted cursor-pointer"
+                              className="px-2 py-1 text-xs font-semibold rounded-md border border-border text-foreground/80 hover:bg-muted cursor-pointer"
                               title="Manage alternative medicines"
                             >
                               Alternatives
@@ -1219,7 +1196,7 @@ export default function PharmacyPage() {
                   >
                     <span className="font-semibold text-foreground text-sm">{med.name}</span>
                     <span className="bg-destructive text-white px-2 py-1 text-xs rounded-full">
-                      {med.stock} left
+                      {med.stock.toLocaleString()} left
                     </span>
                   </li>
                 ))}
@@ -1438,17 +1415,6 @@ export default function PharmacyPage() {
               </div>
               <div className="flex gap-4">
                 <div className="w-full">
-                  <label className="text-sm font-bold text-foreground/90">Stock</label>
-                  <input
-                    type="number"
-                    min={0}
-                    required
-                    value={medStock}
-                    onChange={(e) => setMedStock(Number(e.target.value))}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  />
-                </div>
-                <div className="w-full">
                   <label className="text-sm font-bold text-foreground/90">Price</label>
                   <input
                     type="number"
@@ -1461,15 +1427,9 @@ export default function PharmacyPage() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-bold text-foreground/90">Expiry Date</label>
-                <DatePicker
-                  value={medExpiry}
-                  onChange={(v) => setMedExpiry(v)}
-                  className="flex w-full items-center justify-between gap-2 mt-1 p-3 rounded-lg border border-border bg-muted text-left text-foreground outline-none transition-all focus-visible:border-primary"
-                />
-                <p className="text-xs text-muted-foreground mt-1">Leave blank until a real batch has been stocked.</p>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Stock, batches and expiry dates are kept in Inventory - receive this medicine into the Pharmacy store to stock it.
+              </p>
 
               <label className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground">
                 <input type="checkbox" checked={medIsHighRisk} onChange={(e) => setMedIsHighRisk(e.target.checked)} />

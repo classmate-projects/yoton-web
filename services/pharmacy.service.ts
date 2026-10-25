@@ -33,13 +33,6 @@ export const PharmacyService = {
     const { data } = await api.delete(ENDPOINTS.PHARMACY.REMOVE_MEDICINE(medicineId));
     return data;
   },
-  updateStock: async (medicineId: string, quantity: number) => {
-    const { data } = await api.post(ENDPOINTS.PHARMACY.UPDATE_STOCK, {
-      medicineId,
-      quantity,
-    });
-    return data;
-  },
   getPrescriptions: async (date?: string) => {
     const { data } = await api.get(ENDPOINTS.PHARMACY.GET_PRESCRIPTIONS(date));
     return data;

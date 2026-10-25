@@ -1,7 +1,7 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
 import type { RegionFeature } from "@/types/region.type";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList, UserCheck } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList, UserCheck, Boxes, PackageOpen } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -147,6 +147,23 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Billing",
         navLink: "/billing",
         icon: MdPayment,
+        group: "User Modules"
+    },
+    // Inventory: the store team's module (every store, purchasing, approvals, reports) - see
+    // yoton-api's Inventory*Controller.cs.
+    {
+        id: 34,
+        name: "Inventory",
+        navLink: "/inventory",
+        icon: Boxes,
+        group: "User Modules"
+    },
+    // A department's own store: request stock, confirm deliveries, record use, send back.
+    {
+        id: 35,
+        name: "Store Requests",
+        navLink: "/store-requests",
+        icon: PackageOpen,
         group: "User Modules"
     },
     {
