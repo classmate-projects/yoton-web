@@ -174,6 +174,8 @@ export default function PatientEntryPage() {
   });
   // The installation's country: phone code, national ID format and the address structure.
   const region = useRegion();
+  // A visa only applies to someone who isn't a citizen of the installation's own country.
+  const visaRequired = formData.nationality !== region?.country;
   const structuredAddress = (region?.addressFields.length ?? 0) > 0;
   const [addressFields, setAddressFields] = useState<AddressValues>({});
   // The one-line address already on file for a record saved without the structured fields
@@ -596,6 +598,21 @@ export default function PatientEntryPage() {
     e.preventDefault();
 
     setLoading(true);
+
+    // The starred dropdowns - a dropdown can't lean on the browser's own required check.
+    const missing = [
+      !formData.sex && "Sex",
+      !formData.nationality && "Nationality",
+      !formData.maritalStatus && "Marital Status",
+      visaRequired && !formData.visaType && "Visa Type",
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      const message = `Please choose: ${missing.join(", ")}`;
+      setError(message);
+      toast.error(message);
+      setLoading(false);
+      return;
+    }
 
     if (!isValidEmail(formData.email)) {
       setError("Enter a valid email address (e.g. john@example.com).");
@@ -1233,7 +1250,7 @@ export default function PatientEntryPage() {
             {/* Visa Type */}
             <div className="flex flex-col gap-2">
               <label htmlFor="visaType" className="font-semibold text-foreground/90">
-                Visa Type <span className="text-red-500">*</span>
+                Visa Type {visaRequired && <span className="text-red-500">*</span>}
               </label>
               <SearchableSelect
                 value={formData.visaType}

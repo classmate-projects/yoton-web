@@ -388,6 +388,10 @@ export const ENDPOINTS = {
         ADD_ITEM_FROM_SOURCE: `/api/Billing/item/from-source`,
         UPDATE_ITEM: (itemId: string) => `/api/Billing/item/${itemId}`,
         REMOVE_ITEM: (itemId: string) => `/api/Billing/item/${itemId}/remove`,
+        // Refunds owed on paid bills (items returned after payment).
+        GET_REFUNDS: (billId: string) => `/api/Billing/${billId}/refunds`,
+        GET_REFUNDS_DUE: `/api/Billing/refunds/due`,
+        PAY_REFUND: (refundId: string) => `/api/Billing/refunds/${refundId}/pay`,
         REPORTS: (from: string, to: string) =>
             `/api/BillingReports?from=${from}&to=${to}&tzOffset=${new Date().getTimezoneOffset()}`,
     },

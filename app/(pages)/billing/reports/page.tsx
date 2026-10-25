@@ -111,6 +111,9 @@ function buildTabs(r: BillingReportType): ReportTab[] {
       tiles: [
         { label: "Total collected", value: formatCurrency(c.totalAmount) },
         { label: "Bills paid", value: String(c.totalBills) },
+        ...(r.refunds.totalAmount > 0
+          ? [{ label: "After refunds", value: formatCurrency(c.netAfterRefunds), hint: `${formatCurrency(r.refunds.totalAmount)} given back` }]
+          : []),
         ...c.byMethod.slice(0, 2).map((m) => ({
           label: m.method,
           value: formatCurrency(m.amount),
@@ -210,12 +213,16 @@ function buildTabs(r: BillingReportType): ReportTab[] {
     },
     {
       key: "cancellations",
-      label: "Cancellations",
-      description: "Bills cancelled and bill lines removed in the period, with who did it and why.",
+      label: "Cancellations & Refunds",
+      description: "Bills cancelled, bill lines removed and refunds paid out in the period, with who did it and why.",
       tiles: [
         { label: "Bills cancelled", value: String(x.cancelledCount), hint: formatCurrency(x.cancelledAmount) },
         { label: "Lines removed", value: String(x.removedCount), hint: formatCurrency(x.removedAmount) },
-        { label: "Refunds", value: "—", hint: "Refunds aren't recorded yet" },
+        {
+          label: "Refunds paid out",
+          value: formatCurrency(r.refunds.totalAmount),
+          hint: `${r.refunds.count} refund${r.refunds.count === 1 ? "" : "s"}${r.refunds.dueAmount > 0 ? ` · ${formatCurrency(r.refunds.dueAmount)} still to give back` : ""}`,
+        },
       ],
       tables: [
         table({
@@ -246,6 +253,24 @@ function buildTabs(r: BillingReportType): ReportTab[] {
           rows: x.removedLines,
           totals: true,
           emptyText: "No bill lines were removed in this period.",
+        }),
+        table({
+          title: "Refunds paid out",
+          note: "Money given back for items returned after their bill was paid.",
+          columns: [
+            { header: "Paid out at", kind: "datetime", get: (f) => f.paidOutAt },
+            { header: "Bill #", get: (f) => f.billId },
+            { header: "Patient", get: (f) => f.patientName },
+            { header: "Item", get: (f) => f.description },
+            { header: "Qty", kind: "number", get: (f) => f.quantity },
+            { header: "Reason", get: (f) => f.reason },
+            { header: "Method", get: (f) => f.method },
+            { header: "By", get: (f) => f.paidOutBy },
+            { header: "Amount", kind: "money", get: (f) => f.amount },
+          ],
+          rows: r.refunds.rows,
+          totals: true,
+          emptyText: "No refunds were paid out in this period.",
         }),
       ],
     },

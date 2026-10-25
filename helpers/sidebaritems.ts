@@ -1,7 +1,7 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
 import type { RegionFeature } from "@/types/region.type";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList, UserCheck, Boxes, PackageOpen } from "lucide-react";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList, UserCheck, Boxes, PackageOpen, Wrench } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -164,6 +164,15 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Store Requests",
         navLink: "/store-requests",
         icon: PackageOpen,
+        group: "User Modules"
+    },
+    // Assets & maintenance: the equipment register, servicing, repairs and calibration - see
+    // yoton-api's AssetsController.cs.
+    {
+        id: 36,
+        name: "Assets & Maintenance",
+        navLink: "/assets",
+        icon: Wrench,
         group: "User Modules"
     },
     {

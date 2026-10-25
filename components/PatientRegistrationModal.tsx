@@ -138,6 +138,17 @@ export default function PatientRegistrationModal({
   const [pendingPayload, setPendingPayload] = useState<ReceptionCreatePatientType | null>(null);
   const [openingMatchId, setOpeningMatchId] = useState<string | null>(null);
 
+  // Whether the consultation form was opened / pre-filled for this registration - declared
+  // before the reset below, which clears them.
+  const presetApplied = useRef(false);
+  const presetsFilledRef = useRef(false);
+
+  const resetConsult = () => {
+    setSelectedDepartmentId(""); setSelectedSpecializationId(""); setSelectedDoctorId("");
+    setDaySlots(null); setSelectedSlot(null); setConsultNotes("");
+    setConsultDate(toDateInputValue(new Date()));
+  };
+
   // Reset everything when modal opens/closes
   useEffect(() => {
     if (!isOpen) {
@@ -212,7 +223,6 @@ export default function PatientRegistrationModal({
   useSignalRRefetch(["appointmentCreated", "appointmentCancelled"], fetchSlots);
 
   // Auto-start consultation after registration
-  const presetApplied = useRef(false);
   useEffect(() => {
     if (!registeredPatient || presetApplied.current) return;
     presetApplied.current = true;
@@ -220,7 +230,6 @@ export default function PatientRegistrationModal({
   }, [registeredPatient]);
 
   // Pre-fill doctor/spec/dept/date once consult form opens
-  const presetsFilledRef = useRef(false);
   useEffect(() => {
     if (!showConsultForm || presetsFilledRef.current || !presetDoctorId) return;
     presetsFilledRef.current = true;
@@ -236,12 +245,6 @@ export default function PatientRegistrationModal({
     const match = (daySlots.slots ?? []).find((s) => s.start === presetSlotStart);
     if (match) setSelectedSlot(match);
   }, [daySlots]);
-
-  const resetConsult = () => {
-    setSelectedDepartmentId(""); setSelectedSpecializationId(""); setSelectedDoctorId("");
-    setDaySlots(null); setSelectedSlot(null); setConsultNotes("");
-    setConsultDate(toDateInputValue(new Date()));
-  };
 
   const closeAll = () => {
     onClose();

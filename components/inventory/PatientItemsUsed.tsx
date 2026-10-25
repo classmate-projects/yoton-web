@@ -16,8 +16,17 @@ interface Line {
   quantity: string;
 }
 
-// What the store has, searched as you type.
-function StoreItemSearch({ storeId, onPick }: { storeId: string; onPick: (item: PatientUseItem) => void }) {
+// What the store has, searched as you type. fetchItems must be a stable function (a service
+// method, not an inline arrow) - it's an effect dependency.
+export function StoreItemSearch({
+  storeId,
+  onPick,
+  fetchItems = InventoryService.patientUseItems,
+}: {
+  storeId: string;
+  onPick: (item: PatientUseItem) => void;
+  fetchItems?: (storeId: string, search?: string) => Promise<{ data: PatientUseItem[] }>;
+}) {
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<PatientUseItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -26,12 +35,12 @@ function StoreItemSearch({ storeId, onPick }: { storeId: string; onPick: (item: 
   useEffect(() => {
     const mine = ++seq.current;
     const handle = setTimeout(() => {
-      InventoryService.patientUseItems(storeId, term.trim() || undefined)
+      fetchItems(storeId, term.trim() || undefined)
         .then((r) => mine === seq.current && setResults(r.data))
         .catch(() => mine === seq.current && setResults([]));
     }, 250);
     return () => clearTimeout(handle);
-  }, [storeId, term]);
+  }, [storeId, term, fetchItems]);
 
   return (
     <div className="relative" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOpen(false)}>
@@ -127,7 +136,9 @@ function UsedRecord({ record, onChanged }: { record: PatientUseRecord; onChanged
           {record.charge > 0 && (
             <span className="text-sm font-semibold tabular-nums text-foreground">
               {formatCurrency(record.charge)}
-              <span className="block text-right text-[11px] font-normal text-muted-foreground">{record.billId ? `On bill ${record.billId}` : "Not billed yet"}</span>
+              <span className="block text-right text-[11px] font-normal text-muted-foreground">
+                {record.billId ? `On bill ${record.billId}${record.billStatus === "Paid" ? " (paid - returns are refunded)" : ""}` : "Not billed yet"}
+              </span>
             </span>
           )}
           {record.canReturn && !returning && (

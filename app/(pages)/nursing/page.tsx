@@ -52,6 +52,7 @@ import RichTextEditor from "@/components/RichTextEditor";
 import ToggleButton from "@/components/ToggleButton";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect, { standaloneSelectClass } from "@/components/SearchableSelect";
+import DateTimePicker from "@/components/DateTimePicker";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import FamilyHistorySection from "@/components/FamilyHistorySection";
 import HistoryDrawer from "@/components/HistoryDrawer";
@@ -2026,25 +2027,33 @@ function NurseWorkbenchInner() {
             </span>
           )}
           {isAdmin && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-end gap-2">
               <div className="w-48 shrink-0">
+                <label htmlFor="chart-acting-nurse" className="mb-1 block text-xs font-semibold text-muted-foreground">
+                  Acting nurse
+                </label>
                 <SearchableSelect
+                  id="chart-acting-nurse"
                   value={selectedNurseId}
                   onChange={setSelectedNurseId}
                   className={standaloneSelectClass}
                   options={[
-                    { value: "", label: "Acting nurse…" },
+                    { value: "", label: "Select nurse…" },
                     ...nurses.map((n) => ({ value: n.id, label: n.name })),
                   ]}
                 />
               </div>
               <div className="w-48 shrink-0">
+                <label htmlFor="chart-acting-doctor" className="mb-1 block text-xs font-semibold text-muted-foreground">
+                  Acting doctor (for allergies)
+                </label>
                 <SearchableSelect
+                  id="chart-acting-doctor"
                   value={selectedDoctorId}
                   onChange={setSelectedDoctorId}
                   className={standaloneSelectClass}
                   options={[
-                    { value: "", label: "Acting doctor (for allergies)…" },
+                    { value: "", label: "Select doctor…" },
                     ...assignedDoctors.map((d) => ({ value: String(d.doctorId), label: d.userName })),
                   ]}
                 />
@@ -2589,12 +2598,12 @@ function NurseWorkbenchInner() {
                         </div>
                         <div>
                           <label className="text-xs font-medium text-muted-foreground block mb-1">Action Date Time</label>
-                          <input
-                            type="datetime-local"
+                          <DateTimePicker
                             disabled={!canEdit}
                             value={triageForm.actionDateTime}
-                            onChange={(e) => setTriageForm((prev) => ({ ...prev, actionDateTime: e.target.value }))}
-                            className="text-sm"
+                            onChange={(v) => setTriageForm((prev) => ({ ...prev, actionDateTime: v }))}
+                            dateClassName="flex h-10 w-40 items-center gap-2 overflow-hidden rounded-lg border border-border bg-transparent px-3 text-sm text-foreground focus-within:ring-2 focus-within:ring-primary [&_input]:text-sm"
+                            timeClassName="h-10 w-28 shrink-0 rounded-lg border border-border bg-transparent px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                           />
                         </div>
                       </div>
@@ -4293,16 +4302,15 @@ function NurseWorkbenchInner() {
                   </div>
                   {/* Department filter */}
                   {departments.length > 0 && (
-                    <select
-                      value={departmentFilter}
-                      onChange={(e) => { setDepartmentFilter(e.target.value); setMonitoringPage(0); }}
-                      className="h-10 rounded-lg border border-border bg-(--color-highlight) px-3 text-sm text-foreground"
-                    >
-                      <option value="">All Departments</option>
-                      {departments.map((d) => (
-                        <option key={d.departmentId} value={d.departmentId}>{d.name}</option>
-                      ))}
-                    </select>
+                    <div className="w-48 shrink-0">
+                      <SearchableSelect
+                        value={departmentFilter}
+                        onChange={(v) => { setDepartmentFilter(v); setMonitoringPage(0); }}
+                        options={[{ value: "", label: "All Departments" }, ...departments.map((d) => ({ value: d.departmentId, label: d.name }))]}
+                        className={standaloneSelectClass}
+                        preserveCase
+                      />
+                    </div>
                   )}
                   {/* Filters by lastAppointmentDate (which can be a future scheduled visit,
                       not only a past one) - lets a nurse jump straight to a specific day

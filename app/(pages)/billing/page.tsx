@@ -27,6 +27,7 @@ import Link from "next/link";
 import { FileBarChart, Printer, X } from "lucide-react";
 import BillPrintout from "@/components/billing/BillPrintout";
 import BillLines, { AddBillLineForm } from "@/components/billing/BillLines";
+import { BillRefunds, RefundsDue } from "@/components/billing/BillRefunds";
 import { apiErrorMessage } from "@/lib/apiError";
 
 const currency = (value: number) => formatCurrency(value);
@@ -544,6 +545,10 @@ function BillingPageInner() {
         </div>
       </div>
 
+      <div className="mb-4">
+        <RefundsDue />
+      </div>
+
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
         <BillingStatCard label="Pending Bills" hint="Number of invoices that have been created but not yet paid by the patient.">
@@ -1034,6 +1039,7 @@ function BillingPageInner() {
                   )}
 
                   <BillLines bill={detailBill} onBillUpdated={handleBillLinesUpdated} />
+                  {detailBill.status === "Paid" && <BillRefunds billId={detailBill.billId} />}
                 </div>
 
                 {/* Pinned footer: totals, payment, print */}

@@ -12,9 +12,10 @@ import { apiErrorMessage } from "@/lib/apiError";
 import type { IssueSummary, RequisitionSummary, StockRow, TransferSummary } from "@/types/inventory.type";
 import { IssueDetail, IssueForm, RequisitionDetail, RequisitionForm, TransferDetail, TransferForm } from "@/components/inventory/Movements";
 import ItemStockDetail from "@/components/inventory/ItemStockDetail";
+import DepartmentEquipment from "@/components/assets/DepartmentEquipment";
 import { DocStatus, InventoryProvider, day, inputClass, primaryButton, qty, secondaryButton, stamp, useInventory } from "@/components/inventory/inventoryUi";
 
-type Tab = "stock" | "requests" | "incoming" | "use";
+type Tab = "stock" | "requests" | "incoming" | "use" | "equipment";
 
 function StoreRequestsInner() {
   const { myStores, stores } = useInventory();
@@ -115,6 +116,7 @@ function StoreRequestsInner() {
             ["requests", `My requests (${requests.filter((r) => r.status === "Submitted" || r.status === "PartiallyIssued").length} open)`],
             ["incoming", `Incoming (${incoming.length})`],
             ["use", "Used stock"],
+            ["equipment", "Equipment"],
           ] as [Tab, string][]
         ).map(([key, label]) => (
           <button key={key} type="button" onClick={() => setTab(key)} className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold ${tab === key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
@@ -237,6 +239,8 @@ function StoreRequestsInner() {
             </table>
           </div>
         )
+      ) : tab === "equipment" ? (
+        <DepartmentEquipment departmentId={store?.departmentId ?? null} />
       ) : issues.length === 0 ? (
         <EmptyState illustration="clipboard" title="No use recorded yet" size="compact" action={{ label: "Record use", onClick: () => setDialog("issue") }} />
       ) : (

@@ -33,7 +33,7 @@ import AddUserIcon from "@/public/icons/AddUserIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { History as HistoryIcon, UserX, Eye } from "lucide-react";
+import { History as HistoryIcon, UserX, Eye, CalendarClock } from "lucide-react";
 import { UserService } from "@/services/user.service";
 import ViewModeToggle from "@/components/ViewModeToggle";
 import { useViewModePreference } from "@/hooks/useViewModePreference";
@@ -458,7 +458,15 @@ export default function UserManagement() {
         </button>
       )}
 
-
+      {user.role.toLowerCase() === "nurse" && !user.isTerminated && (
+        <button
+          onClick={() => openShiftsManager(user)}
+          title="Manage Shifts"
+          className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer text-purple-600"
+        >
+          <CalendarClock size={18} />
+        </button>
+      )}
     </div>
   );
 

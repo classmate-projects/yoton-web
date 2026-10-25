@@ -629,8 +629,7 @@ export function IssueDetail({ id, onClose }: { id: string; onClose: () => void }
     load();
   }, [load]);
   if (!issue) return null;
-  // A return would change a patient's bill while one depends on it - Billing removes the line first.
-  const canReturn = issue.lines.some((l) => l.quantity > l.returnedQuantity) && !issue.billId;
+  const canReturn = issue.lines.some((l) => l.quantity > l.returnedQuantity);
 
   const saveReturn = async () => {
     const lines = Object.entries(returnQty)
@@ -683,7 +682,7 @@ export function IssueDetail({ id, onClose }: { id: string; onClose: () => void }
         <Facts items={[{ label: "Issued by", value: issue.issuedByName }, { label: "When", value: stamp(issue.createdAt) }, { label: "Value (net)", value: formatCurrency(issue.total) }, { label: "Purpose", value: issue.purpose ?? "—" }]} />
         {issue.billId && (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-            On bill {issue.billId} ({issue.billStatus}) - nothing can come back until Billing removes it from the bill.
+            On bill {issue.billId} ({issue.billStatus}) - {issue.billStatus === "Paid" ? "anything returned now becomes a refund for Billing to pay out." : "anything returned now comes off the bill."}
           </p>
         )}
         <table className="table-compact table-no-row-hover w-full text-sm">

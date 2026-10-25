@@ -12,10 +12,20 @@ export interface BillingReportType {
   collection: {
     totalBills: number;
     totalAmount: number;
+    // Collected less refunds paid out in the same period.
+    netAfterRefunds: number;
     byMethod: { method: string; count: number; amount: number }[];
     byCashier: { cashier: string; count: number; amount: number; methods: MethodSplit }[];
     byDay: { date: string; count: number; amount: number; methods: MethodSplit }[];
     payments: { billId: string; patientName: string; paidAt: string; method: string; cashier: string; amount: number }[];
+  };
+  // Refunds paid out in the period (items returned after their bill was paid).
+  refunds: {
+    count: number;
+    totalAmount: number;
+    // Still to be given back, as of now.
+    dueAmount: number;
+    rows: { refundId: string; billId: string; patientName: string; description: string; quantity: number; amount: number; reason: string; paidOutAt: string; method: string; paidOutBy: string }[];
   };
   outstanding: {
     totalBills: number;

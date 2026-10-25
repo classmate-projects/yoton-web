@@ -45,6 +45,23 @@ export interface BillType {
   items: BillItemType[];
 }
 
+// Money owed back on a paid bill when items were returned after payment.
+export interface BillRefundType {
+  refundId: string;
+  billId: string;
+  billItemId: string;
+  description: string;
+  quantity: number;
+  amount: number;
+  reason: string;
+  status: "Due" | "PaidOut";
+  requestedByName: string | null;
+  createdAt: string;
+  paymentMethod: string | null;
+  paidOutAt: string | null;
+  paidOutByName: string | null;
+}
+
 export interface BillingSummaryType {
   pendingCount: number;
   pendingAmount: number;

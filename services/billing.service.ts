@@ -35,6 +35,18 @@ export const BillingService = {
     const { data } = await api.post(ENDPOINTS.BILLING.PAY, { billId, paymentMethod });
     return data;
   },
+  getRefunds: async (billId: string) => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_REFUNDS(billId));
+    return data;
+  },
+  getRefundsDue: async () => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_REFUNDS_DUE);
+    return data;
+  },
+  payRefund: async (refundId: string, paymentMethod: string) => {
+    const { data } = await api.post(ENDPOINTS.BILLING.PAY_REFUND(refundId), { paymentMethod });
+    return data;
+  },
   // Reason is required by the API (kept on the bill, shown when viewing it).
   cancel: async (id: string, reason: string) => {
     const { data } = await api.post(ENDPOINTS.BILLING.CANCEL(id), { reason });
