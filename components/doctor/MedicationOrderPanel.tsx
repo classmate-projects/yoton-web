@@ -10,6 +10,7 @@ import { PharmacyService } from "@/services/pharmacy.service";
 import { MedicationPayload, MedicationType, TaperingStepPayload } from "@/types/emr.type";
 import { ListItemType } from "@/types/configList.type";
 import { MedicineType } from "@/types/pharmacy.type";
+import { packText } from "@/lib/packQuantity";
 import { toDateInputValue } from "@/lib/date";
 import SearchableSelect, { fieldSelectClass } from "@/components/SearchableSelect";
 
@@ -54,6 +55,8 @@ function buildInstructionsPreview(dosage: string, dosageUnit: string, route: str
 export default function MedicationOrderPanel({ onSubmit, editingMedication, onCancelEdit, prefillFromHistory, onClearPrefill }: MedicationOrderPanelProps) {
   const [drugName, setDrugName] = useState("");
   const [medicineId, setMedicineId] = useState<string | undefined>(undefined);
+  // What the picked catalog medicine is dispensed in (Strip, Tablet...) - what Total quantity counts.
+  const [medicineUnit, setMedicineUnit] = useState<string | null>(null);
   const [drugType, setDrugType] = useState("");
   const [dosage, setDosage] = useState("");
   const [dosageUnit, setDosageUnit] = useState("");
@@ -122,6 +125,7 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
     if (!editingMedication) return;
     setDrugName(editingMedication.drugName);
     setMedicineId(editingMedication.medicineId ?? undefined);
+    setMedicineUnit(null);
     setDrugType(editingMedication.drugType ?? "");
     setDosage(editingMedication.dosage ?? "");
     setDosageUnit(editingMedication.dosageUnit ?? "");
@@ -154,6 +158,7 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
     if (!prefillFromHistory) return;
     setDrugName(prefillFromHistory.drugName);
     setMedicineId(prefillFromHistory.medicineId ?? undefined);
+    setMedicineUnit(null);
     setDrugType(prefillFromHistory.drugType ?? "");
     setDosage(prefillFromHistory.dosage ?? "");
     setDosageUnit(prefillFromHistory.dosageUnit ?? "");
@@ -177,6 +182,7 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
   const resetForm = () => {
     setDrugName("");
     setMedicineId(undefined);
+    setMedicineUnit(null);
     setDrugType("");
     setDosage("");
     setDosageUnit("");
@@ -265,7 +271,7 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
             <span className="font-medium">{drugName}</span>
             <button
               type="button"
-              onClick={() => { setDrugName(""); setMedicineId(undefined); }}
+              onClick={() => { setDrugName(""); setMedicineId(undefined); setMedicineUnit(null); }}
               className="text-xs font-semibold text-primary hover:underline"
             >
               Change
@@ -287,7 +293,7 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
                   m.genericName ? `Generic: ${m.genericName}` : null,
                   m.manufacturer,
                   m.route,
-                  m.isDiscontinued ? "⚠ Discontinued" : m.stock > 0 ? `Stock: ${m.stock}` : "No stock",
+                  m.isDiscontinued ? "⚠ Discontinued" : m.stock > 0 ? `Stock: ${packText(m.stock, m.unit, m.packUnit, m.packSize)}` : "No stock",
                 ]
                   .filter(Boolean)
                   .join(" · "),
@@ -297,6 +303,7 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
               setDrugName(opt.name);
               setMedicineId(opt.id);
               const medicine = medicineResultsRef.current.get(opt.id);
+              setMedicineUnit(medicine?.unit && medicine.unit !== "Unit" ? medicine.unit : null);
               if (medicine?.isDiscontinued) {
                 toast.warning("This medication was discontinued by the health authority — confirm before prescribing.");
               }
@@ -413,7 +420,9 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-muted-foreground">Total quantity</label>
+          <label className="text-xs font-semibold text-muted-foreground">
+            Total quantity{medicineUnit ? ` (${medicineUnit.toLowerCase()}s)` : ""}
+          </label>
           <input type="number" min={0} value={totalQuantity} onChange={(e) => setTotalQuantity(e.target.value)} className="h-10 text-sm" />
         </div>
         <div className="flex flex-col gap-1">

@@ -9,6 +9,7 @@ import SearchableSelect, { standaloneSelectClass } from "@/components/Searchable
 import { InventoryService } from "@/services/inventory.service";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { apiErrorMessage } from "@/lib/apiError";
+import { packText } from "@/lib/packQuantity";
 import type { IssueSummary, RequisitionSummary, StockRow, TransferSummary } from "@/types/inventory.type";
 import { IssueDetail, IssueForm, RequisitionDetail, RequisitionForm, TransferDetail, TransferForm } from "@/components/inventory/Movements";
 import ItemStockDetail from "@/components/inventory/ItemStockDetail";
@@ -150,8 +151,8 @@ function StoreRequestsInner() {
                         <span className="font-medium text-foreground">{r.name}</span>
                         <span className="block text-xs text-muted-foreground">{r.code}</span>
                       </td>
-                      <td className={`text-right tabular-nums ${r.isLow ? "font-semibold text-amber-600" : ""}`}>
-                        {qty(r.quantity)} {r.unit}
+                      <td className={`text-right tabular-nums ${r.isLow ? "font-semibold text-amber-600" : ""}`} title={`${qty(r.quantity)} ${r.unit}`}>
+                        {packText(r.quantity, r.unit, r.packUnit, r.packSize)}
                       </td>
                       <td className="text-right tabular-nums">{r.reorderLevel > 0 ? qty(r.reorderLevel) : "—"}</td>
                       <td className={r.expiredQuantity > 0 ? "text-red-600" : ""}>

@@ -7,7 +7,12 @@ export interface MedicineType {
   ingredient: string | null;
   dosageForm: string | null;
   category: string | null;
+  // Stock and price are in the medicine's dispensing unit (Strip, Tablet, ...); packUnit and
+  // packSize say how it's bought (a Box of 10), so stock reads as whole packs plus loose units.
   stock: number;
+  unit: string;
+  packUnit: string | null;
+  packSize: number;
   price: number;
   expiryDate: string | null;
   isActive: boolean;
@@ -47,6 +52,7 @@ export interface PrescriptionItemType {
   medicineId: string | null;
   medicineName: string;
   quantity: number;
+  unit: string | null;
   priority: string;
   unitPrice: number;
 }
@@ -88,6 +94,10 @@ export interface AddMedicinePayload {
   manufacturer?: string;
   route?: string;
   isControlled?: boolean;
+  // How it's counted - left as it is when unit isn't sent. Price is per unit.
+  unit?: string;
+  packUnit?: string | null;
+  packSize?: number;
 }
 
 export interface CreatePrescriptionPayload {
@@ -129,6 +139,7 @@ export interface PharmacyMedicationType {
   instructions: string | null;
   priority: string;
   totalQuantity: number | null;
+  unit: string | null;
   refillCount: number;
   prnReason: string | null;
   requiresCounselling: boolean;
@@ -171,4 +182,37 @@ export interface MedicineAlternativeType {
 export interface DispenseMedicationPayload {
   collectedBy: string; // Patient, Nurse
   collectorUserId?: string;
+}
+
+// What went out on a dispense (a prescription or a medication order), lot by lot, and how much
+// can still come back - quantities in the medicine's dispensing unit.
+export interface DispensedLineType {
+  issueLineId: string;
+  itemName: string;
+  unit: string;
+  packUnit: string | null;
+  packSize: number;
+  batchNumber: string | null;
+  expiryDate: string | null;
+  quantity: number;
+  returnedQuantity: number;
+  canReturn: number;
+}
+
+export interface DispensedType {
+  issueId: string;
+  number: string;
+  storeName: string | null;
+  issuedByName: string | null;
+  createdAt: string;
+  billId: string | null;
+  billStatus: string | null;
+  lines: DispensedLineType[];
+}
+
+export interface ReturnDispensedPayload {
+  reason?: string;
+  // Back on the shelf; otherwise written off as it comes in.
+  reusable: boolean;
+  lines: { issueLineId: string; quantity: number }[];
 }

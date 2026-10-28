@@ -369,6 +369,8 @@ export const ENDPOINTS = {
         REMOVE_ALTERNATIVE: (medicineId: string, alternativeId: string) =>
             `/api/Pharmacy/medicine/${medicineId}/alternatives/${alternativeId}`,
         SET_HIGH_RISK: (medicineId: string) => `/api/Pharmacy/medicine/${medicineId}/high-risk`,
+        GET_DISPENSED: (sourceType: "Prescription" | "Medication", sourceId: string) => `/api/Pharmacy/dispensed/${sourceType}/${sourceId}`,
+        RETURN_DISPENSED: (issueId: string) => `/api/Pharmacy/dispensed/${issueId}/return`,
     },
     BILLING: {
         // tz = browser getTimezoneOffset(), so "a day" means the user's local day, not UTC.

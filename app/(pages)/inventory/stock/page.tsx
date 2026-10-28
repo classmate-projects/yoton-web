@@ -8,6 +8,7 @@ import SearchableSelect, { standaloneSelectClass } from "@/components/Searchable
 import { InventoryService } from "@/services/inventory.service";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { formatCurrency } from "@/lib/currency";
+import { packText } from "@/lib/packQuantity";
 import type { StockRow } from "@/types/inventory.type";
 import ItemStockDetail from "@/components/inventory/ItemStockDetail";
 import { PageBar, day, inputClass, qty, useInventory } from "@/components/inventory/inventoryUi";
@@ -102,8 +103,8 @@ function StockPageInner() {
                   </td>
                   <td>{r.itemType}</td>
                   <td className="text-right tabular-nums">
-                    <span className={r.isLow ? "font-semibold text-amber-600" : ""}>
-                      {qty(r.quantity)} {r.unit}
+                    <span className={r.isLow ? "font-semibold text-amber-600" : ""} title={`${qty(r.quantity)} ${r.unit}`}>
+                      {packText(r.quantity, r.unit, r.packUnit, r.packSize)}
                     </span>
                     {r.lotCount > 1 && <span className="block text-xs text-muted-foreground">{r.lotCount} batches</span>}
                   </td>

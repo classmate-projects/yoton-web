@@ -7,6 +7,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import { InventoryService } from "@/services/inventory.service";
 import { apiErrorMessage } from "@/lib/apiError";
 import { formatCurrency } from "@/lib/currency";
+import { packText } from "@/lib/packQuantity";
 import type { InventoryItem, LedgerRow, StockLot, StockRow } from "@/types/inventory.type";
 import BarcodeLabels, { type InventoryLabel } from "./BarcodeLabels";
 import { Facts, Modal, Pager, TXN_LABELS, day, qty, secondaryButton, smallInputClass, stamp } from "./inventoryUi";
@@ -158,7 +159,7 @@ export default function ItemStockDetail({ itemId, row, onClose }: { itemId: stri
                           {l.isExpired && " (expired)"}
                         </td>
                         <td className="text-right tabular-nums">
-                          {qty(l.quantity)} {item.unit}
+                          {packText(l.quantity, item.unit, item.purchaseUnit, item.unitsPerPurchaseUnit)}
                         </td>
                         <td className="text-right tabular-nums">{formatCurrency(l.unitCost)}</td>
                         <td className="text-right tabular-nums">{formatCurrency(l.value)}</td>

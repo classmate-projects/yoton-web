@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Pill, Trash2 } from "lucide-react";
+import { Pencil, Pill, Trash2, Undo2 } from "lucide-react";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdWarning } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -35,6 +35,8 @@ import PatientStreamTabs from "@/components/patients/PatientStreamTabs";
 import { BillStatusBadge, WalkInPatientBadge, billedLockTitle } from "@/components/patients/PatientBadges";
 import { useRegion } from "@/lib/region";
 import { apiErrorMessage } from "@/lib/apiError";
+import { packLabel, packText } from "@/lib/packQuantity";
+import ReturnDispensedDialog from "@/components/pharmacy/ReturnDispensedDialog";
 
 const PRIORITIES = ["Routine", "STAT", "PRN"];
 
@@ -136,7 +138,15 @@ export default function PharmacyPage() {
   const [medManufacturer, setMedManufacturer] = useState("");
   const [medRoute, setMedRoute] = useState("");
   const [medIsControlled, setMedIsControlled] = useState(false);
+  // How it's counted: the unit it's dispensed and priced in, and the pack it's bought in.
+  const [medUnit, setMedUnit] = useState("Unit");
+  const [medPackUnit, setMedPackUnit] = useState("");
+  const [medPackSize, setMedPackSize] = useState<number>(1);
+  // As it was when the form opened - only a change is sent, so editing a name never sets up stock.
+  const [medOriginalPack, setMedOriginalPack] = useState({ unit: "Unit", packUnit: "", packSize: 1 });
   const [editingMedicineId, setEditingMedicineId] = useState<string | null>(null);
+  // A dispensed prescription or medication order the patient is bringing medicines back from.
+  const [returnTarget, setReturnTarget] = useState<{ sourceType: "Prescription" | "Medication"; sourceId: string; title: string } | null>(null);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -559,6 +569,10 @@ export default function PharmacyPage() {
     setMedManufacturer("");
     setMedRoute("");
     setMedIsControlled(false);
+    setMedUnit("Unit");
+    setMedPackUnit("");
+    setMedPackSize(1);
+    setMedOriginalPack({ unit: "Unit", packUnit: "", packSize: 1 });
   };
 
   const openEditMedModal = (medicine: MedicineType) => {
@@ -574,6 +588,11 @@ export default function PharmacyPage() {
     setMedManufacturer(medicine.manufacturer || "");
     setMedRoute(medicine.route || "");
     setMedIsControlled(medicine.isControlled);
+    const pack = { unit: medicine.unit || "Unit", packUnit: medicine.packUnit ?? "", packSize: medicine.packSize || 1 };
+    setMedUnit(pack.unit);
+    setMedPackUnit(pack.packUnit);
+    setMedPackSize(pack.packSize);
+    setMedOriginalPack(pack);
     setIsMedModalOpen(true);
   };
 
@@ -587,6 +606,14 @@ export default function PharmacyPage() {
     e.preventDefault();
     if (!medName.trim()) {
       toast.warning("Please fill in the required fields");
+      return;
+    }
+
+    const packNow = { unit: medUnit.trim() || "Unit", packUnit: medPackUnit.trim(), packSize: medPackUnit.trim() ? medPackSize : 1 };
+    const packChanged =
+      packNow.unit !== medOriginalPack.unit || packNow.packUnit !== medOriginalPack.packUnit || packNow.packSize !== medOriginalPack.packSize;
+    if (packNow.packUnit && !(packNow.packSize > 0)) {
+      toast.warning(`Enter how many ${packNow.unit} are in one ${packNow.packUnit}`);
       return;
     }
 
@@ -604,6 +631,7 @@ export default function PharmacyPage() {
         manufacturer: medManufacturer || undefined,
         route: medRoute || undefined,
         isControlled: medIsControlled,
+        ...(packChanged ? { unit: packNow.unit, packUnit: packNow.packUnit || null, packSize: packNow.packSize } : {}),
       };
       const data = editingMedicineId
         ? await PharmacyService.updateMedicine(editingMedicineId, payload)
@@ -834,8 +862,14 @@ export default function PharmacyPage() {
                               <p className="text-foreground/80">{item.route || "—"}</p>
                             </div>
                             <div>
+                              <p className="text-xs text-muted-foreground">Quantity</p>
+                              <p className="text-foreground/80">{item.totalQuantity != null ? `${item.totalQuantity} ${item.unit ?? ""}`.trim() : "—"}</p>
+                            </div>
+                            <div>
                               <p className="text-xs text-muted-foreground">Price</p>
-                              <p className="text-foreground/80">{item.unitPrice != null ? currency(item.unitPrice) : "—"}</p>
+                              <p className="text-foreground/80">
+                                {item.unitPrice != null ? `${currency(item.unitPrice)}${item.unit ? ` / ${item.unit.toLowerCase()}` : ""}` : "—"}
+                              </p>
                             </div>
                           </div>
 
@@ -873,6 +907,15 @@ export default function PharmacyPage() {
                                 className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
                               >
                                 Print Label
+                              </button>
+                            )}
+                            {item.dispenseStatus === "Dispensed" && item.medicineId && (
+                              <button
+                                onClick={() => setReturnTarget({ sourceType: "Medication", sourceId: item.medicationId, title: `${item.drugName} - ${item.patientName}` })}
+                                title="Record medicines the patient brought back"
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
+                              >
+                                <Undo2 size={13} /> Return
                               </button>
                             )}
                           </div>
@@ -930,7 +973,7 @@ export default function PharmacyPage() {
                       {rx.items.map((i) => (
                         <div key={i.prescriptionItemId} className="flex items-center justify-between gap-2 text-sm">
                           <span className="flex min-w-0 items-center gap-1 text-foreground/80">
-                            <span className="truncate">{i.medicineName} × {i.quantity}</span>
+                            <span className="truncate">{i.medicineName} × {i.quantity}{i.unit ? ` ${i.unit}` : ""}</span>
                             {i.priority !== "Routine" && (
                               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${i.priority === "STAT" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
                                 {i.priority}
@@ -951,6 +994,15 @@ export default function PharmacyPage() {
                       <p className="-mt-2 text-[11px] text-muted-foreground">
                         Collected by {rx.collectedBy === "Nurse" ? rx.collectorName || "Nurse" : "Patient"}
                       </p>
+                    )}
+                    {rx.status === "Dispensed" && (
+                      <button
+                        onClick={() => setReturnTarget({ sourceType: "Prescription", sourceId: rx.prescriptionId, title: rx.patientName })}
+                        title="Record medicines the patient brought back"
+                        className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-foreground/80 hover:bg-muted transition-colors cursor-pointer"
+                      >
+                        <Undo2 size={13} /> Return medicines
+                      </button>
                     )}
 
                     {rx.status === "Pending" && (
@@ -1089,10 +1141,16 @@ export default function PharmacyPage() {
                         <td className="text-foreground/80">{med.manufacturer || "—"}</td>
                         <td className="text-foreground/80">{med.route || "—"}</td>
                         <td className={lowStockIds.has(med.medicineId) ? "text-destructive font-semibold" : med.stock > 0 ? "text-foreground/80" : "text-muted-foreground"}>
-                          {med.stock.toLocaleString()}
+                          <span title={`${med.stock.toLocaleString()} ${med.unit}`}>{packText(med.stock, med.unit, med.packUnit, med.packSize)}</span>
+                          {packLabel(med.unit, med.packUnit, med.packSize) && (
+                            <span className="block text-xs font-normal text-muted-foreground">{packLabel(med.unit, med.packUnit, med.packSize)}</span>
+                          )}
                           {med.expiryDate && <span className="block text-xs font-normal text-muted-foreground">exp {formatDate(med.expiryDate)}</span>}
                         </td>
-                        <td className="text-foreground/80">{currency(med.price)}</td>
+                        <td className="text-foreground/80">
+                          {currency(med.price)}
+                          <span className="block text-xs text-muted-foreground">per {med.unit.toLowerCase()}</span>
+                        </td>
                         <td>
                           <div className="flex justify-center items-center gap-1">
                             <button
@@ -1196,7 +1254,7 @@ export default function PharmacyPage() {
                   >
                     <span className="font-semibold text-foreground text-sm">{med.name}</span>
                     <span className="bg-destructive text-white px-2 py-1 text-xs rounded-full">
-                      {med.stock.toLocaleString()} left
+                      {packText(med.stock, med.unit, med.packUnit, med.packSize)} left
                     </span>
                   </li>
                 ))}
@@ -1256,7 +1314,7 @@ export default function PharmacyPage() {
                           onChange={(v) => updateItem(index, "medicineId", v)}
                           options={[
                             { value: "", label: "Select medicine" },
-                            ...medicines.map((m) => ({ value: m.medicineId, label: `${m.name} (${m.stock} in stock)` })),
+                            ...medicines.map((m) => ({ value: m.medicineId, label: `${m.name} (${packText(m.stock, m.unit, m.packUnit, m.packSize)} in stock)` })),
                           ]}
                         />
                       </div>
@@ -1266,8 +1324,12 @@ export default function PharmacyPage() {
                         required
                         value={item.quantity}
                         onChange={(e) => updateItem(index, "quantity", e.target.value)}
+                        aria-label="Quantity"
                         className="w-20 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
                       />
+                      <span className="self-center w-12 truncate text-xs text-muted-foreground" title="What the quantity counts">
+                        {medicines.find((m) => m.medicineId === item.medicineId)?.unit ?? ""}
+                      </span>
                       <div className="w-28">
                         <SearchableSelect
                           value={item.priority}
@@ -1413,9 +1475,57 @@ export default function PharmacyPage() {
                   className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                 />
               </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-sm font-bold text-foreground/90">How it&apos;s counted</p>
+                <div className="mt-2 grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">Dispensed in</label>
+                    <input
+                      type="text"
+                      maxLength={30}
+                      placeholder="Strip, Tablet, Bottle..."
+                      value={medUnit}
+                      onChange={(e) => setMedUnit(e.target.value)}
+                      className="w-full mt-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">Comes in</label>
+                    <input
+                      type="text"
+                      maxLength={30}
+                      placeholder="Box (optional)"
+                      value={medPackUnit}
+                      onChange={(e) => setMedPackUnit(e.target.value)}
+                      className="w-full mt-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      {(medUnit.trim() || "Unit")} per {medPackUnit.trim() || "pack"}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      step="any"
+                      disabled={!medPackUnit.trim()}
+                      value={medPackSize}
+                      onChange={(e) => setMedPackSize(Number(e.target.value))}
+                      className="w-full mt-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Stock, prescriptions, returns and the price all count in {(medUnit.trim() || "Unit").toLowerCase()}s. A{" "}
+                  {(medPackUnit.trim() || "pack").toLowerCase()} opened for a few keeps the rest in stock, shown as whole{" "}
+                  {(medPackUnit.trim() || "pack").toLowerCase()}s plus loose {(medUnit.trim() || "Unit").toLowerCase()}s.
+                  {editingMedicineId && medOriginalPack.unit === "Unit" && (medUnit.trim() || "Unit") !== "Unit" &&
+                    ` Stock already held keeps its number - it should already be counting ${medUnit.trim().toLowerCase()}s.`}
+                </p>
+              </div>
               <div className="flex gap-4">
                 <div className="w-full">
-                  <label className="text-sm font-bold text-foreground/90">Price</label>
+                  <label className="text-sm font-bold text-foreground/90">Price per {(medUnit.trim() || "unit").toLowerCase()}</label>
                   <input
                     type="number"
                     min={0}
@@ -1594,6 +1704,19 @@ export default function PharmacyPage() {
           instructions={labelTarget.instructions}
           dispensedDate={labelTarget.dispensedAt ? formatDate(labelTarget.dispensedAt) : new Date().toLocaleDateString()}
           onClose={() => setLabelTarget(null)}
+        />
+      )}
+
+      {returnTarget && (
+        <ReturnDispensedDialog
+          sourceType={returnTarget.sourceType}
+          sourceId={returnTarget.sourceId}
+          title={returnTarget.title}
+          onClose={() => setReturnTarget(null)}
+          onReturned={() => {
+            fetchAll();
+            if (tab === "inventory") fetchInventory();
+          }}
         />
       )}
 

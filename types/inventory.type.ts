@@ -106,6 +106,9 @@ export interface StockRow {
   itemType: InventoryItemType;
   category: string | null;
   unit: string;
+  // The pack it's bought in (a Box of 10) - stock reads as whole packs plus loose units.
+  packUnit: string | null;
+  packSize: number;
   quantity: number;
   value: number;
   reorderLevel: number;

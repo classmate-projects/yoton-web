@@ -6,6 +6,7 @@ import {
   DispenseMedicationPayload,
   IssueMedicinePayload,
   MedicineBulkUploadPayload,
+  ReturnDispensedPayload,
 } from "@/types/pharmacy.type";
 
 export const PharmacyService = {
@@ -87,6 +88,14 @@ export const PharmacyService = {
   },
   removeAlternative: async (medicineId: string, alternativeId: string) => {
     const { data } = await api.delete(ENDPOINTS.PHARMACY.REMOVE_ALTERNATIVE(medicineId, alternativeId));
+    return data;
+  },
+  getDispensed: async (sourceType: "Prescription" | "Medication", sourceId: string) => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_DISPENSED(sourceType, sourceId));
+    return data;
+  },
+  returnDispensed: async (issueId: string, payload: ReturnDispensedPayload) => {
+    const { data } = await api.post(ENDPOINTS.PHARMACY.RETURN_DISPENSED(issueId), payload);
     return data;
   },
   setHighRisk: async (medicineId: string, isHighRisk: boolean) => {
