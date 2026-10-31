@@ -54,7 +54,45 @@ export function useAlertCenter(role: string, userId: string | undefined) {
   const unreadCount = alerts.filter((a) => !a.read).length;
   const [isRinging, setIsRinging] = useState(false);
 
+  // Alerts themselves are ephemeral (rebuilt from each source on every load - there is no
+  // notification table), so the only thing worth persisting is which ones the user has already
+  // read. Without this, "Read all" lived purely in React state and was lost on refresh, so every
+  // reload showed everything as unread again. The read ids are kept per-user in localStorage and
+  // consulted wherever an AlertItem is (re)built below, so a read alert stays read across reloads.
+  const readIdsRef = useRef<Set<string>>(new Set());
+  const storageKeyFor = (uid: string) => `yoton:alertRead:${uid}`;
+  const MAX_PERSISTED_READ = 500;
+
+  const persistReadIds = () => {
+    if (!userId || typeof window === "undefined") return;
+    try {
+      // Bounded, keeping the most-recently-added ids, so the set can't grow without limit.
+      const ids = [...readIdsRef.current].slice(-MAX_PERSISTED_READ);
+      readIdsRef.current = new Set(ids);
+      window.localStorage.setItem(storageKeyFor(userId), JSON.stringify(ids));
+    } catch {
+      /* storage unavailable (private mode, quota) - read-state just won't persist */
+    }
+  };
+
+  // Load the persisted read ids for this user, and re-apply them to anything already on screen.
+  // Declared before the source effects below so, on the render where userId first resolves, the
+  // set is populated before those effects' async fetches build their AlertItems.
+  useEffect(() => {
+    if (!userId || typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(storageKeyFor(userId));
+      readIdsRef.current = new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      readIdsRef.current = new Set();
+    }
+    setAlerts((prev) => prev.map((a) => (readIdsRef.current.has(a.id) ? { ...a, read: true } : a)));
+  }, [userId]);
+
   const pushAlert = (item: Omit<AlertItem, "read">, toastNode?: ReactNode) => {
+    // A fresh live event rings as unread even if an older alert with this id was read before
+    // (e.g. stock dropped low again), so clear any stale read flag for it.
+    if (readIdsRef.current.delete(item.id)) persistReadIds();
     const unread: AlertItem = { ...item, read: false };
     setAlerts((prev) => [unread, ...prev.filter((a) => a.id !== item.id)].slice(0, MAX_ALERTS));
     setIsRinging(true);
@@ -74,10 +112,26 @@ export function useAlertCenter(role: string, userId: string | undefined) {
 
   // Individual alerts are marked read as the user opens each one (NotificationBell's goTo);
   // markAllRead backs the panel's "Read all" button for clearing the whole list in one go.
-  const markAlertRead = (id: string) =>
+  const markAlertRead = (id: string) => {
+    if (!readIdsRef.current.has(id)) {
+      readIdsRef.current.add(id);
+      persistReadIds();
+    }
     setAlerts((prev) => prev.map((a) => (a.id === id && !a.read ? { ...a, read: true } : a)));
+  };
 
-  const markAllRead = () => setAlerts((prev) => prev.map((a) => (a.read ? a : { ...a, read: true })));
+  const markAllRead = () =>
+    setAlerts((prev) => {
+      let changed = false;
+      prev.forEach((a) => {
+        if (!readIdsRef.current.has(a.id)) {
+          readIdsRef.current.add(a.id);
+          changed = true;
+        }
+      });
+      if (changed) persistReadIds();
+      return prev.map((a) => (a.read ? a : { ...a, read: true }));
+    });
 
   // Which automatic check-outs already have an alert, so a live refetch only rings for new ones.
   const knownAutoCheckOutIds = useRef(new Set<string>());
@@ -99,7 +153,7 @@ export function useAlertCenter(role: string, userId: string | undefined) {
             title: "Appointment request",
             message: `${r.patientName ?? "A patient"} requested ${r.doctorName ?? "a doctor"} for ${new Date(r.appointmentDate).toLocaleString()}`,
             timestamp: Date.now(),
-            read: false,
+            read: readIdsRef.current.has(`appt-${r.appointmentId}`),
           })
         );
         setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
@@ -169,7 +223,7 @@ export function useAlertCenter(role: string, userId: string | undefined) {
             title: "Follow-up requested",
             message: `Dr. ${f.doctorName ?? "—"} requested a follow-up for ${f.patientName ?? "a patient"} around ${new Date(f.followUpDate).toLocaleDateString()}`,
             timestamp: Date.now(),
-            read: false,
+            read: readIdsRef.current.has(`followup-${f.followUpId}`),
           })
         );
         setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
@@ -235,7 +289,7 @@ export function useAlertCenter(role: string, userId: string | undefined) {
             title: "Correction needs your review",
             message: `${c.proposedByName ?? "An admin"} proposed a correction for ${c.patientName ?? "a patient"}'s encounter`,
             timestamp: Date.now(),
-            read: false,
+            read: readIdsRef.current.has(`corr-${c.encounterCorrectionId}`),
           })
         );
         setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
@@ -340,7 +394,7 @@ export function useAlertCenter(role: string, userId: string | undefined) {
             title: "Medical form awaiting your response",
             message: `${h.fromUserName ?? "A colleague"} handed you "${h.formTemplateName}" for ${h.patientName ?? "a patient"}`,
             timestamp: Date.now(),
-            read: false,
+            read: readIdsRef.current.has(`handover-${h.savedMedicalFormId}`),
           })
         );
         setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
@@ -440,7 +494,7 @@ export function useAlertCenter(role: string, userId: string | undefined) {
           title: "Low stock",
           message: `${m.name} is down to ${m.stock} units`,
           timestamp: Date.now(),
-          read: false,
+          read: readIdsRef.current.has(`stock-${m.medicineId}`),
         }));
         setAlerts((prev) => [...existing, ...prev].slice(0, MAX_ALERTS));
       })
@@ -514,7 +568,7 @@ export function useAlertCenter(role: string, userId: string | undefined) {
             if (announce) {
               pushAlert(item, <span><b>{who}</b> didn&apos;t check out on {day} - checked out automatically</span>);
             } else {
-              setAlerts((prev) => [{ ...item, read: false }, ...prev.filter((a) => a.id !== item.id)].slice(0, MAX_ALERTS));
+              setAlerts((prev) => [{ ...item, read: readIdsRef.current.has(item.id) }, ...prev.filter((a) => a.id !== item.id)].slice(0, MAX_ALERTS));
             }
           });
           records.forEach((r) => knownAutoCheckOutIds.current.add(r.attendanceRecordId));
@@ -558,7 +612,7 @@ export function useAlertCenter(role: string, userId: string | undefined) {
       } else {
         setAlerts((prev) => {
           const existing = prev.find((a) => a.id === id);
-          return [{ ...item, read: existing?.read ?? false }, ...prev.filter((a) => a.id !== id)].slice(0, MAX_ALERTS);
+          return [{ ...item, read: existing?.read ?? readIdsRef.current.has(id) }, ...prev.filter((a) => a.id !== id)].slice(0, MAX_ALERTS);
         });
       }
     };

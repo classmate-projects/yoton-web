@@ -1389,23 +1389,23 @@ export default function PharmacyPage() {
 
       {isMedModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
-          <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
+          <div className="bg-card w-full max-w-2xl rounded-xl border border-border p-6 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-semibold mb-1 text-foreground">{editingMedicineId ? "Edit Medicine" : "Add Medicine"}</h2>
             <p className="text-sm text-muted-foreground mb-6">{editingMedicineId ? "Correct this medicine's catalog details." : "Add a new medicine to the inventory."}</p>
 
             <form onSubmit={handleAddMedicine} className="flex flex-col gap-4">
-              <div>
-                <label className="text-sm font-bold text-foreground/90 required">Name</label>
-                <input
-                  type="text"
-                  required
-                  value={medName}
-                  onChange={(e) => setMedName(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                />
-              </div>
-              <div className="flex gap-4">
-                <div className="w-full">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-bold text-foreground/90 required">Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={medName}
+                    onChange={(e) => setMedName(e.target.value)}
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+                <div>
                   <label className="text-sm font-bold text-foreground/90">Generic Name</label>
                   <input
                     type="text"
@@ -1414,7 +1414,7 @@ export default function PharmacyPage() {
                     className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                   />
                 </div>
-                <div className="w-full">
+                <div>
                   <label className="text-sm font-bold text-foreground/90">Dosage Form</label>
                   <input
                     type="text"
@@ -1424,28 +1424,26 @@ export default function PharmacyPage() {
                     className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                   />
                 </div>
-              </div>
-              <div>
-                <label className="text-sm font-bold text-foreground/90">Ingredient [Strength]</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Paracetamol 500mg"
-                  value={medIngredient}
-                  onChange={(e) => setMedIngredient(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-bold text-foreground/90">Category</label>
-                <input
-                  type="text"
-                  value={medCategory}
-                  onChange={(e) => setMedCategory(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                />
-              </div>
-              <div className="flex gap-4">
-                <div className="w-full">
+                <div>
+                  <label className="text-sm font-bold text-foreground/90">Ingredient [Strength]</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Paracetamol 500mg"
+                    value={medIngredient}
+                    onChange={(e) => setMedIngredient(e.target.value)}
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-bold text-foreground/90">Category</label>
+                  <input
+                    type="text"
+                    value={medCategory}
+                    onChange={(e) => setMedCategory(e.target.value)}
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+                <div>
                   <label className="text-sm font-bold text-foreground/90">Code</label>
                   <input
                     type="text"
@@ -1455,7 +1453,7 @@ export default function PharmacyPage() {
                     className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                   />
                 </div>
-                <div className="w-full">
+                <div>
                   <label className="text-sm font-bold text-foreground/90">Route</label>
                   <input
                     type="text"
@@ -1465,15 +1463,15 @@ export default function PharmacyPage() {
                     className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
                   />
                 </div>
-              </div>
-              <div>
-                <label className="text-sm font-bold text-foreground/90">Manufacturer</label>
-                <input
-                  type="text"
-                  value={medManufacturer}
-                  onChange={(e) => setMedManufacturer(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                />
+                <div>
+                  <label className="text-sm font-bold text-foreground/90">Manufacturer</label>
+                  <input
+                    type="text"
+                    value={medManufacturer}
+                    onChange={(e) => setMedManufacturer(e.target.value)}
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
               </div>
               <div className="rounded-lg border border-border p-3">
                 <p className="text-sm font-bold text-foreground/90">How it&apos;s counted</p>
@@ -1523,32 +1521,32 @@ export default function PharmacyPage() {
                     ` Stock already held keeps its number - it should already be counting ${medUnit.trim().toLowerCase()}s.`}
                 </p>
               </div>
-              <div className="flex gap-4">
-                <div className="w-full">
-                  <label className="text-sm font-bold text-foreground/90">Price per {(medUnit.trim() || "unit").toLowerCase()}</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    required
-                    value={medPrice}
-                    onChange={(e) => setMedPrice(Number(e.target.value))}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  />
-                </div>
+              <div className="sm:w-1/2">
+                <label className="text-sm font-bold text-foreground/90">Price per {(medUnit.trim() || "unit").toLowerCase()}</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  required
+                  value={medPrice}
+                  onChange={(e) => setMedPrice(Number(e.target.value))}
+                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                />
               </div>
               <p className="text-xs text-muted-foreground">
                 Stock, batches and expiry dates are kept in Inventory - receive this medicine into the Pharmacy store to stock it.
               </p>
 
-              <label className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground">
-                <input type="checkbox" checked={medIsHighRisk} onChange={(e) => setMedIsHighRisk(e.target.checked)} />
-                High-risk medication — requires a second nurse to witness administration
-              </label>
-              <label className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-foreground">
-                <input type="checkbox" checked={medIsControlled} onChange={(e) => setMedIsControlled(e.target.checked)} />
-                Controlled substance
-              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground">
+                  <input type="checkbox" checked={medIsHighRisk} onChange={(e) => setMedIsHighRisk(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-destructive" />
+                  <span className="leading-snug">High-risk medication — requires a second nurse to witness administration</span>
+                </label>
+                <label className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground">
+                  <input type="checkbox" checked={medIsControlled} onChange={(e) => setMedIsControlled(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-amber-500" />
+                  <span className="leading-snug">Controlled substance</span>
+                </label>
+              </div>
 
               <div className="flex items-center justify-end gap-3 mt-2 w-full">
                 <button
