@@ -1,14 +1,15 @@
 import api from "@/lib/axios";
 import { ENDPOINTS } from "@/lib/endpoints";
 import { CreateRadiologyRequestPayload } from "@/types/radiology.type";
+import { compressImageForUpload } from "@/lib/resizeImage";
 
 export const RadiologyService = {
-  getAll: async () => {
-    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_ALL);
+  getAll: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_ALL(date));
     return data;
   },
-  getPending: async () => {
-    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_PENDING);
+  getPending: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.RADIOLOGY.GET_PENDING(date));
     return data;
   },
   getSummary: async () => {
@@ -36,18 +37,20 @@ export const RadiologyService = {
     return data;
   },
   uploadResult: async (radiologyRequestId: string, file: File) => {
+    const compressed = await compressImageForUpload(file);
     const form = new FormData();
     form.append("RadiologyRequestId", radiologyRequestId);
-    form.append("File", file);
+    form.append("File", compressed);
     const { data } = await api.post(ENDPOINTS.RADIOLOGY.UPLOAD_RESULT, form, {
       headers: { "Content-Type": "multipart/form-data" },
     });
     return data;
   },
   uploadImages: async (radiologyRequestId: string, files: File[]) => {
+    const compressed = await Promise.all(files.map((f) => compressImageForUpload(f)));
     const form = new FormData();
     form.append("RadiologyRequestId", radiologyRequestId);
-    files.forEach((f) => form.append("Files", f));
+    compressed.forEach((f) => form.append("Files", f));
     const { data } = await api.post(ENDPOINTS.RADIOLOGY.UPLOAD_IMAGES, form, {
       headers: { "Content-Type": "multipart/form-data" },
     });

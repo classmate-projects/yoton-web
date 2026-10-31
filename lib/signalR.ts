@@ -1,6 +1,7 @@
 import { HubConnection, HubConnectionBuilder } from "@microsoft/signalr";
 import { baseUrl } from "./constants";
 import { signalRLogger } from "./signalRLogger";
+import { reportServerReachable, reportServerUnreachable } from "./connectionStatus";
 
 let connection: HubConnection | null = null;
 let connectionPromise: Promise<HubConnection> | null = null;
@@ -20,10 +21,21 @@ export async function getSignalRConnection() {
       .withServerTimeout(60_000)
       .build();
 
-    connection.onreconnecting(() => console.warn("[SignalR] Reconnecting to /notify..."));
-    connection.onreconnected(() => console.info("[SignalR] Reconnected to /notify."));
+    // The always-open link to the server - losing it is the earliest sign the server (or the
+    // network) is gone, even while nothing is being saved.
+    connection.onreconnecting(() => {
+      console.warn("[SignalR] Reconnecting to /notify...");
+      reportServerUnreachable();
+    });
+    connection.onreconnected(() => {
+      console.info("[SignalR] Reconnected to /notify.");
+      reportServerReachable();
+    });
     connection.onclose((error) => {
-      if (error) console.error("[SignalR] /notify connection closed and gave up reconnecting:", error);
+      if (error) {
+        console.error("[SignalR] /notify connection closed and gave up reconnecting:", error);
+        reportServerUnreachable();
+      }
       connection = null;
       connectionPromise = null;
     });
@@ -31,6 +43,7 @@ export async function getSignalRConnection() {
     try {
       await connection.start();
     } catch (error) {
+      reportServerUnreachable();
       // Otherwise a failed first attempt (e.g. the API not up yet) caches this rejected
       // promise forever - every later call returns the same failure instead of retrying.
       connection = null;
@@ -39,6 +52,7 @@ export async function getSignalRConnection() {
     }
 
     console.log("SignalR Connected.");
+    reportServerReachable();
 
     return connection;
   })();

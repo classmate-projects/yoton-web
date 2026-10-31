@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ShieldCheck, Loader2, Save, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import EmptyState from "@/components/EmptyState";
+import { ShieldCheck, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { ComplianceDataService } from "@/services/complianceData.service";
+import SearchableSelect from "@/components/SearchableSelect";
 import { StaffFteType, PatientComplianceFlagType } from "@/types/complianceData.type";
+import { notifySaveStatus } from "@/lib/saveStatus";
 
 const DIABETES_TYPE_OPTIONS = [
   { value: "", label: "Unspecified" },
@@ -19,13 +22,14 @@ export default function ComplianceDataPage() {
   const [staff, setStaff] = useState<StaffFteType[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(true);
   const [fteDrafts, setFteDrafts] = useState<Record<string, string>>({});
-  const [savingUserId, setSavingUserId] = useState<string | null>(null);
 
   const [flags, setFlags] = useState<PatientComplianceFlagType[]>([]);
   const [loadingFlags, setLoadingFlags] = useState(true);
   const [flagSearch, setFlagSearch] = useState("");
-  const [savingConditionId, setSavingConditionId] = useState<string | null>(null);
   const [diabetesDrafts, setDiabetesDrafts] = useState<Record<string, string>>({});
+
+  // Per-user debounce timers for FTE text input
+  const fteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     (async () => {
@@ -50,27 +54,32 @@ export default function ComplianceDataPage() {
     })();
   }, []);
 
-  const handleSaveFte = async (userId: string) => {
-    const raw = fteDrafts[userId];
-    const fteValue = raw === undefined || raw === "" ? null : Number(raw);
-    if (fteValue !== null && (Number.isNaN(fteValue) || fteValue <= 0 || fteValue > 2)) {
-      toast.error("FTE must be a positive number (typically between 0 and 1, up to 2 for rare dual-role staff)");
-      return;
-    }
-    setSavingUserId(userId);
-    try {
-      await ComplianceDataService.updateStaffFte(userId, fteValue);
-      setStaff((prev) => prev.map((s) => (s.userId === userId ? { ...s, fteValue } : s)));
-      toast.success("FTE updated");
-    } catch {
-      toast.error("Failed to update FTE");
-    } finally {
-      setSavingUserId(null);
-    }
+  const handleFteDraftChange = (userId: string, raw: string) => {
+    setFteDrafts((prev) => ({ ...prev, [userId]: raw }));
+
+    if (fteTimers.current[userId]) clearTimeout(fteTimers.current[userId]);
+    notifySaveStatus("saving");
+
+    fteTimers.current[userId] = setTimeout(async () => {
+      const fteValue = raw === "" ? null : Number(raw);
+      if (fteValue !== null && (Number.isNaN(fteValue) || fteValue <= 0 || fteValue > 2)) {
+        notifySaveStatus("error");
+        toast.error("FTE must be between 0 and 2");
+        return;
+      }
+      try {
+        await ComplianceDataService.updateStaffFte(userId, fteValue);
+        setStaff((prev) => prev.map((s) => (s.userId === userId ? { ...s, fteValue } : s)));
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+        toast.error("Failed to update FTE");
+      }
+    }, 800);
   };
 
-  const handleSaveNonacuteAdmission = async (flag: PatientComplianceFlagType, value: boolean) => {
-    setSavingConditionId(flag.chronicConditionId);
+  const handleNonacuteChange = async (flag: PatientComplianceFlagType, value: boolean) => {
+    notifySaveStatus("saving");
     try {
       const res = await ComplianceDataService.updatePatientFlags(flag.chronicConditionId, { hasNonacuteAdmission: value });
       const newId = res.data as string;
@@ -81,18 +90,16 @@ export default function ComplianceDataPage() {
             : f
         )
       );
-      toast.success("Compliance flag updated");
+      notifySaveStatus("saved");
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to update compliance flag");
-    } finally {
-      setSavingConditionId(null);
     }
   };
 
-  const handleSaveDiabetesType = async (flag: PatientComplianceFlagType) => {
-    const draft = diabetesDrafts[flag.chronicConditionId];
-    const diabetesType = draft === undefined ? flag.diabetesType ?? "" : draft;
-    setSavingConditionId(flag.chronicConditionId);
+  const handleDiabetesTypeChange = async (flag: PatientComplianceFlagType, diabetesType: string) => {
+    setDiabetesDrafts((prev) => ({ ...prev, [flag.chronicConditionId]: diabetesType }));
+    notifySaveStatus("saving");
     try {
       const res = await ComplianceDataService.updatePatientFlags(flag.chronicConditionId, { diabetesType });
       const newId = res.data as string;
@@ -103,11 +110,10 @@ export default function ComplianceDataPage() {
             : f
         )
       );
-      toast.success("Diabetes type updated");
+      notifySaveStatus("saved");
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to update diabetes type");
-    } finally {
-      setSavingConditionId(null);
     }
   };
 
@@ -142,7 +148,7 @@ export default function ComplianceDataPage() {
             <Loader2 className="animate-spin" size={20} />
           </div>
         ) : staff.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No active staff found.</p>
+          <EmptyState illustration="users" title="No active staff found" />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -152,21 +158,19 @@ export default function ComplianceDataPage() {
                   <th className="py-2 pr-4">Role</th>
                   <th className="py-2 pr-4">Designation</th>
                   <th className="py-2 pr-4">Department</th>
-                  <th className="py-2 pr-4">FTE</th>
-                  <th className="py-2"></th>
+                  <th className="py-2">FTE</th>
                 </tr>
               </thead>
               <tbody>
                 {staff.map((s) => {
                   const draft = fteDrafts[s.userId] ?? (s.fteValue != null ? String(s.fteValue) : "");
-                  const isSaving = savingUserId === s.userId;
                   return (
                     <tr key={s.userId} className="border-b border-border/50">
                       <td className="py-2 pr-4 font-medium text-foreground">{s.name}</td>
                       <td className="py-2 pr-4 capitalize text-muted-foreground">{s.role ?? "—"}</td>
                       <td className="py-2 pr-4 text-muted-foreground">{s.userDesignation ?? "—"}</td>
                       <td className="py-2 pr-4 text-muted-foreground">{s.departmentName ?? "—"}</td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2">
                         <input
                           type="number"
                           step="0.05"
@@ -174,19 +178,9 @@ export default function ComplianceDataPage() {
                           max="2"
                           placeholder="1.00"
                           value={draft}
-                          onChange={(e) => setFteDrafts((prev) => ({ ...prev, [s.userId]: e.target.value }))}
+                          onChange={(e) => handleFteDraftChange(s.userId, e.target.value)}
                           className="h-8 w-24 rounded-md border border-border bg-background px-2 text-sm"
                         />
-                      </td>
-                      <td className="py-2">
-                        <button
-                          onClick={() => handleSaveFte(s.userId)}
-                          disabled={isSaving}
-                          title="Save"
-                          className="flex items-center justify-center rounded-full p-1.5 text-primary hover:bg-primary/10 disabled:opacity-50"
-                        >
-                          {isSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
-                        </button>
                       </td>
                     </tr>
                   );
@@ -217,63 +211,41 @@ export default function ComplianceDataPage() {
             <Loader2 className="animate-spin" size={20} />
           </div>
         ) : filteredFlags.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No hypertension or diabetes records found.</p>
+          <EmptyState illustration="chart" title="No hypertension or diabetes records found" />
         ) : (
           <div className="flex flex-col gap-3">
-            {filteredFlags.map((f) => {
-              const isSaving = savingConditionId === f.chronicConditionId;
-              return (
-                <div
-                  key={f.chronicConditionId}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {f.patientName} <span className="text-muted-foreground">({f.patientOPNumber ?? "—"})</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">{f.conditionName}</p>
-                  </div>
-
-                  {f.isHypertension && (
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={f.hasNonacuteAdmission}
-                        disabled={isSaving}
-                        onChange={(e) => handleSaveNonacuteAdmission(f, e.target.checked)}
-                      />
-                      Nonacute inpatient admission
-                    </label>
-                  )}
-
-                  {f.isDiabetes && (
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={diabetesDrafts[f.chronicConditionId] ?? f.diabetesType ?? ""}
-                        onChange={(e) =>
-                          setDiabetesDrafts((prev) => ({ ...prev, [f.chronicConditionId]: e.target.value }))
-                        }
-                        className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                      >
-                        {DIABETES_TYPE_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => handleSaveDiabetesType(f)}
-                        disabled={isSaving}
-                        title="Save"
-                        className="flex items-center justify-center rounded-full p-1.5 text-primary hover:bg-primary/10 disabled:opacity-50"
-                      >
-                        {isSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
-                      </button>
-                    </div>
-                  )}
+            {filteredFlags.map((f) => (
+              <div
+                key={f.chronicConditionId}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
+              >
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {f.patientName} <span className="text-muted-foreground">({f.patientOPNumber ?? "—"})</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">{f.conditionName}</p>
                 </div>
-              );
-            })}
+
+                {f.isHypertension && (
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={f.hasNonacuteAdmission}
+                      onChange={(e) => handleNonacuteChange(f, e.target.checked)}
+                    />
+                    Nonacute inpatient admission
+                  </label>
+                )}
+
+                {f.isDiabetes && (
+                  <SearchableSelect
+                    value={diabetesDrafts[f.chronicConditionId] ?? f.diabetesType ?? ""}
+                    onChange={(v) => handleDiabetesTypeChange(f, v)}
+                    options={DIABETES_TYPE_OPTIONS}
+                  />
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

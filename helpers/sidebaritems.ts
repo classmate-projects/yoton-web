@@ -1,6 +1,7 @@
 import { RecordsIcon, dashboardIcon, registrationIcon, multipleUsers, buildingIcon, doctorIcon, calendarIcon, availableDoctor } from "@/public/icons/icons";
 import { MdPayment } from "react-icons/md";
-import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, CheckCircle2, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList } from "lucide-react";
+import type { RegionFeature } from "@/types/region.type";
+import { HeartPulse, FlaskConical, ScanLine, Pill, Settings, FileText, Lock, ListPlus, MessageCircle, FileSpreadsheet, AlertTriangle, ShieldAlert, Droplets, Smile, ShieldCheck, ScrollText, ClipboardList, UserCheck, Boxes, PackageOpen, Wrench } from "lucide-react";
 
 export type SidebarGroup = "User Modules" | "Configuration";
 
@@ -20,6 +21,10 @@ export interface SidebarMenuItem {
     // Admin-only: when present, clicking this tile (while expanded) drills into these
     // instead of navigating straight to navLink. Leave unset for a plain direct link.
     subItems?: SidebarSubItem[];
+    // A country-only module: hidden everywhere (sidebar, route guard, role permissions) unless
+    // the installation's region has this feature - see lib/region.ts. The API refuses it
+    // too ([RequireRegionFeature]).
+    regionFeature?: RegionFeature;
 }
 
 // Which modules a role can reach is entirely dynamic now - a per-role allow-list managed in
@@ -144,6 +149,32 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         icon: MdPayment,
         group: "User Modules"
     },
+    // Inventory: the store team's module (every store, purchasing, approvals, reports) - see
+    // yoton-api's Inventory*Controller.cs.
+    {
+        id: 34,
+        name: "Inventory",
+        navLink: "/inventory",
+        icon: Boxes,
+        group: "User Modules"
+    },
+    // A department's own store: request stock, confirm deliveries, record use, send back.
+    {
+        id: 35,
+        name: "Store Requests",
+        navLink: "/store-requests",
+        icon: PackageOpen,
+        group: "User Modules"
+    },
+    // Assets & maintenance: the equipment register, servicing, repairs and calibration - see
+    // yoton-api's AssetsController.cs.
+    {
+        id: 36,
+        name: "Assets & Maintenance",
+        navLink: "/assets",
+        icon: Wrench,
+        group: "User Modules"
+    },
     {
         id: 9,
         name: "Doctors Availability",
@@ -168,27 +199,15 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         group: "User Modules"
     },
 
-    // Daily attendance check-in/check-out (see AttendanceController) - a normal
-    // admin-grantable module like any other above, not a permanent exemption. Declared
-    // after every role-specific workbench for the same firstAllowedRoute() ordering reason
-    // as Doctors Availability/EMR/Messages: a role whose real home module is one of those
-    // should still land there after login, not here, if both happen to be granted.
-    {
-        id: 24,
-        name: "Check-in",
-        navLink: "/check-in",
-        icon: CheckCircle2,
-        group: "User Modules"
-    },
-
     // HSPA-2 compliance KPI reports (see Services/Reports/ on the API side) - a normal
-    // admin-grantable module, not a permanent exemption.
+    // admin-grantable module, not a permanent exemption. Qatar (MoPH) only.
     {
         id: 25,
         name: "Reports",
         navLink: "/reports/kpi",
         icon: FileSpreadsheet,
-        group: "Configuration"
+        group: "Configuration",
+        regionFeature: "qualityKpiReports"
     },
 
     // Sentinel Events / Medication Errors / Dental Errors reporting - a normal
@@ -234,7 +253,8 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Compliance Data",
         navLink: "/compliance-data",
         icon: ShieldCheck,
-        group: "Configuration"
+        group: "Configuration",
+        regionFeature: "qualityKpiReports"
     },
 
     // Every user action, login to logout - see Yoton-API/Middlewares/AuditLogMiddleware.cs.
@@ -244,6 +264,17 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: "Audit Log",
         navLink: "/audit-log",
         icon: ScrollText,
+        group: "Configuration"
+    },
+
+    // Every staff member's check-in/out for a chosen day. Hardcoded admin-only (like
+    // /role-management) rather than an allow-list module - see lib/routeAccess.ts,
+    // components/sidebar.tsx and Yoton-API's StaffAttendanceController.
+    {
+        id: 33,
+        name: "Staff Attendance",
+        navLink: "/staff-attendance",
+        icon: UserCheck,
         group: "Configuration"
     },
 

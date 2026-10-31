@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Circle,
   Copy,
+  CopyPlus,
   GripVertical,
   Heading1,
   Heading2,
@@ -27,6 +28,7 @@ import {
   ListPlus,
   Pilcrow,
   PenLine,
+  Repeat,
   Trash2,
   Type,
 } from "lucide-react";
@@ -82,11 +84,21 @@ const findField = (rows: MedicalFormRow[], fieldId: string): MedicalFormField | 
 const removeField = (rows: MedicalFormRow[], fieldId: string): MedicalFormRow[] =>
   rows.map((row) => ({ ...row, fields: row.fields.filter((f) => f.id !== fieldId) })).filter((row) => row.fields.length > 0);
 
+// Same configuration under new ids - a repeatable section's own fields included - so the copy
+// never shares saved values with the original.
+const cloneField = (field: MedicalFormField): MedicalFormField => ({
+  ...structuredClone(field),
+  id: nextId("fld"),
+  childFields: field.childFields?.map(cloneField),
+});
+const cloneRow = (row: MedicalFormRow): MedicalFormRow => ({ ...row, id: nextId("row"), fields: row.fields.map(cloneField) });
+
 // The builder canvas: an ordered list of rows, each holding 1+ fields side by side as
 // columns. Fields are added by clicking a palette item (appends a new one-field row, same as
 // before) or by dragging one - dragging supports dropping between existing rows (becomes its
 // own new row there) or onto either side of a field within a row (becomes a new column next
-// to it), which is also how an *existing* field gets moved/promoted into a column. A group's
+// to it), which is also how an *existing* field gets moved/promoted into a column. Any row
+// can be made repeatable (the filler then adds/removes copies of it with + / −). A group's
 // own childFields stay a flat list (SimpleFieldListEditor) - see that file's own comment for
 // why nesting rows/columns there isn't worth it.
 export default function FormBuilderCanvas({
@@ -113,6 +125,36 @@ export default function FormBuilderCanvas({
   const deleteField = (fieldId: string) => {
     onChange(removeField(rows, fieldId));
     if (selectedFieldId === fieldId) setSelectedFieldId(null);
+  };
+
+  // Beside the original when it shares its row (columns, or a repeatable row), otherwise as
+  // its own row right below.
+  const duplicateField = (fieldId: string) => {
+    const rowIndex = rows.findIndex((r) => r.fields.some((f) => f.id === fieldId));
+    if (rowIndex < 0) return;
+    const row = rows[rowIndex];
+    const colIndex = row.fields.findIndex((f) => f.id === fieldId);
+    const copy = cloneField(row.fields[colIndex]);
+    const next = [...rows];
+    if (row.fields.length > 1 || row.repeatable) {
+      const fields = [...row.fields];
+      fields.splice(colIndex + 1, 0, copy);
+      next[rowIndex] = { ...row, fields };
+    } else {
+      next.splice(rowIndex + 1, 0, { id: nextId("row"), fields: [copy] });
+    }
+    onChange(next);
+    setSelectedFieldId(copy.id);
+  };
+
+  const updateRow = (updated: MedicalFormRow) => onChange(rows.map((r) => (r.id === updated.id ? updated : r)));
+
+  const duplicateRow = (rowId: string) => {
+    const index = rows.findIndex((r) => r.id === rowId);
+    if (index < 0) return;
+    const next = [...rows];
+    next.splice(index + 1, 0, cloneRow(rows[index]));
+    onChange(next);
   };
 
   const handleDragStart = (event: DragStartEvent) => setActiveDragId(String(event.active.id));
@@ -189,7 +231,16 @@ export default function FormBuilderCanvas({
             )}
             {rows.map((row, rowIndex) => (
               <Fragment key={row.id}>
-                <RowView row={row} selectedFieldId={selectedFieldId} onSelectField={setSelectedFieldId} onUpdateField={updateField} onDeleteField={deleteField} />
+                <RowView
+                  row={row}
+                  selectedFieldId={selectedFieldId}
+                  onSelectField={setSelectedFieldId}
+                  onUpdateField={updateField}
+                  onDeleteField={deleteField}
+                  onDuplicateField={duplicateField}
+                  onUpdateRow={updateRow}
+                  onDuplicateRow={() => duplicateRow(row.id)}
+                />
                 <RowGap index={rowIndex + 1} />
               </Fragment>
             ))}
@@ -252,30 +303,84 @@ function RowView({
   onSelectField,
   onUpdateField,
   onDeleteField,
+  onDuplicateField,
+  onUpdateRow,
+  onDuplicateRow,
 }: {
   row: MedicalFormRow;
   selectedFieldId: string | null;
   onSelectField: (id: string | null) => void;
   onUpdateField: (field: MedicalFormField) => void;
   onDeleteField: (id: string) => void;
+  onDuplicateField: (id: string) => void;
+  onUpdateRow: (row: MedicalFormRow) => void;
+  onDuplicateRow: () => void;
 }) {
+  const toggleRepeat = () =>
+    onUpdateRow({ ...row, repeatable: row.repeatable ? undefined : true, maxRepeats: row.repeatable ? undefined : row.maxRepeats });
+
   return (
-    <div className="flex items-stretch">
-      <ColGap rowId={row.id} index={0} />
-      {row.fields.map((field, colIndex) => (
-        <Fragment key={field.id}>
-          <div className="min-w-0 flex-1">
-            <FieldCard
-              field={field}
-              isSelected={selectedFieldId === field.id}
-              onSelect={() => onSelectField(selectedFieldId === field.id ? null : field.id)}
-              onChange={onUpdateField}
-              onRemove={() => onDeleteField(field.id)}
+    <div className={`rounded-lg ${row.repeatable ? "border border-dashed border-primary/60 bg-primary/5 p-2" : ""}`}>
+      {row.repeatable && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs">
+          <span className="flex items-center gap-1.5 font-semibold text-primary">
+            <Repeat size={13} /> Repeatable row
+          </span>
+          <span className="text-muted-foreground">Filled in with + / − to add or remove copies</span>
+          <label className="ml-auto flex items-center gap-1.5 text-muted-foreground">
+            Max copies
+            <input
+              type="number"
+              min={1}
+              placeholder="No limit"
+              value={row.maxRepeats ?? ""}
+              onChange={(e) =>
+                onUpdateRow({ ...row, maxRepeats: e.target.value === "" ? undefined : Math.max(1, Number(e.target.value)) })
+              }
+              className="h-7 w-24 text-xs"
             />
-          </div>
-          <ColGap rowId={row.id} index={colIndex + 1} />
-        </Fragment>
-      ))}
+          </label>
+        </div>
+      )}
+      <div className="flex items-stretch">
+        <ColGap rowId={row.id} index={0} />
+        {row.fields.map((field, colIndex) => (
+          <Fragment key={field.id}>
+            <div className="min-w-0 flex-1">
+              <FieldCard
+                field={field}
+                isSelected={selectedFieldId === field.id}
+                onSelect={() => onSelectField(selectedFieldId === field.id ? null : field.id)}
+                onChange={onUpdateField}
+                onRemove={() => onDeleteField(field.id)}
+                onDuplicate={() => onDuplicateField(field.id)}
+              />
+            </div>
+            <ColGap rowId={row.id} index={colIndex + 1} />
+          </Fragment>
+        ))}
+        <div className="flex shrink-0 flex-col justify-start gap-1 pl-1 pt-1.5">
+          <button
+            type="button"
+            onClick={toggleRepeat}
+            aria-pressed={!!row.repeatable}
+            title={row.repeatable ? "Stop repeating this row" : "Make this row repeatable - copies are added with + / − while filling"}
+            className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+              row.repeatable ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-primary"
+            }`}
+          >
+            <Repeat size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={onDuplicateRow}
+            title="Duplicate this row"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+          >
+            <CopyPlus size={14} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -286,12 +391,14 @@ function FieldCard({
   onSelect,
   onChange,
   onRemove,
+  onDuplicate,
 }: {
   field: MedicalFormField;
   isSelected: boolean;
   onSelect: () => void;
   onChange: (field: MedicalFormField) => void;
   onRemove: () => void;
+  onDuplicate: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `field__${field.id}` });
 
@@ -318,8 +425,20 @@ function FieldCard({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            onDuplicate();
+          }}
+          title="Duplicate field"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-primary"
+        >
+          <CopyPlus size={14} />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
             onRemove();
           }}
+          title="Delete field"
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 size={14} />

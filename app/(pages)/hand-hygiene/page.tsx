@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { Droplets, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { HandHygieneService } from "@/services/handHygiene.service";
+import SearchableSelect from "@/components/SearchableSelect";
+import DatePicker from "@/components/DatePicker";
 import { DepartmentSerivce } from "@/services/department.service";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { HandHygieneObservationInput, HandHygieneSessionType } from "@/types/handHygiene.type";
 import { DepartmentTypes } from "@/types/department.type";
 
@@ -132,6 +136,7 @@ export default function HandHygienePage() {
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSaving(true);
       const payload = {
@@ -147,9 +152,11 @@ export default function HandHygienePage() {
         await HandHygieneService.createSession(payload);
         toast.success("Audit session recorded");
       }
+      notifySaveStatus("saved");
       resetSessionForm();
       await fetchSessions();
     } catch {
+      notifySaveStatus("error");
       toast.error(editingSessionId ? "Failed to update audit session" : "Failed to record audit session");
     } finally {
       setIsSaving(false);
@@ -169,12 +176,14 @@ export default function HandHygienePage() {
 
       <div className="card p-6 mb-6 flex flex-col gap-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} className="h-10 text-sm">
-            <option value="">Department</option>
-            {departments.map((d) => (
-              <option key={d.departmentId} value={d.departmentId}>{d.name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={departmentId}
+            onChange={setDepartmentId}
+            options={[
+              { value: "", label: "Department" },
+              ...departments.map((d) => ({ value: d.departmentId, label: d.name })),
+            ]}
+          />
           <input
             type="text"
             placeholder="Ward"
@@ -182,11 +191,9 @@ export default function HandHygienePage() {
             onChange={(e) => setWard(e.target.value)}
             className="h-10 text-sm"
           />
-          <input
-            type="date"
+          <DatePicker
             value={observationDate}
-            onChange={(e) => setObservationDate(e.target.value)}
-            className="h-10 text-sm"
+            onChange={setObservationDate}
           />
         </div>
 
@@ -194,36 +201,30 @@ export default function HandHygienePage() {
           <p className="text-sm font-semibold text-foreground/90">Observations</p>
           {observations.map((o, index) => (
             <div key={index} className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-center">
-              <select
-                value={o.professionalCode}
-                onChange={(e) => updateObservation(index, "professionalCode", e.target.value)}
-                className="h-9 text-sm"
-              >
-                <option value="">Professional</option>
-                {PROFESSIONAL_CODES.map((p) => (
-                  <option key={p.code} value={p.code}>{p.label}</option>
-                ))}
-              </select>
-              <select
-                value={o.indicationCode}
-                onChange={(e) => updateObservation(index, "indicationCode", e.target.value)}
-                className="h-9 text-sm"
-              >
-                <option value="">Moment/indication</option>
-                {INDICATION_CODES.map((p) => (
-                  <option key={p.code} value={p.code}>{p.label}</option>
-                ))}
-              </select>
-              <select
-                value={o.actionCode}
-                onChange={(e) => updateObservation(index, "actionCode", e.target.value)}
-                className="h-9 text-sm"
-              >
-                <option value="">Action</option>
-                {ACTION_CODES.map((p) => (
-                  <option key={p.code} value={p.code}>{p.label}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={o.professionalCode ?? ""}
+                onChange={(v) => updateObservation(index, "professionalCode", v)}
+                options={[
+                  { value: "", label: "Professional" },
+                  ...PROFESSIONAL_CODES.map((p) => ({ value: p.code, label: p.label })),
+                ]}
+              />
+              <SearchableSelect
+                value={o.indicationCode ?? ""}
+                onChange={(v) => updateObservation(index, "indicationCode", v)}
+                options={[
+                  { value: "", label: "Moment/indication" },
+                  ...INDICATION_CODES.map((p) => ({ value: p.code, label: p.label })),
+                ]}
+              />
+              <SearchableSelect
+                value={o.actionCode ?? ""}
+                onChange={(v) => updateObservation(index, "actionCode", v)}
+                options={[
+                  { value: "", label: "Action" },
+                  ...ACTION_CODES.map((p) => ({ value: p.code, label: p.label })),
+                ]}
+              />
               <button
                 onClick={() => setObservations((prev) => prev.filter((_, i) => i !== index))}
                 disabled={observations.length === 1}
@@ -260,7 +261,11 @@ export default function HandHygienePage() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : sessions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No audit sessions recorded yet.</p>
+        <EmptyState
+          illustration="hygiene"
+          title="No audit sessions recorded yet"
+          description="Hand hygiene observation sessions will be listed here."
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {sessions.map((s) => (

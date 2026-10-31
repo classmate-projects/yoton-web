@@ -12,8 +12,17 @@ import { createPortal } from "react-dom";
 import { useTheme } from "next-themes";
 import { Sun, Moon, Monitor, LogOut, UserRound, ChevronRight, Search, MessageCircle } from "lucide-react";
 import { CurrentUserDetail } from "@/types/user.type";
+import { hasRegionFeature, useRegion } from "@/lib/region";
 import { getInitials } from "@/lib/getInitials";
 import { useAlertCenter } from "@/hooks/useAlertCenter";
+import { useConnectionState } from "@/hooks/useConnectionState";
+import type { ConnectionState } from "@/lib/connectionStatus";
+
+const CONNECTION_BADGE: Record<ConnectionState, { className: string; label: string }> = {
+  online: { className: "bg-green-500", label: "Online" },
+  "server-down": { className: "bg-amber-500 animate-pulse", label: "Can't reach the server - changes may not be saved" },
+  offline: { className: "bg-red-500", label: "Offline - no internet connection" },
+};
 import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
 import { useRolePermissionsSync } from "@/hooks/useRolePermissionsSync";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
@@ -42,6 +51,8 @@ interface NavigableEntry {
   navLink: string;
   name: string;
   icon: React.ComponentType;
+  // Country-only module (see SidebarMenuItem.regionFeature) - sub-items share their parent's.
+  regionFeature?: SidebarMenuItem["regionFeature"];
   // Which allowedModules entry governs this entry - undefined means "use navLink itself".
   // Sub-items share their parent's module key since SidebarSubItem doesn't carry its own
   // (matches app/(pages)/layout.tsx's extraProtectedRoutes.moduleKey usage, e.g. the
@@ -53,8 +64,8 @@ interface NavigableEntry {
 // their sub-items alike — used to resolve "recently visited" entries back to
 // an icon/name/link regardless of which level they live at.
 const NAVIGABLE_ENTRIES: NavigableEntry[] = sidebarMenuItems.flatMap((item) => [
-  { navLink: item.navLink, name: item.name, icon: item.icon },
-  ...(item.subItems?.map((sub) => ({ navLink: sub.navLink, name: sub.name, icon: sub.icon, moduleKey: item.navLink })) ?? []),
+  { navLink: item.navLink, name: item.name, icon: item.icon, regionFeature: item.regionFeature },
+  ...(item.subItems?.map((sub) => ({ navLink: sub.navLink, name: sub.name, icon: sub.icon, moduleKey: item.navLink, regionFeature: item.regionFeature })) ?? []),
 ]);
 
 const MAX_RECENTS = 6;
@@ -66,6 +77,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const [mounted, setMounted] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<CurrentUserDetail | null>(null);
+  const region = useRegion();
   // Desktop: click-driven, collapsed to icons-only by default, expands only when
   // the hamburger toggle in the header is clicked. No pinned/persisted state, so
   // server and client both start collapsed — no hydration risk. On mobile there
@@ -249,6 +261,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   ];
 
   const userRole = currentUser?.role || "";
+  const connectionBadge = CONNECTION_BADGE[useConnectionState()];
   const { canSeeAlerts, alerts, unreadCount, isRinging, markAlertRead, markAllRead } =
     useAlertCenter(userRole, currentUser?.userId);
   const { unreadCount: unreadChatCount, clearUnread: clearUnreadChat } = useUnreadChatCount(!!userRole);
@@ -327,6 +340,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         (item) =>
           item.group === "User Modules" &&
           item.navLink !== "/nursing/confidential-notes" &&
+          (!item.regionFeature || hasRegionFeature(region, item.regionFeature)) &&
           (roleAllowedModulesCache[expandedRole.roleId] ?? []).includes(item.navLink)
       )
     : [];
@@ -338,10 +352,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const isModuleAllowed = (navLink: string) => {
     if (navLink === "/settings") return true;
     if (navLink === "/nursing/confidential-notes") return userRole === "nurse";
+    if (navLink === "/staff-attendance") return isAdmin;
     return isAdmin || allowedModules.includes(navLink);
   };
-  const isVisible = (item: SidebarMenuItem) => isModuleAllowed(item.navLink);
-  const isEntryVisible = (entry: NavigableEntry) => isModuleAllowed(entry.moduleKey ?? entry.navLink);
+  // Country-only modules (e.g. Qatar's MoPH KPI reports) only where the region has them.
+  const regionAllows = (feature?: SidebarMenuItem["regionFeature"]) => !feature || hasRegionFeature(region, feature);
+  const isVisible = (item: SidebarMenuItem) => regionAllows(item.regionFeature) && isModuleAllowed(item.navLink);
+  const isEntryVisible = (entry: NavigableEntry) => regionAllows(entry.regionFeature) && isModuleAllowed(entry.moduleKey ?? entry.navLink);
 
   const visibleGroups = SIDEBAR_GROUPS.map((group) => ({
     group,
@@ -480,6 +497,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                 <Image src={logo} alt="logo" height={48} width={48} className="h-full w-full object-contain" loading="eager" />
               </div>
             )}
+
+            <span
+              role="img"
+              title={connectionBadge.label}
+              aria-label={connectionBadge.label}
+              className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full ring-2 ring-card ${connectionBadge.className}`}
+            />
 
             {!isExpanded && mounted && canSeeAlerts && unreadCount > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-card">

@@ -1,10 +1,12 @@
 import { ENDPOINTS } from "@/lib/endpoints"
 import api from "@/lib/axios"
+import { compressImageForUpload } from "@/lib/resizeImage"
 
 export const CompanyService = {
     uploadLogo: async (file: File) => {
+        const compressed = await compressImageForUpload(file, 800);
         const form = new FormData();
-        form.append("file", file);
+        form.append("file", compressed);
         const { data } = await api.post(ENDPOINTS.COMPANY.UPLOAD_LOGO, form, {
             headers: { "Content-Type": "multipart/form-data" },
         })
@@ -14,10 +16,11 @@ export const CompanyService = {
     updateSettings: async (payload: {
         name?: string;
         maxDiscountPercent?: number | null;
-        country?: string;
-        currencyCode?: string;
+        // Removes the discount cap (a plain null maxDiscountPercent means "unchanged").
+        clearMaxDiscountPercent?: boolean;
         pediatricMaxAgeYears?: number;
         geriatricMinAgeYears?: number;
+        immunizationReminderDays?: number;
         idleTimeoutMinutes?: number;
         includeLoginCredentialsInPatientEmail?: boolean;
         patientEmailCredentialsSubject?: string;
@@ -31,8 +34,12 @@ export const CompanyService = {
         website?: string;
         faxNumber?: string;
         facilityId?: string;
+        // Only where the installation's region has tax (TRN in the UAE, GSTIN in India).
+        taxRegistrationNumber?: string;
         eclaimlinkUsername?: string;
         eclaimlinkPassword?: string;
+        staffCheckInRequired?: boolean;
+        patientMatchFields?: string[];
     }) => {
         const { data } = await api.put(ENDPOINTS.COMPANY.UPDATE_SETTINGS, payload);
         return data;

@@ -1,5 +1,3 @@
-import React from "react";
-
 interface SettingsIconProps {
   size?: number;
   color?: string;

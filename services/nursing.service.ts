@@ -158,6 +158,10 @@ export const NursingService = {
     const { data } = await api.post(ENDPOINTS.NURSING.ADMINISTER_MEDICATION(medicationId), payload);
     return data;
   },
+  cancelMedicationAdministration: async (administrationId: string, payload: { password: string; reason: string }) => {
+    const { data } = await api.put(ENDPOINTS.NURSING.CANCEL_MEDICATION_ADMINISTRATION(administrationId), payload);
+    return data;
+  },
   getWorkQueue: async () => {
     const { data } = await api.get(ENDPOINTS.NURSING.GET_WORK_QUEUE);
     return data;

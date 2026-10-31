@@ -1,3 +1,5 @@
+import type { WalkInOrderFields } from "./patient.type";
+
 export interface MedicineType {
   medicineId: string;
   name: string;
@@ -5,7 +7,12 @@ export interface MedicineType {
   ingredient: string | null;
   dosageForm: string | null;
   category: string | null;
+  // Stock and price are in the medicine's dispensing unit (Strip, Tablet, ...); packUnit and
+  // packSize say how it's bought (a Box of 10), so stock reads as whole packs plus loose units.
   stock: number;
+  unit: string;
+  packUnit: string | null;
+  packSize: number;
   price: number;
   expiryDate: string | null;
   isActive: boolean;
@@ -17,14 +24,6 @@ export interface MedicineType {
   isControlled: boolean;
   isDiscontinued: boolean;
   discontinuedDate: string | null;
-}
-
-export interface MedicinePagedResult {
-  data: MedicineType[];
-  totalCount: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
 }
 
 // One row of a bulk medication-catalog import — parsed client-side from the DDC or Riayati
@@ -53,14 +52,16 @@ export interface PrescriptionItemType {
   medicineId: string | null;
   medicineName: string;
   quantity: number;
+  unit: string | null;
   priority: string;
   unitPrice: number;
 }
 
-export interface PrescriptionType {
+export interface PrescriptionType extends WalkInOrderFields {
   prescriptionId: string;
   patientId: string | null;
   patientName: string;
+  patientOPNumber?: string | null;
   doctorId: string | null;
   doctorName: string | null;
   visitId: string | null;
@@ -87,20 +88,23 @@ export interface AddMedicinePayload {
   ingredient?: string;
   dosageForm?: string;
   category?: string;
-  stock: number;
   price: number;
-  expiryDate?: string | null;
   isHighRisk?: boolean;
   code?: string;
   manufacturer?: string;
   route?: string;
   isControlled?: boolean;
+  // How it's counted - left as it is when unit isn't sent. Price is per unit.
+  unit?: string;
+  packUnit?: string | null;
+  packSize?: number;
 }
 
 export interface CreatePrescriptionPayload {
-  patientId: string;
+  patientId?: string;
   doctorId?: string;
   visitId?: string;
+  externalProvider?: string; // outside prescriber on a walk-in's prescription
   notes?: string;
   items: { medicineId: string; quantity: number; priority?: string }[];
 }
@@ -135,6 +139,7 @@ export interface PharmacyMedicationType {
   instructions: string | null;
   priority: string;
   totalQuantity: number | null;
+  unit: string | null;
   refillCount: number;
   prnReason: string | null;
   requiresCounselling: boolean;
@@ -177,4 +182,37 @@ export interface MedicineAlternativeType {
 export interface DispenseMedicationPayload {
   collectedBy: string; // Patient, Nurse
   collectorUserId?: string;
+}
+
+// What went out on a dispense (a prescription or a medication order), lot by lot, and how much
+// can still come back - quantities in the medicine's dispensing unit.
+export interface DispensedLineType {
+  issueLineId: string;
+  itemName: string;
+  unit: string;
+  packUnit: string | null;
+  packSize: number;
+  batchNumber: string | null;
+  expiryDate: string | null;
+  quantity: number;
+  returnedQuantity: number;
+  canReturn: number;
+}
+
+export interface DispensedType {
+  issueId: string;
+  number: string;
+  storeName: string | null;
+  issuedByName: string | null;
+  createdAt: string;
+  billId: string | null;
+  billStatus: string | null;
+  lines: DispensedLineType[];
+}
+
+export interface ReturnDispensedPayload {
+  reason?: string;
+  // Back on the shelf; otherwise written off as it comes in.
+  reusable: boolean;
+  lines: { issueLineId: string; quantity: number }[];
 }

@@ -1,14 +1,15 @@
 import api from "@/lib/axios";
 import { ENDPOINTS } from "@/lib/endpoints";
 import { CreateLabRequestPayload } from "@/types/lab.type";
+import { compressImageForUpload } from "@/lib/resizeImage";
 
 export const LabService = {
-  getAll: async () => {
-    const { data } = await api.get(ENDPOINTS.LAB.GET_ALL);
+  getAll: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.LAB.GET_ALL(date));
     return data;
   },
-  getPending: async () => {
-    const { data } = await api.get(ENDPOINTS.LAB.GET_PENDING);
+  getPending: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.LAB.GET_PENDING(date));
     return data;
   },
   getSummary: async () => {
@@ -39,9 +40,10 @@ export const LabService = {
     return data;
   },
   uploadResult: async (labRequestId: string, file: File) => {
+    const compressed = await compressImageForUpload(file);
     const form = new FormData();
     form.append("LabRequestId", labRequestId);
-    form.append("File", file);
+    form.append("File", compressed);
     const { data } = await api.post(ENDPOINTS.LAB.UPLOAD_RESULT, form, {
       headers: { "Content-Type": "multipart/form-data" },
     });

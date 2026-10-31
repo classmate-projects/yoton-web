@@ -1,25 +1,40 @@
 "use client";
 
 import { useEffect, useMemo, useState, Suspense } from "react";
+import EmptyState from "@/components/EmptyState";
 import { useRouter, useSearchParams } from "next/navigation";
-import axios from "axios";
 import { toast } from "sonner";
 import { MdPayment, MdAdd } from "react-icons/md";
+import HintTooltip from "@/components/HintTooltip";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { BillingService } from "@/services/billing.service";
 import { ReceptionService } from "@/services/reception.service";
-import { BillingSummaryType, BillType, ChargeableItemType } from "@/types/billing.type";
+import SearchableSelect from "@/components/SearchableSelect";
+import { AwaitingBillingItemType, BillingSummaryType, BillType, ChargeableItemType, WalkInAwaitingType } from "@/types/billing.type";
 import { PatientListItemType } from "@/types/appointment.type";
+import { PatientSummaryType } from "@/types/patient.type";
+import PatientPicker from "@/components/patients/PatientPicker";
+import PatientStreamTabs, { type PatientStream } from "@/components/patients/PatientStreamTabs";
+import { WalkInPatientBadge } from "@/components/patients/PatientBadges";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { formatCurrency } from "@/lib/currency";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
-
-const formatDateTime = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleString() : "—";
+import { useRegion } from "@/lib/region";
+import SearchIcon from "@/public/icons/SearchIcon";
+import DatePicker from "@/components/DatePicker";
+import { formatDateTime, toDateInputValue } from "@/lib/date";
+import Link from "next/link";
+import { FileBarChart, Printer, X } from "lucide-react";
+import BillPrintout from "@/components/billing/BillPrintout";
+import BillLines, { AddBillLineForm } from "@/components/billing/BillLines";
+import { BillRefunds, RefundsDue } from "@/components/billing/BillRefunds";
+import { apiErrorMessage } from "@/lib/apiError";
 
 const currency = (value: number) => formatCurrency(value);
+// " (10%)" next to Discount/Tax - empty for older flat-amount bills, which have no percent.
+// " (incl. 10% bill discount)" next to the Discount total - the total also includes any
+// per-line discounts, so the bill-level percentage alone would mislead. Empty when none.
+const billDiscountNote = (percent: number | null) => (percent != null && percent > 0 ? ` (incl. ${percent}% bill discount)` : "");
 
 const statusBadgeClass = (status: string) => {
   switch (status) {
@@ -39,31 +54,70 @@ function BillingPageInner() {
   const [checkedAuth, setCheckedAuth] = useState(false);
 
   const [summary, setSummary] = useState<BillingSummaryType | null>(null);
-  const [bills, setBills] = useState<BillType[]>([]);
-  const [filter, setFilter] = useState<"pending" | "all">("pending");
+  const [filter, setFilter] = useState<"awaiting" | "pending" | "all">("awaiting");
+  // Both lists are always loaded (not just the open tab's) so the search can show how
+  // many matches every tab has.
+  const [pendingBills, setPendingBills] = useState<BillType[]>([]);
+  const [allBills, setAllBills] = useState<BillType[]>([]);
+  const [billSearch, setBillSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
+
+  const [awaitingItems, setAwaitingItems] = useState<AwaitingBillingItemType[]>([]);
+  const [isOpeningVisit, setIsOpeningVisit] = useState<string | null>(null);
+  // Awaiting Billing has two lists: visits from a consultation here, and walk-ins whose
+  // outside prescription / lab / radiology orders aren't on a bill yet.
+  const [awaitingStream, setAwaitingStream] = useState<PatientStream>("consultation");
+  const [walkInAwaiting, setWalkInAwaiting] = useState<WalkInAwaitingType[]>([]);
+  const [isOpeningWalkIn, setIsOpeningWalkIn] = useState<string | null>(null);
 
   const [patients, setPatients] = useState<PatientListItemType[]>([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [patientSearch, setPatientSearch] = useState("");
-  const [selectedPatient, setSelectedPatient] = useState<PatientListItemType | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientSummaryType | null>(null);
   const [appointmentId, setAppointmentId] = useState("");
   const [visitId, setVisitId] = useState(visitIdParam);
-  const [discount, setDiscount] = useState<number>(0);
-  const [tax, setTax] = useState<number>(0);
+  // Kept as the raw text typed so the fields can be cleared (a number state snaps an
+  // emptied box straight back to 0); parsed on submit, where empty means 0%.
+  const [discount, setDiscount] = useState("");
+  const [tax, setTax] = useState("");
+  // Bills carry tax only where the installation's country has one (VAT in the UAE, GST in
+  // India - none in Qatar, where the API refuses a tax percentage).
+  const region = useRegion();
+  const taxName = region?.tax.name ?? "Tax";
+  const hasTax = region?.tax.applicable ?? false;
 
   const [detailBill, setDetailBill] = useState<BillType | null>(null);
-  const [itemDescription, setItemDescription] = useState("");
-  const [itemAmount, setItemAmount] = useState<number>(0);
-  const [isAddingItem, setIsAddingItem] = useState(false);
+  // Set by a bill card's Print button: renders that bill's print sheet, then the effect
+  // below opens the print dialog once it's on the page, and clears it when printing ends.
+  const [printBill, setPrintBill] = useState<BillType | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<BillType | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  useEffect(() => {
+    if (!printBill) return;
+    const clear = () => setPrintBill(null);
+    window.addEventListener("afterprint", clear);
+    // Wait a frame so the sheet is actually rendered before the dialog snapshots the page.
+    const frame = requestAnimationFrame(() => window.print());
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("afterprint", clear);
+    };
+  }, [printBill]);
   const [payMethod, setPayMethod] = useState("Cash");
   const [isPaying, setIsPaying] = useState(false);
 
   const [chargeableItems, setChargeableItems] = useState<ChargeableItemType[]>([]);
   const [isLoadingChargeable, setIsLoadingChargeable] = useState(false);
   const [addingSourceId, setAddingSourceId] = useState<string | null>(null);
+  const [isAddingAll, setIsAddingAll] = useState(false);
+
+  // The signed-in user's personal billing discount limit (set by admin in User Management).
+  // Null means no personal cap.
+  const [userDiscountPercent, setUserDiscountPercent] = useState<number | null>(null);
 
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
@@ -74,21 +128,52 @@ function BillingPageInner() {
       router.replace("/");
       return;
     }
+    setUserDiscountPercent(detail.userDiscountPercent ?? null);
     setCheckedAuth(true);
   }, [router]);
 
   // ---------------- DATA ----------------
+  const fetchAwaiting = async () => {
+    try {
+      const res = await BillingService.getAwaiting();
+      setAwaitingItems(res.data ?? []);
+    } catch (error) {
+      console.error("Failed to load awaiting visits:", error);
+    }
+  };
+
+  const fetchWalkInAwaiting = async () => {
+    try {
+      const res = await BillingService.getWalkInAwaiting();
+      setWalkInAwaiting(res.data ?? []);
+    } catch (error) {
+      console.error("Failed to load walk-in patients awaiting billing:", error);
+    }
+  };
+
+  // The stat cards are page-wide, not per-tab - loaded on mount (below) so they show on the
+  // default Awaiting Billing tab too, and refreshed again by every fetchAll.
+  const fetchSummary = async () => {
+    try {
+      const res = await BillingService.getSummary();
+      setSummary(res.data ?? null);
+    } catch (error) {
+      console.error("Failed to load billing summary:", error);
+    }
+  };
+
   const fetchAll = async () => {
     try {
       setIsLoading(true);
-      const [summaryRes, listRes] = await Promise.all([
-        BillingService.getSummary(),
-        filter === "pending" ? BillingService.getPending() : BillingService.getAll(),
+      const [, pendingRes, allRes] = await Promise.all([
+        fetchSummary(),
+        BillingService.getPending(selectedDate || undefined),
+        BillingService.getAll(selectedDate || undefined),
       ]);
-      setSummary(summaryRes.data ?? null);
-      setBills(listRes.data ?? []);
+      setPendingBills(pendingRes.data ?? []);
+      setAllBills(allRes.data ?? []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load bills"));
+      toast.error(apiErrorMessage(error, "Failed to load bills"));
     } finally {
       setIsLoading(false);
     }
@@ -96,11 +181,32 @@ function BillingPageInner() {
 
   useEffect(() => {
     if (!checkedAuth) return;
+    fetchAwaiting();
+    fetchWalkInAwaiting();
+    fetchSummary();
+  }, [checkedAuth]);
+
+  useEffect(() => {
+    if (!checkedAuth) return;
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkedAuth, filter]);
+  }, [checkedAuth, selectedDate]);
+
+  useSignalRRefetch(["visitStatusUpdated"], fetchAwaiting);
 
   useSignalRRefetch(["billCreated", "billPaid", "billCancelled", "billItemAdded"], fetchAll);
+
+  // Walk-in orders are billable the moment a department raises them, so the list follows
+  // every create/correct/remove in Pharmacy, Lab and Radiology live.
+  useSignalRRefetch(
+    [
+      "labRequestCreated", "labRequestUpdated", "labRequestRemoved", "labStatusUpdated",
+      "radiologyRequestCreated", "radiologyRequestUpdated", "radiologyRequestRemoved", "radiologyStatusUpdated",
+      "prescriptionCreated", "prescriptionUpdated", "prescriptionRemoved", "prescriptionDispensed",
+      "billCreated", "billItemAdded", "billPaid", "billCancelled", "patientRegistered", "PatientUpdated",
+    ],
+    fetchWalkInAwaiting
+  );
 
   const fetchPatients = async () => {
     try {
@@ -118,30 +224,64 @@ function BillingPageInner() {
 
   useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
 
-  const filteredPatients = useMemo(() => {
-    if (!patientSearch.trim()) return [];
-    const q = patientSearch.toLowerCase();
-    return patients.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.phone?.toLowerCase().includes(q) ||
-        p.opNumber?.toLowerCase().includes(q) ||
-        p.opId?.toLowerCase().includes(q)
-    );
-  }, [patientSearch, patients]);
+  // One front-desk search across every tab - Awaiting (consultation + walk-in), Pending and
+  // All. Each tab shows how many patients/bills match, so e.g. two "Vishal"s waiting in one
+  // tab and one in another are both visible from wherever the clerk is. Bills and visits
+  // only carry patientId/patientName, so phone and MRN come from the patient list.
+  const patientsById = useMemo(() => new Map(patients.map((p) => [p.opId, p])), [patients]);
+  const searchQuery = billSearch.trim().toLowerCase();
+  const isSearching = searchQuery !== "";
 
-  // keep the detail drawer in sync whenever the bill list refreshes
+  const search = useMemo(() => {
+    const matches = (patientId: string | null | undefined, name: string | null | undefined, phone?: string | null, mrn?: string | null) => {
+      if (!searchQuery) return true;
+      const patient = patientId ? patientsById.get(patientId) : undefined;
+      return [name, phone ?? patient?.phone, mrn ?? patient?.opNumber].some((v) => v?.toLowerCase().includes(searchQuery));
+    };
+    return {
+      awaiting: awaitingItems.filter((i) => matches(i.patientId, i.patientName)),
+      walkIn: walkInAwaiting.filter((i) => matches(i.patientId, i.patientName, i.phone, i.patientOPNumber)),
+      pending: pendingBills.filter((b) => matches(b.patientId, b.patientName)),
+      all: allBills.filter((b) => matches(b.patientId, b.patientName)),
+    };
+  }, [searchQuery, patientsById, awaitingItems, walkInAwaiting, pendingBills, allBills]);
+
+  const filteredBills = filter === "pending" ? search.pending : search.all;
+  const tabCount = {
+    awaiting: search.awaiting.length + search.walkIn.length,
+    pending: search.pending.length,
+    all: search.all.length,
+  };
+
+  // Same-name patients are told apart by MRN on every card.
+  const mrnOf = (patientId: string | null | undefined) => (patientId ? patientsById.get(patientId)?.opNumber : undefined);
+
+  // Keep the detail pop-up in sync whenever the bill LISTS refresh - only on the lists
+  // changing, never on detailBill itself. Running on detailBill too meant that right after
+  // Mark as Paid set the pop-up to the paid bill, this copied the list's still-stale
+  // Pending copy straight back over it, so the button reappeared. Also never lets a list
+  // copy turn a settled (Paid/Cancelled) bill back into Pending, in case a refresh that
+  // started before the payment lands after it.
   useEffect(() => {
-    if (!detailBill) return;
-    const fresh = bills.find((b) => b.billId === detailBill.billId);
-    if (fresh) setDetailBill(fresh);
-  }, [bills, detailBill]);
+    setDetailBill((current) => {
+      if (!current) return current;
+      const fresh = allBills.find((b) => b.billId === current.billId) ?? pendingBills.find((b) => b.billId === current.billId);
+      if (!fresh) return current;
+      if (current.status !== "Pending" && fresh.status === "Pending") return current;
+      return fresh;
+    });
+  }, [allBills, pendingBills]);
 
-  // fetch dispensed/completed items not yet billed for this bill's visit
-  const fetchChargeableItems = async (targetVisitId: string) => {
+  // Items not yet billed: a visit bill pulls the visit's dispensed/completed orders; a bill
+  // with no visit pulls the patient's walk-in (external service) orders.
+  const fetchChargeableItems = async (bill: Pick<BillType, "visitId" | "patientId">) => {
     try {
       setIsLoadingChargeable(true);
-      const data = await BillingService.getChargeableItems(targetVisitId);
+      const data = bill.visitId
+        ? await BillingService.getChargeableItems(bill.visitId)
+        : bill.patientId
+          ? await BillingService.getWalkInItems(bill.patientId)
+          : { data: [] };
       setChargeableItems(data.data ?? []);
     } catch (error) {
       console.error("Failed to load chargeable items:", error);
@@ -152,16 +292,29 @@ function BillingPageInner() {
   };
 
   useEffect(() => {
-    if (detailBill?.visitId) {
-      fetchChargeableItems(detailBill.visitId);
+    if (detailBill && (detailBill.visitId || detailBill.patientId)) {
+      fetchChargeableItems(detailBill);
     } else {
       setChargeableItems([]);
     }
-  }, [detailBill?.billId, detailBill?.visitId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailBill?.billId, detailBill?.visitId, detailBill?.patientId]);
 
-  useSignalRRefetch(["prescriptionDispensed", "labStatusUpdated", "radiologyStatusUpdated"], () => {
-    if (detailBill?.visitId) fetchChargeableItems(detailBill.visitId);
-  });
+  // Doctor's orders become chargeable as the departments finish them - dispensed, completed,
+  // given by nursing (injections/infusions) or done (procedures) - and walk-in orders as soon
+  // as they're raised.
+  useSignalRRefetch(
+    [
+      "prescriptionDispensed", "prescriptionCreated", "prescriptionUpdated", "prescriptionRemoved",
+      "labStatusUpdated", "labRequestCreated", "labRequestUpdated", "labRequestRemoved",
+      "radiologyStatusUpdated", "radiologyRequestCreated", "radiologyRequestUpdated", "radiologyRequestRemoved",
+      "medicationDispensed", "medicationAdministered", "medicationAdministrationCancelled",
+      "treatmentMarkedDone", "treatmentReverted", "treatmentUpdated", "treatmentRemoved",
+    ],
+    () => {
+      if (detailBill && detailBill.status === "Pending") fetchChargeableItems(detailBill);
+    }
+  );
 
   const handleAddFromSource = async (item: ChargeableItemType) => {
     if (!detailBill) return;
@@ -175,21 +328,47 @@ function BillingPageInner() {
       toast.success(data.message || "Item added to bill");
       setDetailBill(data.data);
       fetchAll();
-      if (detailBill.visitId) await fetchChargeableItems(detailBill.visitId);
+      await fetchChargeableItems(detailBill);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add item"));
+      toast.error(apiErrorMessage(error, "Failed to add item"));
     } finally {
       setAddingSourceId(null);
     }
   };
 
+  // Walk-ins usually settle everything at once - one click instead of one per item.
+  const handleAddAllFromSource = async () => {
+    if (!detailBill || chargeableItems.length === 0) return;
+    setIsAddingAll(true);
+    let latest: BillType | null = null;
+    let added = 0;
+    try {
+      for (const item of chargeableItems) {
+        const data = await BillingService.addItemFromSource({
+          billId: detailBill.billId,
+          sourceType: item.sourceType,
+          sourceId: item.sourceId,
+        });
+        latest = data.data;
+        added++;
+      }
+      toast.success(`${added} item${added === 1 ? "" : "s"} added to the bill`);
+    } catch (error) {
+      toast.error(apiErrorMessage(error, added > 0 ? `Added ${added}, then failed` : "Failed to add items"));
+    } finally {
+      if (latest) setDetailBill(latest);
+      fetchAll();
+      await fetchChargeableItems(detailBill);
+      setIsAddingAll(false);
+    }
+  };
+
   const resetForm = () => {
-    setPatientSearch("");
     setSelectedPatient(null);
     setAppointmentId("");
     setVisitId(visitIdParam);
-    setDiscount(0);
-    setTax(0);
+    setDiscount("");
+    setTax("");
   };
 
   const openCreateModal = () => {
@@ -209,88 +388,122 @@ function BillingPageInner() {
       return;
     }
 
+    // Both are percentages now - checkable up front, no total needed (the API re-checks).
+    const discountPercent = Number(discount) || 0;
+    const taxPercent = Number(tax) || 0;
+    if (discountPercent < 0 || discountPercent > 100 || taxPercent < 0 || taxPercent > 100) {
+      toast.error("Discount and tax must be between 0 and 100%");
+      return;
+    }
+    if (userDiscountPercent !== null && discountPercent > userDiscountPercent) {
+      toast.error(`You have only ${userDiscountPercent}% billing discount privilege.`);
+      return;
+    }
+
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const data = await BillingService.create({
         patientId: selectedPatient.opId,
         appointmentId: appointmentId || undefined,
         visitId: visitId || undefined,
-        discount,
-        tax,
+        discountPercent,
+        taxPercent,
       });
       toast.success(data.message || "Bill created");
+      notifySaveStatus("saved");
       closeModal();
       fetchAll();
       setDetailBill(data.data);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to create bill"));
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, "Failed to create bill"));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleAddItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!detailBill || !itemDescription.trim() || itemAmount <= 0) {
-      toast.warning("Please enter a description and amount");
-      return;
-    }
-
-    try {
-      setIsAddingItem(true);
-      const data = await BillingService.addItem({
-        billId: detailBill.billId,
-        description: itemDescription,
-        amount: itemAmount,
-      });
-      toast.success(data.message || "Item added");
-      setItemDescription("");
-      setItemAmount(0);
-      setDetailBill(data.data);
-      fetchAll();
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to add item"));
-    } finally {
-      setIsAddingItem(false);
-    }
+  // BillLines added, adjusted or removed a line. Removing a medicine/test line frees it to be
+  // billed again, so the visit's chargeable list is refreshed too.
+  const handleBillLinesUpdated = (bill: BillType) => {
+    setDetailBill(bill);
+    fetchAll();
+    fetchChargeableItems(bill);
   };
 
   const handlePay = async () => {
     if (!detailBill) return;
+    notifySaveStatus("saving");
     try {
       setIsPaying(true);
       const data = await BillingService.pay(detailBill.billId, payMethod);
       toast.success(data.message || "Payment recorded");
+      notifySaveStatus("saved");
       setDetailBill(data.data);
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to record payment"));
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, "Failed to record payment"));
     } finally {
       setIsPaying(false);
     }
   };
 
+  // Opens the walk-in patient's pending bill (or starts one) with their unbilled services
+  // listed alongside, ready to add.
+  const handleOpenWalkIn = async (patientId: string) => {
+    try {
+      setIsOpeningWalkIn(patientId);
+      const res = await BillingService.openWalkInBill(patientId);
+      setDetailBill(res.data);
+      fetchWalkInAwaiting();
+      fetchAll();
+    } catch (error) {
+      toast.error(apiErrorMessage(error, "Failed to open bill"));
+    } finally {
+      setIsOpeningWalkIn(null);
+    }
+  };
+
+  const handleOpenVisit = async (visitId: string) => {
+    try {
+      setIsOpeningVisit(visitId);
+      const res = await BillingService.openVisitBill(visitId);
+      setDetailBill(res.data);
+      fetchAwaiting();
+      fetchAll();
+    } catch (error) {
+      toast.error(apiErrorMessage(error, "Failed to open bill"));
+    } finally {
+      setIsOpeningVisit(null);
+    }
+  };
+
+  // Opens the cancel dialog - a reason is required (the API rejects a cancel without one),
+  // so a toast's one-click confirm isn't enough any more.
   const handleCancelBill = (bill: BillType) => {
-    toast(
-      <span>
-        Cancel bill for <b className="text-red-500 ml-1">{bill.patientName}</b>?
-      </span>,
-      {
-        action: {
-          label: "Cancel Bill",
-          onClick: async () => {
-            try {
-              const data = await BillingService.cancel(bill.billId);
-              toast.success(data.message || "Bill cancelled");
-              if (detailBill?.billId === bill.billId) setDetailBill(data.data);
-              fetchAll();
-            } catch (error) {
-              toast.error(errorMessage(error, "Failed to cancel bill"));
-            }
-          },
-        },
-      }
-    );
+    setCancelTarget(bill);
+    setCancelReason("");
+  };
+
+  const confirmCancelBill = async () => {
+    if (!cancelTarget || !cancelReason.trim()) return;
+    try {
+      setIsCancelling(true);
+      const data = await BillingService.cancel(cancelTarget.billId, cancelReason.trim());
+      toast.success(data.message || "Bill cancelled");
+      if (detailBill?.billId === cancelTarget.billId) setDetailBill(data.data);
+      setCancelTarget(null);
+      fetchAll();
+      // A cancelled visit bill leaves the visit waiting for a fresh bill; a cancelled walk-in
+      // bill puts the patient's services back on the walk-in list.
+      if (cancelTarget.visitId) fetchAwaiting();
+      else fetchWalkInAwaiting();
+    } catch (error) {
+      toast.error(apiErrorMessage(error, "Failed to cancel bill"));
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   if (!checkedAuth) {
@@ -313,43 +526,48 @@ function BillingPageInner() {
             Create patient bills, itemize charges, and record payments.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150 shrink-0"
-        >
-          <MdAdd size={22} />
-          New Bill
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/billing/reports"
+            className="px-4 py-2 rounded-md border border-border text-foreground text-lg flex gap-2 items-center hover:bg-muted transition duration-150"
+          >
+            <FileBarChart size={20} />
+            Reports
+          </Link>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="bg-primary px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:opacity-90 transition duration-150"
+          >
+            <MdAdd size={22} />
+            New Bill
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <RefundsDue />
       </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-        <div className="card p-5">
-          <p className="text-sm text-muted-foreground">Pending Bills</p>
+        <BillingStatCard label="Pending Bills" hint="Number of invoices that have been created but not yet paid by the patient.">
           <p className="text-3xl font-bold text-foreground mt-1">{summary?.pendingCount ?? "—"}</p>
-        </div>
-        <div className="card p-5">
-          <p className="text-sm text-muted-foreground">Pending Amount</p>
-          <p className="text-3xl font-bold text-destructive mt-1">
-            {summary ? currency(summary.pendingAmount) : "—"}
-          </p>
-        </div>
-        <div className="card p-5">
-          <p className="text-sm text-muted-foreground">Paid Today</p>
+        </BillingStatCard>
+        <BillingStatCard label="Pending Amount" hint="Total outstanding balance across all unpaid bills. This is the amount still owed to the clinic.">
+          <p className="text-3xl font-bold text-destructive mt-1">{summary ? currency(summary.pendingAmount) : "—"}</p>
+        </BillingStatCard>
+        <BillingStatCard label="Paid Today" hint="Number of bills that were fully settled today, regardless of when they were originally created.">
           <p className="text-3xl font-bold text-emerald-500 mt-1">{summary?.paidToday ?? "—"}</p>
-        </div>
-        <div className="card p-5">
-          <p className="text-sm text-muted-foreground">Revenue Today</p>
-          <p className="text-3xl font-bold text-primary mt-1">
-            {summary ? currency(summary.revenueToday) : "—"}
-          </p>
-        </div>
+        </BillingStatCard>
+        <BillingStatCard label="Revenue Today" hint="Total amount collected from all payments received today, including partial and full payments.">
+          <p className="text-3xl font-bold text-primary mt-1">{summary ? currency(summary.revenueToday) : "—"}</p>
+        </BillingStatCard>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 mb-4">
-        {(["pending", "all"] as const).map((f) => (
+      {/* Filter tabs + date picker + patient search */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {(["awaiting", "pending", "all"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -357,72 +575,257 @@ function BillingPageInner() {
               filter === f ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
           >
-            {f === "pending" ? "Pending Bills" : "All Bills"}
+            {(() => {
+              // While searching every tab shows its match count (0 included, so the clerk
+              // sees at a glance which tabs hold that patient); otherwise only Awaiting
+              // shows its queue size.
+              const count = isSearching ? tabCount[f] : f === "awaiting" ? tabCount.awaiting : 0;
+              const showCount = isSearching || count > 0;
+              return (
+                <span className="flex items-center gap-1.5">
+                  {f === "awaiting" ? "Awaiting Billing" : f === "pending" ? "Pending Bills" : "All Bills"}
+                  {showCount && (
+                    <span
+                      className={`rounded-full px-1.5 py-0 text-xs font-bold leading-4 ${
+                        filter === f
+                          ? "bg-white/20 text-inherit"
+                          : isSearching && count > 0
+                            ? "bg-primary text-white"
+                            : "bg-foreground/10 text-inherit"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </span>
+              );
+            })()}
           </button>
         ))}
-      </div>
-
-      <div className="card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className="text-foreground/90">Patient</th>
-                <th className="text-foreground/90">Net Amount</th>
-                <th className="text-foreground/90">Created</th>
-                <th className="text-foreground/90">Status</th>
-                <th className="text-center text-foreground/90">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={5} className="py-16 text-center">
-                    <LoadingSpinner />
-                  </td>
-                </tr>
-              ) : bills.length > 0 ? (
-                bills.map((bill) => (
-                  <tr key={bill.billId} className="hover:bg-muted/30 transition-colors">
-                    <td className="font-semibold text-foreground">{bill.patientName}</td>
-                    <td className="text-foreground font-semibold">{currency(bill.netAmount)}</td>
-                    <td className="text-foreground/70 text-sm">{formatDateTime(bill.createdAt)}</td>
-                    <td>
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(bill.status)}`}>
-                        {bill.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="flex justify-center items-center gap-2">
-                        <button
-                          onClick={() => setDetailBill(bill)}
-                          className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
-                        >
-                          Manage
-                        </button>
-                        {bill.status === "Pending" && (
-                          <button
-                            onClick={() => handleCancelBill(bill)}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="py-16 text-center text-muted-foreground">
-                    No bills found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        {filter !== "awaiting" && (
+          <div className="w-48">
+            <DatePicker
+              value={selectedDate}
+              onChange={setSelectedDate}
+              max={toDateInputValue(new Date())}
+              placeholder="All dates"
+              className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-(--color-highlight) px-3 py-1.5 text-sm text-foreground ring-offset-background transition-all focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+            />
+          </div>
+        )}
+        <div className="relative w-full sm:flex-1 sm:min-w-64 sm:max-w-xl sm:ml-auto">
+          <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
+            <SearchIcon color="#555" />
+          </span>
+          <input
+            type="text"
+            autoComplete="off"
+            placeholder="Search patients in billing by name, phone or MRN..."
+            value={billSearch}
+            onChange={(e) => setBillSearch(e.target.value)}
+            className="w-full pl-12! pr-9 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
+          />
+          {isSearching && (
+            <button
+              type="button"
+              onClick={() => setBillSearch("")}
+              title="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted cursor-pointer"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
       </div>
+
+      {isSearching && (
+        <p className="mb-4 -mt-1 text-sm text-muted-foreground">
+          {tabCount.awaiting + tabCount.pending + tabCount.all === 0 ? (
+            <>No patient in billing matches &ldquo;{billSearch.trim()}&rdquo;.</>
+          ) : (
+            <>
+              Matches for &ldquo;{billSearch.trim()}&rdquo;: {tabCount.awaiting} awaiting billing · {tabCount.pending} pending
+              {" "}· {tabCount.all} in all bills{selectedDate ? " (for the selected date)" : ""}. Click a tab to see them.
+            </>
+          )}
+        </p>
+      )}
+
+      {filter === "awaiting" && (
+        <div className="mb-4">
+          <PatientStreamTabs
+            value={awaitingStream}
+            onChange={setAwaitingStream}
+            consultationCount={search.awaiting.length}
+            walkInCount={search.walkIn.length}
+          />
+        </div>
+      )}
+
+      {filter === "awaiting" && awaitingStream === "walkIn" ? (
+        search.walkIn.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {search.walkIn.map((item) => (
+              <div key={item.patientId} className="card p-5 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground truncate">{item.patientName}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      MRN {item.patientOPNumber || "—"}
+                      {item.phone ? ` · ${item.phone}` : ""}
+                    </p>
+                  </div>
+                  <WalkInPatientBadge registrationType={item.registrationType} />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {item.departments.map((d) => (
+                    <span key={d} className="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                      {d}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      {item.itemCount} unbilled service{item.itemCount === 1 ? "" : "s"}
+                    </p>
+                    <p className="text-sm font-semibold text-foreground">{currency(item.suggestedTotal)}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{formatDateTime(item.latestOrderAt)}</p>
+                </div>
+                <div className="pt-1 border-t border-border">
+                  <button
+                    onClick={() => handleOpenWalkIn(item.patientId)}
+                    disabled={isOpeningWalkIn === item.patientId}
+                    className="w-full py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {isOpeningWalkIn === item.patientId ? "Opening..." : item.openBill ? "Manage Bill" : "Open Bill"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="card">
+            {isSearching ? (
+              <SearchEmptyState query={billSearch.trim()} onClear={() => setBillSearch("")} />
+            ) : (
+              <EmptyState
+                illustration="billing"
+                title="No walk-in patients awaiting billing"
+                description="Outside prescriptions, lab and radiology requests raised for walk-ins show up here until they're billed."
+              />
+            )}
+          </div>
+        )
+      ) : filter === "awaiting" ? (
+        search.awaiting.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {search.awaiting.map((item) => (
+              <div key={item.visitId} className="card p-5 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground truncate">{item.patientName}</p>
+                    <PatientIdLine mrn={mrnOf(item.patientId)} />
+                  </div>
+                  <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
+                    {item.visitType === "WalkIn" ? "Walk-in" : "Appointment"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">Checked in: {formatDateTime(item.checkedInAt)}</p>
+                {item.bill && (
+                  <p className="text-sm font-semibold text-foreground">{currency(item.bill.netAmount)}</p>
+                )}
+                <div className="pt-1 border-t border-border">
+                  <button
+                    onClick={() => handleOpenVisit(item.visitId)}
+                    disabled={isOpeningVisit === item.visitId}
+                    className="w-full py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {isOpeningVisit === item.visitId ? "Opening..." : item.bill ? "Manage Bill" : "Open Bill"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="card">
+            {isSearching ? (
+              <SearchEmptyState query={billSearch.trim()} onClear={() => setBillSearch("")} />
+            ) : (
+              <EmptyState
+                illustration="billing"
+                title="No patients awaiting billing"
+                description="Visits show up here once the doctor, lab and pharmacy steps are done."
+              />
+            )}
+          </div>
+        )
+      ) : isLoading ? (
+        <div className="py-16 flex justify-center"><LoadingSpinner /></div>
+      ) : filteredBills.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredBills.map((bill) => (
+            <div key={bill.billId} className="card p-5 flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground truncate">{bill.patientName}</p>
+                  <PatientIdLine mrn={mrnOf(bill.patientId)} />
+                </div>
+                <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadgeClass(bill.status)}`}>
+                  {bill.status}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xl font-bold text-foreground">{currency(bill.netAmount)}</span>
+                <span className="text-xs text-muted-foreground">{formatDateTime(bill.createdAt)}</span>
+              </div>
+              <div className="flex items-center gap-2 pt-1 border-t border-border">
+                <button
+                  onClick={() => setDetailBill(bill)}
+                  className="flex-1 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                >
+                  Manage
+                </button>
+                <button
+                  onClick={() => setPrintBill(bill)}
+                  title="Print bill"
+                  className="flex flex-1 items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
+                >
+                  <Printer size={13} /> Print
+                </button>
+                {bill.status === "Pending" && (
+                  <button
+                    onClick={() => handleCancelBill(bill)}
+                    className="flex-1 py-1.5 text-xs font-semibold rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="card">
+          {isSearching ? (
+            <SearchEmptyState query={billSearch.trim()} onClear={() => setBillSearch("")} />
+          ) : (
+            <EmptyState
+              illustration="billing"
+              title={filter === "pending" ? "No pending bills" : "No bills found"}
+              description={
+                selectedDate
+                  ? "Nothing was billed on this date. Pick another day or show all dates."
+                  : filter === "pending"
+                    ? "Every bill has been paid or cancelled."
+                    : "Bills you create will appear here."
+              }
+              action={selectedDate ? { label: "Show all dates", onClick: () => setSelectedDate("") } : undefined}
+            />
+          )}
+        </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
@@ -431,40 +834,7 @@ function BillingPageInner() {
             <p className="text-sm text-muted-foreground mb-6">Start a new bill for a patient.</p>
 
             <form onSubmit={handleCreate} className="flex flex-col gap-4">
-              <div className="relative">
-                <label className="text-sm font-bold text-foreground/90 required">Patient</label>
-                <input
-                  type="text"
-                  required
-                  value={patientSearch}
-                  onChange={(e) => {
-                    setPatientSearch(e.target.value);
-                    setSelectedPatient(null);
-                  }}
-                  placeholder="Search by name, phone or MRN..."
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                />
-                {!selectedPatient && filteredPatients.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
-                    {filteredPatients.map((p) => (
-                      <button
-                        type="button"
-                        key={p.opId}
-                        onClick={() => {
-                          setSelectedPatient(p);
-                          setPatientSearch(p.name);
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-primary/5 border-b border-border last:border-b-0 transition-colors"
-                      >
-                        <div className="font-medium text-foreground">{p.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {p.opNumber || p.opId} • {p.phone}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <PatientPicker value={selectedPatient} onChange={setSelectedPatient} required />
 
               <div>
                 <label className="text-sm font-bold text-foreground/90">Appointment ID (optional)</label>
@@ -493,28 +863,50 @@ function BillingPageInner() {
 
               <div className="flex gap-4">
                 <div className="w-full">
-                  <label className="text-sm font-bold text-foreground/90">Discount</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={discount}
-                    onChange={(e) => setDiscount(Number(e.target.value))}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  />
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-foreground/90">Discount (%)</label>
+                    {userDiscountPercent !== null && (
+                      <span className="text-xs text-muted-foreground">Your limit: {userDiscountPercent}%</span>
+                    )}
+                  </div>
+                  <div className="relative mt-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={userDiscountPercent ?? 100}
+                      step={0.01}
+                      value={discount}
+                      onChange={(e) => setDiscount(e.target.value)}
+                      placeholder="0"
+                      className="w-full p-3 pr-9 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                  </div>
                 </div>
+                {hasTax && (
                 <div className="w-full">
-                  <label className="text-sm font-bold text-foreground/90">Tax</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={tax}
-                    onChange={(e) => setTax(Number(e.target.value))}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  />
+                  <label className="text-sm font-bold text-foreground/90">Default {taxName} (%)</label>
+                  <div className="relative mt-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      value={tax}
+                      onChange={(e) => setTax(e.target.value)}
+                      placeholder={region?.tax.standardPercent != null ? `0 or ${region.tax.standardPercent}` : "0"}
+                      className="w-full p-3 pr-9 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                  </div>
                 </div>
+                )}
               </div>
+              <p className="-mt-2 text-xs text-muted-foreground">
+                {hasTax
+                  ? `Discount applies to every line on this bill. Default ${taxName} is pre-filled on each line and can be changed per line; it is always charged on the discounted amount.`
+                  : `Discount applies to every line on this bill. Bills in ${region?.country ?? "this country"} carry no tax.`}
+              </p>
 
               <div className="flex items-center justify-end gap-3 mt-2 w-full">
                 <button
@@ -538,140 +930,254 @@ function BillingPageInner() {
       )}
 
       {detailBill && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
-          <div className="bg-card w-full max-w-lg rounded-xl border border-border p-6 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start mb-1">
-              <h2 className="text-2xl font-semibold text-foreground">{detailBill.patientName}</h2>
-              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(detailBill.status)}`}>
-                {detailBill.status}
-              </span>
+        // Bill window. Pending bills: two panels - add items on the left, the bill on the
+        // right. Paid/cancelled bills have nothing to add, so it's the bill alone, narrower.
+        // Each panel scrolls on its own; totals + payment stay pinned at the bottom right.
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md p-4">
+          <div
+            className={`flex h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl ${
+              detailBill.status === "Pending" ? "max-w-6xl" : "max-w-3xl"
+            }`}
+          >
+            {/* Header */}
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-6 py-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-3">
+                  <h2 className="truncate text-2xl font-semibold text-foreground">{detailBill.patientName}</h2>
+                  <span className={`shrink-0 px-2 py-1 rounded-full text-sm font-semibold ${statusBadgeClass(detailBill.status)}`}>
+                    {detailBill.status}
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Bill #{detailBill.billId} · {formatDateTime(detailBill.createdAt)}
+                </p>
+              </div>
+              <button
+                onClick={() => setDetailBill(null)}
+                title="Close"
+                className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-muted cursor-pointer"
+              >
+                <X size={20} />
+              </button>
             </div>
-            <p className="text-sm text-muted-foreground mb-6">Bill #{detailBill.billId}</p>
 
-            <div className="space-y-1 mb-4">
-              {detailBill.items.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No items added yet.</p>
-              ) : (
-                detailBill.items.map((item) => (
-                  <div key={item.billItemId} className="flex justify-between text-sm py-1 border-b border-border">
-                    <span className="text-foreground/90">{item.description}</span>
-                    <span className="text-foreground font-medium">{currency(item.amount)}</span>
-                  </div>
-                ))
+            <div
+              className={`grid min-h-0 flex-1 grid-cols-1 ${
+                detailBill.status === "Pending" ? "lg:grid-cols-[400px_1fr]" : ""
+              }`}
+            >
+              {/* ---- Left: add items (pending bills only) ---- */}
+              {detailBill.status === "Pending" && (
+                <div className="min-h-0 overflow-y-auto border-b border-border p-5 lg:border-b-0 lg:border-r bg-muted/20">
+                  {(detailBill.visitId || detailBill.patientId) && (
+                    <div className="mb-5">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-sm font-bold text-foreground/90">
+                          {detailBill.visitId ? "Chargeable Items" : "Walk-in services not yet billed"}
+                        </p>
+                        {chargeableItems.length > 1 && (
+                          <button
+                            onClick={handleAddAllFromSource}
+                            disabled={isAddingAll || addingSourceId != null}
+                            className="px-2.5 py-1 text-xs font-semibold rounded-md border border-primary/40 text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-60"
+                          >
+                            {isAddingAll ? "Adding..." : "Add all"}
+                          </button>
+                        )}
+                      </div>
+                      {isLoadingChargeable ? (
+                        <p className="text-sm text-muted-foreground">Loading...</p>
+                      ) : chargeableItems.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          {detailBill.visitId
+                            ? "Nothing dispensed or completed for this visit yet."
+                            : "No unbilled walk-in prescriptions, lab or radiology requests for this patient."}
+                        </p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {chargeableItems.map((item) => (
+                            <div
+                              key={`${item.sourceType}-${item.sourceId}`}
+                              className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm"
+                            >
+                              <div className="min-w-0">
+                                <p className="font-medium text-foreground">{item.description}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {currency(item.suggestedAmount)}
+                                  {!detailBill.visitId && item.status ? ` · ${item.status}` : ""}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => handleAddFromSource(item)}
+                                disabled={addingSourceId === item.sourceId || isAddingAll}
+                                className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
+                              >
+                                {addingSourceId === item.sourceId ? "Adding..." : "Add to bill"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* keyed by bill so it starts fresh with this bill's default tax */}
+                  <AddBillLineForm key={detailBill.billId} bill={detailBill} onBillUpdated={handleBillLinesUpdated} />
+                </div>
               )}
-            </div>
 
-            <div className="space-y-1 text-sm mb-6">
-              <div className="flex justify-between text-foreground/70">
-                <span>Subtotal</span>
-                <span>{currency(detailBill.totalAmount)}</span>
-              </div>
-              <div className="flex justify-between text-foreground/70">
-                <span>Discount</span>
-                <span>-{currency(detailBill.discount)}</span>
-              </div>
-              <div className="flex justify-between text-foreground/70">
-                <span>Tax</span>
-                <span>+{currency(detailBill.tax)}</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold text-foreground pt-1 border-t border-border">
-                <span>Net Amount</span>
-                <span>{currency(detailBill.netAmount)}</span>
-              </div>
-            </div>
+              {/* ---- Right: the bill ---- */}
+              <div className="flex min-h-0 flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                  {detailBill.status === "Cancelled" && detailBill.cancelReason && (
+                    <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm">
+                      <p className="font-semibold text-destructive">
+                        Cancelled{detailBill.cancelledAt ? ` on ${formatDateTime(detailBill.cancelledAt)}` : ""}
+                      </p>
+                      <p className="mt-0.5 text-foreground/90 whitespace-pre-wrap break-words">{detailBill.cancelReason}</p>
+                    </div>
+                  )}
 
-            {detailBill.status === "Pending" && detailBill.visitId && (
-              <div className="mb-6">
-                <p className="text-sm font-bold text-foreground/90 mb-2">Chargeable Items</p>
-                {isLoadingChargeable ? (
-                  <p className="text-sm text-muted-foreground">Loading...</p>
-                ) : chargeableItems.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Nothing dispensed or completed for this visit yet.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {chargeableItems.map((item) => (
-                      <div
-                        key={`${item.sourceType}-${item.sourceId}`}
-                        className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm"
-                      >
-                        <div>
-                          <p className="font-medium text-foreground">{item.description}</p>
-                          <p className="text-xs text-muted-foreground">{currency(item.suggestedAmount)}</p>
+                  <BillLines bill={detailBill} onBillUpdated={handleBillLinesUpdated} />
+                  {detailBill.status === "Paid" && <BillRefunds billId={detailBill.billId} />}
+                </div>
+
+                {/* Pinned footer: totals, payment, print */}
+                <div className="shrink-0 border-t border-border bg-card px-5 py-4">
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between text-foreground/70">
+                      <span>Subtotal</span>
+                      <span className="tabular-nums">{currency(detailBill.totalAmount)}</span>
+                    </div>
+                    <div className="flex justify-between text-foreground/70">
+                      <span>Discount{billDiscountNote(detailBill.discountPercent)}</span>
+                      <span className="tabular-nums">-{currency(detailBill.discount)}</span>
+                    </div>
+                    {(hasTax || detailBill.tax > 0) && (
+                      <div className="flex justify-between text-foreground/70">
+                        <span>{taxName}</span>
+                        <span className="tabular-nums">+{currency(detailBill.tax)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t border-border pt-1.5 text-lg font-bold text-foreground">
+                      <span>Net Amount</span>
+                      <span className="tabular-nums">{currency(detailBill.netAmount)}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {detailBill.status === "Pending" && (
+                      <>
+                        <div className="min-w-40 flex-1">
+                          <SearchableSelect
+                            value={payMethod}
+                            onChange={setPayMethod}
+                            options={[
+                              { value: "Cash", label: "Cash" },
+                              { value: "Card", label: "Card" },
+                              { value: "Insurance", label: "Insurance" },
+                            ]}
+                          />
                         </div>
                         <button
-                          onClick={() => handleAddFromSource(item)}
-                          disabled={addingSourceId === item.sourceId}
-                          className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-white hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
+                          onClick={handlePay}
+                          disabled={isPaying || !detailBill.items.some((i) => !i.isRemoved)}
+                          className="shrink-0 whitespace-nowrap px-6 py-2.5 rounded-lg bg-primary text-white font-semibold hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
                         >
-                          {addingSourceId === item.sourceId ? "Adding..." : "Add to bill"}
+                          {isPaying ? "Processing..." : "Mark as Paid"}
                         </button>
-                      </div>
-                    ))}
+                      </>
+                    )}
+                    <button
+                      onClick={() => window.print()}
+                      className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg font-semibold transition-all duration-200 cursor-pointer ${
+                        detailBill.status === "Pending"
+                          ? "border border-border text-foreground hover:bg-muted"
+                          : "flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
+                      }`}
+                    >
+                      <Printer size={16} /> Print
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
-
-            {detailBill.status === "Pending" && (
-              <>
-                <form onSubmit={handleAddItem} className="flex gap-2 mb-6">
-                  <input
-                    type="text"
-                    placeholder="Description"
-                    value={itemDescription}
-                    onChange={(e) => setItemDescription(e.target.value)}
-                    className="flex-1 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    placeholder="Amount"
-                    value={itemAmount || ""}
-                    onChange={(e) => setItemAmount(Number(e.target.value))}
-                    className="w-28 p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isAddingItem}
-                    className="px-3 py-2 rounded-lg bg-muted hover:bg-muted/80 text-foreground text-sm font-semibold cursor-pointer disabled:opacity-60"
-                  >
-                    Add
-                  </button>
-                </form>
-
-                <div className="flex gap-2">
-                  <select
-                    value={payMethod}
-                    onChange={(e) => setPayMethod(e.target.value)}
-                    className="p-2.5 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground text-sm"
-                  >
-                    <option value="Cash">Cash</option>
-                    <option value="Card">Card</option>
-                    <option value="Insurance">Insurance</option>
-                  </select>
-                  <button
-                    onClick={handlePay}
-                    disabled={isPaying || detailBill.items.length === 0}
-                    className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-white font-semibold hover:opacity-90 transition-colors cursor-pointer disabled:opacity-60"
-                  >
-                    {isPaying ? "Processing..." : "Mark as Paid"}
-                  </button>
                 </div>
-              </>
-            )}
-
-            <button
-              onClick={() => setDetailBill(null)}
-              className="w-full mt-4 px-5 py-2.5 rounded-md border border-border hover:bg-muted transition-all duration-200 cursor-pointer text-foreground"
-            >
-              Close
-            </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Outside the modal on purpose - see BillPrintout's comment on backdrop-blur. */}
+      {cancelTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-md">
+          <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
+            <h2 className="text-xl font-semibold text-foreground">Cancel bill</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {cancelTarget.patientName} · Bill #{cancelTarget.billId} · {currency(cancelTarget.netAmount)}
+            </p>
+            <label className="mt-4 block text-sm font-bold text-foreground/90">Reason</label>
+            <textarea
+              autoFocus
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              maxLength={500}
+              rows={3}
+              placeholder="Why is this bill being cancelled?"
+              className="mt-1 w-full resize-none rounded-lg border border-border bg-muted p-3 text-sm text-foreground outline-none focus:border-primary"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Kept on the bill. {cancelTarget.visitId ? "The visit will go back to Awaiting Billing for a new bill." : ""}
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setCancelTarget(null)}
+                disabled={isCancelling}
+                className="flex-1 rounded-md border border-border px-5 py-2.5 text-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                Keep bill
+              </button>
+              <button
+                onClick={confirmCancelBill}
+                disabled={isCancelling || !cancelReason.trim()}
+                className="flex-1 rounded-md bg-destructive px-5 py-2.5 font-semibold text-white hover:opacity-90 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isCancelling ? "Cancelling..." : "Cancel bill"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* The card's Print button wins over an open pop-up; only one sheet ever renders. */}
+      {(printBill ?? detailBill) && <BillPrintout bill={(printBill ?? detailBill)!} />}
+    </div>
+  );
+}
+
+// Shown under the patient name on every card, so patients who share a name can be told apart.
+function PatientIdLine({ mrn }: { mrn: string | null | undefined }) {
+  if (!mrn) return null;
+  return <p className="text-xs text-muted-foreground truncate">MRN {mrn}</p>;
+}
+
+function SearchEmptyState({ query, onClear }: { query: string; onClear: () => void }) {
+  return (
+    <EmptyState
+      illustration="search"
+      title={`No match for "${query}" here`}
+      description="Check the counts on the other tabs, or try a different name, phone or MRN."
+      action={{ label: "Clear search", onClick: onClear }}
+    />
+  );
+}
+
+function BillingStatCard({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <HintTooltip text={hint} />
+      </div>
+      {children}
     </div>
   );
 }

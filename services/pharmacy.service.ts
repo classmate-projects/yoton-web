@@ -6,6 +6,7 @@ import {
   DispenseMedicationPayload,
   IssueMedicinePayload,
   MedicineBulkUploadPayload,
+  ReturnDispensedPayload,
 } from "@/types/pharmacy.type";
 
 export const PharmacyService = {
@@ -33,19 +34,12 @@ export const PharmacyService = {
     const { data } = await api.delete(ENDPOINTS.PHARMACY.REMOVE_MEDICINE(medicineId));
     return data;
   },
-  updateStock: async (medicineId: string, quantity: number) => {
-    const { data } = await api.post(ENDPOINTS.PHARMACY.UPDATE_STOCK, {
-      medicineId,
-      quantity,
-    });
+  getPrescriptions: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_PRESCRIPTIONS(date));
     return data;
   },
-  getPrescriptions: async () => {
-    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_PRESCRIPTIONS);
-    return data;
-  },
-  getPendingPrescriptions: async () => {
-    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_PENDING_PRESCRIPTIONS);
+  getPendingPrescriptions: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_PENDING_PRESCRIPTIONS(date));
     return data;
   },
   createPrescription: async (payload: CreatePrescriptionPayload) => {
@@ -68,12 +62,16 @@ export const PharmacyService = {
     const { data } = await api.get(ENDPOINTS.PHARMACY.GET_SUMMARY);
     return data;
   },
-  getMedicationQueue: async (status: "pending" | "all") => {
-    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_MEDICATION_QUEUE(status));
+  getMedicationQueue: async (status: "pending" | "all", date?: string) => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_MEDICATION_QUEUE(status, date));
     return data;
   },
   prepareMedication: async (medicationId: string) => {
     const { data } = await api.post(ENDPOINTS.PHARMACY.PREPARE_MEDICATION(medicationId));
+    return data;
+  },
+  revertPreparedMedication: async (medicationId: string) => {
+    const { data } = await api.put(ENDPOINTS.PHARMACY.REVERT_PREPARE_MEDICATION(medicationId));
     return data;
   },
   dispenseMedication: async (medicationId: string, payload: DispenseMedicationPayload) => {
@@ -90,6 +88,14 @@ export const PharmacyService = {
   },
   removeAlternative: async (medicineId: string, alternativeId: string) => {
     const { data } = await api.delete(ENDPOINTS.PHARMACY.REMOVE_ALTERNATIVE(medicineId, alternativeId));
+    return data;
+  },
+  getDispensed: async (sourceType: "Prescription" | "Medication", sourceId: string) => {
+    const { data } = await api.get(ENDPOINTS.PHARMACY.GET_DISPENSED(sourceType, sourceId));
+    return data;
+  },
+  returnDispensed: async (issueId: string, payload: ReturnDispensedPayload) => {
+    const { data } = await api.post(ENDPOINTS.PHARMACY.RETURN_DISPENSED(issueId), payload);
     return data;
   },
   setHighRisk: async (medicineId: string, isHighRisk: boolean) => {

@@ -22,6 +22,23 @@ export interface NursingTaskType {
   completedAt: string | null;
 }
 
+export type VitalsVitalField =
+  | "Systolic"
+  | "Diastolic"
+  | "HeartRate"
+  | "Temperature"
+  | "RespiratoryRate"
+  | "OxygenSaturation"
+  | "HeightCm"
+  | "WeightKg";
+
+export interface VitalsRefusalType {
+  vitalField: string;
+  reason: string;
+  refusedAt: string;
+  nurseName: string | null;
+}
+
 export interface VitalsType {
   vitalsRecordId: string;
   encounterId: string | null;
@@ -46,6 +63,7 @@ export interface VitalsType {
   isCritical: boolean;
   correctedFromId: string | null;
   correctedFrom: VitalsType | null;
+  refusals: VitalsRefusalType[];
 }
 
 // One normalized reading from GET .../vitals-history - merges VitalsRecord's own
@@ -108,6 +126,11 @@ export interface MedicationAdministrationType {
   route: string | null;
   remarks: string | null;
   witnessName: string | null;
+  // A cancelled entry stays visible in the log but no longer locks the medication for the doctor.
+  isCancelled: boolean;
+  cancelledAt: string | null;
+  cancelledByName: string | null;
+  cancellationReason: string | null;
 }
 
 export interface InjectionType {
@@ -330,6 +353,7 @@ export interface VitalsPayload {
   supplementalOxygen?: boolean;
   bmiExclusionReason?: string;
   notes?: string;
+  refusals?: { vitalField: string; reason: string }[];
   nurseId?: string;
   // Required only if the encounter has already been closed (sent to the doctor) - the API
   // returns 423 with requiresPassword:true when this is missing, so the caller can prompt.
@@ -357,6 +381,7 @@ export interface AdministerMedicationPayload {
   route?: string;
   remarks?: string;
   nurseId?: string;
+  nursePassword?: string;
   witnessUserId?: string;
   witnessPassword?: string;
 }

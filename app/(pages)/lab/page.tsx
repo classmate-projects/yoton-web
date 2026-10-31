@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
-import axios from "axios";
 import { toast } from "sonner";
 import { FlaskConical, Pencil, Settings, Trash2, Undo2 } from "lucide-react";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import DatePicker from "@/components/DatePicker";
+import { toDateInputValue, formatDateTime, formatDate } from "@/lib/date";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
+import SearchableSelect from "@/components/SearchableSelect";
 import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
@@ -18,20 +22,16 @@ import { ConfigListService } from "@/services/configList.service";
 import { TestParameterService } from "@/services/testParameter.service";
 import { UserService } from "@/services/user.service";
 import { LabRequestType, LabSummaryType } from "@/types/lab.type";
-import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
+import { DoctorGridType } from "@/types/appointment.type";
+import { PatientSummaryType } from "@/types/patient.type";
 import { TestParameterType } from "@/types/testParameter.type";
 import { UserType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { backendAssetUrl } from "@/lib/backendAsset";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
-
-const formatDateTime = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleString() : "—";
-
-const formatDate = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleDateString() : "—";
+import PatientPicker, { patientFromOrder } from "@/components/patients/PatientPicker";
+import PatientStreamTabs, { type PatientStream } from "@/components/patients/PatientStreamTabs";
+import { BillStatusBadge, WalkInPatientBadge, billedLockTitle } from "@/components/patients/PatientBadges";
+import { apiErrorMessage } from "@/lib/apiError";
 
 const STATUS_FLOW = ["Requested", "SampleCollected", "Processing", "Completed", "Delivered"];
 
@@ -64,15 +64,18 @@ export default function LaboratoryPage() {
   const [requests, setRequests] = useState<LabRequestType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "pending">("pending");
+  const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
 
-  const [patients, setPatients] = useState<PatientListItemType[]>([]);
   const [doctors, setDoctors] = useState<DoctorGridType[]>([]);
+  // Orders from a consultation here vs walk-ins with an outside request - separate grids.
+  const [stream, setStream] = useState<PatientStream>("consultation");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [patientSearch, setPatientSearch] = useState("");
-  const [selectedPatient, setSelectedPatient] = useState<PatientListItemType | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientSummaryType | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  // Outside doctor/facility on a walk-in's own lab request (when no in-house doctor ordered it).
+  const [externalProvider, setExternalProvider] = useState("");
   const [testType, setTestType] = useState("");
   const [testListItemId, setTestListItemId] = useState<string | undefined>(undefined);
   const [priority, setPriority] = useState("Normal");
@@ -120,19 +123,20 @@ export default function LaboratoryPage() {
   }, [router]);
 
   // ---------------- DATA ----------------
-  const fetchAll = async () => {
+  // silent: live SignalR refreshes update the list in place instead of flashing the spinner.
+  const fetchAll = async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       const [summaryRes, listRes] = await Promise.all([
         LabService.getSummary(),
-        filter === "pending" ? LabService.getPending() : LabService.getAll(),
+        filter === "pending" ? LabService.getPending(selectedDate || undefined) : LabService.getAll(selectedDate || undefined),
       ]);
       setSummary(summaryRes.data ?? null);
       setRequests(listRes.data ?? []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load lab requests"));
+      if (!silent) toast.error(apiErrorMessage(error, "Failed to load lab requests"));
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -143,46 +147,38 @@ export default function LaboratoryPage() {
       UserService.getAllByRole("nurse").then((res) => setNurses(res.data || [])).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkedAuth, filter]);
+  }, [checkedAuth, filter, selectedDate]);
 
-  useSignalRRefetch(["labRequestCreated", "labStatusUpdated"], fetchAll);
+  useSignalRRefetch(
+    ["labRequestCreated", "labStatusUpdated", "labRequestUpdated", "labRequestRemoved", "encounterFinished", "encounterReopened"],
+    () => fetchAll(true)
+  );
 
   useEffect(() => {
     if (!checkedAuth) return;
-    const fetchPickers = async () => {
+    const fetchDoctors = async () => {
       try {
-        const [patientsRes, gridRes] = await Promise.all([
-          ReceptionService.getAllPatients(),
-          ReceptionService.getSpecializationsWithDoctors(),
-        ]);
-        setPatients(patientsRes.patients ?? []);
+        const gridRes = await ReceptionService.getSpecializationsWithDoctors();
         const allDoctors = (gridRes.specializations ?? []).flatMap(
           (s: { doctors: DoctorGridType[] }) => s.doctors
         );
         setDoctors(allDoctors);
       } catch (error) {
-        console.error("Failed to load patient/doctor pickers:", error);
+        console.error("Failed to load doctor picker:", error);
       }
     };
-    fetchPickers();
+    fetchDoctors();
   }, [checkedAuth]);
 
-  const filteredPatients = useMemo(() => {
-    if (!patientSearch.trim()) return [];
-    const q = patientSearch.toLowerCase();
-    return patients.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.phone?.toLowerCase().includes(q) ||
-        p.opNumber?.toLowerCase().includes(q) ||
-        p.opId?.toLowerCase().includes(q)
-    );
-  }, [patientSearch, patients]);
+  // A consultation order carries its visit; a walk-in's outside request doesn't.
+  const consultationRequests = useMemo(() => requests.filter((r) => r.visitId), [requests]);
+  const walkInRequests = useMemo(() => requests.filter((r) => !r.visitId), [requests]);
+  const visibleRequests = stream === "consultation" ? consultationRequests : walkInRequests;
 
   const resetForm = () => {
-    setPatientSearch("");
     setSelectedPatient(null);
     setSelectedDoctorId("");
+    setExternalProvider("");
     setTestType("");
     setTestListItemId(undefined);
     setPriority("Normal");
@@ -199,12 +195,9 @@ export default function LaboratoryPage() {
   const openEditModal = (request: LabRequestType) => {
     resetForm();
     setEditingLabRequestId(request.labRequestId);
-    const matchedPatient = patients.find((p) => p.opId === request.patientId);
-    if (matchedPatient) {
-      setSelectedPatient(matchedPatient);
-      setPatientSearch(matchedPatient.name);
-    }
+    setSelectedPatient(patientFromOrder(request));
     setSelectedDoctorId(request.doctorId || "");
+    setExternalProvider(request.externalProvider || "");
     setTestType(request.testType || "");
     setTestListItemId(request.listItemId || undefined);
     setPriority(request.priority);
@@ -228,7 +221,7 @@ export default function LaboratoryPage() {
           toast.success("Lab request removed");
           fetchAll();
         } catch (error) {
-          toast.error(errorMessage(error, "Failed to remove lab request"));
+          toast.error(apiErrorMessage(error, "Failed to remove lab request"));
         }
       }
     );
@@ -236,16 +229,22 @@ export default function LaboratoryPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPatient || !testType.trim()) {
-      toast.warning("Please select a patient and enter a test type");
+    if (!selectedPatient) {
+      toast.warning("Select the patient, or register them as a walk-in");
+      return;
+    }
+    if (!testType.trim()) {
+      toast.warning("Please enter a test type");
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const payload = {
         patientId: selectedPatient.opId,
         doctorId: selectedDoctorId || undefined,
+        externalProvider: selectedDoctorId ? undefined : externalProvider.trim() || undefined,
         testType,
         listItemId: testListItemId,
         priority,
@@ -256,10 +255,14 @@ export default function LaboratoryPage() {
         ? await LabService.update(editingLabRequestId, payload)
         : await LabService.create(payload);
       toast.success(data.message || (editingLabRequestId ? "Lab request corrected" : "Lab request created"));
+      notifySaveStatus("saved");
+      // Requests raised here have no visit behind them - they belong to the walk-in list.
+      if (!editingLabRequestId) setStream("walkIn");
       closeModal();
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, editingLabRequestId ? "Failed to correct lab request" : "Failed to create lab request"));
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, editingLabRequestId ? "Failed to correct lab request" : "Failed to create lab request"));
     } finally {
       setIsSubmitting(false);
     }
@@ -282,7 +285,7 @@ export default function LaboratoryPage() {
       setBarcodeLabId(labRequestId);
       await fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to collect sample"));
+      toast.error(apiErrorMessage(error, "Failed to collect sample"));
     } finally {
       setCollectingId(null);
     }
@@ -295,7 +298,7 @@ export default function LaboratoryPage() {
       toast.success("Reverted to Requested — the doctor can edit it again");
       await fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to revert request"));
+      toast.error(apiErrorMessage(error, "Failed to revert request"));
     } finally {
       setRevertingId(null);
     }
@@ -334,7 +337,7 @@ export default function LaboratoryPage() {
       toast.success(data.message || "Status updated");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update status"));
+      toast.error(apiErrorMessage(error, "Failed to update status"));
     }
   };
 
@@ -346,7 +349,7 @@ export default function LaboratoryPage() {
       toast.success(data.message || "Result uploaded");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to upload result"));
+      toast.error(apiErrorMessage(error, "Failed to upload result"));
     } finally {
       setUploadingId(null);
     }
@@ -370,7 +373,7 @@ export default function LaboratoryPage() {
       });
       setResultEntryValues(prefill);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load test parameters"));
+      toast.error(apiErrorMessage(error, "Failed to load test parameters"));
       setResultEntryParameters([]);
     } finally {
       setIsLoadingResultParams(false);
@@ -394,14 +397,17 @@ export default function LaboratoryPage() {
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSavingResultValues(true);
       const data = await LabService.saveResultValues(resultEntryTarget.labRequestId, values);
       toast.success(data.message || "Result values saved");
+      notifySaveStatus("saved");
       closeResultEntry();
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to save result values"));
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, "Failed to save result values"));
     } finally {
       setIsSavingResultValues(false);
     }
@@ -431,17 +437,16 @@ export default function LaboratoryPage() {
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
-            <select
-              value={selectedNurseId}
-              onChange={(e) => setSelectedNurseId(e.target.value)}
-              title="Nurse identity for collecting samples"
-              className="h-9 w-48 shrink-0 text-sm"
-            >
-              <option value="">Acting nurse…</option>
-              {nurses.map((n) => (
-                <option key={n.id} value={n.id}>{n.name}</option>
-              ))}
-            </select>
+            <div className="w-48 shrink-0">
+              <SearchableSelect
+                value={selectedNurseId}
+                onChange={setSelectedNurseId}
+                options={[
+                  { value: "", label: "Acting nurse…" },
+                  ...nurses.map((n) => ({ value: n.id, label: n.name })),
+                ]}
+              />
+            </div>
           )}
           {!isNurse && (
             <button
@@ -473,7 +478,7 @@ export default function LaboratoryPage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {(["pending", "all"] as const).map((f) => (
           <button
             key={f}
@@ -485,6 +490,15 @@ export default function LaboratoryPage() {
             {f === "pending" ? "Pending Queue" : "All Requests"}
           </button>
         ))}
+        <div className="w-44 ml-auto">
+          <DatePicker
+            value={selectedDate}
+            onChange={setSelectedDate}
+            max={toDateInputValue(new Date())}
+            placeholder="All dates"
+            className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-(--color-highlight) px-3 py-1.5 text-sm text-foreground ring-offset-background transition-all focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+          />
+        </div>
       </div>
 
       {isModalOpen && (
@@ -496,56 +510,35 @@ export default function LaboratoryPage() {
             </p>
 
             <form onSubmit={handleCreate} className="flex flex-col gap-4">
-              <div className="relative">
-                <label className="text-sm font-bold text-foreground/90 required">Patient</label>
-                <input
-                  type="text"
-                  required
-                  value={patientSearch}
-                  onChange={(e) => {
-                    setPatientSearch(e.target.value);
-                    setSelectedPatient(null);
-                  }}
-                  placeholder="Search by name, phone or MRN..."
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                />
-                {!selectedPatient && filteredPatients.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
-                    {filteredPatients.map((p) => (
-                      <button
-                        type="button"
-                        key={p.opId}
-                        onClick={() => {
-                          setSelectedPatient(p);
-                          setPatientSearch(p.name);
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-primary/5 border-b border-border last:border-b-0 transition-colors"
-                      >
-                        <div className="font-medium text-foreground">{p.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {p.opNumber || p.opId} • {p.phone}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <PatientPicker value={selectedPatient} onChange={setSelectedPatient} required />
 
               <div>
                 <label className="text-sm font-bold text-foreground/90">Ordering Doctor</label>
-                <select
-                  value={selectedDoctorId}
-                  onChange={(e) => setSelectedDoctorId(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                >
-                  <option value="">Not specified</option>
-                  {doctors.map((d) => (
-                    <option key={d.doctorId} value={d.doctorId}>
-                      {d.name} — {d.specializationName}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={selectedDoctorId}
+                    onChange={setSelectedDoctorId}
+                    options={[
+                      { value: "", label: "Outside doctor / not specified" },
+                      ...doctors.map((d) => ({ value: d.doctorId, label: `${d.name} — ${d.specializationName}` })),
+                    ]}
+                  />
+                </div>
               </div>
+
+              {!selectedDoctorId && (
+                <div>
+                  <label className="text-sm font-bold text-foreground/90">Requested by (outside doctor / facility)</label>
+                  <input
+                    type="text"
+                    value={externalProvider}
+                    onChange={(e) => setExternalProvider(e.target.value)}
+                    maxLength={200}
+                    placeholder="e.g. Dr. Ahmed, City Clinic"
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="text-sm font-bold text-foreground/90 required">Test Type</label>
@@ -575,25 +568,29 @@ export default function LaboratoryPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-bold text-foreground/90">Priority</label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  >
-                    <option value="Normal">Normal</option>
-                    <option value="Urgent">Urgent</option>
-                  </select>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      value={priority}
+                      onChange={setPriority}
+                      options={[
+                        { value: "Normal", label: "Normal" },
+                        { value: "Urgent", label: "Urgent" },
+                      ]}
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="text-sm font-bold text-foreground/90">Source</label>
-                  <select
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  >
-                    <option value="InHouse">In-house</option>
-                    <option value="External">External</option>
-                  </select>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      value={source}
+                      onChange={setSource}
+                      options={[
+                        { value: "InHouse", label: "In-house" },
+                        { value: "External", label: "External" },
+                      ]}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -652,188 +649,174 @@ export default function LaboratoryPage() {
         </div>
       )}
 
-      <div className="card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className="text-foreground/90">Patient</th>
-                <th className="text-foreground/90">Test</th>
-                <th className="text-foreground/90">Doctor</th>
-                <th className="text-foreground/90">Priority</th>
-                <th className="text-foreground/90">Requested</th>
-                <th className="text-foreground/90">Status</th>
-                <th className="text-center text-foreground/90">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={7} className="py-16 text-center">
-                    <LoadingSpinner />
-                  </td>
-                </tr>
-              ) : requests.length > 0 ? (
-                requests.map((r) => {
-                  const nextStatus = STATUS_FLOW[STATUS_FLOW.indexOf(r.status) + 1];
-                  return (
-                    <tr key={r.labRequestId} className="hover:bg-muted/30 transition-colors">
-                      <td className="font-semibold text-foreground">{r.patientName}</td>
-                      <td className="text-foreground/80">
-                        {r.testType}
-                        {r.resultValues.length > 0 && (
-                          <div className="mt-1 flex flex-col gap-0.5">
-                            {r.resultValues.map((v, i) => (
-                              <span
-                                key={i}
-                                className={`text-[11px] ${v.isAbnormal ? "font-semibold text-red-600" : "text-muted-foreground"}`}
-                              >
-                                {v.parameterName}: {v.value}
-                                {v.unit ? ` ${v.unit}` : ""}
-                                {v.isAbnormal ? " ⚠" : ""}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                      <td className="text-foreground/80">{r.doctorName}</td>
-                      <td>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            r.priority === "Urgent"
-                              ? "bg-destructive/10 text-destructive"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {r.priority}
-                        </span>
-                      </td>
-                      <td className="text-foreground/70 text-sm">{formatDateTime(r.requestedDate)}</td>
-                      <td>
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(r.status)}`}>
-                          {r.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap justify-center items-center gap-2">
-                          {(isNurse || isAdmin) && r.status === "Requested" && (
-                            <button
-                              onClick={() => collectSample(r.labRequestId)}
-                              disabled={collectingId === r.labRequestId}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-50"
-                            >
-                              Collect Sample
-                            </button>
-                          )}
-                          {(isNurse || isAdmin) && r.sampleCollectedByName && (
-                            <button
-                              onClick={() => setBarcodeLabId(r.labRequestId)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
-                            >
-                              {r.printCount > 0 ? "Reprint Barcode" : "Barcode"}
-                            </button>
-                          )}
-                          {!isNurse && nextStatus && (
-                            <button
-                              onClick={() => advanceStatus(r)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
-                            >
-                              Mark {nextStatus}
-                            </button>
-                          )}
-                          {!isNurse && r.listItemId && (
-                            <button
-                              onClick={() => openResultEntry(r)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer"
-                            >
-                              Enter Results
-                            </button>
-                          )}
-                          {!isNurse && (
-                            <label
-                              title="Upload result file"
-                              className={`p-1.5 rounded-full transition-all cursor-pointer ${
-                                uploadingId === r.labRequestId ? "opacity-50" : "hover:bg-primary/10"
-                              }`}
-                            >
-                              <MdOutlineFileUpload size={18} className="text-primary" />
-                              <input
-                                type="file"
-                                className="hidden"
-                                disabled={uploadingId === r.labRequestId}
-                                onChange={(e) => handleUploadResult(r, e.target.files?.[0])}
-                              />
-                            </label>
-                          )}
-                          {r.hasResultFile && (
-                            <button
-                              onClick={() => viewReport(r.resultFilePath)}
-                              className="text-[11px] font-semibold text-primary hover:underline"
-                            >
-                              View Report
-                            </button>
-                          )}
-                          {!isNurse && r.status !== "Completed" && r.status !== "Delivered" && (
-                            <>
-                              <button
-                                onClick={() => openEditModal(r)}
-                                title="Correct request"
-                                className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer"
-                              >
-                                <Pencil size={14} />
-                              </button>
-                              <button
-                                onClick={() => removeLabRequest(r)}
-                                title="Delete request"
-                                className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </>
-                          )}
-                          {!isNurse && r.status !== "Requested" && r.status !== "Completed" && r.status !== "Delivered" && (
-                            <button
-                              onClick={() => revertLabRequest(r.labRequestId)}
-                              disabled={revertingId === r.labRequestId}
-                              title="Revert to Requested — hand editing back to the doctor"
-                              className="p-1.5 hover:bg-muted rounded-full text-muted-foreground cursor-pointer disabled:opacity-50"
-                            >
-                              <Undo2 size={14} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setViewingLabConfig(r)}
-                            title="Configuration"
-                            className="p-1.5 hover:bg-primary/10 rounded-full text-muted-foreground hover:text-primary cursor-pointer"
-                          >
-                            <Settings size={14} />
-                          </button>
-                        </div>
-                        {r.correctedFrom && (
-                          <CorrectedFromNote>
-                            <div>
-                              Previous: {r.correctedFrom.testType ?? "—"} · qty {r.correctedFrom.quantity} ·{" "}
-                              {r.correctedFrom.priority}
-                              {r.correctedFrom.remarks ? ` · ${r.correctedFrom.remarks}` : ""}
-                            </div>
-                            <div>Requested {formatDateTime(r.correctedFrom.requestedDate)}</div>
-                          </CorrectedFromNote>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={7} className="py-16 text-center text-muted-foreground">
-                    No lab requests found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      <div className="mb-4">
+        <PatientStreamTabs
+          value={stream}
+          onChange={setStream}
+          consultationCount={consultationRequests.length}
+          walkInCount={walkInRequests.length}
+        />
       </div>
+
+      {isLoading ? (
+        <div className="card py-16 flex justify-center">
+          <LoadingSpinner />
+        </div>
+      ) : visibleRequests.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            illustration="lab"
+            title={stream === "consultation" ? "No lab requests from consultations" : "No walk-in lab requests"}
+            description={
+              stream === "consultation"
+                ? "Tests ordered by doctors show up here once they finish the encounter."
+                : "Use New Lab Request for a patient who brings an outside lab request."
+            }
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {visibleRequests.map((r) => {
+            const nextStatus = STATUS_FLOW[STATUS_FLOW.indexOf(r.status) + 1];
+            const isWalkIn = !r.visitId;
+            return (
+              <div key={r.labRequestId} className="card p-4 flex flex-col gap-3">
+                {/* Header: patient + badges */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="font-semibold text-foreground truncate">{r.patientName}</p>
+                      <WalkInPatientBadge registrationType={r.patientRegistrationType} />
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {r.patientOPNumber ? `MRN ${r.patientOPNumber} · ` : ""}
+                      {isWalkIn && !r.doctorId ? (r.externalProvider ? `Requested by ${r.externalProvider}` : "Outside request") : r.doctorName}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap justify-end items-center gap-1.5">
+                    {isWalkIn && <BillStatusBadge billStatus={r.billStatus} />}
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      r.priority === "Urgent" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
+                    }`}>
+                      {r.priority}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadgeClass(r.status)}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Test name + result values */}
+                <div>
+                  <p className="text-sm text-foreground/80 font-medium leading-snug">{r.testType}</p>
+                  {r.resultValues.length > 0 && (
+                    <div className="mt-1.5 flex flex-col gap-0.5">
+                      {r.resultValues.map((v, i) => (
+                        <span key={i} className={`text-[11px] ${v.isAbnormal ? "font-semibold text-red-600" : "text-muted-foreground"}`}>
+                          {v.parameterName}: {v.value}{v.unit ? ` ${v.unit}` : ""}{v.isAbnormal ? " ⚠" : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Requested date */}
+                <p className="text-xs text-muted-foreground">{formatDateTime(r.requestedDate)}</p>
+
+                {/* Primary action buttons */}
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                  {(isNurse || isAdmin) && r.status === "Requested" && (
+                    <button
+                      onClick={() => collectSample(r.labRequestId)}
+                      disabled={collectingId === r.labRequestId}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {collectingId === r.labRequestId ? "Collecting..." : "Mark Sample Collected"}
+                    </button>
+                  )}
+                  {(isNurse || isAdmin) && r.sampleCollectedByName && (
+                    <button
+                      onClick={() => setBarcodeLabId(r.labRequestId)}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
+                    >
+                      {r.printCount > 0 ? "Reprint Barcode" : "Barcode"}
+                    </button>
+                  )}
+                  {!isNurse && nextStatus && (
+                    <button
+                      onClick={() => advanceStatus(r)}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                    >
+                      Mark {nextStatus}
+                    </button>
+                  )}
+                  {!isNurse && r.listItemId && (
+                    <button
+                      onClick={() => openResultEntry(r)}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                    >
+                      Enter Results
+                    </button>
+                  )}
+                  {r.hasResultFile && (
+                    <button
+                      onClick={() => viewReport(r.resultFilePath)}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-primary hover:bg-muted transition-colors cursor-pointer"
+                    >
+                      View Report
+                    </button>
+                  )}
+                </div>
+
+                {/* Icon actions row */}
+                <div className="flex items-center gap-1">
+                  {!isNurse && (
+                    <label title="Upload result file" className={`p-1.5 rounded-full transition-all cursor-pointer ${uploadingId === r.labRequestId ? "opacity-50" : "hover:bg-primary/10"}`}>
+                      <MdOutlineFileUpload size={16} className="text-primary" />
+                      <input type="file" className="hidden" disabled={uploadingId === r.labRequestId} onChange={(e) => handleUploadResult(r, e.target.files?.[0])} />
+                    </label>
+                  )}
+                  {!isNurse && r.status !== "Requested" && r.status !== "Completed" && r.status !== "Delivered" && (
+                    <button onClick={() => revertLabRequest(r.labRequestId)} disabled={revertingId === r.labRequestId} title="Revert to Requested" className="p-1.5 hover:bg-muted rounded-full text-muted-foreground cursor-pointer disabled:opacity-50">
+                      <Undo2 size={14} />
+                    </button>
+                  )}
+                  {!isNurse && r.status !== "Completed" && r.status !== "Delivered" && (
+                    <>
+                      <button
+                        onClick={() => openEditModal(r)}
+                        disabled={!!r.billStatus}
+                        title={r.billStatus ? billedLockTitle(r.billStatus) : "Correct request"}
+                        className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => removeLabRequest(r)}
+                        disabled={!!r.billStatus}
+                        title={r.billStatus ? billedLockTitle(r.billStatus) : "Delete request"}
+                        className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => setViewingLabConfig(r)} title="Configuration" className="p-1.5 hover:bg-primary/10 rounded-full text-muted-foreground hover:text-primary cursor-pointer">
+                    <Settings size={14} />
+                  </button>
+                </div>
+
+                {r.correctedFrom && (
+                  <CorrectedFromNote>
+                    <div>Previous: {r.correctedFrom.testType ?? "—"} · qty {r.correctedFrom.quantity} · {r.correctedFrom.priority}{r.correctedFrom.remarks ? ` · ${r.correctedFrom.remarks}` : ""}</div>
+                    <div>Requested {formatDateTime(r.correctedFrom.requestedDate)}</div>
+                  </CorrectedFromNote>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {resultEntryTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">

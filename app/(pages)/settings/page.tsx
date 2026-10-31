@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
 import axios from "axios";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import {
   ArrowLeft,
   Building,
@@ -22,10 +24,10 @@ import { patchUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
 import { resizeImageFile } from "@/lib/resizeImage";
 import { getAvatarColor } from "@/lib/avatarColor";
-import { SUPPORTED_CURRENCIES } from "@/lib/currency";
-import { countryDetails } from "@/helpers/countyDetails";
+import { hasRegionFeature, nationalIdLabel, useRegion } from "@/lib/region";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import SearchableSelect from "@/components/SearchableSelect";
 import PasswordInput from "@/components/PasswordInput";
 import AvatarCropModal from "@/components/AvatarCropModal";
 import ToggleButton from "@/components/ToggleButton";
@@ -45,12 +47,9 @@ interface MeResponse {
   companyName: string | null;
   companyLogoUrl: string | null;
   maxDiscountPercent: number | null;
-  country: string | null;
-  currencyCode: string;
-  currencySymbol: string;
-  currencyIsManual: boolean;
   pediatricMaxAgeYears: number;
   geriatricMinAgeYears: number;
+  immunizationReminderDays: number;
   idleTimeoutMinutes: number;
   includeLoginCredentialsInPatientEmail: boolean;
   patientEmailCredentialsSubject: string;
@@ -66,9 +65,12 @@ interface MeResponse {
   companyWebsite: string | null;
   companyFaxNumber: string | null;
   companyFacilityId: string | null;
+  companyTaxRegistrationNumber: string | null;
   companyEclaimlinkUsername: string | null;
   companyEclaimlinkPasswordSet: boolean;
   branchId: string | null;
+  staffCheckInRequired: boolean;
+  patientMatchFields?: string[];
 }
 
 // Each tile on the landing grid drills into one settings category. Adding a new
@@ -81,6 +83,11 @@ type SettingsSection = "profile" | "company";
 type PatientEmailVariant = "credentials" | "simple";
 
 export default function SettingsPage() {
+  // The installation's country (chosen by the super administrator) decides which regulatory
+  // fields apply here - the facility licence wording, a tax registration number, eClaimLink.
+  const region = useRegion();
+  const hasTax = region?.tax.applicable ?? false;
+  const hasEClaimLink = hasRegionFeature(region, "eClaimLink");
   const [me, setMe] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<SettingsSection | null>(null);
@@ -91,7 +98,8 @@ export default function SettingsPage() {
 
   // Facility profile - matches the client's data-collection sheet field-for-field. Every
   // field here (except the eClaimLink password) round-trips in full and simply saves
-  // whatever's currently typed; the password is write-only, see its own input below.
+  // whatever's currently typed; the password is write-only, see its own input below. The tax
+  // number and eClaimLink fields only exist in countries that use them.
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [addressInput, setAddressInput] = useState("");
   const [contactEmailInput, setContactEmailInput] = useState("");
@@ -99,27 +107,31 @@ export default function SettingsPage() {
   const [websiteInput, setWebsiteInput] = useState("");
   const [faxNumberInput, setFaxNumberInput] = useState("");
   const [facilityIdInput, setFacilityIdInput] = useState("");
+  const [taxRegistrationInput, setTaxRegistrationInput] = useState("");
   const [eclaimlinkUsernameInput, setEclaimlinkUsernameInput] = useState("");
   const [eclaimlinkPasswordInput, setEclaimlinkPasswordInput] = useState("");
   const [eclaimlinkPasswordSet, setEclaimlinkPasswordSet] = useState(false);
   const [savingFacilityProfile, setSavingFacilityProfile] = useState(false);
 
   const [maxDiscountInput, setMaxDiscountInput] = useState("");
-  const [savingDiscountCap, setSavingDiscountCap] = useState(false);
-
-  const [country, setCountry] = useState("");
-  const [savingCountry, setSavingCountry] = useState(false);
-
-  const [currencyCode, setCurrencyCode] = useState("INR");
-  const [currencyIsManual, setCurrencyIsManual] = useState(false);
-  const [savingCurrency, setSavingCurrency] = useState(false);
+  const discountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [pediatricMaxAgeInput, setPediatricMaxAgeInput] = useState("18");
   const [geriatricMinAgeInput, setGeriatricMinAgeInput] = useState("65");
-  const [savingAgeRanges, setSavingAgeRanges] = useState(false);
+  const ageRangesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [reminderDaysInput, setReminderDaysInput] = useState("7");
+  const reminderDaysTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [idleTimeoutInput, setIdleTimeoutInput] = useState("15");
-  const [savingIdleTimeout, setSavingIdleTimeout] = useState(false);
+  const idleTimeoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [staffCheckInRequired, setStaffCheckInRequired] = useState(false);
+  const [savingCheckInRequired, setSavingCheckInRequired] = useState(false);
+
+  // Which details identify an already-registered patient (registration and walk-in quick add).
+  const [patientMatchFields, setPatientMatchFields] = useState<string[]>(["NationalID", "Passport", "Phone"]);
+  const [savingMatchFields, setSavingMatchFields] = useState(false);
 
   const [includeLoginCredentials, setIncludeLoginCredentials] = useState(true);
   const [savingPatientEmailMode, setSavingPatientEmailMode] = useState(false);
@@ -173,15 +185,16 @@ export default function SettingsPage() {
         setWebsiteInput(data.companyWebsite || "");
         setFaxNumberInput(data.companyFaxNumber || "");
         setFacilityIdInput(data.companyFacilityId || "");
+        setTaxRegistrationInput(data.companyTaxRegistrationNumber || "");
         setEclaimlinkUsernameInput(data.companyEclaimlinkUsername || "");
         setEclaimlinkPasswordSet(!!data.companyEclaimlinkPasswordSet);
         setMaxDiscountInput(data.maxDiscountPercent != null ? String(data.maxDiscountPercent) : "");
-        setCountry(data.country || "");
-        setCurrencyCode(data.currencyCode || "INR");
-        setCurrencyIsManual(!!data.currencyIsManual);
         setPediatricMaxAgeInput(String(data.pediatricMaxAgeYears ?? 18));
         setGeriatricMinAgeInput(String(data.geriatricMinAgeYears ?? 65));
+        setReminderDaysInput(String(data.immunizationReminderDays ?? 7));
         setIdleTimeoutInput(String(data.idleTimeoutMinutes ?? 15));
+        setStaffCheckInRequired(data.staffCheckInRequired ?? false);
+        setPatientMatchFields(data.patientMatchFields ?? ["NationalID", "Passport", "Phone"]);
         setIncludeLoginCredentials(data.includeLoginCredentialsInPatientEmail ?? true);
         setCredentialsSubject(data.patientEmailCredentialsSubject || "");
         setCredentialsBody(data.patientEmailCredentialsBody || "");
@@ -240,6 +253,7 @@ export default function SettingsPage() {
     }
 
     setSavingFacilityProfile(true);
+    notifySaveStatus("saving");
     try {
       const data = await CompanyService.updateSettings({
         displayName: displayNameInput.trim(),
@@ -249,10 +263,15 @@ export default function SettingsPage() {
         website: websiteInput.trim(),
         faxNumber: faxNumberInput.trim(),
         facilityId: facilityIdInput.trim(),
-        eclaimlinkUsername: eclaimlinkUsernameInput.trim(),
-        // Blank means "leave the saved password alone" (see CompanyController.UpdateSettings) -
-        // only send it when the admin actually typed a new one.
-        ...(eclaimlinkPasswordInput.trim() ? { eclaimlinkPassword: eclaimlinkPasswordInput.trim() } : {}),
+        ...(hasTax ? { taxRegistrationNumber: taxRegistrationInput.trim() } : {}),
+        ...(hasEClaimLink
+          ? {
+              eclaimlinkUsername: eclaimlinkUsernameInput.trim(),
+              // Blank means "leave the saved password alone" (see CompanyController.UpdateSettings) -
+              // only send it when the admin actually typed a new one.
+              ...(eclaimlinkPasswordInput.trim() ? { eclaimlinkPassword: eclaimlinkPasswordInput.trim() } : {}),
+            }
+          : {}),
       });
       setDisplayNameInput(data.displayName || "");
       setAddressInput(data.address || "");
@@ -261,132 +280,162 @@ export default function SettingsPage() {
       setWebsiteInput(data.website || "");
       setFaxNumberInput(data.faxNumber || "");
       setFacilityIdInput(data.facilityId || "");
+      setTaxRegistrationInput(data.taxRegistrationNumber || "");
+      patchUserDetail({ companyTaxRegistrationNumber: data.taxRegistrationNumber ?? null });
       setEclaimlinkUsernameInput(data.eclaimlinkUsername || "");
       setEclaimlinkPasswordSet(!!data.eclaimlinkPasswordSet);
       setEclaimlinkPasswordInput("");
+      notifySaveStatus("saved");
       toast.success("Facility profile updated");
     } catch (err) {
+      notifySaveStatus("error");
       toast.error(extractErrorMessage(err, "Failed to update facility profile"));
     } finally {
       setSavingFacilityProfile(false);
     }
   };
 
-  const handleSaveDiscountCap = async () => {
+  const handleDiscountChange = (raw: string) => {
+    setMaxDiscountInput(raw);
     if (!me) return;
-    const trimmed = maxDiscountInput.trim();
-    const parsed = trimmed === "" ? null : Number(trimmed);
-    if (parsed !== null && (Number.isNaN(parsed) || parsed < 0 || parsed > 100)) {
-      toast.error("Enter a number between 0 and 100, or leave it blank for no cap");
-      return;
-    }
-
-    setSavingDiscountCap(true);
-    try {
-      await CompanyService.updateSettings({ maxDiscountPercent: parsed });
-      setMe({ ...me, maxDiscountPercent: parsed });
-      toast.success("Discount cap updated");
-    } catch {
-      toast.error("Failed to update discount cap");
-    } finally {
-      setSavingDiscountCap(false);
-    }
+    if (discountTimer.current) clearTimeout(discountTimer.current);
+    notifySaveStatus("saving");
+    discountTimer.current = setTimeout(async () => {
+      const trimmed = raw.trim();
+      const parsed = trimmed === "" ? null : Number(trimmed);
+      if (parsed !== null && (Number.isNaN(parsed) || parsed < 0 || parsed > 100)) {
+        notifySaveStatus("error");
+        toast.error("Enter a number between 0 and 100, or leave it blank for no cap");
+        return;
+      }
+      try {
+        // A blank cap is sent as an explicit clear - a plain null means "unchanged" to the
+        // API, the same as every other field this partial update leaves out.
+        await CompanyService.updateSettings(parsed === null ? { clearMaxDiscountPercent: true } : { maxDiscountPercent: parsed });
+        setMe((prev) => (prev ? { ...prev, maxDiscountPercent: parsed } : prev));
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+        toast.error("Failed to update discount cap");
+      }
+    }, 800);
   };
 
-  const handleSaveCountry = async () => {
-    if (!me || !country) return;
-    setSavingCountry(true);
+  const scheduleAgeRangesSave = (pediatricMax: string, geriatricMin: string) => {
+    if (!me) return;
+    if (ageRangesTimer.current) clearTimeout(ageRangesTimer.current);
+    notifySaveStatus("saving");
+    ageRangesTimer.current = setTimeout(async () => {
+      const pediatricMaxAge = Number(pediatricMax.trim());
+      const geriatricMinAge = Number(geriatricMin.trim());
+      if (!Number.isInteger(pediatricMaxAge) || !Number.isInteger(geriatricMinAge) || pediatricMaxAge < 0 || geriatricMinAge < 0) {
+        notifySaveStatus("error");
+        toast.error("Enter whole numbers of years for both ages");
+        return;
+      }
+      if (pediatricMaxAge >= geriatricMinAge) {
+        notifySaveStatus("error");
+        toast.error("Pediatric max age must be less than the Geriatric min age");
+        return;
+      }
+      try {
+        const data = await CompanyService.updateSettings({
+          pediatricMaxAgeYears: pediatricMaxAge,
+          geriatricMinAgeYears: geriatricMinAge,
+        });
+        setMe((prev) => (prev ? { ...prev, pediatricMaxAgeYears: data.pediatricMaxAgeYears, geriatricMinAgeYears: data.geriatricMinAgeYears } : prev));
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+        toast.error("Failed to update age category ranges");
+      }
+    }, 800);
+  };
+
+  // How many days ahead staff start being reminded about a scheduled vaccination.
+  const handleReminderDaysChange = (raw: string) => {
+    setReminderDaysInput(raw);
+    if (!me) return;
+    if (reminderDaysTimer.current) clearTimeout(reminderDaysTimer.current);
+    notifySaveStatus("saving");
+    reminderDaysTimer.current = setTimeout(async () => {
+      const days = Number(raw.trim());
+      if (!Number.isInteger(days) || days < 0 || days > 90) {
+        notifySaveStatus("error");
+        toast.error("Enter a whole number of days between 0 and 90");
+        return;
+      }
+      try {
+        const data = await CompanyService.updateSettings({ immunizationReminderDays: days });
+        setMe((prev) => (prev ? { ...prev, immunizationReminderDays: data.immunizationReminderDays } : prev));
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+        toast.error("Failed to update immunization reminders");
+      }
+    }, 800);
+  };
+
+  const handleIdleTimeoutChange = (raw: string) => {
+    setIdleTimeoutInput(raw);
+    if (!me) return;
+    if (idleTimeoutTimer.current) clearTimeout(idleTimeoutTimer.current);
+    notifySaveStatus("saving");
+    idleTimeoutTimer.current = setTimeout(async () => {
+      const minutes = Number(raw.trim());
+      if (!Number.isInteger(minutes) || minutes < 2 || minutes > 480) {
+        notifySaveStatus("error");
+        toast.error("Enter a whole number of minutes between 2 and 480");
+        return;
+      }
+      try {
+        const data = await CompanyService.updateSettings({ idleTimeoutMinutes: minutes });
+        setMe((prev) => (prev ? { ...prev, idleTimeoutMinutes: data.idleTimeoutMinutes } : prev));
+        patchUserDetail({ idleTimeoutMinutes: data.idleTimeoutMinutes });
+        notifySaveStatus("saved");
+      } catch {
+        notifySaveStatus("error");
+        toast.error("Failed to update idle timeout");
+      }
+    }, 800);
+  };
+
+  const handleStaffCheckInRequiredToggle = async (checked: boolean) => {
+    if (!me) return;
+    const previous = staffCheckInRequired;
+    setStaffCheckInRequired(checked);
+    setSavingCheckInRequired(true);
     try {
-      const data = await CompanyService.updateSettings({ country });
-      // The backend auto-derives the currency from the country unless one was already
-      // picked manually - sync every field it returns so the Currency dropdown reflects
-      // that immediately instead of only updating after a page reload.
-      setMe({
-        ...me,
-        country: data.country,
-        currencyCode: data.currencyCode,
-        currencySymbol: data.currencySymbol,
-        currencyIsManual: data.currencyIsManual,
-      });
-      setCurrencyCode(data.currencyCode);
-      setCurrencyIsManual(!!data.currencyIsManual);
-      patchUserDetail({ currencyCode: data.currencyCode, currencySymbol: data.currencySymbol });
-      toast.success(
-        data.currencyIsManual ? "Country updated" : `Country updated — currency set to ${data.currencyCode}`
+      const data = await CompanyService.updateSettings({ staffCheckInRequired: checked });
+      setMe((prev) =>
+        prev ? { ...prev, staffCheckInRequired: data.staffCheckInRequired } : prev
       );
+      patchUserDetail({ staffCheckInRequired: data.staffCheckInRequired });
+      toast.success(checked ? "Check-in is now required for all staff" : "Check-in requirement removed");
     } catch {
-      toast.error("Failed to update country");
+      setStaffCheckInRequired(previous);
+      toast.error("Failed to update check-in setting");
     } finally {
-      setSavingCountry(false);
+      setSavingCheckInRequired(false);
     }
   };
 
-  const handleSaveCurrency = async () => {
-    if (!me) return;
-    setSavingCurrency(true);
+  // ID numbers always count (one ID is one person); mobile and email are the clinic's call -
+  // families often share a mobile number.
+  const handlePatientMatchFieldToggle = async (field: "Phone" | "Email", checked: boolean) => {
+    const previous = patientMatchFields;
+    const next = checked ? Array.from(new Set([...previous, field])) : previous.filter((f) => f !== field);
+    setPatientMatchFields(next);
+    setSavingMatchFields(true);
     try {
-      const data = await CompanyService.updateSettings({ currencyCode });
-      setMe({ ...me, currencyCode: data.currencyCode, currencySymbol: data.currencySymbol, currencyIsManual: data.currencyIsManual });
-      setCurrencyIsManual(!!data.currencyIsManual);
-      // Every other open tab/page reads the symbol from this same localStorage key
-      // (see lib/currency.ts) - patch it so amounts update without a re-login.
-      patchUserDetail({ currencyCode: data.currencyCode, currencySymbol: data.currencySymbol });
-      toast.success("Currency updated");
+      const data = await CompanyService.updateSettings({ patientMatchFields: next });
+      setPatientMatchFields(data.patientMatchFields ?? next);
+      toast.success("Duplicate patient check updated");
     } catch {
-      toast.error("Failed to update currency");
+      setPatientMatchFields(previous);
+      toast.error("Failed to update duplicate patient check");
     } finally {
-      setSavingCurrency(false);
-    }
-  };
-
-  const handleSaveAgeRanges = async () => {
-    if (!me) return;
-    const pediatricMaxAge = Number(pediatricMaxAgeInput.trim());
-    const geriatricMinAge = Number(geriatricMinAgeInput.trim());
-    if (!Number.isInteger(pediatricMaxAge) || !Number.isInteger(geriatricMinAge) || pediatricMaxAge < 0 || geriatricMinAge < 0) {
-      toast.error("Enter whole numbers of years for both ages");
-      return;
-    }
-    if (pediatricMaxAge >= geriatricMinAge) {
-      toast.error("Pediatric max age must be less than the Geriatric min age");
-      return;
-    }
-
-    setSavingAgeRanges(true);
-    try {
-      const data = await CompanyService.updateSettings({
-        pediatricMaxAgeYears: pediatricMaxAge,
-        geriatricMinAgeYears: geriatricMinAge,
-      });
-      setMe({ ...me, pediatricMaxAgeYears: data.pediatricMaxAgeYears, geriatricMinAgeYears: data.geriatricMinAgeYears });
-      toast.success("Age category ranges updated");
-    } catch {
-      toast.error("Failed to update age category ranges");
-    } finally {
-      setSavingAgeRanges(false);
-    }
-  };
-
-  const handleSaveIdleTimeout = async () => {
-    if (!me) return;
-    const minutes = Number(idleTimeoutInput.trim());
-    if (!Number.isInteger(minutes) || minutes < 2 || minutes > 480) {
-      toast.error("Enter a whole number of minutes between 2 and 480");
-      return;
-    }
-
-    setSavingIdleTimeout(true);
-    try {
-      const data = await CompanyService.updateSettings({ idleTimeoutMinutes: minutes });
-      setMe({ ...me, idleTimeoutMinutes: data.idleTimeoutMinutes });
-      // Applies to every signed-in user, this browser included - useIdleLogout picks this
-      // up immediately via onUserDetailChange rather than waiting for a reload.
-      patchUserDetail({ idleTimeoutMinutes: data.idleTimeoutMinutes });
-      toast.success("Idle timeout updated");
-    } catch {
-      toast.error("Failed to update idle timeout");
-    } finally {
-      setSavingIdleTimeout(false);
+      setSavingMatchFields(false);
     }
   };
 
@@ -395,10 +444,12 @@ export default function SettingsPage() {
     const previous = includeLoginCredentials;
     setIncludeLoginCredentials(checked);
     setSavingPatientEmailMode(true);
+    notifySaveStatus("saving");
     try {
       const data = await CompanyService.updateSettings({ includeLoginCredentialsInPatientEmail: checked });
       setMe({ ...me, includeLoginCredentialsInPatientEmail: data.includeLoginCredentialsInPatientEmail });
       setIncludeLoginCredentials(data.includeLoginCredentialsInPatientEmail);
+      notifySaveStatus("saved");
       toast.success(
         data.includeLoginCredentialsInPatientEmail
           ? "Patient registration emails will include mobile app login details"
@@ -406,6 +457,7 @@ export default function SettingsPage() {
       );
     } catch {
       setIncludeLoginCredentials(previous);
+      notifySaveStatus("error");
       toast.error("Failed to update patient registration email setting");
     } finally {
       setSavingPatientEmailMode(false);
@@ -439,6 +491,7 @@ export default function SettingsPage() {
   const handleSaveEmailTemplate = async () => {
     if (!me) return;
     setSavingEmailTemplate(true);
+    notifySaveStatus("saving");
     try {
       const data =
         emailTab === "credentials"
@@ -462,8 +515,10 @@ export default function SettingsPage() {
         setSimpleIsCustom(data.patientEmailSimpleIsCustom);
         setSimpleEditorKey((k) => k + 1);
       }
+      notifySaveStatus("saved");
       toast.success("Email template saved");
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to save email template");
     } finally {
       setSavingEmailTemplate(false);
@@ -564,19 +619,23 @@ export default function SettingsPage() {
 
     const editingBranch = branches.find((b) => b.branchId === editingBranchId);
     setSavingBranchName(true);
+    notifySaveStatus("saving");
     try {
       if (editingBranch?.isMain) {
         const data = await CompanyService.updateSettings({ name: trimmed });
         setMe({ ...me, companyName: data.name });
         patchUserDetail({ companyName: data.name });
         setBranches((prev) => prev.map((b) => (b.branchId === editingBranchId ? { ...b, name: data.name } : b)));
+        notifySaveStatus("saved");
         toast.success("Company name updated");
       } else {
         const data = await BranchService.update(editingBranchId, { name: trimmed });
         setBranches((prev) => prev.map((b) => (b.branchId === editingBranchId ? data.data : b)));
+        notifySaveStatus("saved");
         toast.success("Branch updated");
       }
     } catch (err) {
+      notifySaveStatus("error");
       toast.error(extractErrorMessage(err, "Failed to update"));
     } finally {
       setSavingBranchName(false);
@@ -707,7 +766,7 @@ export default function SettingsPage() {
             <SettingsTile
               icon={<Building2 size={22} />}
               title="Company settings"
-              description="Branding, billing, currency, branches, and age category ranges."
+              description="Branding, billing, branches, and age category ranges."
               onClick={() => setActiveSection("company")}
             />
           )}
@@ -806,7 +865,7 @@ export default function SettingsPage() {
           <div className="bg-card border border-border rounded-xl p-6 lg:col-span-2 xl:col-span-3">
             <h2 className="text-xl font-semibold text-foreground mb-1">Facility profile</h2>
             <p className="text-sm text-muted-foreground mb-5">
-              Contact details, regulatory identifiers, and the eClaimLink portal login for this
+              Contact details and regulatory identifiers{hasEClaimLink ? ", and the eClaimLink portal login" : ""} for this
               facility. Company name itself is edited under Branches below (the main branch IS
               the company).
             </p>
@@ -860,7 +919,9 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility ID (DHA/MOH/HAAD)</label>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  {region?.regulatory.facilityLicenseLabel ?? "Facility licence no."}
+                </label>
                 <input
                   type="text"
                   value={facilityIdInput}
@@ -868,6 +929,20 @@ export default function SettingsPage() {
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
                 />
               </div>
+              {hasTax && region?.tax.registrationLabel && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    {region.tax.name} registration ({region.tax.registrationLabel})
+                  </label>
+                  <input
+                    type="text"
+                    value={taxRegistrationInput}
+                    onChange={(e) => setTaxRegistrationInput(e.target.value)}
+                    placeholder="Printed on bills"
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                  />
+                </div>
+              )}
               <div className="sm:col-span-2 lg:col-span-3">
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">Address</label>
                 <input
@@ -877,25 +952,29 @@ export default function SettingsPage() {
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility username (eclaimlink)</label>
-                <input
-                  type="text"
-                  value={eclaimlinkUsernameInput}
-                  onChange={(e) => setEclaimlinkUsernameInput(e.target.value)}
-                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility password (eclaimlink)</label>
-                <PasswordInput
-                  value={eclaimlinkPasswordInput}
-                  onChange={(e) => setEclaimlinkPasswordInput(e.target.value)}
-                  placeholder={eclaimlinkPasswordSet ? "•••••••• (saved — leave blank to keep)" : "Not set"}
-                  autoComplete="new-password"
-                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-                />
-              </div>
+              {hasEClaimLink && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility username (eclaimlink)</label>
+                    <input
+                      type="text"
+                      value={eclaimlinkUsernameInput}
+                      onChange={(e) => setEclaimlinkUsernameInput(e.target.value)}
+                      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Facility password (eclaimlink)</label>
+                    <PasswordInput
+                      value={eclaimlinkPasswordInput}
+                      onChange={(e) => setEclaimlinkPasswordInput(e.target.value)}
+                      placeholder={eclaimlinkPasswordSet ? "•••••••• (saved — leave blank to keep)" : "Not set"}
+                      autoComplete="new-password"
+                      className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             <button
@@ -923,7 +1002,7 @@ export default function SettingsPage() {
                   max={100}
                   step="0.1"
                   value={maxDiscountInput}
-                  onChange={(e) => setMaxDiscountInput(e.target.value)}
+                  onChange={(e) => handleDiscountChange(e.target.value)}
                   placeholder="No limit"
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-7 text-sm text-foreground"
                 />
@@ -931,93 +1010,38 @@ export default function SettingsPage() {
                   %
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={handleSaveDiscountCap}
-                disabled={savingDiscountCap}
-                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingDiscountCap && <Loader2 size={15} className="animate-spin" />}
-                Save
-              </button>
             </div>
           </div>
 
-          {/* Country & Currency */}
+          {/* Country & region - read-only, owned by the super administrator */}
           <div className="bg-card border border-border rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-foreground mb-1">Country & currency</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-1">Country &amp; region</h2>
             <p className="text-sm text-muted-foreground mb-5">
-              Currency controls how amounts are displayed across billing, pharmacy, appointments,
-              and prescription printouts for every user at {me.companyName ?? "your organization"}.
-              Picking a country fills in its currency automatically, unless one has already been
-              set below.
+              Set for the whole system by its super administrator. Currency, phone and ID formats,
+              address fields and tax all follow it.
             </p>
-
-            <div className="flex flex-col gap-4">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Country
-                </label>
-                <div className="flex items-center gap-3">
-                  <select
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-                  >
-                    <option value="" disabled>
-                      Select country
-                    </option>
-                    {countryDetails.map((c) => (
-                      <option key={c.country} value={c.country}>
-                        {c.country}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleSaveCountry}
-                    disabled={savingCountry || !country}
-                    className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {savingCountry && <Loader2 size={15} className="animate-spin" />}
-                    Save
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Currency
-                </label>
-                <div className="flex items-center gap-3">
-                  <select
-                    value={currencyCode}
-                    onChange={(e) => setCurrencyCode(e.target.value)}
-                    className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-                  >
-                    {SUPPORTED_CURRENCIES.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleSaveCurrency}
-                    disabled={savingCurrency}
-                    className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {savingCurrency && <Loader2 size={15} className="animate-spin" />}
-                    Save
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {currencyIsManual
-                    ? "Set manually — changing country above won't override it."
-                    : "Following the selected country. Saving a currency here locks it in."}
-                </p>
-              </div>
-            </div>
+            {region ? (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                <dt className="text-muted-foreground">Country</dt>
+                <dd className="font-medium text-foreground">{region.country}</dd>
+                <dt className="text-muted-foreground">Currency</dt>
+                <dd className="text-foreground">{region.currency.code} ({region.currency.symbol})</dd>
+                <dt className="text-muted-foreground">Mobile</dt>
+                <dd className="text-foreground">{region.phone.dialCode} · {region.phone.nationalNumberLength} digits</dd>
+                <dt className="text-muted-foreground">National ID</dt>
+                <dd className="text-foreground">{region.nationalId.label}</dd>
+                <dt className="text-muted-foreground">Tax</dt>
+                <dd className="text-foreground">
+                  {region.tax.applicable
+                    ? `${region.tax.name}${region.tax.standardPercent != null ? ` (standard ${region.tax.standardPercent}%)` : ""}`
+                    : "None"}
+                </dd>
+                <dt className="text-muted-foreground">Authority</dt>
+                <dd className="text-foreground">{region.regulatory.healthAuthority}</dd>
+              </dl>
+            ) : (
+              <p className="text-sm text-muted-foreground">Not set yet.</p>
+            )}
           </div>
 
           {/* Age category ranges */}
@@ -1038,7 +1062,7 @@ export default function SettingsPage() {
                     min={0}
                     step="1"
                     value={pediatricMaxAgeInput}
-                    onChange={(e) => setPediatricMaxAgeInput(e.target.value)}
+                    onChange={(e) => { setPediatricMaxAgeInput(e.target.value); scheduleAgeRangesSave(e.target.value, geriatricMinAgeInput); }}
                     className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-14 text-sm text-foreground"
                   />
                   <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
@@ -1057,7 +1081,7 @@ export default function SettingsPage() {
                     min={0}
                     step="1"
                     value={geriatricMinAgeInput}
-                    onChange={(e) => setGeriatricMinAgeInput(e.target.value)}
+                    onChange={(e) => { setGeriatricMinAgeInput(e.target.value); scheduleAgeRangesSave(pediatricMaxAgeInput, e.target.value); }}
                     className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-14 text-sm text-foreground"
                   />
                   <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
@@ -1066,19 +1090,37 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSaveAgeRanges}
-                disabled={savingAgeRanges}
-                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingAgeRanges && <Loader2 size={15} className="animate-spin" />}
-                Save
-              </button>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               Adult: {pediatricMaxAgeInput || "0"} to {geriatricMinAgeInput || "0"} years.
             </p>
+          </div>
+
+          {/* Immunization reminders */}
+          <div className="bg-card border border-border rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-foreground mb-1">Immunization reminders</h2>
+            <p className="text-sm text-muted-foreground mb-5">
+              The Pediatric Immunization Schedule is available for patients under the Pediatric age above.
+              Doctors and nurses are reminded about a scheduled vaccination this many days before it&apos;s
+              due, and again if it becomes overdue.
+            </p>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Remind staff</label>
+              <div className="relative w-36">
+                <input
+                  type="number"
+                  min={0}
+                  max={90}
+                  step="1"
+                  value={reminderDaysInput}
+                  onChange={(e) => handleReminderDaysChange(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-20 text-sm text-foreground"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                  days ahead
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Idle timeout */}
@@ -1099,22 +1141,89 @@ export default function SettingsPage() {
                   max={480}
                   step="1"
                   value={idleTimeoutInput}
-                  onChange={(e) => setIdleTimeoutInput(e.target.value)}
+                  onChange={(e) => handleIdleTimeoutChange(e.target.value)}
                   className="w-full rounded-md border border-border bg-background px-3 py-1.5 pr-12 text-sm text-foreground"
                 />
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                   min
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={handleSaveIdleTimeout}
-                disabled={savingIdleTimeout}
-                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingIdleTimeout && <Loader2 size={15} className="animate-spin" />}
-                Save
-              </button>
+            </div>
+          </div>
+
+          {/* Staff check-in */}
+          <div className="bg-card border border-border rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-foreground mb-1">Staff check-in</h2>
+            <p className="text-sm text-muted-foreground mb-5">
+              When enabled, every staff member sees a highlighted check-in button until
+              they check in for the day, and the daily check-in prompt cannot be dismissed
+              without checking in.
+            </p>
+            <div className="flex items-center justify-between gap-4 mb-5">
+              <div>
+                <p className="text-sm font-medium text-foreground">Require daily check-in</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Check-in button pulses amber until the staff member checks in
+                </p>
+              </div>
+              <ToggleButton
+                checked={staffCheckInRequired}
+                onChange={handleStaffCheckInRequiredToggle}
+                disabled={savingCheckInRequired}
+              />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground mb-1.5">
+                Missed check-outs
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Anyone still checked in when their day ends is checked out automatically
+                at 11:59:59 PM, and their hours are counted up to that time. Each automatic
+                check-out is marked on Staff Attendance, recorded in the Audit Log, and
+                the staff member and admins are notified.
+              </p>
+            </div>
+          </div>
+
+          {/* Duplicate patient check */}
+          <div className="bg-card border border-border rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-foreground mb-1">Duplicate patient check</h2>
+            <p className="text-sm text-muted-foreground mb-5">
+              When reception registers a patient, or Pharmacy, Lab, Radiology or Billing adds a
+              walk-in, anyone already on file with the same details is offered first, so each
+              patient keeps one record.
+            </p>
+            <div className="flex flex-col gap-4">
+              {[
+                { key: "NationalID", label: nationalIdLabel(region), hint: "Always checked - an ID belongs to one person" },
+                { key: "Passport", label: "Passport number", hint: "Always checked - an ID belongs to one person" },
+              ].map((row) => (
+                <div key={row.key} className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{row.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{row.hint}</p>
+                  </div>
+                  <ToggleButton checked onChange={() => {}} disabled />
+                </div>
+              ))}
+              {(
+                [
+                  { key: "Phone", label: "Mobile number", hint: "Suggests a match - family members may share one" },
+                  { key: "Email", label: "Email address", hint: "Suggests a match" },
+                ] as const
+              ).map((row) => (
+                <div key={row.key} className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{row.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{row.hint}</p>
+                  </div>
+                  <ToggleButton
+                    checked={patientMatchFields.includes(row.key)}
+                    onChange={(checked) => handlePatientMatchFieldToggle(row.key, checked)}
+                    disabled={savingMatchFields}
+                  />
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1158,7 +1267,7 @@ export default function SettingsPage() {
                 <Loader2 className="animate-spin" size={20} />
               </div>
             ) : branches.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No branches yet.</p>
+              <EmptyState size="compact" illustration="building" title="No branches yet" />
             ) : (
               <ul className="flex flex-col gap-2">
                 {branches.map((b) => {
@@ -1438,21 +1547,16 @@ export default function SettingsPage() {
             </p>
 
             <label className="mb-1 block text-xs font-medium text-muted-foreground">Migrate staff to</label>
-            <select
-              value={migrateTargetId}
-              onChange={(e) => setMigrateTargetId(e.target.value)}
-              disabled={migrating}
-              className="mb-5 w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-            >
-              {branches
-                .filter((b) => b.branchId !== migrateModal.branch.branchId)
-                .map((b) => (
-                  <option key={b.branchId} value={b.branchId}>
-                    {b.name}
-                    {b.isMain ? " (Main)" : ""}
-                  </option>
-                ))}
-            </select>
+            <div className="mb-5">
+              <SearchableSelect
+                value={migrateTargetId}
+                onChange={setMigrateTargetId}
+                disabled={migrating}
+                options={branches
+                  .filter((b) => b.branchId !== migrateModal.branch.branchId)
+                  .map((b) => ({ value: b.branchId, label: b.name + (b.isMain ? " (Main)" : "") }))}
+              />
+            </div>
 
             {migrating && (
               <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">

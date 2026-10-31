@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { ScrollText, Loader2, Eye, X, ChevronLeft, ChevronRight, History } from "lucide-react";
 import { toast } from "sonner";
 import DatePicker from "@/components/DatePicker";
+import SearchableSelect from "@/components/SearchableSelect";
 import { AuditLogService } from "@/services/auditLog.service";
 import { UserService } from "@/services/user.service";
 import { AuditLogType } from "@/types/auditLog.type";
@@ -231,48 +233,36 @@ export default function AuditLogPage() {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">User</label>
-          <select
+          <SearchableSelect
             value={userId}
-            onChange={(e) => resetToFirstPage(setUserId)(e.target.value)}
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-          >
-            <option value="">All users</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => resetToFirstPage(setUserId)(v)}
+            options={[
+              { value: "", label: "All users" },
+              ...users.map((u) => ({ value: u.id, label: u.name })),
+            ]}
+          />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">Module</label>
-          <select
+          <SearchableSelect
             value={module}
-            onChange={(e) => resetToFirstPage(setModuleFilter)(e.target.value)}
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm capitalize"
-          >
-            <option value="">All modules</option>
-            {modules.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => resetToFirstPage(setModuleFilter)(v)}
+            options={[
+              { value: "", label: "All modules" },
+              ...modules.map((m) => ({ value: m, label: m })),
+            ]}
+          />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">Type</label>
-          <select
+          <SearchableSelect
             value={method}
-            onChange={(e) => resetToFirstPage(setMethod)(e.target.value)}
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-          >
-            <option value="">All types</option>
-            {TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => resetToFirstPage(setMethod)(v)}
+            options={[
+              { value: "", label: "All types" },
+              ...TYPES,
+            ]}
+          />
         </div>
         {(userId || module || method || from || to) && (
           <button
@@ -297,7 +287,11 @@ export default function AuditLogPage() {
             <Loader2 className="animate-spin" size={24} />
           </div>
         ) : logs.length === 0 ? (
-          <p className="p-6 text-sm text-muted-foreground">No audit log entries match these filters.</p>
+          <EmptyState
+            illustration="clipboard"
+            title="No audit log entries"
+            description="Nothing matches these filters. Try a wider date range or fewer filters."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

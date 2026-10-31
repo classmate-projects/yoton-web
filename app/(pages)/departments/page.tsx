@@ -1,10 +1,10 @@
 "use client";
 
 import ToggleButton from "@/components/ToggleButton";
+import EmptyState from "@/components/EmptyState";
 import BuildingIcon from "@/public/icons/BuildingIcon";
 import { MdAdd, MdExpandMore, MdExpandLess } from "react-icons/md";
 import React, { FormEvent, useEffect, useState } from "react";
-import axios from "axios";
 import { toast } from "sonner";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
@@ -15,9 +15,7 @@ import { SpecializationService } from "@/services/specialization.service";
 import { SpecializationTypes } from "@/types/specialization.type";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
+import { apiErrorMessage } from "@/lib/apiError";
 
 interface Department {
   departmentId: string;
@@ -113,7 +111,7 @@ export default function DepartmentsPage() {
       const data = await DepartmentSerivce.getAll();
       setDepartments(data || []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load departments"));
+      toast.error(apiErrorMessage(error, "Failed to load departments"));
     } finally {
       setIsLoading(false);
     }
@@ -132,7 +130,7 @@ export default function DepartmentsPage() {
       fetchDepartments();
       toast.success(data.message)
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to create department"));
+      toast.error(apiErrorMessage(error, "Failed to create department"));
     } finally {
       setloading(false)
     }
@@ -156,7 +154,7 @@ export default function DepartmentsPage() {
       fetchDepartments()
       toast.success(data.message)
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update department"));
+      toast.error(apiErrorMessage(error, "Failed to update department"));
     } finally {
       setloading(false)
     }
@@ -184,7 +182,7 @@ export default function DepartmentsPage() {
         ),
       );
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update department status"));
+      toast.error(apiErrorMessage(error, "Failed to update department status"));
     }
   };
 
@@ -195,7 +193,7 @@ export default function DepartmentsPage() {
       toast.success(data.message);
       fetchDepartments();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to delete department"));
+      toast.error(apiErrorMessage(error, "Failed to delete department"));
     }
   };
 
@@ -246,7 +244,7 @@ export default function DepartmentsPage() {
       );
       toast.success("Specialization status updated");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update specialization status"));
+      toast.error(apiErrorMessage(error, "Failed to update specialization status"));
     }
   };
 
@@ -257,7 +255,7 @@ export default function DepartmentsPage() {
       toast.success(data.message);
       fetchSpecializations();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to delete specialization"));
+      toast.error(apiErrorMessage(error, "Failed to delete specialization"));
     }
   };
 
@@ -546,11 +544,12 @@ export default function DepartmentsPage() {
                 })
               ) : (
                 <tr>
-                  <td
-                    colSpan={4}
-                    className="py-16 text-center text-muted-foreground"
-                  >
-                    No departments found.
+                  <td colSpan={4}>
+                    <EmptyState
+                      illustration="building"
+                      title="No departments found"
+                      description="Departments you add will be listed here."
+                    />
                   </td>
                 </tr>
               )}

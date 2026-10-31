@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Lock, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
+import type { OrderLockFields } from "@/types/orderLock.type";
+import OrderLockNotice from "@/components/orders/OrderLockNotice";
+import SearchableSelect, { fieldSelectClass } from "@/components/SearchableSelect";
 
 export interface LabRadiologyConfigValues {
   quantity: string;
@@ -39,12 +42,12 @@ interface LabRadiologyConfigModalProps {
   // independently editable, never auto-filled. Same wording the old Order Investigation
   // card used.
   coverageHint?: string | null;
-  // locked: this specific order is currently locked (started by a team, or the visit's
-  // finalized) - shows the "already started" banner. readOnly: this VIEWER just isn't
+  // lock: this specific order is currently locked (started by a team, or the visit's
+  // finalized) - shows who has it and what to do. readOnly: this VIEWER just isn't
   // allowed to edit here regardless (Lab/Radiology/Nursing's own gear-icon view) - no
   // banner, fields simply disabled. The two are independent; either forces disabled=true.
-  locked?: boolean;
-  lockedBy?: string | null;
+  lock?: OrderLockFields | null;
+  visitLockHint?: string;
   readOnly?: boolean;
   saving?: boolean;
   submitLabel: string;
@@ -62,8 +65,8 @@ export default function LabRadiologyConfigModal({
   itemName,
   values: initialValues,
   coverageHint,
-  locked = false,
-  lockedBy,
+  lock,
+  visitLockHint,
   readOnly = false,
   saving = false,
   submitLabel,
@@ -71,6 +74,7 @@ export default function LabRadiologyConfigModal({
   onClose,
 }: LabRadiologyConfigModalProps) {
   const [values, setValues] = useState(initialValues);
+  const locked = !!lock?.locked;
   const disabled = locked || readOnly;
 
   return (
@@ -87,12 +91,9 @@ export default function LabRadiologyConfigModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6">
-          {locked && (
-            <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
-              <Lock size={15} className="shrink-0" />
-              {lockedBy === "Visit"
-                ? "This visit has already been finalized and can no longer be edited."
-                : `This order has already been started by ${lockedBy ?? "another team"} — ask them to revert it before editing.`}
+          {lock && locked && (
+            <div className="mb-4">
+              <OrderLockNotice lock={lock} visitLockHint={visitLockHint} />
             </div>
           )}
 
@@ -107,26 +108,30 @@ export default function LabRadiologyConfigModal({
                 onChange={(e) => setValues((p) => ({ ...p, quantity: e.target.value }))}
                 className="h-10 text-sm disabled:opacity-60"
               />
-              <select
+              <SearchableSelect
                 disabled={disabled}
                 value={values.priority}
-                onChange={(e) => setValues((p) => ({ ...p, priority: e.target.value }))}
-                className="h-10 text-sm disabled:opacity-60"
-              >
-                <option value="Normal">Normal</option>
-                <option value="Urgent">Urgent</option>
-              </select>
+                onChange={(v) => setValues((p) => ({ ...p, priority: v }))}
+                options={[
+                  { value: "Normal", label: "Normal" },
+                  { value: "Urgent", label: "Urgent" },
+                ]}
+                className={fieldSelectClass}
+                preserveCase
+              />
             </div>
 
-            <select
+            <SearchableSelect
               disabled={disabled}
               value={values.source}
-              onChange={(e) => setValues((p) => ({ ...p, source: e.target.value }))}
-              className="h-10 text-sm disabled:opacity-60"
-            >
-              <option value="InHouse">In-house</option>
-              <option value="External">External</option>
-            </select>
+              onChange={(v) => setValues((p) => ({ ...p, source: v }))}
+              options={[
+                { value: "InHouse", label: "In-house" },
+                { value: "External", label: "External" },
+              ]}
+              className={fieldSelectClass}
+              preserveCase
+            />
 
             <textarea
               disabled={disabled}
@@ -202,17 +207,14 @@ export default function LabRadiologyConfigModal({
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground">Pre-authorization</label>
-                <select
+                <SearchableSelect
                   disabled={disabled}
                   value={values.preAuthStatus}
-                  onChange={(e) => setValues((p) => ({ ...p, preAuthStatus: e.target.value }))}
-                  className="h-10 text-sm disabled:opacity-60"
-                >
-                  <option value="Not Required">Not Required</option>
-                  <option value="Required">Required</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Approved">Approved</option>
-                </select>
+                  onChange={(v) => setValues((p) => ({ ...p, preAuthStatus: v }))}
+                  options={["Not Required", "Required", "Pending", "Approved"].map((v) => ({ value: v, label: v }))}
+                  className={fieldSelectClass}
+                  preserveCase
+                />
               </div>
             </div>
 

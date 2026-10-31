@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { format } from "date-fns";
@@ -83,9 +84,7 @@ export default function VitalsHistoryModal({ entries, onClose }: VitalsHistoryMo
         </div>
 
         {entries.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">
-            No vitals recorded yet.
-          </p>
+          <EmptyState size="compact" illustration="vitals" title="No vitals recorded yet" />
         ) : (
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-2">

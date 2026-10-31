@@ -5,6 +5,10 @@ import { ClipboardCheck, FlaskConical, Lock, ScanLine, Settings } from "lucide-r
 import { LabRequestType } from "@/types/lab.type";
 import { RadiologyRequestType } from "@/types/radiology.type";
 import { TreatmentType } from "@/types/treatment.type";
+import type { OrderLockFields } from "@/types/orderLock.type";
+import EmptyState from "@/components/EmptyState";
+import OrderLockNotice from "@/components/orders/OrderLockNotice";
+import type { IllustrationName } from "@/components/illustrations";
 
 interface OrderedItemsListProps {
   labRequests: LabRequestType[];
@@ -14,6 +18,15 @@ interface OrderedItemsListProps {
   onOpenRadiology: (item: RadiologyRequestType) => void;
   onOpenTreatment: (item: TreatmentType) => void;
   emptyMessage?: string;
+  emptyIllustration?: IllustrationName;
+  itemClassName?: string;
+  // Only the doctor's own view needs to explain locks - Lab/Radiology/Nursing see the same
+  // list read-only and already know they're the ones holding the order.
+  showLockDetails?: boolean;
+  visitLockHint?: string;
+  // When the whole encounter is finalized every row is "Visit"-locked - the page already
+  // says so once, so rows only call out locks held by another team.
+  hideVisitLocks?: boolean;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -40,10 +53,17 @@ export default function OrderedItemsList({
   onOpenLab,
   onOpenRadiology,
   onOpenTreatment,
-  emptyMessage = "Nothing ordered yet.",
+  emptyMessage = "Nothing ordered yet",
+  emptyIllustration = "clipboard",
+  itemClassName,
+  showLockDetails = false,
+  visitLockHint,
+  hideVisitLocks = false,
 }: OrderedItemsListProps) {
   const isEmpty = labRequests.length === 0 && radiologyRequests.length === 0 && treatments.length === 0;
-  if (isEmpty) return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
+  if (isEmpty) return <EmptyState size="compact" illustration={emptyIllustration} title={emptyMessage} />;
+
+  const lockProps = { showLockDetails, visitLockHint, hideVisitLocks };
 
   return (
     <div className="flex flex-col gap-4">
@@ -54,8 +74,10 @@ export default function OrderedItemsList({
               key={l.labRequestId}
               name={l.testType || "Lab test"}
               status={l.status}
-              locked={l.locked}
+              lock={l}
+              {...lockProps}
               onOpen={() => onOpenLab(l)}
+              className={itemClassName}
             />
           ))}
         </OrderGroup>
@@ -67,8 +89,10 @@ export default function OrderedItemsList({
               key={r.radiologyRequestId}
               name={r.scanType || "Scan"}
               status={r.status}
-              locked={r.locked}
+              lock={r}
+              {...lockProps}
               onOpen={() => onOpenRadiology(r)}
+              className={itemClassName}
             />
           ))}
         </OrderGroup>
@@ -80,8 +104,10 @@ export default function OrderedItemsList({
               key={t.treatmentId}
               name={t.description}
               status={t.status}
-              locked={t.locked}
+              lock={t}
+              {...lockProps}
               onOpen={() => onOpenTreatment(t)}
+              className={itemClassName}
               badges={[
                 ...(t.isPackage ? [{ text: "Package", className: "bg-blue-100 text-blue-700" }] : []),
                 ...(t.isBillingPending ? [{ text: "Billing pending", className: "bg-purple-100 text-purple-700" }] : []),
@@ -108,18 +134,27 @@ function OrderGroup({ icon, label, children }: { icon: ReactNode; label: string;
 function OrderRow({
   name,
   status,
-  locked,
+  lock,
+  showLockDetails,
+  visitLockHint,
+  hideVisitLocks,
   onOpen,
   badges = [],
+  className,
 }: {
   name: string;
   status: string;
-  locked?: boolean;
+  lock: OrderLockFields;
+  showLockDetails: boolean;
+  visitLockHint?: string;
+  hideVisitLocks: boolean;
   onOpen: () => void;
   badges?: { text: string; className: string }[];
+  className?: string;
 }) {
+  const showNotice = showLockDetails && lock.locked && !(hideVisitLocks && lock.lockedBy === "Visit");
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+    <div className={`flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm${className ? ` ${className}` : ""}`}>
       <div className="min-w-0">
         <p className="truncate font-medium text-foreground">{name}</p>
         {badges.length > 0 && (
@@ -131,9 +166,10 @@ function OrderRow({
             ))}
           </div>
         )}
+        {showNotice && <OrderLockNotice lock={lock} visitLockHint={visitLockHint} compact />}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {locked && (
+        {lock.locked && !showNotice && (
           <span title="Locked - doctor can't edit right now">
             <Lock size={13} className="text-amber-600" />
           </span>

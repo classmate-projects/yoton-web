@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import axios from "axios";
 import { toast } from "sonner";
 import { AlertTriangle, ClipboardList, Pencil, Plus, Printer, RefreshCw, Search, Send, X } from "lucide-react";
@@ -19,8 +20,12 @@ import {
 } from "@/types/medicalForm.type";
 import { UserType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { usePlaceholderCatalog } from "@/hooks/usePlaceholderCatalog";
+import { buildInitialValues, countMissingRequired, hasPlaceholders } from "@/lib/medicalForm";
 import MedicalFormRenderer from "./MedicalFormRenderer";
 import MedicalFormPrintout from "./MedicalFormPrintout";
+import { apiErrorMessage } from "@/lib/apiError";
+import SearchableSelect from "@/components/SearchableSelect";
 
 const currentUserId = (): string | undefined => {
   try {
@@ -29,9 +34,6 @@ const currentUserId = (): string | undefined => {
     return undefined;
   }
 };
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
 
 const parseRows = (fieldsJson: string): MedicalFormRow[] => {
   try {
@@ -48,6 +50,9 @@ const parseValues = (valuesJson: string): MedicalFormValues => {
     return {};
   }
 };
+
+const missingMessage = (count: number) =>
+  `Fill in the ${count} required field${count === 1 ? "" : "s"} marked in red before saving`;
 
 // Shared by Doctor Workbench, Nurse Workbench and (read-only) the EMR case-sheet - the exact
 // same "which templates can I fill, what's already saved for this patient" logic either way,
@@ -80,10 +85,17 @@ export default function PatientMedicalFormsSection({
   const [fillingTemplate, setFillingTemplate] = useState<FormTemplateType | null>(null);
   const [fillingValues, setFillingValues] = useState<MedicalFormValues>({});
   const [isSavingFill, setIsSavingFill] = useState(false);
+  // The patient's details for the form being filled - null while they're still loading.
+  const [fillingPlaceholderValues, setFillingPlaceholderValues] = useState<Record<string, string> | null>(null);
+  const [showFillErrors, setShowFillErrors] = useState(false);
+  // Ignores a slow lookup for a form that was closed (or swapped for another) meanwhile.
+  const fillRequestRef = useRef(0);
+  const placeholderCatalog = usePlaceholderCatalog();
 
   const [viewingSaved, setViewingSaved] = useState<SavedMedicalFormType | null>(null);
   const [editValues, setEditValues] = useState<MedicalFormValues>({});
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [showEditErrors, setShowEditErrors] = useState(false);
 
   const [deleteLock, setDeleteLock] = useState<SavedMedicalFormType | null>(null);
   const [deletePassword, setDeletePassword] = useState("");
@@ -122,9 +134,36 @@ export default function PatientMedicalFormsSection({
     fetchAll
   );
 
-  const openFill = (template: FormTemplateType) => {
+  // Opens a form already filled with this patient's details wherever the template asks for them
+  // ({{placeholders}} in its text and defaults), and one copy of every repeatable row/section.
+  const openFill = async (template: FormTemplateType) => {
+    const requestId = ++fillRequestRef.current;
     setFillingTemplate(template);
     setFillingValues({});
+    setFillingPlaceholderValues(null);
+    setShowFillErrors(false);
+
+    let values: Record<string, string> = {};
+    let catalog = placeholderCatalog;
+    if (patientId && hasPlaceholders(template.fieldsJson)) {
+      try {
+        [catalog, values] = await Promise.all([
+          FormTemplateService.getPlaceholderCatalog(),
+          SavedMedicalFormService.getPlaceholderValues(template.formTemplateId, patientId, visitId),
+        ]);
+      } catch {
+        toast.error("Couldn't load this patient's details into the form - please fill them in by hand");
+      }
+    }
+    if (requestId !== fillRequestRef.current) return;
+
+    setFillingPlaceholderValues(values);
+    setFillingValues(buildInitialValues(parseRows(template.fieldsJson), { catalog, values }));
+  };
+
+  const closeFill = () => {
+    fillRequestRef.current++;
+    setFillingTemplate(null);
   };
 
   // Looks up the CURRENT template definition for a saved form's own row - used to offer
@@ -141,6 +180,12 @@ export default function PatientMedicalFormsSection({
       toast.error("This patient has no active visit to attach the form to");
       return;
     }
+    const missing = countMissingRequired(parseRows(fillingTemplate.fieldsJson), fillingValues);
+    if (missing > 0) {
+      setShowFillErrors(true);
+      toast.error(missingMessage(missing));
+      return;
+    }
     setIsSavingFill(true);
     try {
       await SavedMedicalFormService.create({
@@ -153,7 +198,7 @@ export default function PatientMedicalFormsSection({
       setFillingTemplate(null);
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to save form"));
+      toast.error(apiErrorMessage(error, "Failed to save form"));
     } finally {
       setIsSavingFill(false);
     }
@@ -162,12 +207,19 @@ export default function PatientMedicalFormsSection({
   const openSaved = (saved: SavedMedicalFormType) => {
     setViewingSaved(saved);
     setEditValues(parseValues(saved.valuesJson));
+    setShowEditErrors(false);
     setShowHandoverPicker(false);
     setHandoverTargetId("");
   };
 
   const submitEdit = async () => {
     if (!viewingSaved) return;
+    const missing = countMissingRequired(parseRows(viewingSaved.fieldsJson), editValues);
+    if (missing > 0) {
+      setShowEditErrors(true);
+      toast.error(missingMessage(missing));
+      return;
+    }
     setIsSavingEdit(true);
     try {
       await SavedMedicalFormService.update(viewingSaved.savedMedicalFormId, JSON.stringify(editValues));
@@ -175,7 +227,7 @@ export default function PatientMedicalFormsSection({
       setViewingSaved(null);
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update form"));
+      toast.error(apiErrorMessage(error, "Failed to update form"));
     } finally {
       setIsSavingEdit(false);
     }
@@ -207,7 +259,7 @@ export default function PatientMedicalFormsSection({
       setShowHandoverPicker(false);
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to hand over form"));
+      toast.error(apiErrorMessage(error, "Failed to hand over form"));
     } finally {
       setIsHandingOver(false);
     }
@@ -222,7 +274,7 @@ export default function PatientMedicalFormsSection({
       setViewingSaved(null);
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to acknowledge handover"));
+      toast.error(apiErrorMessage(error, "Failed to acknowledge handover"));
     } finally {
       setIsAcknowledgingHandover(false);
     }
@@ -242,7 +294,7 @@ export default function PatientMedicalFormsSection({
         setDeleteLock(saved);
         return;
       }
-      toast.error(errorMessage(error, "Failed to remove form"));
+      toast.error(apiErrorMessage(error, "Failed to remove form"));
     } finally {
       setIsDeleting(false);
     }
@@ -337,9 +389,11 @@ export default function PatientMedicalFormsSection({
           )}
 
           {filteredSavedForms.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {savedForms.length === 0 ? "No medical forms saved for this patient yet." : "No saved forms match your search."}
-            </p>
+            savedForms.length === 0 ? (
+              <EmptyState size="compact" illustration="documents" title="No medical forms saved for this patient yet" />
+            ) : (
+              <EmptyState size="compact" illustration="search" title="No saved forms match your search" />
+            )
           ) : (
             <div className="flex flex-col gap-2 border-t border-border pt-3">
               {filteredSavedForms.map((f) => (
@@ -380,21 +434,19 @@ export default function PatientMedicalFormsSection({
                         View only
                       </span>
                     )}
-                    {!readOnly &&
-                      !f.canEdit &&
-                      (() => {
-                        const template = findAvailableTemplate(f.formTemplateId);
-                        return template ? (
-                          <button
-                            onClick={() => openFill(template)}
-                            title="Fill your own copy of this form for this patient"
-                            aria-label="Fill your own copy of this form for this patient"
-                            className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary"
-                          >
-                            <Plus size={13} /> Fill your own
-                          </button>
-                        ) : null;
-                      })()}
+                    {!readOnly && !f.canEdit && findAvailableTemplate(f.formTemplateId) && (
+                      <button
+                        onClick={() => {
+                          const template = findAvailableTemplate(f.formTemplateId);
+                          if (template) openFill(template);
+                        }}
+                        title="Fill your own copy of this form for this patient"
+                        aria-label="Fill your own copy of this form for this patient"
+                        className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary"
+                      >
+                        <Plus size={13} /> Fill your own
+                      </button>
+                    )}
                     <button
                       onClick={() => setPrintingSaved(f)}
                       title="Print this form"
@@ -421,28 +473,34 @@ export default function PatientMedicalFormsSection({
           <div className="card flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-border shadow-2xl">
             <div className="flex items-center justify-between gap-4 p-6 pb-4">
               <h3 className="text-lg font-semibold text-foreground">{fillingTemplate.name}</h3>
-              <button onClick={() => setFillingTemplate(null)} className="text-muted-foreground hover:text-foreground">
+              <button onClick={closeFill} className="text-muted-foreground hover:text-foreground">
                 <X size={18} />
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6">
-              <MedicalFormRenderer
-                rows={parseRows(fillingTemplate.fieldsJson)}
-                mode="fill"
-                values={fillingValues}
-                onChange={(fieldId, value) => setFillingValues((prev) => ({ ...prev, [fieldId]: value }))}
-              />
+              {fillingPlaceholderValues === null ? (
+                <LoadingSpinner />
+              ) : (
+                <MedicalFormRenderer
+                  rows={parseRows(fillingTemplate.fieldsJson)}
+                  mode="fill"
+                  values={fillingValues}
+                  onChange={(key, value) => setFillingValues((prev) => ({ ...prev, [key]: value }))}
+                  placeholders={{ catalog: placeholderCatalog, values: fillingPlaceholderValues }}
+                  showErrors={showFillErrors}
+                />
+              )}
             </div>
             <div className="flex justify-end gap-3 border-t border-border p-6 pt-4">
               <button
-                onClick={() => setFillingTemplate(null)}
+                onClick={closeFill}
                 className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground"
               >
                 Cancel
               </button>
               <button
                 onClick={submitFill}
-                disabled={isSavingFill}
+                disabled={isSavingFill || fillingPlaceholderValues === null}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
               >
                 {isSavingFill ? "Saving..." : "Save form"}
@@ -498,21 +556,25 @@ export default function PatientMedicalFormsSection({
                 rows={parseRows(viewingSaved.fieldsJson)}
                 mode={!readOnly && viewingSaved.canEdit ? "fill" : "view"}
                 values={editValues}
-                onChange={(fieldId, value) => setEditValues((prev) => ({ ...prev, [fieldId]: value }))}
+                onChange={(key, value) => setEditValues((prev) => ({ ...prev, [key]: value }))}
+                placeholders={{ catalog: placeholderCatalog, values: viewingSaved.placeholderValues ?? {} }}
+                showErrors={showEditErrors}
               />
 
               {!readOnly && showHandoverPicker && (
                 <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
                   <span className="text-xs font-semibold text-muted-foreground">Hand over to</span>
                   <div className="flex items-center gap-2">
-                    <select value={handoverTargetId} onChange={(e) => setHandoverTargetId(e.target.value)} className="h-9 flex-1 text-sm">
-                      <option value="">Select a user...</option>
-                      {handoverCandidates.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name} ({u.role})
-                        </option>
-                      ))}
-                    </select>
+                    <div className="min-w-0 flex-1">
+                      <SearchableSelect
+                        value={handoverTargetId}
+                        onChange={setHandoverTargetId}
+                        placeholder="Select a user..."
+                        options={handoverCandidates.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))}
+                        className="flex h-9 w-full items-center justify-between gap-1 rounded-lg border border-border bg-background px-3 text-left text-sm text-foreground transition-colors hover:border-primary/60"
+                        preserveCase
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={submitHandover}
@@ -631,6 +693,7 @@ export default function PatientMedicalFormsSection({
           hasAbnormalValue={printingSaved.hasAbnormalValue}
           rows={parseRows(printingSaved.fieldsJson)}
           values={parseValues(printingSaved.valuesJson)}
+          placeholders={{ catalog: placeholderCatalog, values: printingSaved.placeholderValues ?? {} }}
           onClose={() => setPrintingSaved(null)}
           canEdit={!readOnly && printingSaved.canEdit}
           onEdit={() => {

@@ -1,26 +1,18 @@
 import api from "@/lib/axios";
 import { ENDPOINTS } from "@/lib/endpoints";
-import { AddBillItemPayload, AddBillItemFromSourcePayload, CreateBillPayload } from "@/types/billing.type";
+import { AddBillItemPayload, AddBillItemFromSourcePayload, CreateBillPayload, UpdateBillItemPayload } from "@/types/billing.type";
 
 export const BillingService = {
-  getAll: async () => {
-    const { data } = await api.get(ENDPOINTS.BILLING.GET_ALL);
+  getAll: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_ALL(date));
     return data;
   },
-  getPending: async () => {
-    const { data } = await api.get(ENDPOINTS.BILLING.GET_PENDING);
+  getPending: async (date?: string) => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_PENDING(date));
     return data;
   },
   getSummary: async () => {
-    const { data } = await api.get(ENDPOINTS.BILLING.GET_SUMMARY);
-    return data;
-  },
-  getById: async (id: string) => {
-    const { data } = await api.get(ENDPOINTS.BILLING.GET_BY_ID(id));
-    return data;
-  },
-  getByPatient: async (patientId: string) => {
-    const { data } = await api.get(ENDPOINTS.BILLING.GET_BY_PATIENT(patientId));
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_SUMMARY());
     return data;
   },
   create: async (payload: CreateBillPayload) => {
@@ -31,12 +23,41 @@ export const BillingService = {
     const { data } = await api.post(ENDPOINTS.BILLING.ADD_ITEM, payload);
     return data;
   },
+  updateItem: async (itemId: string, payload: UpdateBillItemPayload) => {
+    const { data } = await api.put(ENDPOINTS.BILLING.UPDATE_ITEM(itemId), payload);
+    return data;
+  },
+  removeItem: async (itemId: string, reason: string) => {
+    const { data } = await api.post(ENDPOINTS.BILLING.REMOVE_ITEM(itemId), { reason });
+    return data;
+  },
   pay: async (billId: string, paymentMethod: string) => {
     const { data } = await api.post(ENDPOINTS.BILLING.PAY, { billId, paymentMethod });
     return data;
   },
-  cancel: async (id: string) => {
-    const { data } = await api.post(ENDPOINTS.BILLING.CANCEL(id));
+  getRefunds: async (billId: string) => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_REFUNDS(billId));
+    return data;
+  },
+  getRefundsDue: async () => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_REFUNDS_DUE);
+    return data;
+  },
+  payRefund: async (refundId: string, paymentMethod: string) => {
+    const { data } = await api.post(ENDPOINTS.BILLING.PAY_REFUND(refundId), { paymentMethod });
+    return data;
+  },
+  // Reason is required by the API (kept on the bill, shown when viewing it).
+  cancel: async (id: string, reason: string) => {
+    const { data } = await api.post(ENDPOINTS.BILLING.CANCEL(id), { reason });
+    return data;
+  },
+  getAwaiting: async () => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_AWAITING);
+    return data;
+  },
+  openVisitBill: async (visitId: string) => {
+    const { data } = await api.post(ENDPOINTS.BILLING.OPEN_VISIT_BILL(visitId));
     return data;
   },
   getChargeableItems: async (visitId: string) => {
@@ -45,6 +66,23 @@ export const BillingService = {
   },
   addItemFromSource: async (payload: AddBillItemFromSourcePayload) => {
     const { data } = await api.post(ENDPOINTS.BILLING.ADD_ITEM_FROM_SOURCE, payload);
+    return data;
+  },
+  getReports: async (from: string, to: string) => {
+    const { data } = await api.get(ENDPOINTS.BILLING.REPORTS(from, to));
+    return data;
+  },
+  // Walk-in (external service) patients - billed per patient, not per visit.
+  getWalkInAwaiting: async () => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_WALK_IN_AWAITING);
+    return data;
+  },
+  getWalkInItems: async (patientId: string) => {
+    const { data } = await api.get(ENDPOINTS.BILLING.GET_WALK_IN_ITEMS(patientId));
+    return data;
+  },
+  openWalkInBill: async (patientId: string) => {
+    const { data } = await api.post(ENDPOINTS.BILLING.OPEN_WALK_IN_BILL(patientId));
     return data;
   },
 };

@@ -1,6 +1,7 @@
 import { MedicationAdministrationType, NurseNoteType, TreatmentType } from "./nursing.type";
 import { LabRequestType } from "./lab.type";
 import { RadiologyRequestType } from "./radiology.type";
+import type { OrderLockFields } from "./orderLock.type";
 
 export interface EmrPatientListItem {
   opId: string;
@@ -38,10 +39,27 @@ export interface AllergyType {
   patientAllergyId: string;
   substance: string;
   reaction: string | null;
+  allergyCategory: string | null;
+  severity: string | null;
+  identifiedDate: string | null;
+  status: string | null;
+  remarks: string | null;
   recordedByRole: string | null;
   createdAt: string;
   correctedFromId: string | null;
   correctedFrom: AllergyType | null;
+}
+
+export interface FamilyHistoryType {
+  familyHistoryId: string;
+  relation: string;
+  history: string;
+  status: string | null;
+  remarks: string | null;
+  recordedByName: string | null;
+  createdAt: string;
+  correctedFromId: string | null;
+  correctedFrom: FamilyHistoryType | null;
 }
 
 export interface TaperingStepType {
@@ -53,8 +71,10 @@ export interface TaperingStepType {
   durationDays: number | null;
 }
 
-export interface MedicationType {
+// Lock fields are only filled for currentMedications - see OrderLockHelper on the backend.
+export interface MedicationType extends OrderLockFields {
   medicationId: string;
+  encounterId: string | null;
   medicineId: string | null;
   drugName: string;
   dosage: string | null;
@@ -89,6 +109,7 @@ export interface SpecialRemarkType {
   remarkType: string;
   description: string;
   recordedByRole: string | null;
+  recordedByUserId?: string | null;
   createdAt: string;
 }
 
@@ -102,6 +123,15 @@ export interface PatientDocumentType {
   viewedByDoctor: boolean;
   viewedByNurse: boolean;
   createdAt: string;
+}
+
+export interface EncounterListItemType {
+  encounterId: string;
+  visitId: string | null;
+  createdAt: string;
+  status: string;
+  chiefComplaint: string | null;
+  doctorName: string | null;
 }
 
 export interface EncounterType {
@@ -127,7 +157,12 @@ export interface EncounterType {
   rosHematologic: string | null;
   rosAllergicImmunologic: string | null;
   rosIntegumentary: string | null;
+  currentManagementPlan: string | null;
+  futureManagementPlan: string | null;
   status: string;
+  // The patient's age group and age when this encounter began (kept as of that day).
+  ageCategory: string | null;
+  patientAgeYears: number | null;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -210,12 +245,26 @@ export interface PatientSummaryType {
   sex: string | null;
   dateOfBirth: string | null;
   phone: string | null;
+  phoneCode: string | null;
   email: string | null;
   address: string | null;
   maritalStatus: string | null;
   nationality: string | null;
+  patientAlert: string | null;
+  pastMedicalHistory: string | null;
+  pastSurgicalHistory: string | null;
+  pastTreatmentHistory: string | null;
+  socialHistory: string | null;
+  // From the date of birth and the company's age ranges (Settings); null without a DOB.
+  // isPediatric turns on the Pediatric Immunization Schedule, hasImmunizationRecords keeps an
+  // aged-out patient's record reachable (read-only).
+  ageText: string | null;
+  ageCategory: string | null;
+  isPediatric: boolean;
+  hasImmunizationRecords: boolean;
   chronicConditions: ChronicConditionType[];
   allergies: AllergyType[];
+  familyHistory: FamilyHistoryType[];
   currentMedications: MedicationType[];
   medicationHistory: MedicationType[];
   latestEncounter: EncounterType | null;
@@ -249,6 +298,10 @@ export interface TodayScheduleItemType {
   patientName: string;
   appointmentDate: string;
   status: string;
+  isWalkIn: boolean;
+  visitId: string | null;
+  visitStatus: string | null;
+  checkedInAt: string | null;
 }
 
 export interface ActiveCaseItemType {
@@ -289,6 +342,8 @@ export interface EncounterUpsertPayload {
   rosHematologic?: string;
   rosAllergicImmunologic?: string;
   rosIntegumentary?: string;
+  currentManagementPlan?: string;
+  futureManagementPlan?: string;
 }
 
 export interface ProposeEncounterCorrectionPayload {
@@ -312,6 +367,8 @@ export interface ProposeEncounterCorrectionPayload {
   rosHematologic?: string;
   rosAllergicImmunologic?: string;
   rosIntegumentary?: string;
+  currentManagementPlan?: string;
+  futureManagementPlan?: string;
 }
 
 export interface EncounterCorrectionType {
@@ -341,6 +398,22 @@ export interface EncounterCorrectionType {
   rosHematologic: string | null;
   rosAllergicImmunologic: string | null;
   rosIntegumentary: string | null;
+  currentManagementPlan: string | null;
+  futureManagementPlan: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface EncounterUnlockRequestType {
+  encounterUnlockRequestId: string;
+  encounterId: string;
+  patientId: string;
+  patientName: string | null;
+  requestedByUserId: string;
+  requestedByName: string | null;
+  reason: string | null;
+  status: "Pending" | "Approved" | "Denied";
+  resolvedByUserId: string | null;
   createdAt: string;
   resolvedAt: string | null;
 }
@@ -358,6 +431,18 @@ export interface ChronicConditionPayload {
 export interface AllergyPayload {
   substance: string;
   reaction?: string;
+  allergyCategory?: string;
+  severity?: string;
+  identifiedDate?: string;
+  status?: string;
+  remarks?: string;
+}
+
+export interface FamilyHistoryPayload {
+  relation: string;
+  history: string;
+  status?: string;
+  remarks?: string;
 }
 
 export interface TaperingStepPayload {
@@ -418,10 +503,6 @@ export interface ReferralPayload {
   notes?: string;
   cancerSiteListItemId?: string;
   externalFacility?: string;
-}
-
-export interface ReferralOutcomePayload {
-  dateSeenBySpecialist: string;
 }
 
 export interface DentalVisitExtraPayload {

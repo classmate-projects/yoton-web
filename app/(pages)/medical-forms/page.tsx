@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, ClipboardList, Pencil, Plus } from "lucide-react";
+import { ArrowLeft, ClipboardList, Pencil, Plus, RotateCcw } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
 import { FormTemplateService } from "@/services/medicalForm.service";
-import { FormTemplateType, MedicalFormField, MedicalFormRow, normalizeRows } from "@/types/medicalForm.type";
+import { FormTemplateType, MedicalFormField, MedicalFormRow, MedicalFormValues, normalizeRows } from "@/types/medicalForm.type";
+import { notifySaveStatus } from "@/lib/saveStatus";
+import { buildInitialValues, PlaceholderContext } from "@/lib/medicalForm";
 import FormBuilderCanvas from "@/components/medicalForms/FormBuilderCanvas";
 import MedicalFormRenderer from "@/components/medicalForms/MedicalFormRenderer";
 import DepartmentSpecialtyMapper from "@/components/medicalForms/DepartmentSpecialtyMapper";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { usePlaceholderCatalog } from "@/hooks/usePlaceholderCatalog";
 
 // Admin builder (Configuration -> Medical Forms). List + full-page editor, the same
 // list-then-detail-view swap appointments/page.tsx uses for its doctor-slots view - a modal
@@ -27,6 +30,14 @@ export default function MedicalFormsPage() {
   const [savedTemplateId, setSavedTemplateId] = useState<string | null>(null);
   const [mappingDeptIds, setMappingDeptIds] = useState<string[]>([]);
   const [mappingSpecIds, setMappingSpecIds] = useState<string[]>([]);
+
+  // The preview can be filled in to try the form out - no patient here, so placeholders show
+  // as labelled chips. It starts over whenever the design itself changes.
+  const catalog = usePlaceholderCatalog();
+  const previewPlaceholders = useMemo<PlaceholderContext>(() => ({ catalog, values: null }), [catalog]);
+  const [previewValues, setPreviewValues] = useState<MedicalFormValues>({});
+  const resetPreview = () => setPreviewValues(buildInitialValues(rows, previewPlaceholders));
+  useEffect(resetPreview, [rows, previewPlaceholders]);
 
   const fetchTemplates = () => {
     setIsLoading(true);
@@ -68,6 +79,7 @@ export default function MedicalFormsPage() {
       toast.error("Enter a form name");
       return;
     }
+    notifySaveStatus("saving");
     setIsSaving(true);
     try {
       const payload = { name: name.trim(), fieldsJson: JSON.stringify(rows), supportsHandover };
@@ -79,9 +91,16 @@ export default function MedicalFormsPage() {
         const data = await FormTemplateService.create(payload);
         setSavedTemplateId(data.data.formTemplateId);
         setTemplates((prev) => [...prev, data.data]);
-        toast.success("Template created — map it to a department or specialty below");
+        toast.success("New form has been created", {
+          description:
+            "Kindly assign it to departments below - only those departments will see this form. If no department is assigned, it shows for all departments.",
+          duration: 8000,
+        });
+        setTimeout(() => document.getElementById("form-template-mapping")?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
       }
+      notifySaveStatus("saved");
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to save form template");
     } finally {
       setIsSaving(false);
@@ -100,12 +119,15 @@ export default function MedicalFormsPage() {
   };
 
   const handleToggleActive = async (template: FormTemplateType) => {
+    notifySaveStatus("saving");
     try {
       await FormTemplateService.setActive(template.formTemplateId, !template.isActive);
       setTemplates((prev) =>
         prev.map((t) => (t.formTemplateId === template.formTemplateId ? { ...t, isActive: !t.isActive } : t))
       );
+      notifySaveStatus("saved");
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to update form template");
     }
   };
@@ -155,10 +177,22 @@ export default function MedicalFormsPage() {
             </div>
 
             <div className="card p-5 xl:sticky xl:top-4">
-              <h2 className="mb-1 text-lg font-semibold text-foreground">Live preview</h2>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-foreground">Live preview</h2>
+                {rows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={resetPreview}
+                    className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-primary"
+                  >
+                    <RotateCcw size={13} /> Reset
+                  </button>
+                )}
+              </div>
               <p className="mb-4 text-sm text-muted-foreground">
-                How this form will look to the doctor or nurse filling it in - updates as you edit the fields on the
-                left. Drag an image field&apos;s bottom-right corner to resize it.
+                How this form will look to the doctor or nurse filling it in - try it out here, including adding and
+                removing copies of repeatable rows. Patient data shows as a label until the form is opened for a real
+                patient. Drag an image field&apos;s bottom-right corner to resize it.
               </p>
               {rows.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
@@ -166,7 +200,14 @@ export default function MedicalFormsPage() {
                 </p>
               ) : (
                 <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-border p-4">
-                  <MedicalFormRenderer rows={rows} mode="view" values={{}} onFieldConfigChange={updateFieldConfig} />
+                  <MedicalFormRenderer
+                    rows={rows}
+                    mode="fill"
+                    values={previewValues}
+                    onChange={(key, value) => setPreviewValues((prev) => ({ ...prev, [key]: value }))}
+                    onFieldConfigChange={updateFieldConfig}
+                    placeholders={previewPlaceholders}
+                  />
                 </div>
               )}
             </div>
@@ -181,7 +222,7 @@ export default function MedicalFormsPage() {
           </button>
 
           {savedTemplateId && (
-            <div className="card p-5">
+            <div id="form-template-mapping" className="card p-5">
               <h2 className="mb-4 text-lg font-semibold text-foreground">Department &amp; specialty mapping</h2>
               <DepartmentSpecialtyMapper
                 formTemplateId={savedTemplateId}

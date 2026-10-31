@@ -40,10 +40,6 @@ export const UserService = {
         const { data } = await api.get(ENDPOINTS.USER.GET_ASSIGNED_DOCTORS)
         return data;
     },
-    get_scheduled_doctors: async (doctorId: string) => {
-        const { data } = await api.get(ENDPOINTS.USER.GET_SCHEDULED_DOCTOR(doctorId))
-        return data;
-    },
     create_assign_doctor: async (payload: UserAssignedDoctorCreateType) => {
         const { data } = await api.post(ENDPOINTS.USER.CREATE_ASSIGN_DOCTOR, payload)
         return data;
@@ -55,5 +51,32 @@ export const UserService = {
     getEmploymentHistory: async (id: string) => {
         const { data } = await api.get(ENDPOINTS.USER.GET_EMPLOYMENT_HISTORY(id))
         return data;
-    }
+    },
+
+    getDetails: async (id: string) => {
+        const { data } = await api.get(ENDPOINTS.USER.GET_DETAILS(id))
+        return data;
+    },
+
+    getNotes: async (id: string) => {
+        const { data } = await api.get(ENDPOINTS.USER.NOTES(id))
+        return data;
+    },
+    addNote: async (id: string, content: string) => {
+        const { data } = await api.post(ENDPOINTS.USER.NOTES(id), { content })
+        return data;
+    },
+    deleteNote: async (noteId: string) => {
+        const { data } = await api.delete(ENDPOINTS.USER.DELETE_NOTE(noteId))
+        return data;
+    },
+
+    uploadSignature: async (id: string, file: File) => {
+        const form = new FormData();
+        form.append("file", file);
+        const { data } = await api.post(ENDPOINTS.USER.UPLOAD_SIGNATURE(id), form, {
+            headers: { "Content-Type": "multipart/form-data" },
+        });
+        return data;
+    },
 }

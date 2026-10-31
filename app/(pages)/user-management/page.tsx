@@ -19,11 +19,13 @@ interface getAllResponse {
 }
 
 import Link from "next/link";
+import EmptyState from "@/components/EmptyState";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import axios from "axios";
 import SelectRole from "@/components/selectRole";
+import SearchableSelect from "@/components/SearchableSelect";
+import DatePicker from "@/components/DatePicker";
 import ToggleButton from "@/components/ToggleButton";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import SettingsIcon from "@/public/icons/SettingsIcon";
@@ -31,10 +33,13 @@ import AddUserIcon from "@/public/icons/AddUserIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
 import EditIcon from "@/public/icons/EditIcon";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { CalendarClock, History as HistoryIcon, UserX } from "lucide-react";
+import { History as HistoryIcon, UserX, Eye, CalendarClock } from "lucide-react";
 import { UserService } from "@/services/user.service";
+import ViewModeToggle from "@/components/ViewModeToggle";
+import { useViewModePreference } from "@/hooks/useViewModePreference";
 import { NursingService } from "@/services/nursing.service";
 import { NurseShiftInput } from "@/types/nursing.type";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { StaffEmploymentEventType } from "@/types/user.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
@@ -43,17 +48,9 @@ import { BranchService } from "@/services/branch.service";
 import { BranchType } from "@/types/branch.type";
 import { getUserDetail } from "@/lib/userDetail";
 import { backendAssetUrl } from "@/lib/backendAsset";
+import { TERMINATION_REASONS } from "@/helpers/terminationReasons";
+import { apiErrorMessage } from "@/lib/apiError";
 
-const TERMINATION_REASONS = [
-  { value: "Retired60Plus", label: "Retired (60+ years)" },
-  { value: "EarlyRetirement", label: "Early retirement (<60 years)" },
-  { value: "VoluntaryResignation", label: "Left willingly (resignation)" },
-  { value: "ForcedTermination", label: "Forced to leave" },
-  { value: "Death", label: "Deceased" },
-  { value: "TempContractEnded", label: "Temporary/locum contract ended" },
-  { value: "TransferredDepartment", label: "Transferred to another department" },
-  { value: "Other", label: "Other" },
-];
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -99,7 +96,7 @@ export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeStatus, setActiveStatus] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
-
+  const [viewMode, setViewMode] = useViewModePreference("userManagement.viewMode");
 
   const [branches, setBranches] = useState<BranchType[]>([]);
   // Defaults to the signed-in staff member's own branch (not "All") - most admins managing
@@ -255,6 +252,7 @@ export default function UserManagement() {
 
   const saveShifts = async () => {
     if (!shiftsTarget) return;
+    notifySaveStatus("saving");
     setSavingShifts(true);
     try {
       const shifts: NurseShiftInput[] = shiftsWeek
@@ -262,8 +260,10 @@ export default function UserManagement() {
         .filter((row) => row.isActive);
       await NursingService.setNurseShifts(shiftsTarget.id, shifts);
       toast.success("Shifts updated");
+      notifySaveStatus("saved");
       closeShiftsManager();
     } catch {
+      notifySaveStatus("error");
       toast.error("Failed to update shifts");
     } finally {
       setSavingShifts(false);
@@ -319,7 +319,7 @@ export default function UserManagement() {
       fetchAllUsers();
     } catch (error) {
       toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to terminate employment" : "Failed to terminate employment"
+        apiErrorMessage(error, "Failed to terminate employment")
       );
     } finally {
       setIsTerminating(false);
@@ -368,8 +368,57 @@ export default function UserManagement() {
     fetchAllUsers();
   };
 
+  const userStatusBg = (user: getAllResponse) =>
+    user.isTerminated
+      ? "bg-red-100/80 dark:bg-red-950/30"
+      : !user.isActive
+      ? "bg-red-50/50 opacity-80"
+      : "";
+
+  const renderNameBlock = (user: getAllResponse, className: string) => (
+    <div className={`min-w-0 ${className}`}>
+      <p
+        className={`truncate font-semibold ${
+          user.isTerminated ? "text-muted-foreground line-through decoration-red-400" : ""
+        }`}
+        title={user.name}
+      >
+        {user.name}
+      </p>
+      <p className="truncate text-xs text-muted-foreground" title={user.username}>
+        @{user.username}
+      </p>
+    </div>
+  );
+
+  const renderBadges = (user: getAllResponse) => (
+    <>
+      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold capitalize text-primary">
+        {user.role}
+      </span>
+      {user.isTerminated ? (
+        <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+          Terminated
+        </span>
+      ) : !user.isActive ? (
+        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+          Inactive
+        </span>
+      ) : null}
+    </>
+  );
+
   const renderActions = (user: getAllResponse) => (
-    <div className="flex items-center justify-evenly">
+    // stopPropagation: the row/card itself opens the detail page on click, these must not.
+    <div className="flex items-center justify-evenly" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => router.push(`/user-management/${user.id}`)}
+        title="View Details"
+        className="hover:bg-muted p-2 rounded-full transition-colors cursor-pointer text-primary"
+      >
+        <Eye size={18} />
+      </button>
+
       <button
         onClick={() => openHistory(user)}
         title="Employment History"
@@ -409,7 +458,7 @@ export default function UserManagement() {
         </button>
       )}
 
-      {user.role.toLowerCase() === "nurse" && (
+      {user.role.toLowerCase() === "nurse" && !user.isTerminated && (
         <button
           onClick={() => openShiftsManager(user)}
           title="Manage Shifts"
@@ -418,7 +467,6 @@ export default function UserManagement() {
           <CalendarClock size={18} />
         </button>
       )}
-
     </div>
   );
 
@@ -433,6 +481,7 @@ export default function UserManagement() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
           <Link
             href={"/role-management"}
             aria-label="Manage roles and their module permissions"
@@ -475,31 +524,24 @@ export default function UserManagement() {
               selectRole={false}
             />
 
-            <select
-              name="isActive"
-              id="isActive"
+            <SearchableSelect
               value={activeStatus}
-              onChange={(e) => setActiveStatus(e.target.value)}
-              className="border border-neutral-500 px-4 py-2 rounded-md outline-0">
-              <option value="all">All</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
+              onChange={setActiveStatus}
+              options={[
+                { value: "all", label: "All" },
+                { value: "active", label: "Active" },
+                { value: "inactive", label: "Inactive" },
+              ]}
+            />
 
-            <select
-              name="branch"
-              id="branch"
+            <SearchableSelect
               value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-              className="border border-neutral-500 px-4 py-2 rounded-md outline-0">
-              <option value="allBranch">All branches</option>
-              {branches.map((b) => (
-                <option key={b.branchId} value={b.branchId}>
-                  {b.name}
-                  {b.isMain ? " (Main)" : ""}
-                </option>
-              ))}
-            </select>
+              onChange={setBranchFilter}
+              options={[
+                { value: "allBranch", label: "All branches" },
+                ...branches.map((b) => ({ value: b.branchId, label: b.name + (b.isMain ? " (Main)" : "") })),
+              ]}
+            />
 
             <button
               type="button"
@@ -516,55 +558,75 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
-        {isLoading ? (
-          <div className="card col-span-full flex justify-center py-20">
-            <LoadingSpinner />
-          </div>
-        ) : filteredUsers.length > 0 ? (
-          filteredUsers.map((user) => (
+      {isLoading ? (
+        <div className="card mt-8 flex justify-center py-20">
+          <LoadingSpinner />
+        </div>
+      ) : filteredUsers.length === 0 ? (
+        <div className="card mt-8">
+          <EmptyState illustration="users" title="No users found" description="Staff accounts you register will appear here." />
+        </div>
+      ) : viewMode === "list" ? (
+        <div className="card mt-8 overflow-x-auto p-0">
+          <table className="w-full min-w-[1000px] text-left text-sm">
+            <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 font-semibold">User</th>
+                <th className="px-4 py-3 font-semibold">Role</th>
+                <th className="px-4 py-3 font-semibold">Email</th>
+                <th className="px-4 py-3 font-semibold">Phone</th>
+                <th className="px-4 py-3 font-semibold">Last login</th>
+                <th className="px-4 py-3 font-semibold">Created</th>
+                <th className="px-4 py-3 font-semibold">Active</th>
+                <th className="px-4 py-3 text-center font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.map((user) => (
+                <tr
+                  key={user.id}
+                  onClick={() => router.push(`/user-management/${user.id}`)}
+                  className={`cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-muted ${userStatusBg(user)}`}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <UserAvatar name={user.name} image={user.userImage} />
+                      {renderNameBlock(user, "max-w-[200px]")}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2">{renderBadges(user)}</div>
+                  </td>
+                  <td className="max-w-[220px] truncate px-4 py-3" title={user.email}>{user.email}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{user.phone}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{getTime(user.lastLogin)}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{getTime(user.createdAt)}</td>
+                  <td className="px-4 py-3">
+                    <span onClick={(e) => e.stopPropagation()}><ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} /></span>
+                  </td>
+                  <td className="px-4 py-3">{renderActions(user)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
+          {filteredUsers.map((user) => (
             <div
               key={user.id}
-              className={`card flex flex-col gap-3 p-4 ${
-                user.isTerminated
-                  ? "bg-red-100/80 dark:bg-red-950/30"
-                  : !user.isActive
-                  ? "bg-red-50/50 opacity-80"
-                  : ""
-              }`}
+              onClick={() => router.push(`/user-management/${user.id}`)}
+              // .card sets its own background/border outside Tailwind's layers, so the hover
+              // classes need "!" to win over it.
+              className={`card flex cursor-pointer flex-col gap-3 p-4 hover:bg-muted! hover:border-primary/50! ${userStatusBg(user)}`}
             >
               <div className="flex items-start gap-3">
                 <UserAvatar name={user.name} image={user.userImage} />
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={`truncate font-semibold ${
-                      user.isTerminated ? "text-muted-foreground line-through decoration-red-400" : ""
-                    }`}
-                    title={user.name}
-                  >
-                    {user.name}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground" title={user.username}>
-                    @{user.username}
-                  </p>
-                </div>
-                <ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} />
+                {renderNameBlock(user, "flex-1")}
+                <span onClick={(e) => e.stopPropagation()}><ToggleButton checked={user.isActive} onChange={() => handleToggleUser(user)} /></span>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold capitalize text-primary">
-                  {user.role}
-                </span>
-                {user.isTerminated ? (
-                  <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                    Terminated
-                  </span>
-                ) : !user.isActive ? (
-                  <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                    Inactive
-                  </span>
-                ) : null}
-              </div>
+              <div className="flex items-center gap-2">{renderBadges(user)}</div>
 
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
                 <dt className="text-muted-foreground">Email</dt>
@@ -581,11 +643,9 @@ export default function UserManagement() {
                 {renderActions(user)}
               </div>
             </div>
-          ))
-        ) : (
-          <div className="card col-span-full py-20 text-center text-gray-600">No users found</div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {shiftsTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
@@ -718,25 +778,25 @@ export default function UserManagement() {
             <div className="flex flex-col gap-3">
               <div>
                 <label className="text-sm font-semibold text-foreground/90">Last working date</label>
-                <input
-                  type="date"
-                  value={terminationDate}
-                  onChange={(e) => setTerminationDate(e.target.value)}
-                  className="h-10 text-sm w-full mt-1"
-                />
+                <div className="mt-1">
+                  <DatePicker
+                    value={terminationDate}
+                    onChange={setTerminationDate}
+                  />
+                </div>
               </div>
               <div>
                 <label className="text-sm font-semibold text-foreground/90">Reason</label>
-                <select
-                  value={terminationReason}
-                  onChange={(e) => setTerminationReason(e.target.value)}
-                  className="h-10 text-sm w-full mt-1"
-                >
-                  <option value="">Select a reason</option>
-                  {TERMINATION_REASONS.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={terminationReason}
+                    onChange={setTerminationReason}
+                    options={[
+                      { value: "", label: "Select a reason" },
+                      ...TERMINATION_REASONS,
+                    ]}
+                  />
+                </div>
               </div>
               {terminationReason === "Other" && (
                 <input

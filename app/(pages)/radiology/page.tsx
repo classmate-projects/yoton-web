@@ -1,27 +1,31 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
-import axios from "axios";
 import { toast } from "sonner";
 import { Pencil, ScanLine, Settings, Trash2, Undo2, X } from "lucide-react";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload, MdOutlineImage } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import DatePicker from "@/components/DatePicker";
+import DateTimePicker from "@/components/DateTimePicker";
+import { toDateInputValue, formatDateTime } from "@/lib/date";
+import SearchableSelect from "@/components/SearchableSelect";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import { RadiologyService } from "@/services/radiology.service";
 import { ReceptionService } from "@/services/reception.service";
 import { RadiologyRequestType, RadiologySummaryType } from "@/types/radiology.type";
-import { PatientListItemType, DoctorGridType } from "@/types/appointment.type";
+import { DoctorGridType } from "@/types/appointment.type";
+import { PatientSummaryType } from "@/types/patient.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { backendAssetUrl } from "@/lib/backendAsset";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
-
-const formatDateTime = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleString() : "—";
+import PatientPicker, { patientFromOrder } from "@/components/patients/PatientPicker";
+import PatientStreamTabs, { type PatientStream } from "@/components/patients/PatientStreamTabs";
+import { BillStatusBadge, WalkInPatientBadge, billedLockTitle } from "@/components/patients/PatientBadges";
+import { apiErrorMessage } from "@/lib/apiError";
 
 const STATUS_FLOW = ["Requested", "Scheduled", "Completed", "Delivered"];
 
@@ -52,15 +56,18 @@ export default function RadiologyPage() {
   const [requests, setRequests] = useState<RadiologyRequestType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "pending">("pending");
+  const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
 
-  const [patients, setPatients] = useState<PatientListItemType[]>([]);
   const [doctors, setDoctors] = useState<DoctorGridType[]>([]);
+  // Orders from a consultation here vs walk-ins with an outside request - separate grids.
+  const [stream, setStream] = useState<PatientStream>("consultation");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [patientSearch, setPatientSearch] = useState("");
-  const [selectedPatient, setSelectedPatient] = useState<PatientListItemType | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientSummaryType | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  // Outside doctor/facility on a walk-in's own radiology order (when no in-house doctor ordered it).
+  const [externalProvider, setExternalProvider] = useState("");
   const [scanType, setScanType] = useState("");
   const [priority, setPriority] = useState("Normal");
   const [source, setSource] = useState("InHouse");
@@ -95,19 +102,20 @@ export default function RadiologyPage() {
   }, [router]);
 
   // ---------------- DATA ----------------
-  const fetchAll = async () => {
+  // silent: live SignalR refreshes update the list in place instead of flashing the spinner.
+  const fetchAll = async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       const [summaryRes, listRes] = await Promise.all([
         RadiologyService.getSummary(),
-        filter === "pending" ? RadiologyService.getPending() : RadiologyService.getAll(),
+        filter === "pending" ? RadiologyService.getPending(selectedDate || undefined) : RadiologyService.getAll(selectedDate || undefined),
       ]);
       setSummary(summaryRes.data ?? null);
       setRequests(listRes.data ?? []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load radiology requests"));
+      if (!silent) toast.error(apiErrorMessage(error, "Failed to load radiology requests"));
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -115,46 +123,38 @@ export default function RadiologyPage() {
     if (!checkedAuth) return;
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkedAuth, filter]);
+  }, [checkedAuth, filter, selectedDate]);
 
-  useSignalRRefetch(["radiologyRequestCreated", "radiologyStatusUpdated"], fetchAll);
+  useSignalRRefetch(
+    ["radiologyRequestCreated", "radiologyStatusUpdated", "radiologyRequestUpdated", "radiologyRequestRemoved", "encounterFinished", "encounterReopened"],
+    () => fetchAll(true)
+  );
 
   useEffect(() => {
     if (!checkedAuth) return;
-    const fetchPickers = async () => {
+    const fetchDoctors = async () => {
       try {
-        const [patientsRes, gridRes] = await Promise.all([
-          ReceptionService.getAllPatients(),
-          ReceptionService.getSpecializationsWithDoctors(),
-        ]);
-        setPatients(patientsRes.patients ?? []);
+        const gridRes = await ReceptionService.getSpecializationsWithDoctors();
         const allDoctors = (gridRes.specializations ?? []).flatMap(
           (s: { doctors: DoctorGridType[] }) => s.doctors
         );
         setDoctors(allDoctors);
       } catch (error) {
-        console.error("Failed to load patient/doctor pickers:", error);
+        console.error("Failed to load doctor picker:", error);
       }
     };
-    fetchPickers();
+    fetchDoctors();
   }, [checkedAuth]);
 
-  const filteredPatients = useMemo(() => {
-    if (!patientSearch.trim()) return [];
-    const q = patientSearch.toLowerCase();
-    return patients.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.phone?.toLowerCase().includes(q) ||
-        p.opNumber?.toLowerCase().includes(q) ||
-        p.opId?.toLowerCase().includes(q)
-    );
-  }, [patientSearch, patients]);
+  // A consultation order carries its visit; a walk-in's outside order doesn't.
+  const consultationRequests = useMemo(() => requests.filter((r) => r.visitId), [requests]);
+  const walkInRequests = useMemo(() => requests.filter((r) => !r.visitId), [requests]);
+  const visibleRequests = stream === "consultation" ? consultationRequests : walkInRequests;
 
   const resetForm = () => {
-    setPatientSearch("");
     setSelectedPatient(null);
     setSelectedDoctorId("");
+    setExternalProvider("");
     setScanType("");
     setPriority("Normal");
     setSource("InHouse");
@@ -170,12 +170,9 @@ export default function RadiologyPage() {
   const openEditModal = (request: RadiologyRequestType) => {
     resetForm();
     setEditingRadiologyRequestId(request.radiologyRequestId);
-    const matchedPatient = patients.find((p) => p.opId === request.patientId);
-    if (matchedPatient) {
-      setSelectedPatient(matchedPatient);
-      setPatientSearch(matchedPatient.name);
-    }
+    setSelectedPatient(patientFromOrder(request));
     setSelectedDoctorId(request.doctorId || "");
+    setExternalProvider(request.externalProvider || "");
     setScanType(request.scanType || "");
     setPriority(request.priority);
     setSource(request.source);
@@ -198,7 +195,7 @@ export default function RadiologyPage() {
           toast.success("Radiology request removed");
           fetchAll();
         } catch (error) {
-          toast.error(errorMessage(error, "Failed to remove radiology request"));
+          toast.error(apiErrorMessage(error, "Failed to remove radiology request"));
         }
       }
     );
@@ -206,16 +203,22 @@ export default function RadiologyPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPatient || !scanType.trim()) {
-      toast.warning("Please select a patient and enter a scan type");
+    if (!selectedPatient) {
+      toast.warning("Select the patient, or register them as a walk-in");
+      return;
+    }
+    if (!scanType.trim()) {
+      toast.warning("Please enter a scan type");
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const payload = {
         patientId: selectedPatient.opId,
         doctorId: selectedDoctorId || undefined,
+        externalProvider: selectedDoctorId ? undefined : externalProvider.trim() || undefined,
         scanType,
         priority,
         source,
@@ -225,10 +228,14 @@ export default function RadiologyPage() {
         ? await RadiologyService.update(editingRadiologyRequestId, payload)
         : await RadiologyService.create(payload);
       toast.success(data.message || (editingRadiologyRequestId ? "Radiology request corrected" : "Radiology request created"));
+      notifySaveStatus("saved");
+      // Requests raised here have no visit behind them - they belong to the walk-in list.
+      if (!editingRadiologyRequestId) setStream("walkIn");
       closeModal();
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, editingRadiologyRequestId ? "Failed to correct radiology request" : "Failed to create radiology request"));
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, editingRadiologyRequestId ? "Failed to correct radiology request" : "Failed to create radiology request"));
     } finally {
       setIsSubmitting(false);
     }
@@ -249,7 +256,7 @@ export default function RadiologyPage() {
       toast.success(data.message || "Status updated");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update status"));
+      toast.error(apiErrorMessage(error, "Failed to update status"));
     }
   };
 
@@ -260,7 +267,7 @@ export default function RadiologyPage() {
       toast.success("Reverted to Requested — the doctor can edit it again");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to revert request"));
+      toast.error(apiErrorMessage(error, "Failed to revert request"));
     } finally {
       setRevertingId(null);
     }
@@ -270,6 +277,7 @@ export default function RadiologyPage() {
     e.preventDefault();
     if (!scheduleFor || !scheduledDate) return;
 
+    notifySaveStatus("saving");
     try {
       const data = await RadiologyService.updateStatus(
         scheduleFor.radiologyRequestId,
@@ -277,10 +285,12 @@ export default function RadiologyPage() {
         new Date(scheduledDate).toISOString()
       );
       toast.success(data.message || "Scan scheduled");
+      notifySaveStatus("saved");
       setScheduleFor(null);
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to schedule scan"));
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, "Failed to schedule scan"));
     }
   };
 
@@ -297,7 +307,7 @@ export default function RadiologyPage() {
       toast.success(data.message || "Scan result uploaded");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to upload scan result"));
+      toast.error(apiErrorMessage(error, "Failed to upload scan result"));
     } finally {
       setUploadingId(null);
     }
@@ -311,7 +321,7 @@ export default function RadiologyPage() {
       toast.success(data.message || "Images uploaded");
       fetchAll();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to upload images"));
+      toast.error(apiErrorMessage(error, "Failed to upload images"));
     } finally {
       setUploadingImagesId(null);
     }
@@ -366,7 +376,7 @@ export default function RadiologyPage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {(["pending", "all"] as const).map((f) => (
           <button
             key={f}
@@ -378,6 +388,15 @@ export default function RadiologyPage() {
             {f === "pending" ? "Pending Queue" : "All Requests"}
           </button>
         ))}
+        <div className="w-44 ml-auto">
+          <DatePicker
+            value={selectedDate}
+            onChange={setSelectedDate}
+            max={toDateInputValue(new Date())}
+            placeholder="All dates"
+            className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-(--color-highlight) px-3 py-1.5 text-sm text-foreground ring-offset-background transition-all focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+          />
+        </div>
       </div>
 
       {isModalOpen && (
@@ -389,56 +408,35 @@ export default function RadiologyPage() {
             </p>
 
             <form onSubmit={handleCreate} className="flex flex-col gap-4">
-              <div className="relative">
-                <label className="text-sm font-bold text-foreground/90 required">Patient</label>
-                <input
-                  type="text"
-                  required
-                  value={patientSearch}
-                  onChange={(e) => {
-                    setPatientSearch(e.target.value);
-                    setSelectedPatient(null);
-                  }}
-                  placeholder="Search by name, phone or MRN..."
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                />
-                {!selectedPatient && filteredPatients.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
-                    {filteredPatients.map((p) => (
-                      <button
-                        type="button"
-                        key={p.opId}
-                        onClick={() => {
-                          setSelectedPatient(p);
-                          setPatientSearch(p.name);
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-primary/5 border-b border-border last:border-b-0 transition-colors"
-                      >
-                        <div className="font-medium text-foreground">{p.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {p.opNumber || p.opId} • {p.phone}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <PatientPicker value={selectedPatient} onChange={setSelectedPatient} required />
 
               <div>
                 <label className="text-sm font-bold text-foreground/90">Ordering Doctor</label>
-                <select
-                  value={selectedDoctorId}
-                  onChange={(e) => setSelectedDoctorId(e.target.value)}
-                  className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                >
-                  <option value="">Not specified</option>
-                  {doctors.map((d) => (
-                    <option key={d.doctorId} value={d.doctorId}>
-                      {d.name} — {d.specializationName}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={selectedDoctorId}
+                    onChange={setSelectedDoctorId}
+                    options={[
+                      { value: "", label: "Outside doctor / not specified" },
+                      ...doctors.map((d) => ({ value: d.doctorId, label: `${d.name} — ${d.specializationName}` })),
+                    ]}
+                  />
+                </div>
               </div>
+
+              {!selectedDoctorId && (
+                <div>
+                  <label className="text-sm font-bold text-foreground/90">Requested by (outside doctor / facility)</label>
+                  <input
+                    type="text"
+                    value={externalProvider}
+                    onChange={(e) => setExternalProvider(e.target.value)}
+                    maxLength={200}
+                    placeholder="e.g. Dr. Ahmed, City Clinic"
+                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="text-sm font-bold text-foreground/90 required">Scan Type</label>
@@ -455,25 +453,29 @@ export default function RadiologyPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-bold text-foreground/90">Priority</label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  >
-                    <option value="Normal">Normal</option>
-                    <option value="Urgent">Urgent</option>
-                  </select>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      value={priority}
+                      onChange={setPriority}
+                      options={[
+                        { value: "Normal", label: "Normal" },
+                        { value: "Urgent", label: "Urgent" },
+                      ]}
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="text-sm font-bold text-foreground/90">Source</label>
-                  <select
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
-                    className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                  >
-                    <option value="InHouse">In-house</option>
-                    <option value="External">External</option>
-                  </select>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      value={source}
+                      onChange={setSource}
+                      options={[
+                        { value: "InHouse", label: "In-house" },
+                        { value: "External", label: "External" },
+                      ]}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -519,12 +521,12 @@ export default function RadiologyPage() {
               {scheduleFor.patientName} — {scheduleFor.scanType}
             </p>
             <form onSubmit={confirmSchedule} className="flex flex-col gap-4">
-              <input
-                type="datetime-local"
-                required
+              <DateTimePicker
                 value={scheduledDate}
-                onChange={(e) => setScheduledDate(e.target.value)}
-                className="w-full p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
+                onChange={setScheduledDate}
+                required
+                dateClassName="flex h-12 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-muted px-3 text-foreground focus-within:border-primary"
+                timeClassName="h-12 w-32 shrink-0 rounded-lg border border-border bg-muted px-3 text-foreground outline-none focus:border-primary disabled:opacity-50"
               />
               <div className="flex items-center justify-end gap-3 w-full">
                 <button
@@ -546,176 +548,192 @@ export default function RadiologyPage() {
         </div>
       )}
 
-      <div className="card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className="text-foreground/90">Patient</th>
-                <th className="text-foreground/90">Scan</th>
-                <th className="text-foreground/90">Doctor</th>
-                <th className="text-foreground/90">Priority</th>
-                <th className="text-foreground/90">Requested / Scheduled</th>
-                <th className="text-foreground/90">Status</th>
-                <th className="text-center text-foreground/90">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={7} className="py-16 text-center">
-                    <LoadingSpinner />
-                  </td>
-                </tr>
-              ) : requests.length > 0 ? (
-                requests.map((r) => {
-                  const nextStatus = STATUS_FLOW[STATUS_FLOW.indexOf(r.status) + 1];
-                  return (
-                    <tr key={r.radiologyRequestId} className="hover:bg-muted/30 transition-colors">
-                      <td className="font-semibold text-foreground">{r.patientName}</td>
-                      <td className="text-foreground/80">{r.scanType}</td>
-                      <td className="text-foreground/80">{r.doctorName}</td>
-                      <td>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            r.priority === "Urgent"
-                              ? "bg-destructive/10 text-destructive"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {r.priority}
-                        </span>
-                      </td>
-                      <td className="text-foreground/70 text-sm">
-                        {formatDateTime(r.scheduledDate ?? r.createdAt)}
-                      </td>
-                      <td>
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(r.status)}`}>
-                          {r.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="flex justify-center items-center gap-2">
-                          {!isNurse && nextStatus && (
-                            <button
-                              onClick={() => advanceStatus(r)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
-                            >
-                              Mark {nextStatus}
-                            </button>
-                          )}
-                          {!isNurse && (
-                            <label
-                              title="Upload scan result"
-                              className={`p-1.5 rounded-full transition-all cursor-pointer ${
-                                uploadingId === r.radiologyRequestId ? "opacity-50" : "hover:bg-primary/10"
-                              }`}
-                            >
-                              <MdOutlineFileUpload size={18} className="text-primary" />
-                              <input
-                                type="file"
-                                className="hidden"
-                                disabled={uploadingId === r.radiologyRequestId}
-                                onChange={(e) => handleUploadResult(r, e.target.files?.[0])}
-                              />
-                            </label>
-                          )}
-                          {r.hasResultFile && (
-                            <button
-                              onClick={() => viewReport(r.resultFilePath || r.scanFilePath)}
-                              className="text-[11px] font-semibold text-primary hover:underline"
-                            >
-                              View Report
-                            </button>
-                          )}
-                          {!isNurse && (
-                            <label
-                              title="Attach scan images (X-ray, etc.)"
-                              className={`p-1.5 rounded-full transition-all cursor-pointer ${
-                                uploadingImagesId === r.radiologyRequestId ? "opacity-50" : "hover:bg-primary/10"
-                              }`}
-                            >
-                              <MdOutlineImage size={18} className="text-primary" />
-                              <input
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                className="hidden"
-                                disabled={uploadingImagesId === r.radiologyRequestId}
-                                onChange={(e) => handleUploadImages(r, e.target.files)}
-                              />
-                            </label>
-                          )}
-                          {r.imageUrls.length > 0 && (
-                            <button
-                              onClick={() => setGalleryFor(r)}
-                              className="text-[11px] font-semibold text-primary hover:underline"
-                            >
-                              {r.imageUrls.length} image{r.imageUrls.length > 1 ? "s" : ""}
-                            </button>
-                          )}
-                          {!isNurse && r.status !== "Completed" && r.status !== "Delivered" && (
-                            <>
-                              <button
-                                onClick={() => openEditModal(r)}
-                                title="Correct request"
-                                className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer"
-                              >
-                                <Pencil size={14} />
-                              </button>
-                              <button
-                                onClick={() => removeRadiologyRequest(r)}
-                                title="Delete request"
-                                className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </>
-                          )}
-                          {!isNurse && r.status !== "Requested" && r.status !== "Completed" && r.status !== "Delivered" && (
-                            <button
-                              onClick={() => revertRadiologyRequest(r.radiologyRequestId)}
-                              disabled={revertingId === r.radiologyRequestId}
-                              title="Revert to Requested — hand editing back to the doctor"
-                              className="p-1.5 hover:bg-muted rounded-full text-muted-foreground cursor-pointer disabled:opacity-50"
-                            >
-                              <Undo2 size={14} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setViewingRadiologyConfig(r)}
-                            title="Configuration"
-                            className="p-1.5 hover:bg-primary/10 rounded-full text-muted-foreground hover:text-primary cursor-pointer"
-                          >
-                            <Settings size={14} />
-                          </button>
-                        </div>
-                        {r.correctedFrom && (
-                          <CorrectedFromNote>
-                            <div>
-                              Previous: {r.correctedFrom.scanType ?? "—"}
-                              {r.correctedFrom.bodyParts ? ` · ${r.correctedFrom.bodyParts}` : ""}
-                              {` · ${r.correctedFrom.priority}`}
-                              {r.correctedFrom.notes ? ` · ${r.correctedFrom.notes}` : ""}
-                            </div>
-                            <div>Requested {formatDateTime(r.correctedFrom.createdAt)}</div>
-                          </CorrectedFromNote>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={7} className="py-16 text-center text-muted-foreground">
-                    No radiology requests found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      <div className="mb-4">
+        <PatientStreamTabs
+          value={stream}
+          onChange={setStream}
+          consultationCount={consultationRequests.length}
+          walkInCount={walkInRequests.length}
+        />
       </div>
+
+      {isLoading ? (
+        <div className="card py-16 flex justify-center">
+          <LoadingSpinner />
+        </div>
+      ) : visibleRequests.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            illustration="radiology"
+            title={stream === "consultation" ? "No radiology requests from consultations" : "No walk-in radiology requests"}
+            description={
+              stream === "consultation"
+                ? "Imaging ordered by doctors shows up here once they finish the encounter."
+                : "Use New Scan Request for a patient who brings an outside radiology order."
+            }
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {visibleRequests.map((r) => {
+            const nextStatus = STATUS_FLOW[STATUS_FLOW.indexOf(r.status) + 1];
+            const isWalkIn = !r.visitId;
+            return (
+              <div key={r.radiologyRequestId} className="card p-4 flex flex-col gap-3">
+                {/* Header: patient + badges */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="font-semibold text-foreground truncate">{r.patientName}</p>
+                      <WalkInPatientBadge registrationType={r.patientRegistrationType} />
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {r.patientOPNumber ? `MRN ${r.patientOPNumber} · ` : ""}
+                      {isWalkIn && !r.doctorId ? (r.externalProvider ? `Requested by ${r.externalProvider}` : "Outside request") : r.doctorName}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap justify-end items-center gap-1.5">
+                    {isWalkIn && <BillStatusBadge billStatus={r.billStatus} />}
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        r.priority === "Urgent" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {r.priority}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadgeClass(r.status)}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Scan */}
+                <div>
+                  <p className="text-sm text-foreground/80 font-medium leading-snug">{r.scanType}</p>
+                  {r.bodyParts && <p className="text-xs text-muted-foreground">{r.bodyParts}</p>}
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  {r.scheduledDate ? `Scheduled ${formatDateTime(r.scheduledDate)}` : `Requested ${formatDateTime(r.createdAt)}`}
+                </p>
+
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                  {!isNurse && nextStatus && (
+                    <button
+                      onClick={() => advanceStatus(r)}
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                    >
+                      Mark {nextStatus}
+                    </button>
+                  )}
+                  {!isNurse && (
+                    <label
+                      title="Upload scan result"
+                      className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                        uploadingId === r.radiologyRequestId ? "opacity-50" : "hover:bg-primary/10"
+                      }`}
+                    >
+                      <MdOutlineFileUpload size={18} className="text-primary" />
+                      <input
+                        type="file"
+                        className="hidden"
+                        disabled={uploadingId === r.radiologyRequestId}
+                        onChange={(e) => handleUploadResult(r, e.target.files?.[0])}
+                      />
+                    </label>
+                  )}
+                  {r.hasResultFile && (
+                    <button
+                      onClick={() => viewReport(r.resultFilePath || r.scanFilePath)}
+                      className="text-[11px] font-semibold text-primary hover:underline"
+                    >
+                      View Report
+                    </button>
+                  )}
+                  {!isNurse && (
+                    <label
+                      title="Attach scan images (X-ray, etc.)"
+                      className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                        uploadingImagesId === r.radiologyRequestId ? "opacity-50" : "hover:bg-primary/10"
+                      }`}
+                    >
+                      <MdOutlineImage size={18} className="text-primary" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        disabled={uploadingImagesId === r.radiologyRequestId}
+                        onChange={(e) => handleUploadImages(r, e.target.files)}
+                      />
+                    </label>
+                  )}
+                  {r.imageUrls.length > 0 && (
+                    <button
+                      onClick={() => setGalleryFor(r)}
+                      className="text-[11px] font-semibold text-primary hover:underline"
+                    >
+                      {r.imageUrls.length} image{r.imageUrls.length > 1 ? "s" : ""}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {!isNurse && r.status !== "Completed" && r.status !== "Delivered" && (
+                    <>
+                      <button
+                        onClick={() => openEditModal(r)}
+                        disabled={!!r.billStatus}
+                        title={r.billStatus ? billedLockTitle(r.billStatus) : "Correct request"}
+                        className="p-1.5 hover:bg-primary/10 rounded-full text-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => removeRadiologyRequest(r)}
+                        disabled={!!r.billStatus}
+                        title={r.billStatus ? billedLockTitle(r.billStatus) : "Delete request"}
+                        className="p-1.5 hover:bg-destructive/10 rounded-full text-destructive cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                  {!isNurse && r.status !== "Requested" && r.status !== "Completed" && r.status !== "Delivered" && (
+                    <button
+                      onClick={() => revertRadiologyRequest(r.radiologyRequestId)}
+                      disabled={revertingId === r.radiologyRequestId}
+                      title="Revert to Requested — hand editing back to the doctor"
+                      className="p-1.5 hover:bg-muted rounded-full text-muted-foreground cursor-pointer disabled:opacity-50"
+                    >
+                      <Undo2 size={14} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setViewingRadiologyConfig(r)}
+                    title="Configuration"
+                    className="p-1.5 hover:bg-primary/10 rounded-full text-muted-foreground hover:text-primary cursor-pointer"
+                  >
+                    <Settings size={14} />
+                  </button>
+                </div>
+
+                {r.correctedFrom && (
+                  <CorrectedFromNote>
+                    <div>
+                      Previous: {r.correctedFrom.scanType ?? "—"}
+                      {r.correctedFrom.bodyParts ? ` · ${r.correctedFrom.bodyParts}` : ""}
+                      {` · ${r.correctedFrom.priority}`}
+                      {r.correctedFrom.notes ? ` · ${r.correctedFrom.notes}` : ""}
+                    </div>
+                    <div>Requested {formatDateTime(r.correctedFrom.createdAt)}</div>
+                  </CorrectedFromNote>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {galleryFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md p-4">

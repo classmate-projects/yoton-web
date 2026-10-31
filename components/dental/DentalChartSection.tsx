@@ -1,12 +1,35 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { Save, RefreshCw, X } from "lucide-react";
+import { Save, RefreshCw, X, Box, LayoutGrid, Eraser, ScanEye } from "lucide-react";
+import dynamic from "next/dynamic";
 import SurfaceBox from "./SurfaceBox";
 import ToothCaseSheet from "./ToothCaseSheet";
 import { DentalService } from "@/services/dental.service";
-import { ToothRecord, PerioRecord, DentalChartType } from "@/types/dental.type";
+import {
+  CONDITION_COLOR,
+  SURFACE_CONDITIONS,
+  ALL_SURFACES,
+  paintSurface,
+  primarySurfaceCondition,
+  surfaceCondition,
+  surfaceSummary,
+  surfacesUnavailableReason,
+} from "./surfaceFindings";
+import { surfaceName, toothInfo } from "./toothCatalog";
+import type { DetailView } from "./ToothDetail3D";
+
+const Loading3D = ({ height }: { height: number }) => (
+  <div className="flex w-full items-center justify-center rounded-xl border border-border bg-muted/30 text-xs text-muted-foreground" style={{ height }}>
+    <RefreshCw size={14} className="mr-2 animate-spin" /> Loading 3D model…
+  </div>
+);
+// WebGL only runs in the browser, and three.js is large - loaded only when the 3D view shows.
+const DentalArch3D = dynamic(() => import("./DentalArch3D"), { ssr: false, loading: () => <Loading3D height={480} /> });
+const ToothDetail3D = dynamic(() => import("./ToothDetail3D"), { ssr: false, loading: () => <Loading3D height={340} /> });
+import { ToothRecord, PerioRecord, DentalChartType, ToothCondition, ToothSurface } from "@/types/dental.type";
+import SearchableSelect, { compactSelectClass } from "@/components/SearchableSelect";
 
 // ─── Universal (US) adult numbering & alphabetic pediatric ───────────────────
 // Adult: 1-16 upper (patient right→left), 32-17 lower (patient right→left)
@@ -18,76 +41,507 @@ const PEDO_LOWER  = ["t","s","r","q","p","o","n","m","l","k"];
 
 type ToothShape = "incisor" | "canine" | "premolar" | "molar";
 
-// Shape lookup by Universal number / pediatric letter
-const TOOTH_SHAPE_MAP: Record<string, ToothShape> = {
-  // Adult upper
-  "1":"molar","2":"molar","3":"molar","4":"premolar","5":"premolar",
-  "6":"canine","7":"incisor","8":"incisor","9":"incisor","10":"incisor",
-  "11":"canine","12":"premolar","13":"premolar","14":"molar","15":"molar","16":"molar",
-  // Adult lower
-  "17":"molar","18":"molar","19":"molar","20":"premolar","21":"premolar",
-  "22":"canine","23":"incisor","24":"incisor","25":"incisor","26":"incisor",
-  "27":"canine","28":"premolar","29":"premolar","30":"molar","31":"molar","32":"molar",
-  // Pediatric upper  (a=upper-right 2nd molar … e=upper-right central; f=upper-left central … j=upper-left 2nd molar)
-  "a":"molar","b":"molar","c":"canine","d":"incisor","e":"incisor",
-  "f":"incisor","g":"incisor","h":"canine","i":"molar","j":"molar",
-  // Pediatric lower  (t=lower-right 2nd molar … p=lower-right central; o=lower-left central … k=lower-left 2nd molar)
-  "t":"molar","s":"molar","r":"canine","q":"incisor","p":"incisor",
-  "o":"incisor","n":"incisor","m":"canine","l":"molar","k":"molar",
-};
-
 function toothShape(n: string): ToothShape {
-  return TOOTH_SHAPE_MAP[n] ?? "incisor";
+  return toothInfo(n).kind;
 }
 
-// ─── Anatomical crown/root SVG ────────────────────────────────────────────────
-function ToothAnatomySVG({ shape, isUpper, w = 40 }: { shape: ToothShape; isUpper: boolean; w?: number }) {
-  const crownH = w * 0.65;
-  const rootH  = w * 0.85;
-  const totalH = crownH + rootH;
+// ─── Dominant condition colour for 3D overlays ───────────────────────────────
+const CONDITION_PRIORITY: ToothCondition[] = [
+  "Missing","BridgePontic","Implant","Crown","ExtractionIndicated",
+  "RCT","Caries","Filled","Fracture","BridgeAbutment",
+  "Watch","Attrition","Abrasion","Erosion","Calculus",
+];
+const WHOLE_TOOTH: ToothCondition[] = ["Missing","BridgePontic","Implant","Crown","ExtractionIndicated","BridgeAbutment"];
 
-  const crownPaths: Record<ToothShape, string> = {
-    incisor:  `M${w*.22},0 L${w*.78},0 Q${w*.8},${crownH*.15} ${w*.75},${crownH} L${w*.25},${crownH} Q${w*.2},${crownH*.15} ${w*.22},0Z`,
-    canine:   `M${w*.25},0 L${w*.75},0 L${w*.68},${crownH*.6} L${w*.5},${crownH} L${w*.32},${crownH*.6}Z`,
-    premolar: `M${w*.14},0 Q${w*.35},${crownH*.18} ${w*.5},0 Q${w*.65},${crownH*.18} ${w*.86},0 L${w*.84},${crownH} L${w*.16},${crownH}Z`,
-    molar:    `M${w*.05},0 Q${w*.25},${crownH*.2} ${w*.5},0 Q${w*.75},${crownH*.2} ${w*.95},0 L${w*.92},${crownH} L${w*.08},${crownH}Z`,
+function dominantColor(conditions: ToothCondition[]): string | null {
+  for (const c of CONDITION_PRIORITY) {
+    if (conditions.includes(c)) return (CONDITION_COLOR as Record<string, string>)[c] ?? null;
+  }
+  return null;
+}
+
+// ─── High-quality anatomical buccal-view SVG ─────────────────────────────────
+// Renders a clinically accurate buccal (side) view of each tooth class with:
+//   • Per-shape anatomically distinct crown profiles
+//   • Realistic root anatomy (bifurcated premolar, trifurcated molar)
+//   • Multi-layer gradients for convincing 3D depth
+//   • Pulp chamber + canal outline, incisal translucency, groove details
+//   • Drop-shadow for depth
+// Coordinate system: crown at y=0 (incisal/occlusal), root apex at y=totalH.
+// For lower teeth the caller wraps in a CSS scale(-1) so no coordinate change needed.
+function ToothAnatomySVG({ shape, isUpper, w = 40, conditions = [], surfaces = [] }: {
+  shape: ToothShape; isUpper: boolean; w?: number;
+  conditions?: ToothCondition[]; surfaces?: ToothSurface[];
+}) {
+  const cH  = w * 0.72;   // crown height
+  const rH  = w * 0.95;   // root zone height
+  const tH  = cH + rH;    // total SVG height
+
+  const flip      = !isUpper;
+  const translateY = flip ? tH : 0;
+  const scaleY     = flip ? -1 : 1;
+
+  // Shared gradient IDs per shape (last-writer-wins for identical defs)
+  const gid = `ta-${shape[0]}`;
+
+  // ── Crown paths (buccal view, crown-top = y=0) ──────────────────────────────
+  // Each path is shaped to match the typical buccal silhouette of that tooth class.
+  const crown: Record<ToothShape, string> = {
+    // Incisor: wide trapezoidal crown; incisal edge flat with slight mamelon bumps;
+    //          mesial surface nearly vertical, distal slightly curved.
+    incisor: [
+      `M${w*.24},0`,
+      `Q${w*.38},${-cH*.04} ${w*.5},0`,   // incisal edge mesial hump (mamelon)
+      `Q${w*.62},${-cH*.04} ${w*.76},0`,  // incisal edge distal hump
+      `Q${w*.84},${cH*.06}  ${w*.82},${cH*.45}`,   // distal surface
+      `Q${w*.80},${cH}      ${w*.5},${cH}`,         // distal-cervical curve to mid
+      `Q${w*.20},${cH}      ${w*.18},${cH*.45}`,    // mesial-cervical
+      `Q${w*.16},${cH*.06}  ${w*.24},0 Z`,
+    ].join(" "),
+
+    // Canine: pentagonal; prominent sharp cusp tip; long mesial slope, shorter distal;
+    //         maximum convexity at cervical third.
+    canine: [
+      `M${w*.26},0`,
+      `L${w*.74},0`,
+      `Q${w*.88},${cH*.12} ${w*.78},${cH*.52}`,  // distal slope
+      `Q${w*.72},${cH}     ${w*.5},${cH}`,
+      `Q${w*.28},${cH}     ${w*.22},${cH*.52}`,   // mesial slope
+      `Q${w*.12},${cH*.12} ${w*.26},0 Z`,
+    ].join(" "),
+
+    // Premolar: two-cusp crown; buccal cusp higher (left), lingual cusp lower (right);
+    //           buccal groove runs from between cusps downward.
+    premolar: [
+      `M${w*.16},0`,
+      `Q${w*.30},${-cH*.06} ${w*.38},0`,          // buccal cusp tip
+      `L${w*.5},${cH*.18}`,                         // buccal groove depth
+      `Q${w*.60},${-cH*.02} ${w*.72},${cH*.08}`,  // lingual cusp (shorter)
+      `Q${w*.86},${cH*.22} ${w*.84},${cH*.5}`,
+      `Q${w*.80},${cH}     ${w*.5},${cH}`,
+      `Q${w*.20},${cH}     ${w*.16},${cH*.5}`,
+      `Q${w*.14},${cH*.22} ${w*.16},0 Z`,
+    ].join(" "),
+
+    // Molar: broad multi-cusp crown; 2–3 buccal cusps separated by buccal grooves;
+    //        strong cervical convexity; wide at occlusal, slight taper at cervical.
+    molar: [
+      `M${w*.06},0`,
+      `Q${w*.22},${-cH*.08} ${w*.36},0`,          // mesio-buccal cusp
+      `L${w*.44},${cH*.15}`,                        // buccal groove
+      `Q${w*.58},${-cH*.05} ${w*.72},${cH*.04}`,  // disto-buccal cusp
+      `Q${w*.92},${cH*.14} ${w*.92},${cH*.38}`,
+      `Q${w*.90},${cH}     ${w*.5},${cH}`,
+      `Q${w*.10},${cH}     ${w*.08},${cH*.38}`,
+      `Q${w*.06},${cH*.14} ${w*.06},0 Z`,
+    ].join(" "),
   };
 
-  // Root shapes per tooth type (single root for incisors/canines, split for molars)
-  const rootPath: Record<ToothShape, string> = {
-    incisor:  `M${w*.3},${crownH} L${w*.7},${crownH} Q${w*.68},${totalH*.75} ${w*.5},${totalH} Q${w*.32},${totalH*.75} ${w*.3},${crownH}Z`,
-    canine:   `M${w*.28},${crownH} L${w*.72},${crownH} Q${w*.68},${totalH*.8} ${w*.5},${totalH} Q${w*.32},${totalH*.8} ${w*.28},${crownH}Z`,
-    premolar: `M${w*.22},${crownH} L${w*.78},${crownH} Q${w*.73},${crownH+rootH*.4} ${w*.63},${crownH+rootH*.55} Q${w*.58},${totalH} ${w*.5},${totalH-rootH*.05} Q${w*.42},${totalH} ${w*.37},${crownH+rootH*.55} Q${w*.27},${crownH+rootH*.4} ${w*.22},${crownH}Z`,
-    molar:    `M${w*.08},${crownH} L${w*.92},${crownH} L${w*.85},${crownH+rootH*.45} Q${w*.72},${totalH} ${w*.62},${totalH-rootH*.08} Q${w*.55},${totalH} ${w*.5},${totalH-rootH*.04} Q${w*.45},${totalH} ${w*.38},${totalH-rootH*.08} Q${w*.28},${totalH} ${w*.15},${crownH+rootH*.45}Z`,
+  // ── Root paths ───────────────────────────────────────────────────────────────
+  // Incisor/canine: single tapered root with slight distal curvature.
+  // Premolar:       bifurcated — mesial root (buccal) + distal root (lingual).
+  // Molar:          two buccal roots visible (trifurcated hint).
+  const roots: Record<ToothShape, React.ReactNode> = {
+    incisor: (
+      <path
+        d={[
+          `M${w*.28},${cH}`,
+          `Q${w*.68},${cH}    ${w*.72},${cH}`,
+          `Q${w*.70},${cH+rH*.55} ${w*.54},${tH}`,   // apex (slight distal lean)
+          `Q${w*.46},${tH}   ${w*.30},${tH}`,
+          `Q${w*.24},${cH+rH*.55} ${w*.28},${cH} Z`,
+        ].join(" ")}
+        fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.8}
+      />
+    ),
+    canine: (
+      <path
+        d={[
+          `M${w*.26},${cH}`,
+          `L${w*.74},${cH}`,
+          `Q${w*.74},${cH+rH*.60} ${w*.56},${tH}`,   // long apex
+          `Q${w*.44},${tH}   ${w*.30},${tH}`,
+          `Q${w*.22},${cH+rH*.60} ${w*.26},${cH} Z`,
+        ].join(" ")}
+        fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.8}
+      />
+    ),
+    premolar: (
+      <>
+        {/* Buccal (left) root */}
+        <path
+          d={[
+            `M${w*.16},${cH}`,
+            `L${w*.50},${cH}`,
+            `Q${w*.50},${cH+rH*.30} ${w*.44},${cH+rH*.44}`,  // bifurcation
+            `Q${w*.36},${tH-.5}     ${w*.28},${tH}`,
+            `Q${w*.18},${tH-.5}     ${w*.14},${cH+rH*.44}`,
+            `Q${w*.12},${cH+rH*.30} ${w*.16},${cH} Z`,
+          ].join(" ")}
+          fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.75}
+        />
+        {/* Lingual (right) root */}
+        <path
+          d={[
+            `M${w*.50},${cH}`,
+            `L${w*.84},${cH}`,
+            `Q${w*.86},${cH+rH*.28} ${w*.80},${cH+rH*.42}`,
+            `Q${w*.72},${tH-.5}     ${w*.64},${tH}`,
+            `Q${w*.54},${tH-.5}     ${w*.52},${cH+rH*.42}`,
+            `Q${w*.48},${cH+rH*.28} ${w*.50},${cH} Z`,
+          ].join(" ")}
+          fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.75}
+        />
+      </>
+    ),
+    molar: (
+      <>
+        {/* Mesial root (left, wider) */}
+        <path
+          d={[
+            `M${w*.08},${cH}`,
+            `L${w*.50},${cH}`,
+            `Q${w*.48},${cH+rH*.30} ${w*.42},${cH+rH*.44}`,
+            `Q${w*.34},${tH-.5}     ${w*.24},${tH}`,
+            `Q${w*.12},${tH-.5}     ${w*.08},${cH+rH*.44}`,
+            `Q${w*.04},${cH+rH*.28} ${w*.08},${cH} Z`,
+          ].join(" ")}
+          fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.8}
+        />
+        {/* Distal root (right) */}
+        <path
+          d={[
+            `M${w*.50},${cH}`,
+            `L${w*.92},${cH}`,
+            `Q${w*.94},${cH+rH*.26} ${w*.90},${cH+rH*.42}`,
+            `Q${w*.82},${tH-.5}     ${w*.74},${tH}`,
+            `Q${w*.62},${tH-.5}     ${w*.58},${cH+rH*.42}`,
+            `Q${w*.52},${cH+rH*.26} ${w*.50},${cH} Z`,
+          ].join(" ")}
+          fill={`url(#rg-${gid})`} stroke="#9a7a52" strokeWidth={0.8}
+        />
+      </>
+    ),
   };
 
-  // For upper teeth: crown at top, root points down. For lower: flip vertically.
-  const flip = !isUpper;
-  const translateY = flip ? totalH : 0;
-  const scaleY = flip ? -1 : 1;
+  // ── Pulp chamber outline (inner, lighter fill behind crown) ──────────────────
+  const pulpChamber: Record<ToothShape, string> = {
+    incisor:  `M${w*.40},${cH*.08} L${w*.60},${cH*.08} L${w*.62},${cH*.58} L${w*.38},${cH*.58} Z`,
+    canine:   `M${w*.42},${cH*.10} L${w*.58},${cH*.10} Q${w*.60},${cH*.50} ${w*.50},${cH*.62} Q${w*.40},${cH*.50} ${w*.42},${cH*.10} Z`,
+    premolar: `M${w*.38},${cH*.06} Q${w*.50},${cH*.10} ${w*.62},${cH*.06} L${w*.64},${cH*.52} L${w*.36},${cH*.52} Z`,
+    molar:    `M${w*.28},${cH*.08} Q${w*.50},${cH*.12} ${w*.72},${cH*.08} L${w*.70},${cH*.52} L${w*.30},${cH*.52} Z`,
+  };
 
   return (
     <svg
       width={w}
-      height={totalH}
-      viewBox={`0 0 ${w} ${totalH}`}
-      style={{ display: "block", overflow: "visible" }}
+      height={tH}
+      viewBox={`0 0 ${w} ${tH}`}
+      style={{ display: "block", overflow: "visible", filter: "drop-shadow(0px 1.5px 3px rgba(0,0,0,0.28))" }}
     >
+      <defs>
+        {/* Enamel: radial — bright ivory off-centre highlight, warm amber at rim */}
+        <radialGradient id={`cg-${gid}`} gradientUnits="objectBoundingBox"
+          cx="0.36" cy="0.18" r="0.72">
+          <stop offset="0%"   stopColor="#fefdf9" />
+          <stop offset="42%"  stopColor="#f3ebdb" />
+          <stop offset="78%"  stopColor="#dfc8a4" />
+          <stop offset="100%" stopColor="#c2a074" />
+        </radialGradient>
+
+        {/* Enamel ambient occlusion: transparent centre → dark rim */}
+        <radialGradient id={`ca-${gid}`} gradientUnits="objectBoundingBox"
+          cx="0.50" cy="0.50" r="0.55">
+          <stop offset="40%"  stopColor="#1a0e04" stopOpacity="0" />
+          <stop offset="80%"  stopColor="#1a0e04" stopOpacity="0.09" />
+          <stop offset="100%" stopColor="#1a0e04" stopOpacity="0.24" />
+        </radialGradient>
+
+        {/* Crown specular (buccal convexity highlight) */}
+        <radialGradient id={`cs-${gid}`} gradientUnits="objectBoundingBox"
+          cx="0.36" cy="0.22" r="0.40">
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.68" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+        </radialGradient>
+
+        {/* Pulp chamber: lighter creamy dentin */}
+        <radialGradient id={`pc-${gid}`} gradientUnits="objectBoundingBox"
+          cx="0.5" cy="0.3" r="0.6">
+          <stop offset="0%"   stopColor="#fff8e8" stopOpacity="0.70" />
+          <stop offset="100%" stopColor="#f0ddb0" stopOpacity="0.20" />
+        </radialGradient>
+
+        {/* Root dentin: linear — pale at cervical, deep amber at apex */}
+        <linearGradient id={`rg-${gid}`} gradientUnits="objectBoundingBox" x1="0.12" y1="0" x2="0.88" y2="1">
+          <stop offset="0%"   stopColor="#e0d0b0" />
+          <stop offset="40%"  stopColor="#c8a97a" />
+          <stop offset="100%" stopColor="#9a7040" />
+        </linearGradient>
+
+        {/* Root specular highlight (buccal side of root) */}
+        <radialGradient id={`rs-${gid}`} gradientUnits="objectBoundingBox"
+          cx="0.30" cy="0.18" r="0.55">
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.38" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+        </radialGradient>
+
+        {/* Incisal translucency (for incisors/canines) */}
+        <linearGradient id={`it-${gid}`} gradientUnits="objectBoundingBox" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%"   stopColor="#d4eef8" stopOpacity="0" />
+          <stop offset="100%" stopColor="#d4eef8" stopOpacity="0.38" />
+        </linearGradient>
+      </defs>
+
       <g transform={`translate(0,${translateY}) scale(1,${scaleY})`}>
-        {/* Root */}
-        <path d={rootPath[shape]} fill="none" stroke="currentColor" strokeWidth={0.8} opacity={0.35} />
-        {/* Crown */}
-        <path d={crownPaths[shape]} fill="none" stroke="currentColor" strokeWidth={1} opacity={0.55} />
-        {/* Molar cusp line */}
+
+        {/* ── ROOTS ── */}
+        {roots[shape]}
+        {/* Root specular */}
+        <path
+          d={shape === "molar"
+            ? `M${w*.08},${cH} L${w*.92},${cH} Q${w*.90},${cH+rH*.38} ${w*.50},${tH} Q${w*.10},${cH+rH*.38} ${w*.08},${cH} Z`
+            : `M${w*.26},${cH} L${w*.74},${cH} Q${w*.68},${cH+rH*.56} ${w*.50},${tH} Q${w*.32},${cH+rH*.56} ${w*.26},${cH} Z`}
+          fill={`url(#rs-${gid})`}
+          opacity={0.55}
+        />
+
+        {/* ── CROWN BASE FILL ── */}
+        <path d={crown[shape]} fill={`url(#cg-${gid})`} stroke="#8a7060" strokeWidth={0.9} />
+
+        {/* ── PULP CHAMBER (subtle inner tint) ── */}
+        <path d={pulpChamber[shape]} fill={`url(#pc-${gid})`} />
+
+        {/* ── INCISAL TRANSLUCENCY (incisors and canines) ── */}
+        {(shape === "incisor" || shape === "canine") && (
+          <path d={crown[shape]} fill={`url(#it-${gid})`} />
+        )}
+
+        {/* ── GROOVE DETAIL ── */}
         {shape === "molar" && (
-          <line x1={w*.5} y1={0} x2={w*.5} y2={crownH*.5} stroke="currentColor" strokeWidth={0.6} opacity={0.3} />
+          <>
+            {/* Mesio-buccal groove */}
+            <line x1={w*.44} y1={cH*.03} x2={w*.44} y2={cH*.62}
+              stroke="#9a8060" strokeWidth={0.80} strokeLinecap="round" opacity={0.70} />
+            {/* Disto-buccal groove (shorter) */}
+            <line x1={w*.68} y1={cH*.08} x2={w*.64} y2={cH*.52}
+              stroke="#9a8060" strokeWidth={0.65} strokeLinecap="round" opacity={0.60} />
+          </>
         )}
-        {/* Premolar cusp line */}
         {shape === "premolar" && (
-          <line x1={w*.5} y1={0} x2={w*.5} y2={crownH*.4} stroke="currentColor" strokeWidth={0.6} opacity={0.3} />
+          <line x1={w*.5} y1={cH*.02} x2={w*.5} y2={cH*.56}
+            stroke="#9a8060" strokeWidth={0.75} strokeLinecap="round" opacity={0.65} />
         )}
+        {shape === "canine" && (
+          <line x1={w*.50} y1={cH*.04} x2={w*.50} y2={cH*.44}
+            stroke="#9a8060" strokeWidth={0.65} strokeLinecap="round" opacity={0.55} />
+        )}
+
+        {/* ── CROWN SPECULAR HIGHLIGHT (buccal convexity) ── */}
+        <path d={crown[shape]} fill={`url(#cs-${gid})`} />
+
+        {/* ── CROWN AMBIENT OCCLUSION (rim darkening for 3D) ── */}
+        <path d={crown[shape]} fill={`url(#ca-${gid})`} />
+
+        {/* ── CROWN OUTLINE (crisp edge) ── */}
+        <path d={crown[shape]} fill="none" stroke="#7a6050" strokeWidth={0.85} />
+
+        {/* ── CEMENTO-ENAMEL JUNCTION ── */}
+        <line
+          x1={shape === "molar" ? w*.09 : w*.22}
+          y1={cH}
+          x2={shape === "molar" ? w*.91 : w*.78}
+          y2={cH}
+          stroke="#9a8060" strokeWidth={0.6} opacity={0.55}
+        />
+
+        {/* ── CERVICAL CONSTRICTION SHADOW ── */}
+        <ellipse
+          cx={w*.5} cy={cH}
+          rx={shape === "molar" ? w*.42 : w*.28} ry={w*.04}
+          fill="#5a3820" fillOpacity={0.18}
+        />
+
+        {/* ── CONDITION / SURFACE OVERLAYS (buccal view: B, M edge, D edge) ── */}
+        {(() => {
+          const col = dominantColor(conditions);
+          if (!col) return null;
+          const isWhole = conditions.some(c => WHOLE_TOOTH.includes(c));
+          const hasB = surfaces.includes("B") || isWhole;
+          const hasM = surfaces.includes("M") && !isWhole;
+          const hasD = surfaces.includes("D") && !isWhole;
+          return (
+            <>
+              <defs>
+                <clipPath id={`ov-${gid}`}><path d={crown[shape]} /></clipPath>
+              </defs>
+              {hasB && <path d={crown[shape]} fill={col} fillOpacity={0.38} />}
+              {hasM && <rect x={0} y={0} width={w*.36} height={cH}
+                fill={col} fillOpacity={0.42} clipPath={`url(#ov-${gid})`} />}
+              {hasD && <rect x={w*.64} y={0} width={w*.36} height={cH}
+                fill={col} fillOpacity={0.42} clipPath={`url(#ov-${gid})`} />}
+            </>
+          );
+        })()}
+
       </g>
     </svg>
+  );
+}
+
+// ─── Selected tooth: enlarged 3D model + surface charting ────────────────────
+// The doctor picks a condition "brush" and clicks a surface - on the 3D tooth or the 2D
+// surface map - to chart it there; clicking it again with the same brush clears it.
+const SNAP_VIEWS: { view: DetailView; surface?: ToothSurface; label?: string }[] = [
+  { view: "buccal", surface: "B" },
+  { view: "lingual", surface: "L" },
+  { view: "mesial", surface: "M" },
+  { view: "distal", surface: "D" },
+  { view: "occlusal", surface: "O" },
+  { view: "reset", label: "3/4 view" },
+];
+
+function Tooth3DViewer({ toothNumber, record, onChange }: {
+  toothNumber: string;
+  record: ToothRecord;
+  onChange?: (r: ToothRecord) => void;
+}) {
+  const info = toothInfo(toothNumber);
+  const [view, setView] = useState<{ name: DetailView; ver: number } | undefined>(undefined);
+  const [brush, setBrush] = useState<ToothCondition | null>(() => {
+    const current = primarySurfaceCondition(record.conditions);
+    return current && SURFACE_CONDITIONS.includes(current) ? current : "Caries";
+  });
+  const [xray, setXray] = useState(() => record.conditions.includes("RCT"));
+  const unavailable = surfacesUnavailableReason(record.conditions);
+
+  const chart = (surface: ToothSurface) => {
+    if (!onChange) return;
+    if (unavailable) {
+      toast.info(unavailable);
+      return;
+    }
+    onChange(paintSurface(record, surface, brush));
+  };
+
+  const pill = "rounded-md border px-2 py-1 text-xs font-medium transition-colors";
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/10 p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 pr-6">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold">Tooth {toothNumber}</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{info.name}</span>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {SNAP_VIEWS.map(({ view: name, surface, label }) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setView((v) => ({ name, ver: (v?.ver ?? 0) + 1 }))}
+              className={`${pill} border-border text-muted-foreground hover:border-primary/60 hover:text-foreground`}
+            >
+              {surface ? surfaceName(surface, info) : label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setXray((x) => !x)}
+            title="See through the tooth to the pulp and root canals"
+            className={`${pill} flex items-center gap-1 ${xray ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary/60 hover:text-foreground"}`}
+          >
+            <ScanEye size={12} /> X-ray
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <div className="min-w-0 flex-1">
+          <ToothDetail3D
+            toothNumber={toothNumber}
+            record={record}
+            onSurfaceClick={onChange ? chart : undefined}
+            view={view}
+            xray={xray}
+          />
+        </div>
+
+        <div className="flex w-full flex-col gap-3 lg:w-72">
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Mark surfaces as</p>
+            {unavailable ? (
+              <p className="text-xs italic text-muted-foreground">{unavailable}</p>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {SURFACE_CONDITIONS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setBrush(c)}
+                    style={brush === c ? { backgroundColor: CONDITION_COLOR[c], borderColor: CONDITION_COLOR[c] } : undefined}
+                    className={`${pill} ${brush === c ? "text-white" : "border-border text-muted-foreground hover:border-foreground/40"}`}
+                  >
+                    {c}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setBrush(null)}
+                  className={`${pill} flex items-center gap-1 ${brush === null ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:border-foreground/40"}`}
+                >
+                  <Eraser size={12} /> Erase
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Surfaces</p>
+            <ul className="flex flex-col gap-1 text-xs">
+              {ALL_SURFACES.map((s) => {
+                const c = surfaceCondition(record, s);
+                return (
+                  <li key={s}>
+                    <button
+                      type="button"
+                      disabled={!onChange}
+                      onClick={() => chart(s)}
+                      className="flex w-full items-center justify-between rounded border border-border/60 px-2 py-1 text-left hover:border-primary/60 disabled:hover:border-border/60"
+                    >
+                      <span>
+                        <b>{s}</b> <span className="text-muted-foreground">{surfaceName(s, info)}</span>
+                      </span>
+                      {c ? (
+                        <span className="flex items-center gap-1">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CONDITION_COLOR[c] }} />
+                          {c}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/60">—</span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <SurfaceBox
+              conditions={record.conditions}
+              surfaces={record.surfaces}
+              surfaceConditions={record.surfaceConditions}
+              shape={info.kind}
+              size={72}
+              onClick={() => {}}
+              onSurfaceClick={onChange ? chart : undefined}
+            />
+            <p className="text-[10px] leading-snug text-muted-foreground">
+              Surface map — click a surface here or on the 3D tooth to chart the selected condition.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -105,31 +559,6 @@ function BopDot({ value, onChange }: { value: string; onChange: (v: string) => v
       }`}
       title={on ? "BOP positive" : "BOP negative"}
     />
-  );
-}
-
-// ─── Perio depth input (for periodontal tab) ──────────────────────────────────
-function DepthInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const n = Number(value);
-  return (
-    <input
-      type="number" min={0} max={20} value={value}
-      onChange={e => onChange(e.target.value)}
-      className={`w-[22px] h-[22px] text-center text-[10px] border rounded-sm p-0 bg-transparent
-        ${n >= 4 ? "text-red-500 font-bold border-red-400" : "border-border/60 text-muted-foreground"}`}
-    />
-  );
-}
-
-// ─── Perio BOP toggle (for periodontal tab) ───────────────────────────────────
-function BopToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const on = value === "1";
-  return (
-    <button type="button" onClick={() => onChange(on ? "0" : "1")}
-      className={`w-[22px] h-[22px] rounded-sm border text-[11px] font-bold transition-colors
-        ${on ? "bg-red-500 text-white border-red-600" : "border-border/60 text-muted-foreground/40"}`}>
-      {on ? "+" : "·"}
-    </button>
   );
 }
 
@@ -162,13 +591,13 @@ function PerioRowFull({
     const csv = records.get(t)?.[field] as string | undefined;
     const sites = parseSites(csv);
     return (
-      <div className="flex-1 flex items-center justify-center gap-[2px] py-1.5">
+      <div className="w-[106px] shrink-0 flex items-center justify-center gap-[2px] py-1.5">
         {sites.map((v, i) =>
           isBop ? (
             <button
               key={i} type="button"
               onClick={() => onUpdate(t, field, setSite(csv, i, v === "1" ? "0" : "1"))}
-              className={`flex-1 max-w-[28px] h-[24px] rounded-sm border-2 text-[10px] font-bold transition-colors ${
+              className={`w-[34px] h-[34px] shrink-0 rounded-sm border-2 text-xs font-bold transition-colors ${
                 v === "1" ? "bg-red-500 text-white border-red-600" : "border-border text-muted-foreground/50"
               }`}
             >
@@ -178,7 +607,7 @@ function PerioRowFull({
             <input
               key={i} type="number" min={0} max={20} value={v}
               onChange={e => onUpdate(t, field, setSite(csv, i, e.target.value))}
-              className={`flex-1 max-w-[28px] min-w-0 h-[24px] text-center text-[10px] border-2 rounded-sm p-0 bg-transparent ${
+              className={`w-[34px] h-[34px] shrink-0 text-center text-xs border-2 rounded-sm p-0 bg-transparent ${
                 Number(v) >= 4 ? "text-red-500 font-bold border-red-400" : "border-border text-muted-foreground"
               }`}
             />
@@ -189,13 +618,13 @@ function PerioRowFull({
   }
 
   return (
-    <div className="flex w-full items-center h-[44px] border-b border-border/20">
+    <div className="flex w-full items-center h-[52px] border-b border-border/20">
       <div className="w-[84px] shrink-0 text-right pr-3 text-[10px] text-muted-foreground leading-none">{label}</div>
-      <div className="flex-1 flex border-r border-border/30">
+      <div className="flex border-r border-border/30">
         {teeth.slice(0, half).map(t => <ToothCells key={t} t={t} />)}
       </div>
       <div className="w-5 shrink-0" />
-      <div className="flex-1 flex border-l border-border/30">
+      <div className="flex border-l border-border/30">
         {teeth.slice(half).map(t => <ToothCells key={t} t={t} />)}
       </div>
     </div>
@@ -208,17 +637,17 @@ function PerioToothNumbers({ teeth }: { teeth: string[] }) {
   return (
     <div className="flex w-full items-center py-3">
       <div className="w-[84px] shrink-0" />
-      <div className="flex-1 flex border-r border-border/30">
+      <div className="flex border-r border-border/30">
         {teeth.slice(0, half).map(n => (
-          <div key={n} className="flex-1 text-[9px] text-red-500 font-semibold text-center">{n}</div>
+          <div key={n} className="w-[106px] text-[11px] text-red-500 font-semibold text-center">{n}</div>
         ))}
       </div>
       <div className="w-5 shrink-0 flex items-center justify-center">
         <div className="w-px h-4 bg-border/40" />
       </div>
-      <div className="flex-1 flex border-l border-border/30">
+      <div className="flex border-l border-border/30">
         {teeth.slice(half).map(n => (
-          <div key={n} className="flex-1 text-[9px] text-red-500 font-semibold text-center">{n}</div>
+          <div key={n} className="w-[106px] text-[11px] text-red-500 font-semibold text-center">{n}</div>
         ))}
       </div>
     </div>
@@ -227,10 +656,14 @@ function PerioToothNumbers({ teeth }: { teeth: string[] }) {
 
 // ─── Tooth number + anatomy + surface box column ──────────────────────────────
 function ToothCol({
-  n, isUpper, isSelected, record, bopValue, onToothClick, onBopChange, TOOTH_W,
+  n, isUpper, isRightQuadrant, isSelected, record, bopValue, onToothClick, onBopChange, TOOTH_W,
 }: {
   n: string;
   isUpper: boolean;
+  // true for the right half of each arch (teeth whose mesial faces right on screen),
+  // false for the left half (mesial faces left). Left-quadrant images are scaleX(-1)
+  // so that mesial always points toward the midline, matching clinical convention.
+  isRightQuadrant: boolean;
   isSelected: boolean;
   record: ToothRecord;
   bopValue: string;
@@ -240,6 +673,8 @@ function ToothCol({
 }) {
   const shape = toothShape(n);
   const anatomyW = TOOTH_W - 4;
+  // Left-quadrant teeth are mirrored so their mesial side always faces the midline.
+  const mirrorStyle = isRightQuadrant ? undefined : { transform: "scaleX(-1)" };
 
   return (
     <div className="flex flex-col items-center" style={{ width: TOOTH_W }}>
@@ -251,32 +686,40 @@ function ToothCol({
           </div>
           {/* FDI number */}
           <span className="text-[9px] font-semibold text-red-500 leading-none my-0.5">{n}</span>
-          {/* Crown anatomy */}
-          <ToothAnatomySVG shape={shape} isUpper w={anatomyW} />
-          {/* Surface odontogram */}
-          <div className="mt-0.5">
+          {/* Crown anatomy — mirrored for left-quadrant teeth */}
+          <div style={mirrorStyle}>
+            <ToothAnatomySVG shape={shape} isUpper w={anatomyW} />
+          </div>
+          {/* Surface odontogram — mirrored for left-quadrant teeth */}
+          <div className="mt-0.5" style={mirrorStyle}>
             <SurfaceBox
               conditions={record.conditions}
               surfaces={record.surfaces}
+              surfaceConditions={record.surfaceConditions}
               isSelected={isSelected}
               onClick={onToothClick}
               size={TOOTH_W - 4}
+              shape={shape}
             />
           </div>
         </>
       )}
       {!isUpper && (
         <>
-          {/* Surface odontogram */}
-          <SurfaceBox
-            conditions={record.conditions}
-            surfaces={record.surfaces}
-            isSelected={isSelected}
-            onClick={onToothClick}
-            size={TOOTH_W - 4}
-          />
-          {/* Crown anatomy */}
-          <div className="mt-0.5">
+          {/* Surface odontogram — mirrored for left-quadrant teeth */}
+          <div style={mirrorStyle}>
+            <SurfaceBox
+              conditions={record.conditions}
+              surfaces={record.surfaces}
+              surfaceConditions={record.surfaceConditions}
+              isSelected={isSelected}
+              onClick={onToothClick}
+              size={TOOTH_W - 4}
+              shape={shape}
+            />
+          </div>
+          {/* Crown anatomy — mirrored for left-quadrant teeth */}
+          <div className="mt-0.5" style={mirrorStyle}>
             <ToothAnatomySVG shape={shape} isUpper={false} w={anatomyW} />
           </div>
           {/* FDI number */}
@@ -314,10 +757,12 @@ function ArchRow({
 
   return (
     <div className="flex" style={{ minWidth: teeth.length * TOOTH_W + 12 }}>
+      {/* Right quadrant — mesial faces right (toward midline) */}
       <div className="flex">
         {teeth.slice(0, half).map(n => (
           <ToothCol
             key={n} n={n} isUpper={isUpper}
+            isRightQuadrant
             isSelected={selectedTooth === n}
             record={toothRecords.get(n) ?? emptyRec(n)}
             bopValue={getBopValue(n)}
@@ -331,10 +776,12 @@ function ArchRow({
       <div className="w-3 shrink-0 self-stretch flex items-center justify-center">
         <div className="w-px h-full bg-border/60" />
       </div>
+      {/* Left quadrant — tooth images mirrored so mesial faces left (toward midline) */}
       <div className="flex">
         {teeth.slice(half).map(n => (
           <ToothCol
             key={n} n={n} isUpper={isUpper}
+            isRightQuadrant={false}
             isSelected={selectedTooth === n}
             record={toothRecords.get(n) ?? emptyRec(n)}
             bopValue={getBopValue(n)}
@@ -359,10 +806,68 @@ function ArchLabel({ label, teeth, TOOTH_W }: { label: string; teeth: string[]; 
   );
 }
 
+// ─── Furcation row (single dropdown per tooth, not 3-site) ───────────────────
+function FurcationRow({
+  teeth, records, onUpdate,
+}: {
+  teeth: string[];
+  records: Map<string, PerioRecord>;
+  onUpdate: (tooth: string, field: PerioField, value: string) => void;
+}) {
+  const half = teeth.length / 2;
+
+  function furcColor(v: string) {
+    if (v === "I")   return "text-yellow-600 border-yellow-400";
+    if (v === "II")  return "text-orange-600 border-orange-400";
+    if (v === "III") return "text-red-600 border-red-400";
+    return "border-border text-muted-foreground";
+  }
+
+  // A render helper rather than a component declared in here - that would be a new type on
+  // every render, remounting the dropdown (and closing it) whenever the row re-renders.
+  const cell = (t: string) => {
+    const val = records.get(t)?.furcation ?? "";
+    return (
+      <div key={t} className="w-[106px] shrink-0 flex items-center justify-center py-1.5">
+        <div className="w-[76px]">
+          <SearchableSelect
+            value={val}
+            onChange={(v) => onUpdate(t, "furcation", v)}
+            options={[
+              { value: "", label: "—" },
+              { value: "None", label: "None" },
+              { value: "I", label: "Class I" },
+              { value: "II", label: "Class II" },
+              { value: "III", label: "Class III" },
+            ]}
+            className={`${compactSelectClass} h-7 px-1.5 ${furcColor(val)}`}
+            preserveCase
+          />
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex w-full items-center h-[52px] border-b border-border/20">
+      <div className="w-[84px] shrink-0 text-right pr-3 text-[10px] text-muted-foreground leading-none">Furcation</div>
+      <div className="flex border-r border-border/30">
+        {teeth.slice(0, half).map(cell)}
+      </div>
+      <div className="w-5 shrink-0" />
+      <div className="flex border-l border-border/30">
+        {teeth.slice(half).map(cell)}
+      </div>
+    </div>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function emptyPerio(toothNumber: string): PerioRecord { return { toothNumber }; }
 
 // ─── Main component ───────────────────────────────────────────────────────────
+const CHART_VIEW_KEY = "yoton_dental_chart_view";
+
 interface Props { encounterId: string; patientId: string; }
 type TabId = "chart" | "perio" | "details" | "history";
 
@@ -385,6 +890,29 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
   // the doctor can see the patient's last-known dental state and update it. This banner
   // date drives a visible callout so the doctor knows the data isn't yet saved for THIS visit.
   const [preFillDate, setPreFillDate] = useState<string | null>(null);
+
+  // 3D model or the classic 2D chart - remembered per browser. This section only ever
+  // renders client-side (inside the dental modal), so reading storage here is safe.
+  const [chartView, setChartView] = useState<"3d" | "2d">(() => {
+    try {
+      return typeof window !== "undefined" && localStorage.getItem(CHART_VIEW_KEY) === "2d" ? "2d" : "3d";
+    } catch {
+      return "3d";
+    }
+  });
+  const chooseChartView = (view: "3d" | "2d") => {
+    setChartView(view);
+    try {
+      localStorage.setItem(CHART_VIEW_KEY, view);
+    } catch {
+      // storage unavailable (private mode) - the choice just isn't remembered
+    }
+  };
+
+  const toothPanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selectedTooth) toothPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selectedTooth]);
 
   const upperTeeth = chartType === "Adult" ? ADULT_UPPER : PEDO_UPPER;
   const lowerTeeth = chartType === "Adult" ? ADULT_LOWER : PEDO_LOWER;
@@ -423,7 +951,6 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
       }
     } catch { /* leave blank */ }
     finally { setIsLoading(false); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encounterId, patientId, chartType]);
 
   useEffect(() => { loadChart(); }, [loadChart]);
@@ -493,7 +1020,7 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
     <div className="w-full border border-border rounded-lg bg-card">
 
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b border-border bg-muted/40 rounded-t-lg">
+      <div className="flex flex-wrap items-center justify-between gap-2 pl-4 pr-6 py-2 border-b border-border bg-muted/40 rounded-t-lg">
         <div className="flex gap-0.5">
           {TABS.map(({ id, label }) => (
             <button key={id} type="button" onClick={() => setTab(id)}
@@ -545,6 +1072,37 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
           {/* ════════════════ TOOTH CHART TAB ════════════════ */}
           {tab === "chart" && (
             <div className="p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex rounded-lg border border-border p-0.5 text-xs">
+                  {([
+                    ["3d", "3D model", Box],
+                    ["2d", "2D chart", LayoutGrid],
+                  ] as const).map(([view, label, Icon]) => (
+                    <button
+                      key={view}
+                      type="button"
+                      onClick={() => chooseChartView(view)}
+                      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors ${
+                        chartView === view ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Icon size={13} /> {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Click a tooth to open its {chartView === "3d" ? "enlarged 3D view and " : ""}case sheet
+                </p>
+              </div>
+
+              {chartView === "3d" ? (
+                <DentalArch3D
+                  teeth={[...upperTeeth, ...lowerTeeth]}
+                  records={toothRecords}
+                  selectedTooth={selectedTooth}
+                  onSelectTooth={handleToothClick}
+                />
+              ) : (
               <div className="overflow-x-auto">
                 <div className="flex gap-4 w-fit mx-auto items-stretch">
 
@@ -602,14 +1160,23 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                   </div>{/* end chart column */}
                 </div>{/* end flex gap-4 */}
               </div>
+              )}
 
-              {/* ── Inline case sheet when tooth selected ── */}
+              {/* ── Inline case sheet + 3D viewer when tooth selected ── */}
               {selectedTooth && (
-                <div className="mt-4 border border-border rounded-lg bg-background relative">
+                <div ref={toothPanelRef} className="mt-4 border border-border rounded-lg bg-background relative scroll-mt-4">
                   <button type="button" onClick={() => setSelectedTooth(null)}
                     className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors z-10">
                     <X size={16} />
                   </button>
+                  {/* 3D anatomy viewer */}
+                  <div className="p-4 border-b border-border">
+                    <Tooth3DViewer
+                      toothNumber={selectedTooth}
+                      record={toothRecords.get(selectedTooth) ?? { toothNumber: selectedTooth, conditions: [], surfaces: [] }}
+                      onChange={updateTooth}
+                    />
+                  </div>
                   <ToothCaseSheet
                     toothNumber={selectedTooth}
                     record={toothRecords.get(selectedTooth) ?? { toothNumber: selectedTooth, conditions: [], surfaces: [] }}
@@ -643,6 +1210,7 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
 
           {/* ════════════════ PERIODONTAL TAB ════════════════ */}
           {tab === "perio" && (
+            <div className="overflow-x-auto">
             <div className="px-4 py-3">
               <p className="text-xs text-muted-foreground mb-3 pl-[84px]">
                 3-site measurements per tooth (MB · B · DB). Values ≥ 4 mm highlighted in red.
@@ -669,6 +1237,10 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                 <PerioRowFull teeth={upperTeeth} field="lingualProbing"   label="Probing"   {...perioPropArgs} />
               </div>
 
+              <div className="rounded border border-border/30 overflow-hidden mt-1">
+                <FurcationRow teeth={upperTeeth} records={perioRecords} onUpdate={updatePerio} />
+              </div>
+
               {/* ── SEPARATOR ── */}
               <div className="border-t-2 border-border my-6" />
 
@@ -692,6 +1264,11 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                 <PerioRowFull teeth={lowerTeeth} field="buccalBop"       label="BOP"       isBop {...perioPropArgs} />
                 <PerioRowFull teeth={lowerTeeth} field="buccalProbing"   label="Probing"   {...perioPropArgs} />
               </div>
+
+              <div className="rounded border border-border/30 overflow-hidden mt-1">
+                <FurcationRow teeth={lowerTeeth} records={perioRecords} onUpdate={updatePerio} />
+              </div>
+            </div>
             </div>
           )}
 
@@ -728,7 +1305,7 @@ export default function DentalChartSection({ encounterId, patientId }: Props) {
                               ))}
                             </div>
                           </td>
-                          <td className="py-2 pr-3">{r.surfaces.join(", ") || "—"}</td>
+                          <td className="py-2 pr-3">{surfaceSummary(r) || "—"}</td>
                           <td className="py-2 pr-3 text-xs">
                             {r.complexity?.replace(/([A-Z])/g, " $1").trim() ?? "—"}
                           </td>

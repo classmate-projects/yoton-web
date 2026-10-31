@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { FileSpreadsheet, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import DatePicker from "@/components/DatePicker";
@@ -125,7 +126,7 @@ export default function KpiReportsPage() {
           <Loader2 className="animate-spin" size={24} />
         </div>
       ) : reports.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No KPI reports are available yet.</p>
+        <EmptyState illustration="chart" title="No KPI reports are available yet" />
       ) : (
         <div className="flex flex-col gap-8">
           {grouped.map(([category, items]) => (

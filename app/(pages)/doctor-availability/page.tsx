@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import SearchableSelect from "@/components/SearchableSelect";
 import PasswordInput from "@/components/PasswordInput";
 import { ReceptionService } from "@/services/reception.service";
 import {
@@ -27,6 +28,7 @@ import {
 } from "@/types/doctorAvailability.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { getUserDetail } from "@/lib/userDetail";
+import { notifySaveStatus } from "@/lib/saveStatus";
 
 const DAYS = [
   "Sunday",
@@ -439,6 +441,7 @@ function DoctorAvailabilityInner() {
       }
     }
 
+    notifySaveStatus("saving");
     try {
       setSavingDoctorId(doctor.doctorId);
       const updatedBy =
@@ -464,6 +467,7 @@ function DoctorAvailabilityInner() {
       });
 
       toast.success(data.message || "Schedule updated successfully");
+      notifySaveStatus("saved");
       setScheduleConflict(null);
       setOverrideForm({ username: "", password: "" });
       setOverrideError(null);
@@ -474,16 +478,20 @@ function DoctorAvailabilityInner() {
         const responseData = error.response?.data;
 
         if (status === 409 && responseData?.conflicts) {
+          notifySaveStatus("error");
           setScheduleConflict({ doctor, conflicts: responseData.conflicts });
           setOverrideError(null);
         } else if (status === 401 && adminOverride) {
+          notifySaveStatus("error");
           setOverrideError(
             responseData?.message || "Invalid admin credentials"
           );
         } else {
+          notifySaveStatus("error");
           toast.error(responseData?.message || "Failed to update schedule");
         }
       } else {
+        notifySaveStatus("error");
         toast.error("Failed to update schedule");
       }
     } finally {
@@ -793,48 +801,51 @@ function DoctorAvailabilityInner() {
                           </td>
                           <td>
                             {canEdit ? (
-                              <select
-                                value={schedule.slotDurationMinutes}
-                                onChange={(event) =>
-                                  updateSchedule(
-                                    configDoctor.doctorId,
-                                    schedule.day,
-                                    "slotDurationMinutes",
-                                    Number(event.target.value)
-                                  )
-                                }
-                                className="h-10 min-w-24 text-sm"
-                              >
-                                <option value={10}>10 min</option>
-                                <option value={15}>15 min</option>
-                                <option value={20}>20 min</option>
-                                <option value={30}>30 min</option>
-                                <option value={45}>45 min</option>
-                                <option value={60}>60 min</option>
-                              </select>
+                              <div className="min-w-24">
+                                <SearchableSelect
+                                  value={String(schedule.slotDurationMinutes)}
+                                  onChange={(v) =>
+                                    updateSchedule(
+                                      configDoctor.doctorId,
+                                      schedule.day,
+                                      "slotDurationMinutes",
+                                      Number(v)
+                                    )
+                                  }
+                                  options={[
+                                    { value: "10", label: "10 min" },
+                                    { value: "15", label: "15 min" },
+                                    { value: "20", label: "20 min" },
+                                    { value: "30", label: "30 min" },
+                                    { value: "45", label: "45 min" },
+                                    { value: "60", label: "60 min" },
+                                  ]}
+                                />
+                              </div>
                             ) : (
                               <span className="text-sm text-foreground">{schedule.slotDurationMinutes} min</span>
                             )}
                           </td>
                           <td>
                             {canEdit ? (
-                              <select
-                                value={schedule.maxConcurrentBookings}
-                                onChange={(event) =>
-                                  updateSchedule(
-                                    configDoctor.doctorId,
-                                    schedule.day,
-                                    "maxConcurrentBookings",
-                                    Number(event.target.value)
-                                  )
-                                }
-                                title="How many patients can be booked into the same slot"
-                                className="h-10 min-w-20 text-sm"
-                              >
-                                <option value={1}>1 patient</option>
-                                <option value={2}>2 patients</option>
-                                <option value={3}>3 patients</option>
-                              </select>
+                              <div className="min-w-20">
+                                <SearchableSelect
+                                  value={String(schedule.maxConcurrentBookings)}
+                                  onChange={(v) =>
+                                    updateSchedule(
+                                      configDoctor.doctorId,
+                                      schedule.day,
+                                      "maxConcurrentBookings",
+                                      Number(v)
+                                    )
+                                  }
+                                  options={[
+                                    { value: "1", label: "1 patient" },
+                                    { value: "2", label: "2 patients" },
+                                    { value: "3", label: "3 patients" },
+                                  ]}
+                                />
+                              </div>
                             ) : (
                               <span className="text-sm text-foreground">
                                 {schedule.maxConcurrentBookings} patient{schedule.maxConcurrentBookings === 1 ? "" : "s"}

@@ -1,5 +1,3 @@
-import React from "react";
-
 interface CalendarIconProps {
   size?: number;
   color?: string;

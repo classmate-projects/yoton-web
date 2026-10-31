@@ -10,6 +10,9 @@ import CountryCodeSelect from "@/components/CountryCodeSelect";
 import CountrySearchSelect from "@/components/CountrySearchSelect";
 import SearchableSelect from "@/components/SearchableSelect";
 import { countryDetails } from "@/helpers/countyDetails";
+import { ConfigListService } from "@/services/configList.service";
+import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
+import { X, Upload, PenLine } from "lucide-react";
 import { SpecializationService } from "@/services/specialization.service";
 import { UserService } from "@/services/user.service";
 import { DepartmentSerivce } from "@/services/department.service";
@@ -20,10 +23,14 @@ import { AssignedDoctorsInfo } from "@/types/assignedDoctors.type";
 import { DepartmentTypes } from "@/types/department.type";
 import { BranchType } from "@/types/branch.type";
 import { getUserDetail } from "@/lib/userDetail";
+import { backendAssetUrl } from "@/lib/backendAsset";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { toast } from "sonner";
 import axios from "axios";
+import { apiErrorMessage } from "@/lib/apiError";
+import { defaultDialCode } from "@/lib/region";
+import { formatCurrency } from "@/lib/currency";
 
 function UserRegistrationForm() {
   const [name, setName] = useState("");
@@ -32,13 +39,14 @@ function UserRegistrationForm() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("");
   const [phone, setPhone] = useState("");
-  const [phoneCode, setPhoneCode] = useState("+971");
+  const [phoneCode, setPhoneCode] = useState(defaultDialCode);
   const [isActive, setIsActive] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [gender, setGender] = useState("");
   const [nationality, setNationality] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [hireDate, setHireDate] = useState("");
+  const [maxDiscountPercent, setMaxDiscountPercent] = useState<string>("");
   const [departments, setDepartments] = useState<DepartmentTypes[]>([]);
   // Defaults to the signed-in admin's own branch (edit mode overwrites this from the loaded
   // user a moment later anyway, so defaulting unconditionally here is harmless for that path).
@@ -58,9 +66,15 @@ function UserRegistrationForm() {
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
   const [selectedSpecialization, setSelectedSpecialization] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
-  const [consultationFee, setConsultationFee] = useState(0);
+  const [consultationServiceId, setConsultationServiceId] = useState("");
+  const [consultationServiceLabel, setConsultationServiceLabel] = useState("");
   const [experience, setExperience] = useState(0);
 
+
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [signatureUploading, setSignatureUploading] = useState(false);
+  const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -160,6 +174,8 @@ function UserRegistrationForm() {
           setNationality(user.nationality || "");
           setDepartmentId(user.departmentId || "");
           setBranchId(user.branchId || "");
+          setMaxDiscountPercent(user.maxDiscountPercent != null ? String(user.maxDiscountPercent) : "");
+          if (user.userSignature) setSignaturePreview(backendAssetUrl(user.userSignature));
         }
       } catch (error) {
         console.error("Error loading user edit data from sessionStorage:", error);
@@ -201,7 +217,8 @@ function UserRegistrationForm() {
         if (!doctorInfo) return;
         setSelectedSpecialization(doctorInfo.specializationId);
         setLicenseNumber(doctorInfo.licenseNumber);
-        setConsultationFee(doctorInfo.consultationFee);
+        setConsultationServiceId(doctorInfo.consultationServiceId ?? "");
+        setConsultationServiceLabel(doctorInfo.consultationServiceName ?? "");
         setExperience(doctorInfo.experienceYears);
       })
       .catch(() => {});
@@ -213,7 +230,7 @@ function UserRegistrationForm() {
     setName("");
     setUsername("");
     setPhone("");
-    setPhoneCode("+971");
+    setPhoneCode(defaultDialCode());
     setPassword("");
     setRole("");
   }
@@ -226,7 +243,7 @@ function UserRegistrationForm() {
       SpecializationId: selectedSpecialization,
       LicenseNumber: licenseNumber,
       ExperienceYears: experience,
-      ConsultationFee: consultationFee
+      ConsultationServiceId: consultationServiceId || undefined,
     }
 
     try {
@@ -234,9 +251,7 @@ function UserRegistrationForm() {
     } catch (error) {
       console.error(error);
       toast.error(
-        axios.isAxiosError(error)
-          ? error.response?.data?.message || "Failed to save the doctor profile"
-          : "Failed to save the doctor profile"
+        apiErrorMessage(error, "Failed to save the doctor profile")
       );
     }
   }
@@ -278,6 +293,7 @@ function UserRegistrationForm() {
         specializationId: role === "doctor" ? selectedSpecialization : undefined,
         branchId: branchId || undefined,
         hireDate: hireDate || undefined,
+        maxDiscountPercent: maxDiscountPercent !== "" ? Number(maxDiscountPercent) : null,
       }
 
       const data = await UserService.create(payload)
@@ -286,7 +302,17 @@ function UserRegistrationForm() {
         await handleDoctorAssign(data.data.userId)
       }
 
+      if (signatureFile) {
+        try {
+          await UserService.uploadSignature(data.data.userId, signatureFile);
+        } catch {
+          // Non-fatal — the user was created; the admin can re-upload the signature later.
+        }
+      }
+
       resetdata()
+      setSignatureFile(null);
+      setSignaturePreview(null);
       sessionStorage.removeItem("editUser");
       toast.success(data.message);
 
@@ -354,6 +380,7 @@ function UserRegistrationForm() {
         branchId: branchId || undefined,
         hireDate: hireDate || undefined,
         password: password || undefined,
+        maxDiscountPercent: maxDiscountPercent !== "" ? Number(maxDiscountPercent) : null,
       }
 
       if (!userId) return;
@@ -525,12 +552,16 @@ function UserRegistrationForm() {
 
               <div className="w-full flex flex-col gap-2">
                 <label htmlFor="gender" className="font-bold text-sm">Gender</label>
-                <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)}>
-                  <option value="">Unspecified</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
+                <SearchableSelect
+                  value={gender}
+                  onChange={setGender}
+                  options={[
+                    { value: "", label: "Unspecified" },
+                    { value: "Male", label: "Male" },
+                    { value: "Female", label: "Female" },
+                    { value: "Other", label: "Other" },
+                  ]}
+                />
               </div>
 
               <div className="w-full">
@@ -595,6 +626,23 @@ function UserRegistrationForm() {
                     placeholder="DD-MM-YYYY"
                   />
                 </div>
+              </div>
+
+              <div className="w-full">
+                <label htmlFor="maxDiscountPercent" className="font-bold text-sm">Billing Discount Privilege (%)</label>
+                <input
+                  type="number"
+                  id="maxDiscountPercent"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  placeholder="e.g. 10 (leave blank for no personal limit)"
+                  value={maxDiscountPercent}
+                  onChange={(e) => setMaxDiscountPercent(e.target.value)}
+                  className="outline-0 p-4 rounded-xl w-full mt-2"
+                  style={{ background: "var(--color-highlight)", border: "1px solid var(--color-border)" }}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Maximum discount % this user may apply during billing. Leave blank for no personal cap.</p>
               </div>
 
               <div className="w-full flex flex-col gap-2">
@@ -742,12 +790,16 @@ function UserRegistrationForm() {
 
               <div className="w-full flex flex-col gap-2">
                 <label htmlFor="gender" className="font-bold text-sm">Gender</label>
-                <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)}>
-                  <option value="">Unspecified</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
+                <SearchableSelect
+                  value={gender}
+                  onChange={setGender}
+                  options={[
+                    { value: "", label: "Unspecified" },
+                    { value: "Male", label: "Male" },
+                    { value: "Female", label: "Female" },
+                    { value: "Other", label: "Other" },
+                  ]}
+                />
               </div>
 
               <div className="w-full">
@@ -813,6 +865,23 @@ function UserRegistrationForm() {
                   />
                 </div>
               </div>
+
+              <div className="w-full">
+                <label htmlFor="maxDiscountPercentCreate" className="font-bold text-sm">Billing Discount Privilege (%)</label>
+                <input
+                  type="number"
+                  id="maxDiscountPercentCreate"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  placeholder="e.g. 10 (leave blank for no personal limit)"
+                  value={maxDiscountPercent}
+                  onChange={(e) => setMaxDiscountPercent(e.target.value)}
+                  className="outline-0 p-4 rounded-xl w-full mt-2"
+                  style={{ background: "var(--color-highlight)", border: "1px solid var(--color-border)" }}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Maximum discount % this user may apply during billing. Leave blank for no personal cap.</p>
+              </div>
             </div>
           )}
 
@@ -847,13 +916,31 @@ function UserRegistrationForm() {
               </div>
 
               <div className="flex flex-col gap-1 w-full">
-                <label htmlFor="consultation_fee" className="font-bold text-sm">Consultation Fee</label>
-                <input
-                  type="text"
-                  placeholder="eg: 50"
-                  value={consultationFee}
-                  onChange={(e) => setConsultationFee(Number(e.target.value))}
+                <label className="font-bold text-sm">Consultation Service</label>
+                <CatalogSearchInput
+                  placeholder="Search by CPT code or procedure name..."
+                  fetchOptions={async (search) => {
+                    const res = await ConfigListService.get("Procedure", search);
+                    return (res.data || []).map((i: { listItemId: string; name: string; code: string | null; department?: string; cashPrice?: number | null }) => ({
+                      id: i.listItemId,
+                      name: i.name,
+                      code: i.code,
+                      meta: [i.department, i.cashPrice != null ? formatCurrency(i.cashPrice) : null].filter(Boolean).join(" · ") || undefined,
+                    }));
+                  }}
+                  onSelect={(opt) => {
+                    setConsultationServiceId(opt.id);
+                    setConsultationServiceLabel(`${opt.code ? opt.code + " · " : ""}${opt.name}`);
+                  }}
                 />
+                {consultationServiceLabel && (
+                  <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                    <span className="text-foreground">{consultationServiceLabel}</span>
+                    <button type="button" onClick={() => { setConsultationServiceId(""); setConsultationServiceLabel(""); }}>
+                      <X size={14} className="text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-1 w-full">
@@ -867,6 +954,72 @@ function UserRegistrationForm() {
               </div>
             </div>
           )}
+
+          {/* Signature upload — shown for both create and edit. On create it uploads
+              after the user record is saved and the new userId is returned. On edit it
+              uploads immediately when a file is picked. */}
+          <div className="border border-border rounded-xl p-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <PenLine size={16} className="text-muted-foreground" />
+              <p className="font-bold text-sm">Signature</p>
+              <p className="text-xs text-muted-foreground">Optional — appears on prescriptions and investigation printouts</p>
+            </div>
+
+            {signaturePreview && (
+              <div className="relative w-fit">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={signaturePreview}
+                  alt="Signature preview"
+                  className="h-20 max-w-xs border border-border rounded-lg bg-white object-contain px-2"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setSignaturePreview(null); setSignatureFile(null); }}
+                  className="absolute -top-2 -right-2 rounded-full bg-destructive text-white p-0.5"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+
+            <div>
+              <input
+                ref={signatureInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setSignatureFile(file);
+                  setSignaturePreview(URL.createObjectURL(file));
+                  // In edit mode we can upload immediately since userId exists.
+                  if (editMode && userId) {
+                    setSignatureUploading(true);
+                    try {
+                      await UserService.uploadSignature(userId, file);
+                      toast.success("Signature saved");
+                    } catch {
+                      toast.error("Failed to upload signature");
+                    } finally {
+                      setSignatureUploading(false);
+                    }
+                  }
+                }}
+              />
+              <button
+                type="button"
+                disabled={signatureUploading}
+                onClick={() => signatureInputRef.current?.click()}
+                className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                <Upload size={14} />
+                {signatureUploading ? "Uploading..." : signaturePreview ? "Replace Signature" : "Upload Signature"}
+              </button>
+              <p className="text-xs text-muted-foreground mt-1">PNG or JPEG, transparent background recommended. Max ~2 MB.</p>
+            </div>
+          </div>
 
           <div className="mt-6 flex justify-end gap-4">
             <button

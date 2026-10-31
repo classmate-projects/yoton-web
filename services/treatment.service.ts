@@ -14,10 +14,6 @@ export const TreatmentService = {
     const { data } = await api.put(ENDPOINTS.TREATMENTS.UPDATE(id), payload);
     return data;
   },
-  remove: async (id: string) => {
-    const { data } = await api.delete(ENDPOINTS.TREATMENTS.REMOVE(id));
-    return data;
-  },
   start: async (id: string, nurseId?: string) => {
     const { data } = await api.put(ENDPOINTS.TREATMENTS.START(id), { nurseId });
     return data;

@@ -93,6 +93,16 @@ export interface MedicalFormField {
   // preview (see ImageAnnotationCanvas's resize handle). Unset means natural size (capped to
   // its container's width).
   imageWidth?: number;
+  // When true, the end user can add multiple instances of this field at fill time without
+  // admin intervention. Only meaningful for input types: text, textarea, number, date,
+  // datetime, dropdown. Value stored as string[] (one entry per instance) instead of string.
+  repeatable?: boolean;
+  // Only meaningful for text, textarea, number, date, datetime - what the input starts with
+  // when a form is opened. May contain {{placeholder}} tokens, filled from the patient's record.
+  defaultValue?: string;
+  // Shown but not editable while filling - for an auto-filled value that should be copied
+  // from the patient's record as-is. Never counted as a missing required answer.
+  readOnly?: boolean;
 }
 
 // The top-level field tree is an ordered list of rows, each holding 1+ fields rendered side
@@ -101,6 +111,21 @@ export interface MedicalFormField {
 export interface MedicalFormRow {
   id: string;
   fields: MedicalFormField[];
+  // The whole row (every column in it) can be copied while filling, with + / − controls and
+  // at least one copy always kept. Its value then sits under the row's own id as a list of
+  // per-copy values maps (MedicalFormValues[]), instead of each field at the top level.
+  repeatable?: boolean;
+  maxRepeats?: number; // unlimited copies when unset
+}
+
+// A {{key}} placeholder a designer can put into a form - resolved from the patient's record
+// when the form is opened (see MedicalFormPlaceholders on the API). Date values arrive as
+// yyyy-MM-dd and datetime values as UTC ISO timestamps.
+export interface FormPlaceholderType {
+  key: string;
+  label: string;
+  group: string;
+  type: "text" | "number" | "date" | "datetime";
 }
 
 // Templates built before rows/columns existed have FieldsJson as a flat MedicalFormField[]
@@ -212,6 +237,8 @@ export interface SavedMedicalFormType {
   formTemplateName: string;
   fieldsJson: string; // JSON-serialized MedicalFormRow[] (a snapshot at save time)
   valuesJson: string;
+  // The template's {{placeholder}} values as resolved when this form was first saved.
+  placeholderValues: Record<string, string>;
   totalScore: number | null;
   // Server-computed (never trust a client self-report): true if any scored field's value
   // fell outside its own configured lower/upper limit at save time - lets the saved-forms
@@ -228,12 +255,4 @@ export interface SavedMedicalFormType {
   handoverToUserId: string | null;
   handoverToName: string | null;
   handoverFromUserId: string | null;
-}
-
-export interface PendingFormHandoverType {
-  savedMedicalFormId: string;
-  formTemplateName: string;
-  patientName: string | null;
-  fromUserName: string | null;
-  createdAt: string;
 }

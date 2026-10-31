@@ -1,7 +1,11 @@
-export interface RadiologyRequestType {
+import type { OrderLockFields } from "./orderLock.type";
+import type { WalkInOrderFields } from "./patient.type";
+
+export interface RadiologyRequestType extends OrderLockFields, WalkInOrderFields {
   radiologyRequestId: string;
   patientId: string | null;
   patientName: string;
+  patientOPNumber?: string | null;
   doctorId: string | null;
   doctorName: string | null;
   visitId: string | null;
@@ -28,9 +32,6 @@ export interface RadiologyRequestType {
   imageUrls: string[];
   correctedFromId: string | null;
   correctedFrom: RadiologyRequestType | null;
-  // See LabRequestType.locked/lockedBy - same meaning, "Radiology" instead of "Lab".
-  locked: boolean;
-  lockedBy: string | null;
 }
 
 export interface RadiologySummaryType {
@@ -40,7 +41,7 @@ export interface RadiologySummaryType {
 }
 
 export interface CreateRadiologyRequestPayload {
-  patientId: string;
+  patientId?: string;
   doctorId?: string;
   visitId?: string;
   scanType: string;
@@ -49,6 +50,7 @@ export interface CreateRadiologyRequestPayload {
   remarks?: string;
   priority: string;
   source?: string; // InHouse, External
+  externalProvider?: string; // outside doctor/facility on a walk-in's order
   price?: number;
   covered?: boolean;
   patientShareAmount?: number;

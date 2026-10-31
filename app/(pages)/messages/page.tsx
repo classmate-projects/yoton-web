@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
 import { MessageCircle, Paperclip, Search, Send, Smile, X, Reply as ReplyIcon, FileText } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -19,14 +20,7 @@ import {
   ChatPresenceType,
   MAX_ATTACHMENT_BYTES,
 } from "@/types/chat.type";
-
-const errorMessage = (error: unknown, fallback: string) => {
-  if (error && typeof error === "object" && "response" in error) {
-    const resp = (error as { response?: { data?: { message?: string } } }).response;
-    return resp?.data?.message || fallback;
-  }
-  return fallback;
-};
+import { apiErrorMessage } from "@/lib/apiError";
 
 const formatTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const formatDay = (value: string) => new Date(value).toLocaleDateString();
@@ -96,7 +90,7 @@ export default function MessagesPage() {
       const res = await ChatService.getConversations();
       setConversations(res.data || []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load conversations"));
+      toast.error(apiErrorMessage(error, "Failed to load conversations"));
     } finally {
       setIsLoadingConversations(false);
     }
@@ -174,7 +168,7 @@ export default function MessagesPage() {
         );
       }
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load messages"));
+      toast.error(apiErrorMessage(error, "Failed to load messages"));
     } finally {
       setIsLoadingMessages(false);
     }
@@ -191,9 +185,29 @@ export default function MessagesPage() {
       setShowContactPicker(false);
       await openConversation(conversation);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to start conversation"));
+      toast.error(apiErrorMessage(error, "Failed to start conversation"));
     }
   };
+
+  // Deep link from elsewhere in the app (e.g. a locked order's "Message" button):
+  // /messages?userId=... opens - or starts - that staff member's conversation directly.
+  // Read from window.location rather than useSearchParams so this page needs no Suspense
+  // boundary; the param is dropped right away so a refresh doesn't repeat it.
+  useEffect(() => {
+    const userId = new URLSearchParams(window.location.search).get("userId");
+    if (!userId) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    ChatService.startConversation({ otherId: userId, otherType: "User" })
+      .then(async (res) => {
+        const conversation: ChatConversationType = res.data;
+        setConversations((prev) =>
+          prev.some((c) => c.chatConversationId === conversation.chatConversationId) ? prev : [conversation, ...prev]
+        );
+        await openConversation(conversation);
+      })
+      .catch((error) => toast.error(apiErrorMessage(error, "Failed to open conversation")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -339,7 +353,7 @@ export default function MessagesPage() {
         return [moved, ...updated];
       });
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to send message"));
+      toast.error(apiErrorMessage(error, "Failed to send message"));
       setDraft(content);
       setPendingFiles(files);
     } finally {
@@ -355,46 +369,48 @@ export default function MessagesPage() {
       const updated: ChatMessageType = res.data;
       setMessages((prev) => prev.map((m) => (m.chatMessageId === updated.chatMessageId ? updated : m)));
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update reaction"));
+      toast.error(apiErrorMessage(error, "Failed to update reaction"));
     }
   };
 
   return (
-    // h-screen, not h-full: the shared (pages) layout only sets min-h-full up
-    // the ancestor chain (so ordinary pages can grow taller than the viewport
-    // and let the page scroll), which means a plain h-full here has no
-    // definite height to resolve against and just grows with content too -
-    // the whole page would scroll instead of this panel's own message list.
-    // 100vh doesn't need ancestor cooperation, so it actually pins this page
-    // to the viewport and lets the flex-1 min-h-0 chain below clip properly.
-    <div className="flex h-screen flex-col py-6 px-4 sm:py-8 sm:px-10">
-      <div className="flex flex-col gap-1 mb-6 shrink-0">
-        <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
-          <MessageCircle className="text-primary" /> Messages
-        </h1>
-        <p className="text-sm text-muted-foreground">Secure messaging with staff and patients.</p>
-      </div>
+    // h-full works here because the layout's content area is now a fixed-height
+    // flex container (h-screen overflow-hidden on the root, overflow-auto on the
+    // content div), giving this child a definite height to resolve against.
+    // The flex-1 min-h-0 chain below clips the message list rather than letting
+    // it grow the page.
+    <div className="flex h-full flex-col py-6 px-4 sm:py-8 sm:px-10">
+      {/* Title left, Staff/Patient tabs right - one row instead of two, so the chat card
+          below gets the extra height. Tabs wrap under the title on very narrow screens. */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6 shrink-0">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-4xl font-semibold flex items-center gap-3 text-foreground">
+            <MessageCircle className="text-primary" /> Messages
+          </h1>
+          <p className="text-sm text-muted-foreground">Secure messaging with staff and patients.</p>
+        </div>
 
-      <div className="flex gap-2 mb-4 shrink-0">
-        {(
-          [
-            { key: "staff", label: "Staff" },
-            { key: "patient", label: "Patient" },
-          ] as const
-        ).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => {
-              setTab(t.key);
-              setActiveConversation(null);
-            }}
-            className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${
-              tab === t.key ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+        <div className="flex gap-2">
+          {(
+            [
+              { key: "staff", label: "Staff" },
+              { key: "patient", label: "Patient" },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => {
+                setTab(t.key);
+                setActiveConversation(null);
+              }}
+              className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${
+                tab === t.key ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="card flex flex-1 min-h-0 overflow-hidden">
@@ -428,7 +444,12 @@ export default function MessagesPage() {
                         className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-muted/60"
                       >
                         <Avatar id={c.id} name={c.name} url={c.avatarUrl} size={28} online={presence[c.id]} />
-                        <span className="text-sm font-medium text-foreground truncate">{c.name}</span>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="text-sm font-medium text-foreground truncate">{c.name}</span>
+                          {/* Role helps pick the right person, e.g. "message a doctor". Stored
+                              lowercase ("doctor"), shown capitalized like User Management does. */}
+                          {c.role && <span className="text-xs capitalize text-muted-foreground truncate">{c.role}</span>}
+                        </span>
                       </button>
                     ))
                   )}
@@ -443,9 +464,12 @@ export default function MessagesPage() {
                 <LoadingSpinner />
               </div>
             ) : tabConversations.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-10 px-4">
-                No conversations yet — start one above.
-              </p>
+              <EmptyState
+                size="compact"
+                illustration="messages"
+                title="No conversations yet"
+                description="Start one above."
+              />
             ) : (
               tabConversations.map((c) => (
                 <button
@@ -479,8 +503,12 @@ export default function MessagesPage() {
         {/* Thread */}
         <div className="hidden sm:flex flex-1 flex-col min-w-0 min-h-0">
           {!activeConversation ? (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-              Select a conversation to start messaging.
+            <div className="flex-1 flex items-center justify-center">
+              <EmptyState
+                illustration="messages"
+                title="No conversation selected"
+                description="Pick a conversation from the list to start messaging."
+              />
             </div>
           ) : (
             <>

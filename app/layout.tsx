@@ -7,6 +7,7 @@ import ApiLoadingBar from "@/components/ApiLoadingBar";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import MicrosoftClarity from "@/components/MicrosoftClarity";
 import DisableAutocomplete from "@/components/DisableAutocomplete";
+import SplashScreen, { SplashScreenGate } from "@/components/SplashScreenLoader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,9 +41,16 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // Pairs with "scroll-smooth" below: tells Next.js to switch smooth scrolling off while
+      // it scrolls to the top on a route change, so page navigations jump instantly instead
+      // of visibly animating. In-page anchor links still scroll smoothly.
+      data-scroll-behavior="smooth"
       suppressHydrationWarning
       className={`${geistSans.variable} h-full antialiased scroll-smooth`}
     >
+      <head>
+        <SplashScreenGate />
+      </head>
       <body className="min-h-full">
         <MicrosoftClarity />
         <ThemeProvider
@@ -50,6 +58,7 @@ export default function RootLayout({
           defaultTheme="system"
           enableSystem
         >
+          <SplashScreen />
           <ServiceWorkerRegistration />
           <DisableAutocomplete />
           <ApiLoadingBar />

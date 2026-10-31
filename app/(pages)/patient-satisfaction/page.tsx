@@ -1,11 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { Pencil, Plus, Smile, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { PatientSatisfactionService } from "@/services/patientSatisfaction.service";
+import SearchableSelect from "@/components/SearchableSelect";
+import DatePicker from "@/components/DatePicker";
 import { ReceptionService } from "@/services/reception.service";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { notifySaveStatus } from "@/lib/saveStatus";
+import { useRegion } from "@/lib/region";
 import { PatientSatisfactionCreatePayload, PatientSatisfactionType } from "@/types/patientSatisfaction.type";
 import { PatientListItemType } from "@/types/appointment.type";
 
@@ -50,6 +55,8 @@ const emptyForm = {
 };
 
 export default function PatientSatisfactionPage() {
+  // National / non-national, named for the installation's country (Qatari / Non-Qatari, ...).
+  const demonym = useRegion()?.demonym ?? "National";
   const [responses, setResponses] = useState<PatientSatisfactionType[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -145,6 +152,7 @@ export default function PatientSatisfactionPage() {
     }
     Object.assign(payload, scores);
 
+    notifySaveStatus("saving");
     try {
       setIsSaving(true);
       if (editingResponseId) {
@@ -154,10 +162,12 @@ export default function PatientSatisfactionPage() {
         await PatientSatisfactionService.create(payload);
         toast.success("Response recorded");
       }
+      notifySaveStatus("saved");
       resetForm();
       setShowForm(false);
       await fetchResponses();
     } catch {
+      notifySaveStatus("error");
       toast.error(editingResponseId ? "Failed to update response" : "Failed to record response");
     } finally {
       setIsSaving(false);
@@ -190,16 +200,14 @@ export default function PatientSatisfactionPage() {
       {showForm && (
         <div className="card p-6 mb-6 flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <select
+            <SearchableSelect
               value={form.patientId}
-              onChange={(e) => setForm((p) => ({ ...p, patientId: e.target.value }))}
-              className="h-10 text-sm"
-            >
-              <option value="">Patient (optional, anonymous if blank)</option>
-              {patients.map((p) => (
-                <option key={p.opId} value={p.opId}>{p.name}</option>
-              ))}
-            </select>
+              onChange={(v) => setForm((p) => ({ ...p, patientId: v }))}
+              options={[
+                { value: "", label: "Patient (optional, anonymous if blank)" },
+                ...patients.map((p) => ({ value: p.opId, label: p.name })),
+              ]}
+            />
             <input
               type="text"
               placeholder="Specialty"
@@ -207,60 +215,58 @@ export default function PatientSatisfactionPage() {
               onChange={(e) => setForm((p) => ({ ...p, specialty: e.target.value }))}
               className="h-10 text-sm"
             />
-            <input
-              type="date"
+            <DatePicker
               value={form.collectedDate}
-              onChange={(e) => setForm((p) => ({ ...p, collectedDate: e.target.value }))}
-              className="h-10 text-sm"
+              onChange={(v) => setForm((p) => ({ ...p, collectedDate: v }))}
             />
-            <select
+            <SearchableSelect
               value={form.genderCode}
-              onChange={(e) => setForm((p) => ({ ...p, genderCode: e.target.value }))}
-              className="h-10 text-sm"
-            >
-              <option value="">Gender</option>
-              <option value="1">Male</option>
-              <option value="2">Female</option>
-            </select>
-            <select
+              onChange={(v) => setForm((p) => ({ ...p, genderCode: v }))}
+              options={[
+                { value: "", label: "Gender" },
+                { value: "1", label: "Male" },
+                { value: "2", label: "Female" },
+              ]}
+            />
+            <SearchableSelect
               value={form.ageBandCode}
-              onChange={(e) => setForm((p) => ({ ...p, ageBandCode: e.target.value }))}
-              className="h-10 text-sm"
-            >
-              <option value="">Age band</option>
-              <option value="1">18-24</option>
-              <option value="2">25-34</option>
-              <option value="3">35-44</option>
-              <option value="4">45-54</option>
-              <option value="5">55-64</option>
-              <option value="6">65-74</option>
-              <option value="7">75 or older</option>
-            </select>
-            <select
+              onChange={(v) => setForm((p) => ({ ...p, ageBandCode: v }))}
+              options={[
+                { value: "", label: "Age band" },
+                { value: "1", label: "18-24" },
+                { value: "2", label: "25-34" },
+                { value: "3", label: "35-44" },
+                { value: "4", label: "45-54" },
+                { value: "5", label: "55-64" },
+                { value: "6", label: "65-74" },
+                { value: "7", label: "75 or older" },
+              ]}
+            />
+            <SearchableSelect
               value={form.nationalityCode}
-              onChange={(e) => setForm((p) => ({ ...p, nationalityCode: e.target.value }))}
-              className="h-10 text-sm"
-            >
-              <option value="">Nationality</option>
-              <option value="1">Qatari</option>
-              <option value="2">Non-Qatari</option>
-            </select>
+              onChange={(v) => setForm((p) => ({ ...p, nationalityCode: v }))}
+              options={[
+                { value: "", label: "Nationality" },
+                { value: "1", label: demonym },
+                { value: "2", label: `Non-${demonym}` },
+              ]}
+            />
           </div>
 
           <div className="flex flex-col gap-2">
             {QUESTIONS.map((q) => (
               <div key={q.key} className="flex flex-col sm:flex-row sm:items-center gap-2">
                 <label className="text-sm text-foreground/90 sm:w-2/3">{q.label}</label>
-                <select
-                  value={form[q.key]}
-                  onChange={(e) => setForm((p) => ({ ...p, [q.key]: e.target.value }))}
-                  className="h-9 text-sm sm:w-1/3"
-                >
-                  <option value="">Not answered</option>
-                  {SCORE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+                <div className="sm:w-1/3">
+                  <SearchableSelect
+                    value={form[q.key]}
+                    onChange={(v) => setForm((p) => ({ ...p, [q.key]: v }))}
+                    options={[
+                      { value: "", label: "Not answered" },
+                      ...SCORE_OPTIONS,
+                    ]}
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -291,7 +297,11 @@ export default function PatientSatisfactionPage() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : responses.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No responses logged yet.</p>
+        <EmptyState
+          illustration="feedback"
+          title="No responses logged yet"
+          description="Patient satisfaction responses will be listed here."
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {responses.map((r) => (

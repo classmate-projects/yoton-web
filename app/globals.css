@@ -340,3 +340,78 @@ label.required::after {
   animation: bell-ring 0.7s ease-in-out;
   color: var(--primary) !important;
 }
+
+/* Blinks a card's border after a "jump to this section" scroll, so the user can tell
+   at a glance where the page landed. Amber rather than red so it reads as "look here"
+   and doesn't blend into this app's red allergy/danger styling. Keeps blinking - see
+   the allergySectionFlash effect in nursing/page.tsx - until the user clicks anywhere. */
+@keyframes section-flash {
+  0%, 100% { border-color: var(--border); box-shadow: none; }
+  50% { border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35); }
+}
+
+.animate-section-flash {
+  animation: section-flash 0.8s ease-in-out infinite;
+}
+
+@keyframes pending-glow {
+  0%, 100% { outline: 2px solid rgba(239, 68, 68, 0.6); outline-offset: 0px; }
+  50% { outline: 2.5px solid rgba(239, 68, 68, 1); outline-offset: 1px; }
+}
+
+.animate-pending-glow {
+  animation: pending-glow 1.6s ease-in-out infinite;
+}
+
+/* Login page motion: a slow drifting glow behind the page, content rising into place once on
+   load, a pulse running along the heartbeat line and two gently floating badges. All of it is
+   switched off for anyone whose system asks for reduced motion. */
+@keyframes login-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(2.5rem, 1.5rem, 0) scale(1.08); }
+}
+
+@keyframes login-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes login-pulse {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes login-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.login-drift {
+  animation: login-drift 24s ease-in-out infinite;
+}
+
+.login-rise {
+  animation: login-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* The path uses pathLength="1", so the dash is a fraction of the whole line. */
+.login-heartbeat {
+  stroke-dasharray: 0.22 0.78;
+  animation: login-pulse 2.8s linear infinite;
+}
+
+.login-float {
+  animation: login-float 6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-drift,
+  .login-rise,
+  .login-float {
+    animation: none;
+  }
+  .login-heartbeat {
+    stroke-dasharray: none;
+    animation: none;
+  }
+}

@@ -1,9 +1,11 @@
 import api from "@/lib/axios"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { ReceptionCreatePatientType } from "@/types/reception.type";
+import { CreateExternalPatientPayload, PatientMatchPayload } from "@/types/patient.type";
+import { compressImageForUpload } from "@/lib/resizeImage";
 import { CreateAppointmentPayload } from "@/types/appointment.type";
 import { UpdateDoctorSchedulePayload } from "@/types/doctorAvailability.type";
-import { CheckInPayload, WalkInPayload, ReassignVisitPayload, UploadPatientDocumentPayload } from "@/types/visit.type";
+import { CheckInPayload, WalkInPayload, ReassignVisitPayload, UploadPatientDocumentPayload, VisitType } from "@/types/visit.type";
 
 export const ReceptionService = {
     getAllPatients: async () => {
@@ -16,6 +18,22 @@ export const ReceptionService = {
     },
     createPatinet: async (payload: ReceptionCreatePatientType) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CREATE_PATIENT, payload)
+        return data;
+    },
+    // MRN, mobile, national ID/passport or name - the lookup behind every patient picker.
+    searchPatients: async (query: string, limit = 20) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.SEARCH_PATIENTS, { query, limit })
+        return data;
+    },
+    // Existing patients sharing an ID / mobile / email with the one being entered.
+    matchPatients: async (payload: PatientMatchPayload) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.MATCH_PATIENTS, payload)
+        return data;
+    },
+    // Walk-in with minimal details. Answers 409 (duplicate: true, data: matches) when the
+    // person may already be registered - see QuickPatientModal.
+    createExternalPatient: async (payload: CreateExternalPatientPayload) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.CREATE_EXTERNAL_PATIENT, payload)
         return data;
     },
     getPatientById: async (id: string) => {
@@ -36,14 +54,6 @@ export const ReceptionService = {
     },
     getDoctorAvailability: async () => {
         const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DOCTOR_AVAILABILITY)
-        return data;
-    },
-    getAllAppointments: async () => {
-        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_ALL_APPOINTMENTS)
-        return data;
-    },
-    getDoctorById: async (id: string) => {
-        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DOCTOR_BY_ID(id))
         return data;
     },
     updateDoctorSchedule: async (payload: UpdateDoctorSchedulePayload) => {
@@ -91,6 +101,16 @@ export const ReceptionService = {
         })
         return data;
     },
+    overlapAppointment: async (payload: Pick<CreateAppointmentPayload, "patientId" | "doctorId" | "appointmentDate" | "notes" | "userId">) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.OVERLAP_APPOINTMENT, {
+            PatientId: payload.patientId,
+            DoctorId: payload.doctorId,
+            AppointmentDate: payload.appointmentDate,
+            Notes: payload.notes,
+            UserId: payload.userId,
+        })
+        return data;
+    },
     cancelAppointment: async (appointmentId: string) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CANCEL(appointmentId))
         return data;
@@ -118,16 +138,16 @@ export const ReceptionService = {
         })
         return data;
     },
+    getScheduledAppointments: async (date?: string) => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_SCHEDULED_APPOINTMENTS(date))
+        return data;
+    },
     checkIn: async (payload: CheckInPayload) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CHECK_IN, payload)
         return data;
     },
     walkIn: async (payload: WalkInPayload) => {
         const { data } = await api.post(ENDPOINTS.RECEPTION.WALK_IN, payload)
-        return data;
-    },
-    getVisit: async (id: string) => {
-        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT(id))
         return data;
     },
     reassignVisit: async (id: string, payload: ReassignVisitPayload) => {
@@ -138,20 +158,55 @@ export const ReceptionService = {
         const { data } = await api.post(ENDPOINTS.RECEPTION.CANCEL_VISIT(id), { password })
         return data;
     },
-    getVisitQueue: async (status?: string) => {
-        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_VISIT_QUEUE(status))
+    getDailyVisitStats: async (): Promise<{
+        waiting: number;
+        completedToday: number;
+        waitingVisits: VisitType[];
+        completedVisits: VisitType[];
+        roleType?: string;
+        pendingNurse?: number;
+        inProgress?: number;
+        pendingNurseVisits?: VisitType[];
+        inProgressVisits?: VisitType[];
+    }> => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_DAILY_VISIT_STATS)
+        return data;
+    },
+    getPendingReferrals: async () => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_PENDING_REFERRALS);
+        return data;
+    },
+    registerFromReferral: async (referralId: string, payload: { doctorId?: string; appointmentDate?: string; notes?: string }) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.REGISTER_FROM_REFERRAL(referralId), payload);
         return data;
     },
     uploadDocument: async (patientId: string, payload: UploadPatientDocumentPayload) => {
+        const compressedFile = await compressImageForUpload(payload.file);
         const form = new FormData();
         form.append("DocumentType", payload.documentType);
         if (payload.visitId) form.append("VisitId", payload.visitId);
         if (payload.linkedLabRequestId) form.append("LinkedLabRequestId", payload.linkedLabRequestId);
         if (payload.linkedRadiologyRequestId) form.append("LinkedRadiologyRequestId", payload.linkedRadiologyRequestId);
-        form.append("File", payload.file);
+        form.append("File", compressedFile);
         const { data } = await api.post(ENDPOINTS.RECEPTION.UPLOAD_DOCUMENT(patientId), form, {
             headers: { "Content-Type": "multipart/form-data" },
         })
+        return data;
+    },
+    revertCheckIn: async (visitId: string) => {
+        const { data } = await api.post(ENDPOINTS.RECEPTION.REVERT_CHECKIN(visitId));
+        return data;
+    },
+    updateAppointment: async (appointmentId: string, payload: { doctorId?: string; appointmentDate?: string; notes?: string; urgencyLevel?: string; isFollowUp?: boolean }) => {
+        const { data } = await api.put(ENDPOINTS.RECEPTION.UPDATE_APPOINTMENT(appointmentId), payload);
+        return data;
+    },
+    getPatientDocuments: async (patientId: string) => {
+        const { data } = await api.get(ENDPOINTS.RECEPTION.GET_PATIENT_DOCUMENTS(patientId));
+        return data;
+    },
+    deletePatientDocument: async (patientId: string, docId: string) => {
+        const { data } = await api.delete(ENDPOINTS.RECEPTION.DELETE_PATIENT_DOCUMENT(patientId, docId));
         return data;
     },
 

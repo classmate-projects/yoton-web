@@ -1,6 +1,7 @@
 "use client";
 
 import LoadingSpinner from "@/components/LoadingSpinner";
+import EmptyState from "@/components/EmptyState";
 import ToggleButton from "@/components/ToggleButton";
 import DeleteIcon from "@/public/icons/deleteIcon";
 import EditIcon from "@/public/icons/EditIcon";
@@ -9,9 +10,11 @@ import { FormEvent, useEffect, useState } from "react";
 import { MdAdminPanelSettings, MdAdd, MdEdit, MdChecklist, MdClose, MdLock, MdLockOpen } from "react-icons/md";
 import { toast } from "sonner";
 import axios from "axios";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { FetchedRoles } from "@/types/role.type";
 import { useRoleSignalR } from "@/hooks/useRoleSignalR";
 import { sidebarMenuItems } from "@/helpers/sidebaritems";
+import { hasRegionFeature, useRegion } from "@/lib/region";
 import { DEFAULT_ROLE_ICON_KEY, getRoleIcon } from "@/helpers/roleIcons";
 import RoleIconPicker from "@/components/RoleIconPicker";
 import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
@@ -28,7 +31,11 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 // filter by. A role with no configuration yet (a freshly created one) simply starts fully
 // unchecked.
 const allToggleableModules = sidebarMenuItems.filter(
-  (item) => item.navLink !== "/settings" && item.navLink !== "/nursing/confidential-notes",
+  (item) =>
+    item.navLink !== "/settings" &&
+    item.navLink !== "/nursing/confidential-notes" &&
+    // Hardcoded admin-only (see lib/routeAccess.ts) - never grantable, not even by force.
+    item.navLink !== "/staff-attendance",
 );
 
 // Mirrors the backend's ModuleKeys.AdminOnly exactly - each is either full account/
@@ -42,6 +49,7 @@ const allToggleableModules = sidebarMenuItems.filter(
 const ADMIN_ONLY_MODULES = new Set(["/user-management", "/departments", "/config-lists", "/reports/kpi"]);
 
 export default function RoleManagementPage() {
+  const region = useRegion();
   const [roles, setRoles] = useState<FetchedRoles[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -295,27 +303,39 @@ export default function RoleManagementPage() {
   // the modal shows every module ticked and read-only for admin instead.
   const isAdminRole = permissionsRole?.name.trim().toLowerCase() === "admin";
 
-  const grantableModules = allToggleableModules.filter((item) => !ADMIN_ONLY_MODULES.has(item.navLink));
+  // Country-only modules (e.g. Qatar's MoPH KPI reports) are only offered where the
+  // installation's region has them. An existing grant stays saved untouched (see
+  // handleToggleAllModules) in case the country is switched back.
+  const toggleableModules = allToggleableModules.filter(
+    (item) => !item.regionFeature || hasRegionFeature(region, item.regionFeature),
+  );
+  const grantableModules = toggleableModules.filter((item) => !ADMIN_ONLY_MODULES.has(item.navLink));
   const allModulesSelected =
     grantableModules.length > 0 &&
     grantableModules.every((item) => visibleModules.has(item.navLink));
   const someModulesSelected = grantableModules.some((item) => visibleModules.has(item.navLink));
 
   const handleToggleAllModules = () => {
+    const notListed = [...visibleModules].filter((navLink) => !grantableModules.some((item) => item.navLink === navLink));
     setVisibleModules(
-      allModulesSelected ? new Set() : new Set(grantableModules.map((item) => item.navLink)),
+      allModulesSelected
+        ? new Set(notListed)
+        : new Set([...notListed, ...grantableModules.map((item) => item.navLink)]),
     );
   };
 
   const handleSavePermissions = async () => {
     if (!permissionsRole) return;
     setSavingPermissions(true);
+    notifySaveStatus("saving");
     try {
       const data = await RoleService.setAllowedModules(permissionsRole.roleId, [...visibleModules]);
+      notifySaveStatus("saved");
       toast.success(data.message);
       handleClosePermissions();
     } catch (error) {
       console.error("Failed to update role permissions", error);
+      notifySaveStatus("error");
       toast.error("Failed to save permissions");
     } finally {
       setSavingPermissions(false);
@@ -349,7 +369,11 @@ export default function RoleManagementPage() {
             </div>
           ) : roles.length === 0 ? (
             <div className="h-80 flex justify-center items-center">
-              <p className="text-gray-500">No roles configured.</p>
+              <EmptyState
+                illustration="roles"
+                title="No roles configured"
+                description="Roles control which modules each staff member can access."
+              />
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 content-start h-[60dvh] overflow-y-scroll">
@@ -532,7 +556,7 @@ export default function RoleManagementPage() {
                   <span className="text-sm font-semibold">Select All</span>
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 max-h-[50dvh] overflow-y-auto pr-1">
-                {allToggleableModules.map((item) => {
+                {toggleableModules.map((item) => {
                   if (isAdminRole) {
                     return (
                       <label

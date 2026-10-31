@@ -17,7 +17,10 @@ export interface ReceptionCreatePatientType {
     phone: string;
     phoneCode: string;
     email: string;
+    // The one-line address. When addressFields is sent the API builds this itself from them.
     address: string;
+    // The address in the installation's country's own structure (see RegionAddressFields).
+    addressFields?: Record<string, string> | null;
     nationality: string;
     passportNumber: string;
     nationalID: string;
@@ -57,6 +60,10 @@ export interface ReceptionCreatePatientType {
 
     password: string;
     registeredBy: string;
+
+    // Sent as "Full" by the full registration form: completing a walk-in's minimal
+    // (External) record through it promotes them to a fully registered patient.
+    registrationType?: "Full" | "External";
 }
 
 // GET /api/reception/patient/{id} - full decrypted field set for prefilling the edit form.
@@ -78,6 +85,26 @@ export interface PatientGetAllType {
     address: string;
     nationalID?: string | null;
     passportNumber?: string | null;
+    registrationType?: "Full" | "External";
+}
+
+// One row in the front-office referral queue - see ReceptionController.GetPendingReferrals.
+// Only referrals where DateSeenBySpecialist is null are returned; once the specialist
+// opens a consultation the date is auto-captured and the row disappears from this list.
+export interface PendingReferralType {
+  referralId: string;
+  patientId: string;
+  patientName: string | null;
+  patientOpNumber: string | null;
+  patientPhone: string | null;
+  referringDoctorName: string | null;
+  targetSpecializationId: string;
+  targetSpecializationName: string | null;
+  priority: string;
+  notes: string | null;
+  cancerSiteName: string | null;
+  externalFacility: string | null;
+  createdAt: string;
 }
 
 // One row per Visit within a date range (Patient Records' "Patient Visit List" toggle) - see

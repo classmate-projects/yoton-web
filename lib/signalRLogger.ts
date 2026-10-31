@@ -12,6 +12,13 @@ class ReconnectAwareLogger implements ILogger {
       console.warn(`[SignalR] ${message} Reconnecting...`);
       return;
     }
+    // Negotiation failures (API not up yet, brief network hiccup) are transient —
+    // signalR.ts clears the cached promise on failure so the next page load retries.
+    // Logging them as errors fills the console with red noise on every cold start.
+    if (logLevel === LogLevel.Error && message.startsWith("Failed to complete negotiation")) {
+      console.warn(`[SignalR] ${message}`);
+      return;
+    }
     if (logLevel >= LogLevel.Warning) {
       const prefix = LogLevel[logLevel];
       (logLevel >= LogLevel.Error ? console.error : console.warn)(`[SignalR] ${prefix}: ${message}`);

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import EmptyState from "@/components/EmptyState";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -12,6 +13,8 @@ import {
   CalendarClock,
   CalendarPlus,
   Check,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
   FileText,
   FlaskConical,
@@ -22,21 +25,30 @@ import {
   Pencil,
   Pill,
   Plus,
+  RotateCcw,
   Save,
   Search,
   Share2,
   Stethoscope,
   Stamp,
   StickyNote,
+  Syringe,
   Trash2,
+  Unlock as UnlockIcon,
+  Upload,
   Users,
   X,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { notifySaveStatus } from "@/lib/saveStatus";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import DatePicker from "@/components/DatePicker";
+import SearchableSelect, { standaloneSelectClass } from "@/components/SearchableSelect";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import MedicationOrderPanel from "@/components/doctor/MedicationOrderPanel";
 import OrderedItemsList from "@/components/orders/OrderedItemsList";
+import OrderLockNotice from "@/components/orders/OrderLockNotice";
+import { parseServerUtcDate } from "@/lib/date";
 import LabRadiologyConfigModal, {
   DEFAULT_LAB_RADIOLOGY_VALUES,
   LabRadiologyConfigValues,
@@ -52,9 +64,16 @@ import FloatingSaveRevertBar from "@/components/FloatingSaveRevertBar";
 import ToggleButton from "@/components/ToggleButton";
 import VitalsHistoryModal from "@/components/VitalsHistoryModal";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
+import FamilyHistorySection from "@/components/FamilyHistorySection";
 import DentalChartSection from "@/components/dental/DentalChartSection";
 import { getUserDetail } from "@/lib/userDetail";
+import HintTooltip from "@/components/HintTooltip";
+import { useCurrentEncounter } from "@/lib/currentEncounterContext";
+import { backendAssetUrl } from "@/lib/backendAsset";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import PatientEmrModal from "@/components/PatientEmrModal";
+import AdminPasswordConfirm from "@/components/AdminPasswordConfirm";
+import HistoryDrawer from "@/components/HistoryDrawer";
 import { EmrService } from "@/services/emr.service";
 import { UserService } from "@/services/user.service";
 import { SpecializationService } from "@/services/specialization.service";
@@ -65,12 +84,15 @@ import { ConfigListService } from "@/services/configList.service";
 import { NursingService } from "@/services/nursing.service";
 import {
   ActiveCaseItemType,
+  AllergyPayload,
   AllergyType,
   ChronicConditionType,
   DoctorConfidentialNoteType,
   DoctorDashboardSummaryType,
   EmrPatientListItem,
   EncounterCorrectionType,
+  EncounterListItemType,
+  EncounterUnlockRequestType,
   FollowUpType,
   MedicationPayload,
   MedicationType,
@@ -90,6 +112,10 @@ import { RadiologyRequestType } from "@/types/radiology.type";
 import { TreatmentType } from "@/types/treatment.type";
 import { ListItemType } from "@/types/configList.type";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { useImmunizationSchedule } from "@/hooks/useImmunizationSchedule";
+import { formatCurrency } from "@/lib/currency";
+import ImmunizationScheduleModal from "@/components/immunization/ImmunizationScheduleModal";
+import ImmunizationRemindersCard from "@/components/immunization/ImmunizationRemindersCard";
 
 const errorMessage = (error: unknown, fallback: string) =>
   axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
@@ -102,10 +128,13 @@ const formatDateTime = (value: string | null | undefined) =>
 
 function DoctorWorkbenchInner() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const visitIdParam = searchParams.get("visitId") || undefined;
   const initialPatientIdParam = searchParams.get("patientId") || undefined;
+  const { setCurrentEncounter, setReopenState } = useCurrentEncounter();
 
+  const [activeVisitId, setActiveVisitId] = useState<string | undefined>(visitIdParam);
   const [role, setRole] = useState<string | null>(null);
   const [checkedAuth, setCheckedAuth] = useState(false);
 
@@ -116,14 +145,31 @@ function DoctorWorkbenchInner() {
 
   const [dashboard, setDashboard] = useState<DoctorDashboardSummaryType | null>(null);
   const [schedule, setSchedule] = useState<TodayScheduleItemType[]>([]);
+  const [scheduleDate, setScheduleDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [scheduleSearch, setScheduleSearch] = useState("");
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
   const [activeCases, setActiveCases] = useState<ActiveCaseItemType[]>([]);
   const [patients, setPatients] = useState<EmrPatientListItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+
+  type QueuePatient = { visitId: string; patientId: string; patientName: string; checkedInAt: string; visitType: string };
+  const [pendingNurseQueue, setPendingNurseQueue] = useState<QueuePatient[]>([]);
+  const [waitingForDoctorQueue, setWaitingForDoctorQueue] = useState<QueuePatient[]>([]);
+  const [patientsPage, setPatientsPage] = useState(1);
   const [isLoadingWorkbench, setIsLoadingWorkbench] = useState(true);
 
+  const [emrModal, setEmrModal] = useState<{ patientId: string; patientName: string } | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [summary, setSummary] = useState<PatientSummaryType | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const [rosExpanded, setRosExpanded] = useState(false);
+  const [patientAlertText, setPatientAlertText] = useState("");
+  const [patientWarningModal, setPatientWarningModal] = useState<{ allergies: AllergyType[]; alertText: string } | null>(null);
+  const [pastMedicalHistory, setPastMedicalHistory] = useState("");
+  const [pastSurgicalHistory, setPastSurgicalHistory] = useState("");
+  const [pastTreatmentHistory, setPastTreatmentHistory] = useState("");
+  const [socialHistory, setSocialHistory] = useState("");
   // Date.now() can't be called during render (React treats it as impure) - computed instead
   // in the "Print Prescription" click handler below, where reading the clock is allowed.
   const [patientAgeForPrint, setPatientAgeForPrint] = useState<number | null>(null);
@@ -157,6 +203,56 @@ function DoctorWorkbenchInner() {
     return true;
   };
 
+  // ---------------- PATIENT ALERT + MEDICAL HISTORY (auto-saved) ----------------
+  // Only once this patient's own record has loaded - never mid-switch, when these fields
+  // still hold (or were just cleared of) the previous patient's details.
+  const patientRecordReady = !!selectedPatientId && !isLoadingSummary && summary?.opId === selectedPatientId;
+
+  const alertAutoSave = useAutoSave({
+    value: patientAlertText,
+    enabled: patientRecordReady,
+    save: (text) => EmrService.updatePatientAlert(selectedPatientId!, text.trim() || null, doctorIdParam),
+    label: "patient alert",
+    delay: 1200,
+  });
+
+  const medicalHistory = { pastMedicalHistory, pastSurgicalHistory, pastTreatmentHistory, socialHistory };
+  const historyAutoSave = useAutoSave({
+    value: medicalHistory,
+    enabled: patientRecordReady,
+    save: (h) =>
+      EmrService.updateMedicalHistory(
+        selectedPatientId!,
+        {
+          pastMedicalHistory: h.pastMedicalHistory.trim() || null,
+          pastSurgicalHistory: h.pastSurgicalHistory.trim() || null,
+          pastTreatmentHistory: h.pastTreatmentHistory.trim() || null,
+          socialHistory: h.socialHistory.trim() || null,
+        },
+        doctorIdParam
+      ),
+    label: "medical history",
+    delay: 1200,
+  });
+
+  // Sets the alert/history fields to what the server holds, so they don't count as edits.
+  const loadPatientRecordFields = (record: PatientSummaryType | null) => {
+    const alert = record?.patientAlert ?? "";
+    const history = {
+      pastMedicalHistory: record?.pastMedicalHistory ?? "",
+      pastSurgicalHistory: record?.pastSurgicalHistory ?? "",
+      pastTreatmentHistory: record?.pastTreatmentHistory ?? "",
+      socialHistory: record?.socialHistory ?? "",
+    };
+    alertAutoSave.markSaved(alert);
+    historyAutoSave.markSaved(history);
+    setPatientAlertText(alert);
+    setPastMedicalHistory(history.pastMedicalHistory);
+    setPastSurgicalHistory(history.pastSurgicalHistory);
+    setPastTreatmentHistory(history.pastTreatmentHistory);
+    setSocialHistory(history.socialHistory);
+  };
+
   // ---------------- ROLE GUARD ----------------
   useEffect(() => {
     const detail = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
@@ -179,12 +275,34 @@ function DoctorWorkbenchInner() {
   }, [checkedAuth, isAdmin]);
 
   // ---------------- WORKBENCH DATA ----------------
+  const loadSchedule = async (date: string) => {
+    try {
+      setIsLoadingSchedule(true);
+      const res = await EmrService.getTodaySchedule(doctorIdParam, date);
+      setSchedule(res.data || []);
+    } catch {
+      toast.error("Failed to load schedule");
+    } finally {
+      setIsLoadingSchedule(false);
+    }
+  };
+
+  const fetchTodayQueue = async () => {
+    try {
+      const res = await EmrService.getTodayQueue(doctorIdParam);
+      setPendingNurseQueue(res.pendingNurse ?? []);
+      setWaitingForDoctorQueue(res.waitingForDoctor ?? []);
+    } catch {
+      // queue is informational — silently ignore
+    }
+  };
+
   const fetchWorkbench = async () => {
     try {
       setIsLoadingWorkbench(true);
       const [dashboardRes, scheduleRes, activeCasesRes, patientsRes] = await Promise.all([
         EmrService.getDashboardSummary(doctorIdParam),
-        EmrService.getTodaySchedule(doctorIdParam),
+        EmrService.getTodaySchedule(doctorIdParam, scheduleDate),
         EmrService.getActiveCases(doctorIdParam),
         EmrService.getPatients(doctorIdParam),
       ]);
@@ -197,6 +315,7 @@ function DoctorWorkbenchInner() {
     } finally {
       setIsLoadingWorkbench(false);
     }
+    fetchTodayQueue();
   };
 
   useEffect(() => {
@@ -205,11 +324,32 @@ function DoctorWorkbenchInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, selectedDoctorId]);
 
+  useEffect(() => {
+    if (!checkedAuth || isLoadingWorkbench) return;
+    loadSchedule(scheduleDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleDate]);
+
+  useEffect(() => {
+    const id = setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  function formatWait(checkedInAt: string | null): string {
+    if (!checkedInAt) return "—";
+    const mins = Math.floor((scheduleNow - new Date(checkedInAt).getTime()) / 60_000);
+    if (mins < 1) return "< 1 min";
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m} min`;
+  }
+
   useSignalRRefetch(
     [
       "appointmentCreated",
       "appointmentCancelled",
       "appointmentStatusUpdated",
+      "visitCheckedIn",
       "visitStatusUpdated",
       "encounterSaved",
       "encounterFinished",
@@ -219,6 +359,8 @@ function DoctorWorkbenchInner() {
     fetchWorkbench
   );
 
+  useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], fetchTodayQueue);
+
   useEffect(() => {
     if (!checkedAuth) return;
     SpecializationService.getAll()
@@ -227,9 +369,25 @@ function DoctorWorkbenchInner() {
   }, [checkedAuth]);
 
   // ---------------- EXTERNAL DOCUMENTS ----------------
-  const [documents, setDocuments] = useState<{ patientDocumentId: string; documentType: string; createdAt: string }[]>([]);
+  type DocumentItem = { patientDocumentId: string; documentType: string; filePath: string | null; viewedByDoctor: boolean; createdAt: string };
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [unviewedDocumentCount, setUnviewedDocumentCount] = useState(0);
   const [showDocuments, setShowDocuments] = useState(false);
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+
+  // ---------------- PEDIATRIC IMMUNIZATION ----------------
+  // Offered for a pediatric patient (under the Settings age limit), and kept reachable
+  // read-only for one who has aged out but already has a record.
+  const [showImmunization, setShowImmunization] = useState(false);
+  const immunizationEnabled =
+    !!summary && summary.opId === selectedPatientId && (summary.isPediatric || summary.hasImmunizationRecords);
+  const { schedule: immunizationSchedule } = useImmunizationSchedule(selectedPatientId, immunizationEnabled);
+  const immunizationOverdue = immunizationSchedule?.counts.overdue ?? 0;
+  const immunizationDue = (immunizationSchedule?.counts.due ?? 0) + immunizationOverdue;
+  const [uploadDocFile, setUploadDocFile] = useState<File | null>(null);
+  const [uploadDocType, setUploadDocType] = useState("Report");
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
 
   const fetchDocuments = async (patientId: string) => {
     try {
@@ -243,25 +401,47 @@ function DoctorWorkbenchInner() {
   };
 
   // ---------------- PATIENT SUMMARY (EMR PANEL) ----------------
-  const openPatient = async (patientId: string) => {
+  const openPatient = async (patientId: string, visitId?: string | null) => {
+    // Push to browser history so the back button returns to the workbench list.
+    // Skip if the URL already reflects this patient (opened via URL param).
+    if (patientId !== initialPatientIdParam) {
+      const params = new URLSearchParams();
+      params.set("patientId", patientId);
+      if (visitId) params.set("visitId", visitId);
+      router.push(`${pathname}?${params.toString()}`);
+    }
+    setActiveVisitId(visitId != null ? visitId : undefined);
     setSelectedPatientId(patientId);
-    await Promise.all([
-      fetchSummary(patientId),
+    const [loadedSummary] = await Promise.all([
+      fetchSummary(patientId, visitId ?? undefined),
       fetchQuickNotes(patientId),
       fetchDocuments(patientId),
       fetchConfidentialNotes(patientId),
       fetchLatestVitals(patientId),
     ]);
+    setCurrentEncounter(patientId, loadedSummary?.latestEncounter?.encounterId ?? null, visitId ?? null);
+    const hasAlert = loadedSummary?.patientAlert?.trim();
+    const hasAllergies = (loadedSummary?.allergies?.length ?? 0) > 0;
+    if (hasAlert || hasAllergies) {
+      setPatientWarningModal({
+        allergies: loadedSummary?.allergies ?? [],
+        alertText: loadedSummary?.patientAlert ?? "",
+      });
+    }
   };
 
-  const fetchSummary = async (patientId: string) => {
+  const fetchSummary = async (patientId: string, overrideVisitId?: string): Promise<PatientSummaryType | null> => {
     try {
       setIsLoadingSummary(true);
-      const res = await EmrService.getPatientSummary(patientId, doctorIdParam);
+      const res = await EmrService.getPatientSummary(patientId, doctorIdParam, overrideVisitId ?? activeVisitId);
       setSummary(res.data);
+      loadPatientRecordFields(res.data ?? null);
+      return res.data ?? null;
     } catch (error) {
       toast.error(errorMessage(error, "Failed to load patient summary"));
       setSummary(null);
+      loadPatientRecordFields(null);
+      return null;
     } finally {
       setIsLoadingSummary(false);
     }
@@ -311,9 +491,20 @@ function DoctorWorkbenchInner() {
     }
   };
 
-  const backToWorkbench = () => {
+  // Sends this patient's pending edits right away - before their fields are cleared on leaving.
+  // Filled in further down, once every auto-saved section has been declared.
+  const flushPatientSavesRef = useRef<() => Promise<unknown>>(async () => {});
+
+  const backToWorkbench = async () => {
+    await flushPatientSavesRef.current();
+    setActiveVisitId(undefined);
     setSelectedPatientId(null);
+    setCurrentEncounter(null, null, null);
     setSummary(null);
+    loadPatientRecordFields(null);
+    setPatientWarningModal(null);
+    setShowDocumentsModal(false);
+    setShowImmunization(false);
     setQuickNotes([]);
     setConfidentialNotes([]);
     setVitalsHistory([]);
@@ -321,13 +512,34 @@ function DoctorWorkbenchInner() {
     setNurseNotes([]);
     setNurseExaminationNotes([]);
     fetchWorkbench();
+    // Clear URL params so browser back/forward history stays consistent.
+    if (initialPatientIdParam) router.push(pathname);
   };
 
   // Arriving from the reception visit queue (?patientId=&visitId=) opens that patient's
   // EMR panel directly instead of landing on the workbench list.
   useEffect(() => {
-    if (checkedAuth && initialPatientIdParam) {
-      openPatient(initialPatientIdParam);
+    if (!checkedAuth) return;
+    if (initialPatientIdParam) {
+      openPatient(initialPatientIdParam, visitIdParam);
+    } else if (selectedPatientId) {
+      // URL params were cleared by the browser back button — return to workbench.
+      void flushPatientSavesRef.current();
+      setActiveVisitId(undefined);
+      setSelectedPatientId(null);
+      setCurrentEncounter(null, null, null);
+      setSummary(null);
+      loadPatientRecordFields(null);
+      setPatientWarningModal(null);
+      setShowDocumentsModal(false);
+      setShowImmunization(false);
+      setQuickNotes([]);
+      setConfidentialNotes([]);
+      setVitalsHistory([]);
+      setNurseSpecialRemarks([]);
+      setNurseNotes([]);
+      setNurseExaminationNotes([]);
+      fetchWorkbench();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedAuth, initialPatientIdParam]);
@@ -351,18 +563,50 @@ function DoctorWorkbenchInner() {
 
   const [encounterForm, setEncounterForm] = useState({
     chiefComplaint: "",
+    diagnosisDescription: "",
     plannedProcedures: "",
     examinationNotes: "",
     clinicalExamination: "",
     ...emptyRos,
+    currentManagementPlan: "",
+    futureManagementPlan: "",
   });
   // Baseline the form is compared against to detect unsaved edits — only meaningful for
   // admin viewing a Completed (locked) encounter, where the floating Save/Revert bar and
   // the "propose correction" flow kick in instead of the normal direct save.
   const [encounterFormSnapshot, setEncounterFormSnapshot] = useState(encounterForm);
   const [isSavingEncounter, setIsSavingEncounter] = useState(false);
+  const [isReleasingPatient, setIsReleasingPatient] = useState(false);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
 
   const isCompletedEncounter = summary?.latestEncounter?.status === "Completed";
+
+  // Encounter notes save themselves 3 s after the doctor stops typing (active encounters only).
+  // Save Encounter stays as the explicit action on top of this.
+  const encounterAutoSave = useAutoSave({
+    value: encounterForm,
+    enabled: !!selectedPatientId && !!summary?.latestEncounter && !isCompletedEncounter,
+    save: (form) => EmrService.upsertEncounter(selectedPatientId!, { ...form, visitId: activeVisitId }, doctorIdParam),
+    label: "encounter notes",
+    delay: 3000,
+  });
+  // Today's finalized encounter reopens with the doctor's own password (Re-Encounter); an
+  // earlier visit's goes through the admin-approved Reopen request instead.
+  const isTodaysEncounter =
+    !!summary?.latestEncounter &&
+    parseServerUtcDate(summary.latestEncounter.createdAt).toDateString() === new Date().toDateString();
+  const canReEncounter = isCompletedEncounter && !isAdmin && isTodaysEncounter;
+  // Orders on a finalized encounter are read-only for everyone (the server enforces it);
+  // the rest of the encounter follows the notes rule, where admin proposes corrections.
+  const ordersReadOnly = isCompletedEncounter;
+  const encounterReadOnly = isCompletedEncounter && !isAdmin;
+  const visitLockHint = !isCompletedEncounter
+    ? "It belongs to an earlier visit that's already finalized — discontinue or re-order instead."
+    : isAdmin
+      ? "This encounter is finalized."
+      : isTodaysEncounter
+        ? "Click Re-Encounter to make changes."
+        : "Use Reopen to ask an admin for edit access.";
   const isEncounterDirty =
     isAdmin && isCompletedEncounter && JSON.stringify(encounterForm) !== JSON.stringify(encounterFormSnapshot);
 
@@ -370,6 +614,7 @@ function DoctorWorkbenchInner() {
     const e = summary?.latestEncounter;
     const loaded = {
       chiefComplaint: e?.chiefComplaint || "",
+      diagnosisDescription: e?.diagnosisDescription || "",
       plannedProcedures: e?.plannedProcedures || "",
       examinationNotes: e?.examinationNotes || "",
       clinicalExamination: e?.clinicalExamination || "",
@@ -386,7 +631,11 @@ function DoctorWorkbenchInner() {
       rosHematologic: e?.rosHematologic || "",
       rosAllergicImmunologic: e?.rosAllergicImmunologic || "",
       rosIntegumentary: e?.rosIntegumentary || "",
+      currentManagementPlan: e?.currentManagementPlan || "",
+      futureManagementPlan: e?.futureManagementPlan || "",
     };
+    // What was just loaded is already on the server - nothing for auto-save to send.
+    encounterAutoSave.markSaved(loaded);
     setEncounterForm(loaded);
     setEncounterFormSnapshot(loaded);
     // Intentionally re-run only when the encounter identity changes, not on every field edit.
@@ -395,16 +644,20 @@ function DoctorWorkbenchInner() {
 
   const saveEncounter = async () => {
     if (!selectedPatientId || !requireDoctorSelected()) return;
+    notifySaveStatus("saving");
     try {
       setIsSavingEncounter(true);
       await EmrService.upsertEncounter(
         selectedPatientId,
-        { ...encounterForm, visitId: visitIdParam },
+        { ...encounterForm, visitId: activeVisitId },
         doctorIdParam
       );
+      encounterAutoSave.markSaved(encounterForm);
       toast.success("Encounter saved");
+      notifySaveStatus("saved");
       await fetchSummary(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save encounter"));
     } finally {
       setIsSavingEncounter(false);
@@ -412,6 +665,21 @@ function DoctorWorkbenchInner() {
   };
 
   const revertEncounterForm = () => setEncounterForm(encounterFormSnapshot);
+
+  const releasePatient = async (password: string) => {
+    if (!activeVisitId) return;
+    setIsReleasingPatient(true);
+    try {
+      await EmrService.releaseVisit(activeVisitId, doctorIdParam, password);
+      toast.success("Patient released and returned to appointment queue.");
+      setShowReleaseConfirm(false);
+      await backToWorkbench();
+    } finally {
+      setIsReleasingPatient(false);
+    }
+  };
+
+  const [showDentalChartModal, setShowDentalChartModal] = useState(false);
 
   // ---------------- ENCOUNTER CORRECTIONS (admin proposing, doctor acknowledging) ----------------
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
@@ -450,6 +718,7 @@ function DoctorWorkbenchInner() {
       toast.error("Select the doctor this correction should go to");
       return;
     }
+    notifySaveStatus("saving");
     try {
       setIsProposingCorrection(true);
       await EmrService.proposeEncounterCorrection(selectedPatientId, summary.latestEncounter.encounterId, {
@@ -457,14 +726,172 @@ function DoctorWorkbenchInner() {
         targetUserId: selectedCorrectionDoctorId,
       });
       toast.success("Correction sent — it applies once the doctor acknowledges it");
+      notifySaveStatus("saved");
       setEncounterFormSnapshot(encounterForm);
       setShowCorrectionModal(false);
       await fetchEncounterCorrections();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to send correction"));
     } finally {
       setIsProposingCorrection(false);
     }
+  };
+
+  // ---------------- ENCOUNTER UNLOCK REQUESTS (doctor requests admin to reopen) ----------------
+  const [unlockReason, setUnlockReason] = useState("");
+  const [isRequestingUnlock, setIsRequestingUnlock] = useState(false);
+  const [showUnlockRequestModal, setShowUnlockRequestModal] = useState(false);
+  const [pendingUnlockForEncounter, setPendingUnlockForEncounter] = useState(false);
+  const [unlockRequests, setUnlockRequests] = useState<EncounterUnlockRequestType[]>([]);
+  const [resolvingUnlockId, setResolvingUnlockId] = useState<string | null>(null);
+
+  const fetchUnlockRequests = async () => {
+    if (!isAdmin) return;
+    try {
+      const res = await EmrService.getEncounterUnlockRequests();
+      setUnlockRequests(res.data || []);
+    } catch {
+      setUnlockRequests([]);
+    }
+  };
+
+  const fetchUnlockStatusForEncounter = async () => {
+    if (isAdmin || !selectedPatientId || !summary?.latestEncounter || !isCompletedEncounter) return;
+    try {
+      const res = await EmrService.getMyUnlockRequestStatus(selectedPatientId, summary.latestEncounter.encounterId);
+      setPendingUnlockForEncounter(res.pending ?? false);
+    } catch {
+      setPendingUnlockForEncounter(false);
+    }
+  };
+
+  useEffect(() => {
+    if (checkedAuth && isAdmin) fetchUnlockRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkedAuth, isAdmin]);
+
+  useEffect(() => {
+    fetchUnlockStatusForEncounter();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary?.latestEncounter?.encounterId, isCompletedEncounter]);
+
+  // Signal the header "Reopen" button visibility through context - only for an earlier
+  // visit; today's finalized encounter uses Re-Encounter instead.
+  useEffect(() => {
+    if (!selectedPatientId || !isCompletedEncounter || isAdmin || isTodaysEncounter) {
+      setReopenState(false, null);
+      return;
+    }
+    setReopenState(true, () => setShowUnlockRequestModal(true));
+    return () => setReopenState(false, null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCompletedEncounter, selectedPatientId, isAdmin, isTodaysEncounter, setReopenState]);
+
+  // Fetch the full past-encounters list for this patient so the Past Visits drawer and
+  // history drawers can show previous visit dates and chief complaints.
+  const [pastEncounters, setPastEncounters] = useState<EncounterListItemType[]>([]);
+  useEffect(() => {
+    if (!selectedPatientId) { setPastEncounters([]); return; }
+    EmrService.getPatientEncounters(selectedPatientId, doctorIdParam)
+      .then((res) => setPastEncounters(res.data ?? []))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPatientId, doctorIdParam]);
+
+  useSignalRRefetch(["encounterUnlockRequested", "encounterUnlockResolved"], () => {
+    fetchUnlockRequests();
+    fetchUnlockStatusForEncounter();
+  });
+
+  const submitUnlockRequest = async () => {
+    if (!selectedPatientId || !summary?.latestEncounter) return;
+    try {
+      setIsRequestingUnlock(true);
+      await EmrService.requestEncounterUnlock(selectedPatientId, summary.latestEncounter.encounterId, unlockReason);
+      toast.success("Unlock request sent — an admin will review it");
+      setPendingUnlockForEncounter(true);
+      setShowUnlockRequestModal(false);
+      setUnlockReason("");
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to send unlock request"));
+    } finally {
+      setIsRequestingUnlock(false);
+    }
+  };
+
+  const resolveUnlockRequest = async (requestId: string, action: "approve" | "deny") => {
+    try {
+      setResolvingUnlockId(requestId);
+      if (action === "approve") {
+        await EmrService.approveEncounterUnlock(requestId);
+        toast.success("Encounter unlocked — the doctor can now edit it");
+      } else {
+        await EmrService.denyEncounterUnlock(requestId);
+        toast.success("Unlock request denied");
+      }
+      await fetchUnlockRequests();
+      if (selectedPatientId) await fetchSummary(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to resolve unlock request"));
+    } finally {
+      setResolvingUnlockId(null);
+    }
+  };
+
+  // ---------------- LIVE ORDER LOCKS ----------------
+  // Keeps the open patient's orders current while other teams work on them - a lock appears
+  // the moment lab/nursing/pharmacy start something and lifts the moment they revert it.
+  // Only replaces `summary`: fetchSummary would also reset the alert/history fields the
+  // doctor may be typing in. Debounced since one action can fire several events.
+  const selectedPatientIdRef = useRef(selectedPatientId);
+  useEffect(() => {
+    selectedPatientIdRef.current = selectedPatientId;
+  });
+  const liveRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refreshSummarySilently = async (patientId: string) => {
+    try {
+      const res = await EmrService.getPatientSummary(patientId, doctorIdParam, activeVisitId);
+      if (selectedPatientIdRef.current === patientId && res.data) setSummary(res.data);
+    } catch {
+      // Keep what's on screen - the next event or action refreshes it again.
+    }
+  };
+
+  useSignalRRefetch(
+    [
+      "labStatusUpdated", "labRequestCreated", "labRequestUpdated", "labRequestRemoved",
+      "radiologyStatusUpdated", "radiologyRequestCreated", "radiologyRequestUpdated", "radiologyRequestRemoved",
+      "treatmentAdded", "treatmentUpdated", "treatmentStarted", "treatmentReverted", "treatmentMarkedDone", "treatmentRemoved",
+      "medicationAdded", "medicationUpdated", "medicationRemoved", "medicationDiscontinued",
+      "medicationAdministered", "medicationAdministrationCancelled",
+      "medicationPrepared", "medicationPrepareReverted", "medicationDispensed",
+      "diagnosisAdded", "diagnosisRemoved",
+      "encounterFinished", "encounterReopened", "encounterUnlockResolved", "encounterCorrectionResolved",
+    ],
+    () => {
+      const patientId = selectedPatientIdRef.current;
+      if (!patientId) return;
+      if (liveRefreshTimerRef.current) clearTimeout(liveRefreshTimerRef.current);
+      liveRefreshTimerRef.current = setTimeout(() => void refreshSummarySilently(patientId), 400);
+    }
+  );
+
+  useEffect(() => () => {
+    if (liveRefreshTimerRef.current) clearTimeout(liveRefreshTimerRef.current);
+  }, []);
+
+  // ---------------- RE-ENCOUNTER (doctor reopens today's finalized encounter) ----------------
+  const [showReEncounterConfirm, setShowReEncounterConfirm] = useState(false);
+
+  // Left throwing on failure so the password prompt shows the error and lets the doctor retry.
+  const reEncounter = async (password: string) => {
+    if (!selectedPatientId || !summary?.latestEncounter) return;
+    await EmrService.reEncounter(summary.latestEncounter.encounterId, password);
+    setShowReEncounterConfirm(false);
+    toast.success("Encounter re-opened. Orders another team has already started stay locked until they revert them.");
+    await refreshSummarySilently(selectedPatientId);
   };
 
   // ---------------- MY PENDING CORRECTIONS (doctor acknowledging admin's edits) ----------------
@@ -509,6 +936,14 @@ function DoctorWorkbenchInner() {
 
   const finishEncounter = async () => {
     if (!summary?.latestEncounter) return;
+    // Anything typed in the last few seconds must reach the server before the encounter locks.
+    const [notesSaved, dentalSaved] = await Promise.all([encounterAutoSave.flush(), dentalAutoSave.flush()]);
+    if (!notesSaved || !dentalSaved) {
+      toast.error("Your latest changes aren't saved yet", {
+        description: "The encounter wasn't finished. Once the save problem shown above is resolved, try again.",
+      });
+      return;
+    }
     try {
       setIsSavingEncounter(true);
       await EmrService.finishEncounter(summary.latestEncounter.encounterId, doctorIdParam);
@@ -609,17 +1044,43 @@ function DoctorWorkbenchInner() {
   };
 
   // ---------------- ALLERGIES ----------------
-  const [allergyForm, setAllergyForm] = useState({ substance: "", reaction: "" });
+  const emptyAllergyForm = { substance: "", reaction: "", allergyCategory: "", severity: "", identifiedDate: "", status: "Active", remarks: "" };
+  const [allergyForm, setAllergyForm] = useState(emptyAllergyForm);
   const [editingAllergyId, setEditingAllergyId] = useState<string | null>(null);
+
+  const ALLERGY_CATEGORIES = ["Drug", "Food", "Environmental", "Latex", "Contrast Media", "Other"];
+  const ALLERGENS_BY_CATEGORY: Record<string, string[]> = {
+    Drug: ["Penicillin", "Amoxicillin", "Aspirin", "NSAIDs", "Sulfonamides", "Codeine", "Morphine", "Tetracycline", "Other Drug"],
+    Food: ["Peanuts", "Tree Nuts", "Shellfish", "Fish", "Milk (Dairy)", "Eggs", "Wheat (Gluten)", "Soy", "Other Food"],
+    Environmental: ["Pollen", "Dust Mites", "Pet Dander", "Mold", "Grass", "Trees", "Other Environmental"],
+    Latex: ["Latex Gloves", "Latex Products", "Other Latex"],
+    "Contrast Media": ["Iodinated Contrast", "Gadolinium Contrast", "Other Contrast Media"],
+    Other: ["Other"],
+  };
+  const SEVERITIES = ["Mild", "Moderate", "Severe", "Life-threatening"];
+  const REACTIONS = ["Rash", "Hives (Urticaria)", "Itching (Pruritus)", "Swelling (Angioedema)", "Anaphylaxis", "Nausea/Vomiting", "Diarrhea", "Respiratory Distress", "Contact Dermatitis", "Other"];
+  const ALLERGY_STATUSES = ["Active", "Inactive", "Resolved"];
 
   const addAllergy = async () => {
     if (!selectedPatientId || !allergyForm.substance.trim()) {
-      toast.error("Substance is required");
+      toast.error("Allergen is required");
+      return;
+    }
+    if (!allergyForm.allergyCategory) {
+      toast.error("Allergy category is required");
       return;
     }
     if (!requireDoctorSelected()) return;
     try {
-      const payload = { substance: allergyForm.substance.trim(), reaction: allergyForm.reaction.trim() || undefined };
+      const payload: AllergyPayload = {
+        substance: allergyForm.substance.trim(),
+        reaction: allergyForm.reaction.trim() || undefined,
+        allergyCategory: allergyForm.allergyCategory || undefined,
+        severity: allergyForm.severity || undefined,
+        identifiedDate: allergyForm.identifiedDate || undefined,
+        status: allergyForm.status || "Active",
+        remarks: allergyForm.remarks.trim() || undefined,
+      };
       if (editingAllergyId) {
         await EmrService.updateAllergy(editingAllergyId, payload, doctorIdParam);
         toast.success("Allergy corrected");
@@ -627,7 +1088,7 @@ function DoctorWorkbenchInner() {
         await EmrService.addAllergy(selectedPatientId, payload, doctorIdParam);
         toast.success("Allergy added");
       }
-      setAllergyForm({ substance: "", reaction: "" });
+      setAllergyForm(emptyAllergyForm);
       setEditingAllergyId(null);
       await fetchSummary(selectedPatientId);
     } catch (error) {
@@ -637,12 +1098,20 @@ function DoctorWorkbenchInner() {
 
   const startEditAllergy = (a: AllergyType) => {
     setEditingAllergyId(a.patientAllergyId);
-    setAllergyForm({ substance: a.substance, reaction: a.reaction || "" });
+    setAllergyForm({
+      substance: a.substance,
+      reaction: a.reaction || "",
+      allergyCategory: a.allergyCategory || "",
+      severity: a.severity || "",
+      identifiedDate: a.identifiedDate || "",
+      status: a.status || "Active",
+      remarks: a.remarks || "",
+    });
   };
 
   const cancelEditAllergy = () => {
     setEditingAllergyId(null);
-    setAllergyForm({ substance: "", reaction: "" });
+    setAllergyForm(emptyAllergyForm);
   };
 
   const removeAllergy = (a: AllergyType) => {
@@ -663,6 +1132,19 @@ function DoctorWorkbenchInner() {
 
   // ---------------- MEDICATIONS ----------------
   const [editingMedication, setEditingMedication] = useState<MedicationType | null>(null);
+  const [medTab, setMedTab] = useState<"current" | "history">("current");
+
+  // Another team can start on a medication while the doctor is mid-correction - drop the
+  // correction as soon as the live refresh shows it locked rather than letting it fail on save.
+  useEffect(() => {
+    if (!editingMedication || !summary) return;
+    const live = summary.currentMedications.find((m) => m.medicationId === editingMedication.medicationId);
+    if (live?.locked) {
+      toast.warning(live.lockMessage || `${live.drugName} was just locked by another team`);
+      setEditingMedication(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary]);
 
   const addMedication = async (payload: MedicationPayload): Promise<boolean> => {
     if (!selectedPatientId) return false;
@@ -737,7 +1219,7 @@ function DoctorWorkbenchInner() {
     if (!insuranceCoverage || insuranceCoverage.paymentType === "Cash") return null;
     const match = insuranceCoverage.coverages.find((c) => c.serviceCategory === category);
     return match
-      ? `${insuranceCoverage.paymentType} on file for ${category}: Co-Insurance ${match.coPayPercent ?? "—"}%, Deductible ${match.deductible ?? "—"} AED (${match.deductibleAppliesTo || "—"})`
+      ? `${insuranceCoverage.paymentType} on file for ${category}: Co-Insurance ${match.coPayPercent ?? "—"}%, Deductible ${match.deductible != null ? formatCurrency(match.deductible) : "—"} (${match.deductibleAppliesTo || "—"})`
       : `${insuranceCoverage.paymentType} patient — no ${category} coverage on file`;
   };
 
@@ -763,6 +1245,7 @@ function DoctorWorkbenchInner() {
   const submitLabRadiology = async (values: LabRadiologyConfigValues) => {
     if (!selectedPatientId || !orderingModal) return;
     if (!requireDoctorSelected()) return;
+    notifySaveStatus("saving");
     setIsSavingOrder(true);
     try {
       const shared = {
@@ -808,9 +1291,11 @@ function DoctorWorkbenchInner() {
         });
         toast.success("Radiology order updated");
       }
+      notifySaveStatus("saved");
       setOrderingModal(null);
       await fetchSummary(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save order"));
     } finally {
       setIsSavingOrder(false);
@@ -820,6 +1305,7 @@ function DoctorWorkbenchInner() {
   const submitTreatment = async (values: TreatmentConfigValues) => {
     if (!selectedPatientId || !orderingModal) return;
     if (!requireDoctorSelected()) return;
+    notifySaveStatus("saving");
     setIsSavingOrder(true);
     try {
       const shared = {
@@ -845,9 +1331,11 @@ function DoctorWorkbenchInner() {
         });
         toast.success("Treatment updated");
       }
+      notifySaveStatus("saved");
       setOrderingModal(null);
       await fetchSummary(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save treatment"));
     } finally {
       setIsSavingOrder(false);
@@ -861,6 +1349,7 @@ function DoctorWorkbenchInner() {
 
   const addConfidentialNote = async () => {
     if (!selectedPatientId || !confidentialText.trim()) return;
+    notifySaveStatus("saving");
     try {
       setIsSavingConfidential(true);
       if (editingConfidentialNoteId) {
@@ -870,10 +1359,12 @@ function DoctorWorkbenchInner() {
         await EmrService.addConfidentialNote(selectedPatientId, { contentHtml: confidentialText.trim() });
         toast.success("Confidential statement saved");
       }
+      notifySaveStatus("saved");
       setConfidentialText("");
       setEditingConfidentialNoteId(null);
       await fetchConfidentialNotes(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to save confidential statement"));
     } finally {
       setIsSavingConfidential(false);
@@ -904,6 +1395,34 @@ function DoctorWorkbenchInner() {
         }
       }
     );
+  };
+
+  // ---------------- HISTORY DRAWERS ----------------
+  const [showDiagnosisHistory, setShowDiagnosisHistory] = useState(false);
+  const [showMedHistory, setShowMedHistory] = useState(false);
+  const [showOrderHistory, setShowOrderHistory] = useState(false);
+  const [showPastVisitsDrawer, setShowPastVisitsDrawer] = useState(false);
+  const [showEncounterNotesHistory, setShowEncounterNotesHistory] = useState(false);
+  const [diagnosisHistory, setDiagnosisHistory] = useState<{ encounterDiagnosisId: string; listItemId: string | null; diagnosisCode: string | null; diagnosisName: string; encounterDate: string | null }[]>([]);
+  const [isDiagnosisHistoryLoading, setIsDiagnosisHistoryLoading] = useState(false);
+  const [prefillMedication, setPrefillMedication] = useState<MedicationType | null>(null);
+
+  const openDiagnosisHistory = async () => {
+    if (!selectedPatientId) return;
+    setShowDiagnosisHistory(true);
+    setIsDiagnosisHistoryLoading(true);
+    try {
+      const res = await EmrService.getDiagnosisHistory(
+        selectedPatientId,
+        summary?.latestEncounter?.encounterId,
+        doctorIdParam
+      );
+      setDiagnosisHistory(res.data || []);
+    } catch {
+      toast.error("Failed to load diagnosis history");
+    } finally {
+      setIsDiagnosisHistoryLoading(false);
+    }
   };
 
   // ---------------- DIAGNOSIS ----------------
@@ -1016,6 +1535,26 @@ function DoctorWorkbenchInner() {
     }
   };
 
+  const handleUploadDocument = async () => {
+    if (!selectedPatientId || !uploadDocFile) return;
+    setIsUploadingDoc(true);
+    try {
+      await EmrService.uploadDocument(selectedPatientId, {
+        documentType: uploadDocType,
+        file: uploadDocFile,
+        visitId: summary?.latestEncounter?.visitId ?? undefined,
+      });
+      toast.success("Document uploaded");
+      setUploadDocFile(null);
+      setUploadDocType("Report");
+      await fetchDocuments(selectedPatientId);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to upload document"));
+    } finally {
+      setIsUploadingDoc(false);
+    }
+  };
+
   // ---------------- REFERRAL ----------------
   const [referralForm, setReferralForm] = useState({
     targetSpecializationId: "",
@@ -1025,8 +1564,6 @@ function DoctorWorkbenchInner() {
     cancerSiteName: "",
     externalFacility: "",
   });
-  const [referralOutcomeDates, setReferralOutcomeDates] = useState<Record<string, string>>({});
-  const [savingOutcomeId, setSavingOutcomeId] = useState<string | null>(null);
   const [editingReferralId, setEditingReferralId] = useState<string | null>(null);
 
   const addReferral = async () => {
@@ -1099,25 +1636,6 @@ function DoctorWorkbenchInner() {
     );
   };
 
-  const saveReferralOutcome = async (referralId: string) => {
-    const dateSeenBySpecialist = referralOutcomeDates[referralId];
-    if (!dateSeenBySpecialist) {
-      toast.error("Pick the date the patient was seen");
-      return;
-    }
-    if (!requireDoctorSelected()) return;
-    try {
-      setSavingOutcomeId(referralId);
-      await EmrService.setReferralOutcome(referralId, { dateSeenBySpecialist }, doctorIdParam);
-      toast.success("Referral outcome recorded");
-      if (selectedPatientId) await fetchSummary(selectedPatientId);
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to record referral outcome"));
-    } finally {
-      setSavingOutcomeId(null);
-    }
-  };
-
   // ---------------- DENTAL VISIT EXTRAS ----------------
   const [dentalForm, setDentalForm] = useState({
     fissureSealantApplied: false,
@@ -1128,42 +1646,43 @@ function DoctorWorkbenchInner() {
     smokingCessationEducationGiven: false,
     comprehensiveDentalPlanProvided: false,
   });
-  const [isSavingDentalExtras, setIsSavingDentalExtras] = useState(false);
+
+  // Saved on every toggle into this encounter's own checklist (one per encounter), so it needs
+  // the encounter to exist first - and, for admin, a doctor to record it under.
+  const dentalLockedReason = !summary?.latestEncounter
+    ? "Save the encounter first to fill in the dental checklist."
+    : isAdmin && !selectedDoctorId
+      ? "Select a doctor first — you're viewing across all doctors."
+      : null;
+  const dentalAutoSave = useAutoSave({
+    value: dentalForm,
+    enabled: patientRecordReady && !dentalLockedReason,
+    save: (form) =>
+      EmrService.saveDentalExtras(selectedPatientId!, { encounterId: summary?.latestEncounter?.encounterId, ...form }, doctorIdParam),
+    label: "dental checklist",
+    delay: 800,
+  });
+
+  useEffect(() => {
+    flushPatientSavesRef.current = () =>
+      Promise.all([encounterAutoSave.flush(), alertAutoSave.flush(), historyAutoSave.flush(), dentalAutoSave.flush()]);
+  });
 
   useEffect(() => {
     const latest = summary?.dentalVisitExtras?.[0];
-    if (latest) {
-      setDentalForm({
-        fissureSealantApplied: latest.fissureSealantApplied,
-        fluorideApplied: latest.fluorideApplied,
-        sdfApplied: latest.sdfApplied,
-        oralHygieneEducationGiven: latest.oralHygieneEducationGiven,
-        lifestyleEducationGiven: latest.lifestyleEducationGiven,
-        smokingCessationEducationGiven: latest.smokingCessationEducationGiven,
-        comprehensiveDentalPlanProvided: latest.comprehensiveDentalPlanProvided,
-      });
-    }
+    const loaded = {
+      fissureSealantApplied: latest?.fissureSealantApplied ?? false,
+      fluorideApplied: latest?.fluorideApplied ?? false,
+      sdfApplied: latest?.sdfApplied ?? false,
+      oralHygieneEducationGiven: latest?.oralHygieneEducationGiven ?? false,
+      lifestyleEducationGiven: latest?.lifestyleEducationGiven ?? false,
+      smokingCessationEducationGiven: latest?.smokingCessationEducationGiven ?? false,
+      comprehensiveDentalPlanProvided: latest?.comprehensiveDentalPlanProvided ?? false,
+    };
+    dentalAutoSave.markSaved(loaded);
+    setDentalForm(loaded);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPatientId]);
-
-  const saveDentalExtras = async () => {
-    if (!selectedPatientId) return;
-    if (!requireDoctorSelected()) return;
-    try {
-      setIsSavingDentalExtras(true);
-      await EmrService.saveDentalExtras(
-        selectedPatientId,
-        { encounterId: summary?.latestEncounter?.encounterId, ...dentalForm },
-        doctorIdParam
-      );
-      toast.success("Dental checklist saved");
-      await fetchSummary(selectedPatientId);
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to save dental checklist"));
-    } finally {
-      setIsSavingDentalExtras(false);
-    }
-  };
+  }, [summary?.dentalVisitExtras]);
 
   // ---------------- QUICK NOTE ----------------
   const [noteText, setNoteText] = useState("");
@@ -1172,12 +1691,15 @@ function DoctorWorkbenchInner() {
 
   const addQuickNote = async () => {
     if (!selectedPatientId || !noteText.trim() || !requireDoctorSelected()) return;
+    notifySaveStatus("saving");
     try {
       await EmrService.addQuickNote(selectedPatientId, noteText.trim(), doctorIdParam);
       toast.success("Note added");
+      notifySaveStatus("saved");
       setNoteText("");
       await fetchQuickNotes(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to add note"));
     }
   };
@@ -1194,12 +1716,15 @@ function DoctorWorkbenchInner() {
 
   const saveEditQuickNote = async () => {
     if (!selectedPatientId || !editingQuickNoteId || !editingQuickNoteText.trim()) return;
+    notifySaveStatus("saving");
     try {
       await EmrService.updateQuickNote(editingQuickNoteId, editingQuickNoteText.trim(), doctorIdParam);
       toast.success("Note updated");
+      notifySaveStatus("saved");
       cancelEditQuickNote();
       await fetchQuickNotes(selectedPatientId);
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(errorMessage(error, "Failed to update note"));
     }
   };
@@ -1220,12 +1745,22 @@ function DoctorWorkbenchInner() {
     );
   };
 
-  const filteredPatients = patients.filter(
-    (p) =>
-      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.opNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.opId?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const PAGE_SIZE = 10;
+  const filteredPatients = (() => {
+    const term = searchTerm.trim().toLowerCase();
+    return term
+      ? patients.filter(
+          (p) =>
+            p.name?.toLowerCase().includes(term) ||
+            p.opNumber?.toLowerCase().includes(term) ||
+            p.opId?.toLowerCase().includes(term)
+        )
+      : patients;
+  })();
+  const totalPatientPages = Math.ceil(filteredPatients.length / PAGE_SIZE);
+  const pagedPatients = searchTerm.trim()
+    ? filteredPatients
+    : filteredPatients.slice((patientsPage - 1) * PAGE_SIZE, patientsPage * PAGE_SIZE);
 
   if (!checkedAuth) {
     return (
@@ -1239,37 +1774,202 @@ function DoctorWorkbenchInner() {
   if (selectedPatientId) {
     return (
       <div className="py-6 px-4 sm:py-8 sm:px-10 h-full overflow-y-auto">
-        <button
-          onClick={backToWorkbench}
-          className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary mb-6"
-        >
-          <ArrowLeft size={16} /> Back to workbench
-        </button>
-
-        {isLoadingSummary || !summary ? (
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <button
+            onClick={backToWorkbench}
+            className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors"
+          >
+            <ArrowLeft size={16} /> Back to patients
+          </button>
+          {pastEncounters.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowPastVisitsDrawer(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:border-primary/60 hover:text-primary transition-colors"
+            >
+              <History size={14} />
+              Past Visits ({pastEncounters.length})
+            </button>
+          )}
+        </div>
+        {!summary ? (
           <LoadingSpinner />
         ) : (
           <div className="flex flex-col gap-6">
             <div className="card p-6 flex flex-col gap-1 border-l-4 border-l-primary">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                {/* Patient identity */}
                 <div>
                   <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
                     <Stethoscope className="text-primary" /> {summary.name}
                   </h1>
                   <p className="text-sm text-muted-foreground mt-1">
                     MRN {summary.opNumber || summary.opId} · {summary.sex || "—"} · DOB {formatDate(summary.dateOfBirth)}
+                    {summary.ageText ? ` · ${summary.ageText}` : ""}
+                    {summary.isPediatric && (
+                      <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+                        Pediatric
+                      </span>
+                    )}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {summary.phone || "No phone"} · {summary.email || "No email"}
+                    {summary.phone ? `${summary.phoneCode ? `${summary.phoneCode} ` : ""}${summary.phone}` : "No phone"} · {summary.email || "No email"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {unviewedDocumentCount > 0 && (
+
+                {/* Confidential Statement + Quick Notes — two panels in the header card */}
+                <div className="flex-1 min-w-[320px] grid grid-cols-2 gap-4 border-l border-border/50 pl-4">
+
+                  {/* Confidential Statement */}
+                  <div className="flex flex-col gap-2 border-r border-amber-400/30 pr-4">
+                    <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                      <Lock size={12} /> Confidential <span className="font-normal text-muted-foreground">(only you)</span>
+                    </p>
+                    <textarea
+                      placeholder="Private notes only you can see..."
+                      value={confidentialText}
+                      onChange={(e) => setConfidentialText(e.target.value)}
+                      className="w-full text-sm resize-none"
+                      rows={3}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={addConfidentialNote}
+                        disabled={isSavingConfidential || !confidentialText.trim()}
+                        className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                      >
+                        <Lock size={11} /> {editingConfidentialNoteId ? "Update" : "Save Privately"}
+                      </button>
+                      {editingConfidentialNoteId && (
+                        <button onClick={cancelEditConfidentialNote} className="text-xs font-semibold text-muted-foreground hover:underline">Cancel</button>
+                      )}
+                    </div>
+                    {confidentialNotes.length > 0 && (
+                      <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                        {confidentialNotes.map((n) => (
+                          <div key={n.doctorConfidentialNoteId} className="group rounded-lg bg-amber-50 dark:bg-amber-950/20 px-2.5 py-1.5 text-xs">
+                            <p className="text-foreground">{n.contentHtml}</p>
+                            <div className="flex items-center justify-between mt-0.5">
+                              <p className="text-muted-foreground">{formatDateTime(n.createdAt)}</p>
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => startEditConfidentialNote(n)} title="Edit" className="p-0.5 hover:bg-black/10 rounded-full text-amber-700"><Pencil size={11} /></button>
+                                <button onClick={() => removeConfidentialNote(n)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full text-destructive"><Trash2 size={11} /></button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick Notes */}
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                      <FileText size={12} /> Quick Notes
+                    </p>
+                    <textarea
+                      placeholder="Add a quick note..."
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      className="w-full text-sm resize-none"
+                      rows={3}
+                    />
                     <button
-                      onClick={() => setShowDocuments((v) => !v)}
-                      className="flex items-center gap-1.5 rounded-full bg-blue-100 dark:bg-blue-950/40 px-3 py-1 text-xs font-semibold text-blue-700 dark:text-blue-400 cursor-pointer"
+                      onClick={addQuickNote}
+                      disabled={!noteText.trim()}
+                      className="flex items-center gap-1.5 rounded-lg border border-primary/30 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 self-start"
                     >
-                      <Bell size={13} /> {unviewedDocumentCount} new document{unviewedDocumentCount === 1 ? "" : "s"}
+                      <Plus size={12} /> Add Note
+                    </button>
+                    {quickNotes.length > 0 && (
+                      <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                        {quickNotes.map((n) =>
+                          editingQuickNoteId === n.consultationNoteId ? (
+                            <div key={n.consultationNoteId} className="rounded-lg border border-primary/40 bg-muted/30 px-2.5 py-1.5 text-xs flex flex-col gap-1.5">
+                              <textarea value={editingQuickNoteText} onChange={(e) => setEditingQuickNoteText(e.target.value)} className="w-full text-xs min-h-10" autoFocus />
+                              <div className="flex items-center gap-2 justify-end">
+                                <button onClick={cancelEditQuickNote} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                                <button onClick={saveEditQuickNote} className="text-xs font-semibold text-primary hover:underline">Save</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div key={n.consultationNoteId} className="group rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-xs">
+                              <p className="text-foreground">{n.notes}</p>
+                              <div className="flex items-center justify-between mt-0.5">
+                                <p className="text-muted-foreground">{formatDateTime(n.createdAt)}</p>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => startEditQuickNote(n)} title="Edit" className="p-0.5 hover:bg-primary/10 rounded-full text-primary"><Pencil size={11} /></button>
+                                  <button onClick={() => removeQuickNote(n)} title="Delete" className="p-0.5 hover:bg-destructive/10 rounded-full text-destructive"><Trash2 size={11} /></button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+
+                {/* Badges */}
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  {/* Allergy indicator — click to re-open the allergy/alert modal */}
+                  {summary.allergies.length > 0 && (
+                    <button
+                      onClick={() => setPatientWarningModal({ allergies: summary.allergies, alertText: summary.patientAlert ?? "" })}
+                      className="flex items-center gap-1.5 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 px-3 py-1.5 text-xs font-semibold text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                    >
+                      <AlertTriangle size={13} />
+                      Known Allergies
+                      <span className="rounded-full bg-red-600 text-white px-1.5 py-0.5 text-[10px] font-bold">
+                        {summary.allergies.length}
+                      </span>
+                    </button>
+                  )}
+                  {/* Documents button — always visible so doctors can access attachments at any time */}
+                  <button
+                    onClick={() => setShowDocumentsModal(true)}
+                    className={`relative flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      unviewedDocumentCount > 0
+                        ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                        : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <FileText size={13} />
+                    Patient Documents
+                    {documents.length > 0 && (
+                      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                        unviewedDocumentCount > 0 ? "bg-blue-600 text-white" : "bg-muted-foreground/20 text-muted-foreground"
+                      }`}>
+                        {documents.length}
+                      </span>
+                    )}
+                    {unviewedDocumentCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+                      </span>
+                    )}
+                  </button>
+                  {immunizationEnabled && (
+                    <button
+                      onClick={() => setShowImmunization(true)}
+                      title={summary.isPediatric ? "Recommended vaccines, orders and history" : "Immunization history (read-only - past the pediatric age limit)"}
+                      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        immunizationOverdue > 0
+                          ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 hover:bg-red-100"
+                          : immunizationDue > 0
+                            ? "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 hover:bg-amber-100"
+                            : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      <Syringe size={13} />
+                      {summary.isPediatric ? "Immunization Schedule" : "Immunization History"}
+                      {immunizationDue > 0 && (
+                        <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${immunizationOverdue > 0 ? "bg-red-600" : "bg-amber-500"}`}>
+                          {immunizationDue}
+                        </span>
+                      )}
                     </button>
                   )}
                   {summary.latestEncounter && (
@@ -1286,221 +1986,195 @@ function DoctorWorkbenchInner() {
                 </div>
               </div>
 
-              {showDocuments && documents.length > 0 && (
-                <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-border">
-                  {documents.map((d) => (
-                    <div
-                      key={d.patientDocumentId}
-                      className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
-                    >
-                      <span className="font-medium">{d.documentType}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</span>
-                        <button
-                          onClick={() => markDocumentViewed(d.patientDocumentId)}
-                          className="text-xs font-semibold text-primary hover:underline cursor-pointer"
-                        >
-                          Mark reviewed
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Latest Vitals — merged from Triage (nurse's intake reading) and VitalsRecord
-                (nurse's ongoing readings), read-only here so the doctor has it in view while
-                prescribing/ordering without leaving the workbench. History icon opens the
-                full timeline + trend graph (see the modal below). */}
-            {latestVitals && (
-              <div className="card px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-                <span className="flex items-center gap-1.5 font-semibold text-foreground/90">
-                  <HeartPulse size={16} className="text-primary" /> Latest Vitals
-                  <span className="font-normal text-xs text-muted-foreground">
-                    ({latestVitals.source === "Triage" ? "Triage" : "Nursing"} · {formatDateTime(latestVitals.recordedAt)})
+              {/* Latest Vitals — compact strip inside the header card */}
+              {latestVitals && (
+                <div className="border-t border-border/50 pt-3 mt-1 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm">
+                  <span className="flex items-center gap-1.5 font-semibold text-foreground/90 shrink-0">
+                    <HeartPulse size={15} className="text-primary" /> Latest Vitals
+                    <span className="font-normal text-xs text-muted-foreground">
+                      ({latestVitals.source === "Triage" ? "Triage" : "Nursing"} · {formatDateTime(latestVitals.recordedAt)})
+                    </span>
                   </span>
-                </span>
-                {[
-                  ["Height", latestVitals.heightCm ? `${latestVitals.heightCm} cm` : null],
-                  ["Weight", latestVitals.weightKg ? `${latestVitals.weightKg} kg` : null],
-                  ["BMI", latestVitals.bmi ? latestVitals.bmi.toFixed(1) : null],
-                  ["Temp", latestVitals.temperature ? `${latestVitals.temperature}°C` : null],
-                  ["Heart rate", latestVitals.heartRate ? `${latestVitals.heartRate} BPM` : null],
-                  [
-                    "B.P",
-                    latestVitals.systolic && latestVitals.diastolic
-                      ? `${latestVitals.systolic}/${latestVitals.diastolic} mmHg`
-                      : null,
-                  ],
-                  [
-                    "B.P (M)",
-                    latestVitals.systolic && latestVitals.diastolic
-                      ? `${Math.round(latestVitals.diastolic + (latestVitals.systolic - latestVitals.diastolic) / 3)} mmHg`
-                      : null,
-                  ],
-                  ["Respiratory", latestVitals.respiratory ? `${latestVitals.respiratory} bpm` : null],
-                  ["O2 Sat", latestVitals.oxygenSaturation ? `${latestVitals.oxygenSaturation}%` : null],
-                  ["Blood sugar", latestVitals.bloodSugar ? `${latestVitals.bloodSugar} mmol/L` : null],
-                ]
-                  .filter(([, value]) => value)
-                  .map(([label, value]) => (
+                  {[
+                    ["Height", latestVitals.heightCm ? `${latestVitals.heightCm} cm` : null],
+                    ["Weight", latestVitals.weightKg ? `${latestVitals.weightKg} kg` : null],
+                    ["BMI", latestVitals.bmi ? latestVitals.bmi.toFixed(1) : null],
+                    ["Temp", latestVitals.temperature ? `${latestVitals.temperature}°C` : null],
+                    ["HR", latestVitals.heartRate ? `${latestVitals.heartRate} BPM` : null],
+                    ["B.P", latestVitals.systolic && latestVitals.diastolic ? `${latestVitals.systolic}/${latestVitals.diastolic} mmHg` : null],
+                    ["B.P (M)", latestVitals.systolic && latestVitals.diastolic ? `${Math.round(latestVitals.diastolic + (latestVitals.systolic - latestVitals.diastolic) / 3)} mmHg` : null],
+                    ["Resp", latestVitals.respiratory ? `${latestVitals.respiratory} bpm` : null],
+                    ["O2 Sat", latestVitals.oxygenSaturation ? `${latestVitals.oxygenSaturation}%` : null],
+                    ["Blood sugar", latestVitals.bloodSugar ? `${latestVitals.bloodSugar} mmol/L` : null],
+                  ].filter(([, v]) => v).map(([label, value]) => (
                     <span key={label} className="text-muted-foreground">
                       {label}: <span className="font-semibold text-foreground">{value}</span>
                     </span>
                   ))}
-                <button
-                  type="button"
-                  onClick={() => setShowVitalsHistory(true)}
-                  title="View vitals history"
-                  className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline cursor-pointer"
-                >
-                  <History size={14} /> History
-                </button>
-              </div>
-            )}
-
-            {/* Nurse Entries — this patient's nurse-recorded remarks/notes/examination,
-                surfaced here instead of a separate Nurse Workbench module (removed from the
-                doctor's sidebar - see helpers/sidebaritems.ts). Read-only, same data the
-                nurse enters via NursingController.GetPatientChart. */}
-            {(nurseSpecialRemarks.length > 0 || nurseNotes.length > 0 || nurseExaminationNotes.length > 0) && (
-              <div className="card p-5 flex flex-col gap-4">
-                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <StickyNote size={16} className="text-primary" /> Nurse Entries
-                </h2>
-
-                {nurseSpecialRemarks.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <AlertTriangle size={13} /> Special Remarks
-                    </p>
-                    {nurseSpecialRemarks.map((r) => (
-                      <div key={r.specialRemarkId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
-                        <p className="text-foreground">
-                          <span className="font-semibold">{r.remarkType}:</span> {r.description}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">{formatDateTime(r.createdAt)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {nurseNotes.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <StickyNote size={13} /> Nurse Notes
-                    </p>
-                    {nurseNotes.map((n) => (
-                      <div key={n.nurseNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
-                        <p className="text-foreground">{n.contentHtml}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{n.nurseName ?? "Nurse"} · {formatDateTime(n.createdAt)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {nurseExaminationNotes.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <NotebookPen size={13} /> Examination Notes
-                    </p>
-                    {nurseExaminationNotes.map((e) => (
-                      <div key={e.examinationNoteId} className="rounded-lg bg-muted/30 px-3 py-2 text-sm flex flex-col gap-1">
-                        {e.generalAppearance && (
-                          <p><span className="font-semibold">General appearance:</span> {e.generalAppearance}</p>
-                        )}
-                        <p><span className="font-semibold">Pain level:</span> {e.painLevel}/10</p>
-                        {e.mobility && <p><span className="font-semibold">Mobility:</span> {e.mobility}</p>}
-                        {e.clinicalChecks && <p><span className="font-semibold">Clinical checks:</span> {e.clinicalChecks}</p>}
-                        <p className="text-xs text-muted-foreground mt-1">{e.nurseName ?? "Nurse"} · {formatDateTime(e.createdAt)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Drug allergy banner — summarizes what's already on file; the Allergies
-                section further down is where new ones get added. */}
-            {summary.allergies.length > 0 && (
-              <div className="rounded-lg border border-red-300 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 px-4 py-2.5 flex flex-wrap items-center gap-2 text-sm">
-                <AlertTriangle size={16} className="text-red-600 dark:text-red-400 shrink-0" />
-                <span className="font-bold text-red-700 dark:text-red-400">Drug Allergy:</span>
-                {summary.allergies.map((a) => (
-                  <span
-                    key={a.patientAllergyId}
-                    className="rounded-full bg-red-100 dark:bg-red-900/40 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:text-red-400"
+                  <button
+                    type="button"
+                    onClick={() => setShowVitalsHistory(true)}
+                    title="View vitals history"
+                    className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline cursor-pointer shrink-0"
                   >
-                    {a.substance}
-                    {a.reaction ? ` — ${a.reaction}` : ""}
-                  </span>
-                ))}
-              </div>
-            )}
+                    <History size={14} /> History
+                  </button>
+                </div>
+              )}
+            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="card px-5 py-4 border-l-4 border-l-red-500 flex flex-col gap-3">
+              <div>
+                <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide flex items-center gap-1.5 mb-2">
+                  <AlertTriangle size={13} /> Patient Alerts
+                </p>
+                <textarea
+                  value={patientAlertText}
+                  onChange={(e) => setPatientAlertText(e.target.value)}
+                  onBlur={() => void alertAutoSave.flush()}
+                  placeholder="Enter any clinical alerts visible to all staff — e.g. 'Patient is claustrophobic', 'Known drug seeker'..."
+                  rows={3}
+                  className="w-full text-sm resize-y"
+                />
+                {alertAutoSave.isSaving && (
+                  <p className="text-xs text-muted-foreground mt-1">Saving…</p>
+                )}
+              </div>
+
+              {nurseSpecialRemarks.length > 0 && (
+                <div className="border-t border-border pt-3 flex flex-col gap-1.5">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <AlertTriangle size={13} /> Special Remarks
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {nurseSpecialRemarks.map((r) => (
+                      <div key={r.specialRemarkId} className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 px-3 py-1.5 text-sm">
+                        <span className="font-semibold text-amber-800 dark:text-amber-300">{r.remarkType}:</span>{" "}
+                        <span className="text-foreground">{r.description}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{formatDateTime(r.createdAt)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {/* Medical History — three persistent free-text fields auto-saved 1.2 s after
+                  the last keystroke, same pattern as Patient Alerts. All three are sent
+                  together in one PATCH so a single blur on any field saves them all. */}
+              <div className="card px-5 py-4">
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
+                  <ClipboardList size={13} className="text-primary" /> Medical History
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Past Medical History</p>
+                    <textarea
+                      value={pastMedicalHistory}
+                      rows={3}
+                      className="w-full text-sm resize-y"
+                      onChange={(e) => setPastMedicalHistory(e.target.value)}
+                      onBlur={() => void historyAutoSave.flush()}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Past Surgical History</p>
+                    <textarea
+                      value={pastSurgicalHistory}
+                      rows={3}
+                      className="w-full text-sm resize-y"
+                      onChange={(e) => setPastSurgicalHistory(e.target.value)}
+                      onBlur={() => void historyAutoSave.flush()}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Past Treatment History</p>
+                    <textarea
+                      value={pastTreatmentHistory}
+                      rows={3}
+                      className="w-full text-sm resize-y"
+                      onChange={(e) => setPastTreatmentHistory(e.target.value)}
+                      onBlur={() => void historyAutoSave.flush()}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Social History</p>
+                    <textarea
+                      value={socialHistory}
+                      rows={3}
+                      className="w-full text-sm resize-y"
+                      placeholder="Smoking, alcohol, occupation, exercise…"
+                      onChange={(e) => setSocialHistory(e.target.value)}
+                      onBlur={() => void historyAutoSave.flush()}
+                    />
+                  </div>
+                </div>
+                {historyAutoSave.isSaving && (
+                  <p className="text-xs text-muted-foreground mt-2">Saving…</p>
+                )}
+              </div>
+
+              <FamilyHistorySection
+                patientId={selectedPatientId}
+                familyHistory={summary.familyHistory}
+                doctorId={doctorIdParam}
+                requireAttribution={requireDoctorSelected}
+                onSaved={async () => { await fetchSummary(selectedPatientId); }}
+              />
+            </div>
+
+<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 flex flex-col gap-6">
-                {/* Confidential statement — visible only to this doctor, never shared
-                    with other doctors, nurses, or admin. */}
-                <div className="card p-6 flex flex-col gap-3 border-l-4 border-l-amber-500">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Lock size={18} className="text-amber-500" /> Confidential Statement
-                    <span className="text-xs font-normal text-muted-foreground ml-1">(visible only to you)</span>
-                  </h2>
-                  <textarea
-                    placeholder="Private notes only you can see..."
-                    value={confidentialText}
-                    onChange={(e) => setConfidentialText(e.target.value)}
-                    className="w-full min-h-16 text-sm"
-                  />
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={addConfidentialNote}
-                      disabled={isSavingConfidential || !confidentialText.trim()}
-                      className="self-start flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                    >
-                      <Lock size={15} /> {editingConfidentialNoteId ? "Save Changes" : "Save Privately"}
-                    </button>
-                    {editingConfidentialNoteId && (
-                      <button onClick={cancelEditConfidentialNote} className="text-sm font-semibold text-muted-foreground hover:underline">
-                        Cancel
+                {/* Chief complaint / examination notes / review of systems / clinical exam */}
+                <div className="card p-6 flex flex-col gap-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <FileText size={18} className="text-primary" /> Encounter Notes
+                    </h2>
+                    {pastEncounters.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowEncounterNotesHistory(true)}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <History size={14} /> History
                       </button>
                     )}
                   </div>
-                  {confidentialNotes.length > 0 && (
-                    <div className="flex flex-col gap-1.5 border-t border-border pt-3 max-h-40 overflow-y-auto">
-                      {confidentialNotes.map((n) => (
-                        <div key={n.doctorConfidentialNoteId} className="group rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm">
-                          <p className="text-foreground">{n.contentHtml}</p>
-                          <div className="flex items-center justify-between mt-1">
-                            <p className="text-xs text-muted-foreground">{formatDateTime(n.createdAt)}</p>
-                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => startEditConfidentialNote(n)} title="Edit" className="p-1 hover:bg-black/10 rounded-full text-amber-700">
-                                <Pencil size={12} />
-                              </button>
-                              <button onClick={() => removeConfidentialNote(n)} title="Delete" className="p-1 hover:bg-black/10 rounded-full text-destructive">
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Chief complaint / examination notes / review of systems / clinical exam */}
-                <div className="card p-6 flex flex-col gap-4">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <FileText size={18} className="text-primary" /> Encounter Notes
-                  </h2>
 
                   {isCompletedEncounter && (
                     <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                      {isAdmin
-                        ? "This encounter is finalized — edits here are proposed as a correction, not saved directly."
-                        : "This encounter is finalized and locked. Ask an admin to request a correction if it needs to change."}
+                      {isAdmin ? (
+                        "This encounter is finalized — edits here are proposed as a correction, not saved directly."
+                      ) : canReEncounter ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <span>
+                            This encounter is finalized and read-only. Re-Encounter to make changes — orders another team has
+                            already started stay locked until they revert them.
+                          </span>
+                          <button
+                            onClick={() => setShowReEncounterConfirm(true)}
+                            className="shrink-0 flex items-center gap-1.5 rounded-md bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-600"
+                          >
+                            <RotateCcw size={12} /> Re-Encounter
+                          </button>
+                        </div>
+                      ) : pendingUnlockForEncounter ? (
+                        <span className="text-amber-600 dark:text-amber-400 font-medium">
+                          Unlock request pending — an admin will review it shortly.
+                        </span>
+                      ) : (
+                        <div className="flex items-center justify-between gap-3">
+                          <span>This encounter is finalized and locked.</span>
+                          <button
+                            onClick={() => setShowUnlockRequestModal(true)}
+                            className="shrink-0 rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                          >
+                            Request Edit Access
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1510,66 +2184,140 @@ function DoctorWorkbenchInner() {
                     </div>
                   )}
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Chief complaint</label>
-                    <input
-                      type="text"
-                      placeholder="Patient's primary reason for the visit..."
-                      value={encounterForm.chiefComplaint}
-                      onChange={(e) => setEncounterForm((p) => ({ ...p, chiefComplaint: e.target.value }))}
-                      disabled={isCompletedEncounter && !isAdmin}
-                      className="h-10 text-sm disabled:opacity-60"
-                    />
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    {/* Left column */}
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Chief complaint</label>
+                        <textarea
+                          rows={1}
+                          placeholder="Patient's primary reason for the visit..."
+                          value={encounterForm.chiefComplaint}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, chiefComplaint: e.target.value }))}
+                          onInput={(e) => {
+                            const el = e.currentTarget;
+                            el.style.height = "auto";
+                            el.style.height = `${el.scrollHeight}px`;
+                          }}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="text-sm disabled:opacity-60 resize-none overflow-hidden"
+                          style={{ minHeight: "2.5rem" }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 flex-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Examination notes</label>
+                        <textarea
+                          placeholder="Doctor's examination notes..."
+                          value={encounterForm.examinationNotes}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, examinationNotes: e.target.value }))}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="w-full min-h-16 text-sm disabled:opacity-60"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Right column */}
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Clinical examination</label>
+                        <textarea
+                          placeholder="Clinical examination findings..."
+                          value={encounterForm.clinicalExamination}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, clinicalExamination: e.target.value }))}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="w-full min-h-16 text-sm disabled:opacity-60"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-muted-foreground">Planned procedures</label>
+                        <textarea
+                          placeholder="Planned procedures..."
+                          value={encounterForm.plannedProcedures}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, plannedProcedures: e.target.value }))}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="w-full min-h-16 text-sm disabled:opacity-60"
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Examination notes</label>
-                    <textarea
-                      placeholder="Doctor's examination notes..."
-                      value={encounterForm.examinationNotes}
-                      onChange={(e) => setEncounterForm((p) => ({ ...p, examinationNotes: e.target.value }))}
-                      disabled={isCompletedEncounter && !isAdmin}
-                      className="w-full min-h-16 text-sm disabled:opacity-60"
-                    />
-                  </div>
-
-                  <details className="group">
-                    <summary className="cursor-pointer text-sm font-semibold text-foreground/90 flex items-center gap-2 list-none">
-                      <ClipboardList size={16} className="text-primary" /> Review of Systems
-                      <span className="text-xs font-normal text-muted-foreground">(click to expand)</span>
-                    </summary>
-                    <div className="mt-3">
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setRosExpanded((v) => !v)}
+                      aria-expanded={rosExpanded}
+                      className="flex items-center gap-3 mb-3 px-4 py-2 rounded-lg border border-border bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer text-left"
+                    >
+                      {rosExpanded
+                        ? <ChevronDown size={15} className="text-muted-foreground shrink-0" />
+                        : <ChevronRight size={15} className="text-muted-foreground shrink-0" />}
+                      <ClipboardList size={15} className="text-primary shrink-0" />
+                      <span className="text-sm font-semibold text-foreground/90">Review of Systems</span>
+                      {(() => {
+                        const rosFilled = [
+                          encounterForm.rosConstitutional, encounterForm.rosEyeEarNoseMouthThroat,
+                          encounterForm.rosCardiovascular, encounterForm.rosRespiratory,
+                          encounterForm.rosGastroenterology, encounterForm.rosGenitourinary,
+                          encounterForm.rosMusculoskeletal, encounterForm.rosNeurological,
+                          encounterForm.rosPsychiatric, encounterForm.rosEndocrine,
+                          encounterForm.rosHematologic, encounterForm.rosAllergicImmunologic,
+                          encounterForm.rosIntegumentary,
+                        ].filter(Boolean).length;
+                        return rosFilled > 0 ? (
+                          <span className="text-xs text-muted-foreground">{rosFilled} / 13 systems noted</span>
+                        ) : !rosExpanded ? (
+                          <span className="text-xs text-muted-foreground italic">Click to expand</span>
+                        ) : null;
+                      })()}
+                    </button>
+                    {rosExpanded && (
                       <ReviewOfSystemsPanel
                         value={encounterForm}
                         onChange={(key, value) => setEncounterForm((p) => ({ ...p, [key]: value }))}
                         disabled={isCompletedEncounter && !isAdmin}
                       />
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Current Management Plan</label>
+                      {!encounterForm.currentManagementPlan && (isCompletedEncounter && !isAdmin) ? (
+                        <p className="text-sm text-muted-foreground italic">No records found.</p>
+                      ) : (
+                        <textarea
+                          placeholder="Current (immediate) management plan..."
+                          value={encounterForm.currentManagementPlan}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, currentManagementPlan: e.target.value }))}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="w-full min-h-24 text-sm disabled:opacity-60"
+                        />
+                      )}
+                      {summary.latestEncounter?.updatedAt && encounterForm.currentManagementPlan && (
+                        <p className="text-xs text-muted-foreground">Last updated: {formatDateTime(summary.latestEncounter.updatedAt)}</p>
+                      )}
                     </div>
-                  </details>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Clinical examination</label>
-                    <textarea
-                      placeholder="Clinical examination findings..."
-                      value={encounterForm.clinicalExamination}
-                      onChange={(e) => setEncounterForm((p) => ({ ...p, clinicalExamination: e.target.value }))}
-                      disabled={isCompletedEncounter && !isAdmin}
-                      className="w-full min-h-16 text-sm disabled:opacity-60"
-                    />
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Future Management Plan</label>
+                      {!encounterForm.futureManagementPlan && (isCompletedEncounter && !isAdmin) ? (
+                        <p className="text-sm text-muted-foreground italic">No records found.</p>
+                      ) : (
+                        <textarea
+                          placeholder="Future management plan / follow-up plan..."
+                          value={encounterForm.futureManagementPlan}
+                          onChange={(e) => setEncounterForm((p) => ({ ...p, futureManagementPlan: e.target.value }))}
+                          disabled={isCompletedEncounter && !isAdmin}
+                          className="w-full min-h-24 text-sm disabled:opacity-60"
+                        />
+                      )}
+                      {summary.latestEncounter?.updatedAt && encounterForm.futureManagementPlan && (
+                        <p className="text-xs text-muted-foreground">Last updated: {formatDateTime(summary.latestEncounter.updatedAt)}</p>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Planned procedures</label>
-                    <textarea
-                      placeholder="Planned procedures..."
-                      value={encounterForm.plannedProcedures}
-                      onChange={(e) => setEncounterForm((p) => ({ ...p, plannedProcedures: e.target.value }))}
-                      disabled={isCompletedEncounter && !isAdmin}
-                      className="w-full min-h-16 text-sm disabled:opacity-60"
-                    />
-                  </div>
-
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 flex-wrap">
                     {!isCompletedEncounter && (
                       <button
                         onClick={saveEncounter}
@@ -1579,6 +2327,15 @@ function DoctorWorkbenchInner() {
                         <Save size={15} /> Save Encounter
                       </button>
                     )}
+                    {canReEncounter && (
+                      <button
+                        onClick={() => setShowReEncounterConfirm(true)}
+                        title="Re-open this finalized encounter (requires your password)"
+                        className="flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600"
+                      >
+                        <RotateCcw size={15} /> Re-Encounter
+                      </button>
+                    )}
                     {summary.latestEncounter && summary.latestEncounter.status !== "Completed" && (
                       <button
                         onClick={finishEncounter}
@@ -1586,6 +2343,23 @@ function DoctorWorkbenchInner() {
                         className="flex items-center gap-2 rounded-lg border border-primary/30 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
                       >
                         Finish Encounter
+                      </button>
+                    )}
+                    {activeVisitId && !isCompletedEncounter && (
+                      <button
+                        onClick={() => setShowReleaseConfirm(true)}
+                        disabled={isSavingEncounter || isReleasingPatient}
+                        className="flex items-center gap-2 rounded-lg border border-destructive/40 px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                      >
+                        Release Patient
+                      </button>
+                    )}
+                    {dashboard?.isDentalSpecialty && selectedPatientId && (
+                      <button
+                        onClick={() => setShowDentalChartModal(true)}
+                        className="flex items-center gap-2 rounded-lg border border-primary/30 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
+                      >
+                        <Stethoscope size={15} /> Open Dental Chart
                       </button>
                     )}
                   </div>
@@ -1610,18 +2384,16 @@ function DoctorWorkbenchInner() {
                       </p>
                       <div className="flex flex-col gap-1 mb-6">
                         <label className="text-sm font-bold text-foreground/90 required">Doctor</label>
-                        <select
-                          value={selectedCorrectionDoctorId}
-                          onChange={(e) => setSelectedCorrectionDoctorId(e.target.value)}
-                          className="w-full mt-1 p-3 rounded-lg bg-muted border border-border outline-none focus:border-primary text-foreground"
-                        >
-                          <option value="">Select doctor…</option>
-                          {correctionDoctors.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="mt-1">
+                          <SearchableSelect
+                            value={selectedCorrectionDoctorId}
+                            onChange={setSelectedCorrectionDoctorId}
+                            options={[
+                              { value: "", label: "Select doctor…" },
+                              ...correctionDoctors.map((d) => ({ value: d.id, label: d.name })),
+                            ]}
+                          />
+                        </div>
                       </div>
                       <div className="flex justify-end gap-3">
                         <button
@@ -1644,18 +2416,100 @@ function DoctorWorkbenchInner() {
                   </div>
                 )}
 
+                {/* Doctor's unlock request modal */}
+                {showUnlockRequestModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
+                    <div className="bg-card w-full max-w-md rounded-xl border border-border p-6 shadow-2xl mx-4">
+                      <h2 className="text-xl font-semibold mb-1 text-foreground">Request Edit Access</h2>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        This encounter is finalized. An admin will review your request and unlock it if approved.
+                      </p>
+                      <div className="flex flex-col gap-1 mb-6">
+                        <label className="text-sm font-semibold text-foreground/90">Reason (optional)</label>
+                        <textarea
+                          value={unlockReason}
+                          onChange={(e) => setUnlockReason(e.target.value)}
+                          placeholder="Briefly explain why you need to edit this encounter..."
+                          className="w-full min-h-[80px] text-sm"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => { setShowUnlockRequestModal(false); setUnlockReason(""); }}
+                          className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={submitUnlockRequest}
+                          disabled={isRequestingUnlock}
+                          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                        >
+                          Send Request
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Dental Checklist — only shown for dental specialty; follows Encounter Notes */}
+                {dashboard?.isDentalSpecialty && (
+                  <div className="card p-6 flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                        <Stethoscope size={18} className="text-primary" /> Dental Checklist
+                      </h2>
+                      <span className="text-xs text-muted-foreground">
+                        {dentalAutoSave.isSaving ? "Saving…" : "Changes save automatically"}
+                      </span>
+                    </div>
+                    {dentalLockedReason && (
+                      <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{dentalLockedReason}</p>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {([
+                        ["fissureSealantApplied", "Fissure sealant applied"],
+                        ["fluorideApplied", "Fluoride varnish applied"],
+                        ["sdfApplied", "Silver diamine fluoride applied"],
+                        ["oralHygieneEducationGiven", "Oral hygiene education given"],
+                        ["lifestyleEducationGiven", "Lifestyle factors education given"],
+                        ["smokingCessationEducationGiven", "Smoking cessation education given"],
+                        ["comprehensiveDentalPlanProvided", "Comprehensive dental plan provided"],
+                      ] as const).map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 text-sm">
+                          <ToggleButton
+                            checked={dentalForm[key]}
+                            disabled={!!dentalLockedReason}
+                            onChange={(checked) => setDentalForm((p) => ({ ...p, [key]: checked }))}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+
                 {/* Diagnosis — search from the admin-managed diagnosis catalog; first one
                     added becomes primary, others secondary, primary can be reassigned. */}
                 <div className="card p-6 flex flex-col gap-3">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <ClipboardList size={18} className="text-primary" /> Diagnosis
-                  </h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <ClipboardList size={18} className="text-primary" /> Diagnosis
+                    </h2>
+                    <button onClick={openDiagnosisHistory} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                      <History size={13} /> History
+                    </button>
+                  </div>
+                  <fieldset disabled={encounterReadOnly} className="min-w-0 flex flex-col gap-3 disabled:opacity-70">
                   {summary.diagnoses.length > 0 ? (
                     <div className="flex flex-col gap-1.5">
                       {summary.diagnoses.map((d) => (
                         <div
                           key={d.encounterDiagnosisId}
-                          className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
+                          className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm italic"
                         >
                           <div className="flex items-center gap-2">
                             {d.isPrimary && (
@@ -1700,202 +2554,208 @@ function DoctorWorkbenchInner() {
                     }}
                     onSelect={(opt) => addDiagnosis(opt.id)}
                   />
-                </div>
+                  </fieldset>
 
-                {/* Medical history */}
-                <div className="card p-6 flex flex-col gap-4">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <HeartPulse size={18} className="text-primary" /> Medical History
-                  </h2>
-                  <div className="flex flex-wrap gap-3">
-                    {summary.chronicConditions.length > 0 ? (
-                      summary.chronicConditions.map((c) => (
-                        <div
-                          key={c.chronicConditionId}
-                          className="group rounded-lg border border-border bg-muted/30 px-3 py-2 min-w-48"
+                  {/* Narrative Diagnosis */}
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    <span className="self-start rounded bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary-foreground">
+                      Narrative Diagnosis
+                    </span>
+                    <div className="relative">
+                      <textarea
+                        rows={3}
+                        placeholder="Enter a narrative or free-text description of the diagnosis…"
+                        value={encounterForm.diagnosisDescription}
+                        onChange={(e) => setEncounterForm((p) => ({ ...p, diagnosisDescription: e.target.value }))}
+                        disabled={isCompletedEncounter}
+                        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                      />
+                      {encounterForm.diagnosisDescription && (
+                        <button
+                          type="button"
+                          title="Copy to clipboard"
+                          onClick={() => { navigator.clipboard.writeText(encounterForm.diagnosisDescription); toast.success("Copied"); }}
+                          className="absolute bottom-2 right-2 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-sm text-foreground">{c.name}</span>
-                            <span className="rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5">
-                              {c.status}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between mt-1">
-                            <p className="text-xs text-muted-foreground">
-                              Diagnosed {c.diagnosedYear ?? "—"}
-                            </p>
-                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => startEditCondition(c)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
-                                <Pencil size={12} />
-                              </button>
-                              <button onClick={() => removeCondition(c)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </div>
-                          {c.correctedFrom && (
-                            <CorrectedFromNote>
-                              <p>
-                                Previous: {c.correctedFrom.name}
-                                {c.correctedFrom.diagnosedYear ? ` · diagnosed ${c.correctedFrom.diagnosedYear}` : ""}
-                                {` · ${c.correctedFrom.status}`}
-                                {c.correctedFrom.diabetesType ? ` · ${c.correctedFrom.diabetesType}` : ""}
-                              </p>
-                            </CorrectedFromNote>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No chronic conditions recorded.</p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2 items-end border-t border-border pt-4">
-                    <input
-                      type="text"
-                      placeholder="Condition name"
-                      value={conditionForm.name}
-                      onChange={(e) => setConditionForm((p) => ({ ...p, name: e.target.value }))}
-                      className="h-10 text-sm flex-1 min-w-40"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Year"
-                      value={conditionForm.diagnosedYear}
-                      onChange={(e) => setConditionForm((p) => ({ ...p, diagnosedYear: e.target.value }))}
-                      className="h-10 text-sm w-24"
-                    />
-                    <select
-                      value={conditionForm.status}
-                      onChange={(e) => setConditionForm((p) => ({ ...p, status: e.target.value }))}
-                      className="h-10 text-sm"
-                    >
-                      <option value="Managed">Managed</option>
-                      <option value="Active">Active</option>
-                    </select>
-                    <button
-                      onClick={addCondition}
-                      className="flex items-center gap-1 rounded-lg border border-primary/30 px-3 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
-                    >
-                      <Plus size={14} /> {editingConditionId ? "Save Correction" : "Add Condition"}
-                    </button>
-                    {editingConditionId && (
-                      <button onClick={cancelEditCondition} className="text-sm font-semibold text-muted-foreground hover:underline">
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-
-                  {(isDiabetesCondition || isHypertensionCondition) && (
-                    <div className="flex flex-wrap items-end gap-3 -mt-2 rounded-lg bg-muted/30 p-3">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs text-muted-foreground">Exact diagnosis date</label>
-                        <input
-                          type="date"
-                          value={conditionForm.diagnosisDate}
-                          onChange={(e) => setConditionForm((p) => ({ ...p, diagnosisDate: e.target.value }))}
-                          className="h-9 text-sm"
-                        />
-                      </div>
-                      {isDiabetesCondition && (
-                        <>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs text-muted-foreground">Diabetes type</label>
-                            <select
-                              value={conditionForm.diabetesType}
-                              onChange={(e) => setConditionForm((p) => ({ ...p, diabetesType: e.target.value }))}
-                              className="h-9 text-sm"
-                            >
-                              <option value="">Unspecified</option>
-                              <option value="Type1">Type 1</option>
-                              <option value="Type2">Type 2</option>
-                              <option value="Gestational">Gestational</option>
-                              <option value="SteroidInduced">Steroid-Induced</option>
-                              <option value="Other">Other</option>
-                            </select>
-                          </div>
-                          <label className="flex items-center gap-2 text-sm">
-                            <ToggleButton
-                              checked={conditionForm.hasPcos}
-                              onChange={(checked) => setConditionForm((p) => ({ ...p, hasPcos: checked }))}
-                            />
-                            Polycystic ovaries
-                          </label>
-                        </>
-                      )}
-                      {isHypertensionCondition && (
-                        <label className="flex items-center gap-2 text-sm">
-                          <ToggleButton
-                            checked={conditionForm.hasEsrd}
-                            onChange={(checked) => setConditionForm((p) => ({ ...p, hasEsrd: checked }))}
-                          />
-                          End-stage renal disease
-                        </label>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="border-t border-border pt-4 flex flex-col gap-2">
-                    <p className="text-sm font-semibold text-foreground/90">Allergies / Reactions</p>
-                    <div className="flex flex-wrap gap-2">
-                      {summary.allergies.length > 0 ? (
-                        summary.allergies.map((a) => (
-                          <span
-                            key={a.patientAllergyId}
-                            className="group flex flex-col gap-1 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-1.5 text-sm text-red-700 dark:text-red-400"
-                          >
-                            <span className="flex items-center gap-2">
-                              {a.substance} {a.reaction ? `— ${a.reaction}` : ""}
-                              <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => startEditAllergy(a)} title="Correct" className="p-0.5 hover:bg-black/10 rounded-full">
-                                  <Pencil size={11} />
-                                </button>
-                                <button onClick={() => removeAllergy(a)} title="Delete" className="p-0.5 hover:bg-black/10 rounded-full">
-                                  <Trash2 size={11} />
-                                </button>
-                              </span>
-                            </span>
-                            {a.correctedFrom && (
-                              <CorrectedFromNote>
-                                <p>
-                                  Previous: {a.correctedFrom.substance}
-                                  {a.correctedFrom.reaction ? ` · reaction: ${a.correctedFrom.reaction}` : ""}
-                                </p>
-                              </CorrectedFromNote>
-                            )}
-                          </span>
-                        ))
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No known allergies.</p>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2 items-end">
-                      <input
-                        type="text"
-                        placeholder="Substance"
-                        value={allergyForm.substance}
-                        onChange={(e) => setAllergyForm((p) => ({ ...p, substance: e.target.value }))}
-                        className="h-10 text-sm flex-1 min-w-32"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Reaction"
-                        value={allergyForm.reaction}
-                        onChange={(e) => setAllergyForm((p) => ({ ...p, reaction: e.target.value }))}
-                        className="h-10 text-sm flex-1 min-w-32"
-                      />
-                      <button
-                        onClick={addAllergy}
-                        className="flex items-center gap-1 rounded-lg border border-primary/30 px-3 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
-                      >
-                        <Plus size={14} /> {editingAllergyId ? "Save Correction" : "Add"}
-                      </button>
-                      {editingAllergyId && (
-                        <button onClick={cancelEditAllergy} className="text-sm font-semibold text-muted-foreground hover:underline">
-                          Cancel
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                          </svg>
                         </button>
                       )}
                     </div>
                   </div>
+                </div>
+
+                {/* Allergies & Sensitivities */}
+                <div className="card p-6 flex flex-col gap-4">
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <HeartPulse size={18} className="text-primary" /> Allergies &amp; Sensitivities
+                  </h2>
+                    <div className="flex flex-col gap-2">
+                      {summary.allergies.length > 0 ? (
+                        <div className="flex flex-col gap-2">
+                          <div className="overflow-x-auto rounded-xl border border-red-200 dark:border-red-900/60">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400">
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Category</th>
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Allergen</th>
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Severity</th>
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Reaction</th>
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Identified</th>
+                                  <th className="text-left px-4 py-3 font-semibold tracking-wide">Status</th>
+                                  <th className="w-14 px-4 py-3"></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-red-100 dark:divide-red-900/40">
+                                {summary.allergies.map((a) => (
+                                  <tr key={a.patientAllergyId} className="group bg-card hover:bg-red-50/60 dark:hover:bg-red-950/20 transition-colors">
+                                    <td className="px-4 py-3 text-foreground/70">{a.allergyCategory || "—"}</td>
+                                    <td className="px-4 py-3">
+                                      <span className="font-semibold text-red-700 dark:text-red-400">{a.substance}</span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {a.severity ? (
+                                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                                          a.severity === "Life-threatening" ? "bg-red-100 dark:bg-red-900/60 text-red-800 dark:text-red-200" :
+                                          a.severity === "Severe"           ? "bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300" :
+                                          a.severity === "Moderate"         ? "bg-yellow-100 dark:bg-yellow-950/60 text-yellow-700 dark:text-yellow-300" :
+                                                                              "bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300"
+                                        }`}>{a.severity}</span>
+                                      ) : <span className="text-muted-foreground">—</span>}
+                                    </td>
+                                    <td className="px-4 py-3 text-foreground/70">{a.reaction || "—"}</td>
+                                    <td className="px-4 py-3 text-foreground/70">{a.identifiedDate || "—"}</td>
+                                    <td className="px-4 py-3">
+                                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                                        a.status === "Resolved" ? "bg-muted text-muted-foreground" :
+                                        a.status === "Inactive" ? "bg-muted text-muted-foreground" :
+                                        "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300"
+                                      }`}>{a.status || "Active"}</span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => startEditAllergy(a)} title="Correct" className="rounded-full p-1 hover:bg-red-100 dark:hover:bg-red-900/40 text-muted-foreground hover:text-foreground">
+                                          <Pencil size={12} />
+                                        </button>
+                                        <button onClick={() => removeAllergy(a)} title="Delete" className="rounded-full p-1 hover:bg-red-100 dark:hover:bg-red-900/40 text-muted-foreground hover:text-red-600">
+                                          <Trash2 size={12} />
+                                        </button>
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {summary.allergies.some((a) => a.correctedFrom) && (
+                            <div className="flex flex-col gap-0.5">
+                              {summary.allergies.filter((a) => a.correctedFrom).map((a) => (
+                                <CorrectedFromNote key={a.patientAllergyId}>
+                                  <p>Previous ({a.substance}): {a.correctedFrom!.substance}{a.correctedFrom!.reaction ? ` · reaction: ${a.correctedFrom!.reaction}` : ""}</p>
+                                </CorrectedFromNote>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No known allergies.</p>
+                      )}
+                    </div>
+
+                    {/* Allergy entry form */}
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 flex flex-col gap-3">
+                      <p className="text-xs font-semibold text-foreground/70 uppercase tracking-wide">
+                        {editingAllergyId ? "Correct Allergy Entry" : "Add Allergy / Sensitivity"}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Allergy Category <span className="text-destructive">*</span></label>
+                          <SearchableSelect
+                            value={allergyForm.allergyCategory}
+                            onChange={(v) => setAllergyForm((p) => ({ ...p, allergyCategory: v, substance: "" }))}
+                            options={[
+                              { value: "", label: "Select category" },
+                              ...ALLERGY_CATEGORIES.map((c) => ({ value: c, label: c })),
+                            ]}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Allergen <span className="text-destructive">*</span></label>
+                          <SearchableSelect
+                            value={allergyForm.substance}
+                            onChange={(v) => setAllergyForm((p) => ({ ...p, substance: v }))}
+                            disabled={!allergyForm.allergyCategory}
+                            options={[
+                              { value: "", label: "Select allergen" },
+                              ...(ALLERGENS_BY_CATEGORY[allergyForm.allergyCategory] ?? []).map((a) => ({ value: a, label: a })),
+                            ]}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Severity</label>
+                          <SearchableSelect
+                            value={allergyForm.severity}
+                            onChange={(v) => setAllergyForm((p) => ({ ...p, severity: v }))}
+                            options={[
+                              { value: "", label: "Select severity" },
+                              ...SEVERITIES.map((s) => ({ value: s, label: s })),
+                            ]}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Reaction</label>
+                          <SearchableSelect
+                            value={allergyForm.reaction}
+                            onChange={(v) => setAllergyForm((p) => ({ ...p, reaction: v }))}
+                            options={[
+                              { value: "", label: "Select reaction" },
+                              ...REACTIONS.map((r) => ({ value: r, label: r })),
+                            ]}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Identified Date</label>
+                          <div className="mt-1">
+                            <DatePicker
+                              value={allergyForm.identifiedDate}
+                              onChange={(v) => setAllergyForm((p) => ({ ...p, identifiedDate: v }))}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">Status</label>
+                          <SearchableSelect
+                            value={allergyForm.status}
+                            onChange={(v) => setAllergyForm((p) => ({ ...p, status: v }))}
+                            options={ALLERGY_STATUSES.map((s) => ({ value: s, label: s }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs text-muted-foreground">Remarks</label>
+                        <textarea
+                          rows={2}
+                          placeholder="Additional clinical notes…"
+                          value={allergyForm.remarks}
+                          onChange={(e) => setAllergyForm((p) => ({ ...p, remarks: e.target.value }))}
+                          className="text-sm rounded-lg border border-border bg-background px-2 py-1.5 resize-none"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={addAllergy}
+                          className="flex items-center gap-1 rounded-lg border border-primary/30 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
+                        >
+                          <Plus size={14} /> {editingAllergyId ? "Save Correction" : "Add Allergy"}
+                        </button>
+                        {editingAllergyId && (
+                          <button onClick={cancelEditAllergy} className="text-sm font-semibold text-muted-foreground hover:underline">
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
                 </div>
 
                 {/* Medications */}
@@ -1904,139 +2764,208 @@ function DoctorWorkbenchInner() {
                     <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                       <Pill size={18} className="text-primary" /> Medication Tracking
                     </h2>
-                    {summary.currentMedications.length > 0 && (
-                      <button
-                        onClick={() => {
-                          setPatientAgeForPrint(
-                            summary.dateOfBirth
-                              ? Math.floor(
-                                  (Date.now() - new Date(summary.dateOfBirth).getTime()) /
-                                    (365.25 * 24 * 60 * 60 * 1000)
-                                )
-                              : null
-                          );
-                          setShowPrescriptionPrint(true);
-                        }}
-                        className="text-sm font-semibold text-primary hover:underline"
-                      >
-                        Print Prescription
-                      </button>
-                    )}
+                    <button onClick={() => setShowMedHistory(true)} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                      <History size={13} /> History
+                    </button>
                   </div>
 
-                  <div>
-                    <p className="text-sm font-semibold text-foreground/90 mb-2">Current Medications</p>
-                    {summary.currentMedications.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>Drug</th>
-                              <th>Dosage</th>
-                              <th>Route</th>
-                              <th>Frequency</th>
-                              <th>Priority</th>
-                              <th>Instructions</th>
-                              <th>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {summary.currentMedications.map((m) => (
-                              <tr key={m.medicationId}>
-                                <td className="font-semibold">
-                                  {m.drugName}
-                                  {m.isDiscontinued && (
-                                    <span
-                                      className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 align-middle"
-                                      title={m.discontinuedDate ? `Discontinued by health authority on ${new Date(m.discontinuedDate).toLocaleDateString()}` : "Discontinued by health authority"}
-                                    >
-                                      Discontinued
-                                    </span>
-                                  )}
-                                </td>
-                                <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
-                                <td>{m.route || "—"}</td>
-                                <td>{m.frequency || "—"}</td>
-                                <td>
-                                  {m.priority !== "Routine" ? (
-                                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${m.priority === "STAT" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
-                                      {m.priority}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">Routine</span>
-                                  )}
-                                </td>
-                                <td className="text-xs text-muted-foreground max-w-48 truncate">{m.instructions || "—"}</td>
-                                <td>
-                                  <div className="flex flex-col items-start gap-1">
-                                    <div className="flex items-center gap-3">
-                                      <button
-                                        onClick={() => discontinueMedication(m.medicationId)}
-                                        className="text-sm font-semibold text-red-600 hover:underline"
-                                      >
-                                        Discontinue
-                                      </button>
-                                      <button onClick={() => setEditingMedication(m)} title="Correct" className="p-1 hover:bg-primary/10 rounded-full text-primary">
-                                        <Pencil size={13} />
-                                      </button>
-                                      <button onClick={() => removeMedication(m)} title="Delete" className="p-1 hover:bg-destructive/10 rounded-full text-destructive">
-                                        <Trash2 size={13} />
-                                      </button>
-                                    </div>
-                                    {m.correctedFrom && (
-                                      <CorrectedFromNote>
-                                        <p>
-                                          Previous: {m.correctedFrom.drugName} ·{" "}
-                                          {m.correctedFrom.dosage
-                                            ? `${m.correctedFrom.dosage}${m.correctedFrom.dosageUnit ? ` ${m.correctedFrom.dosageUnit}` : ""}`
-                                            : "—"}{" "}
-                                          · {m.correctedFrom.frequency || "—"}
-                                          {m.correctedFrom.durationDays ? ` · ${m.correctedFrom.durationDays} days` : ""}
-                                          {m.correctedFrom.route ? ` · ${m.correctedFrom.route}` : ""}
-                                        </p>
-                                      </CorrectedFromNote>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No active medications.</p>
-                    )}
-                  </div>
-
-                  {summary.medicationHistory.length > 0 && (
-                    <div>
-                      <p className="text-sm font-semibold text-foreground/90 mb-2">Medication History</p>
-                      <div className="flex flex-col gap-1.5">
-                        {summary.medicationHistory.map((m) => (
-                          <div
-                            key={m.medicationId}
-                            className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm"
-                          >
-                            <span className="font-medium">{m.drugName}</span>
-                            <span className="text-muted-foreground text-xs">
-                              Ended {formatDate(m.endedAt)}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-border">
+                    {/* Current Medications */}
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-foreground/90 flex items-center gap-1.5">
+                          Current Medications
+                          {summary.currentMedications.length > 0 && (
+                            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
+                              {summary.currentMedications.length}
                             </span>
-                          </div>
-                        ))}
+                          )}
+                        </p>
+                        {summary.currentMedications.length > 0 && (
+                          <button
+                            onClick={() => {
+                              setPatientAgeForPrint(
+                                summary.dateOfBirth
+                                  ? Math.floor(
+                                      (Date.now() - new Date(summary.dateOfBirth).getTime()) /
+                                        (365.25 * 24 * 60 * 60 * 1000)
+                                    )
+                                  : null
+                              );
+                              setShowPrescriptionPrint(true);
+                            }}
+                            className="text-xs font-semibold text-primary hover:underline"
+                          >
+                            Print Prescription
+                          </button>
+                        )}
                       </div>
+                      {summary.currentMedications.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Drug</th>
+                                <th>Dosage</th>
+                                <th>Route</th>
+                                <th>Frequency</th>
+                                <th>Priority</th>
+                                <th>Instructions</th>
+                                <th>Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {summary.currentMedications.map((m) => (
+                                <tr key={m.medicationId} className="italic">
+                                  <td className="font-semibold">
+                                    {m.drugName}
+                                    {m.isDiscontinued && (
+                                      <span
+                                        className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 align-middle"
+                                        title={m.discontinuedDate ? `Discontinued by health authority on ${new Date(m.discontinuedDate).toLocaleDateString()}` : "Discontinued by health authority"}
+                                      >
+                                        Discontinued
+                                      </span>
+                                    )}
+                                    {m.locked && !(m.lockedBy === "Visit" && ordersReadOnly) && (
+                                      <div className="mt-0.5">
+                                        <OrderLockNotice lock={m} visitLockHint={visitLockHint} compact />
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
+                                  <td>{m.route || "—"}</td>
+                                  <td>{m.frequency || "—"}</td>
+                                  <td>
+                                    {m.priority !== "Routine" ? (
+                                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${m.priority === "STAT" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                                        {m.priority}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs">Routine</span>
+                                    )}
+                                  </td>
+                                  <td className="text-xs text-muted-foreground max-w-48 truncate">{m.instructions || "—"}</td>
+                                  <td>
+                                    <div className="flex flex-col items-start gap-1">
+                                      <div className="flex items-center gap-3">
+                                        <button
+                                          onClick={() => discontinueMedication(m.medicationId)}
+                                          disabled={ordersReadOnly}
+                                          title={ordersReadOnly ? visitLockHint : undefined}
+                                          className="text-sm font-semibold text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:no-underline"
+                                        >
+                                          Discontinue
+                                        </button>
+                                        <button
+                                          onClick={() => setEditingMedication(m)}
+                                          disabled={ordersReadOnly || m.locked}
+                                          title={m.locked ? (m.lockedBy === "Visit" ? visitLockHint : m.lockMessage ?? "Locked") : "Correct"}
+                                          className="p-1 hover:bg-primary/10 rounded-full text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                                        >
+                                          <Pencil size={13} />
+                                        </button>
+                                        <button
+                                          onClick={() => removeMedication(m)}
+                                          disabled={ordersReadOnly || m.locked}
+                                          title={m.locked ? (m.lockedBy === "Visit" ? visitLockHint : m.lockMessage ?? "Locked") : "Delete"}
+                                          className="p-1 hover:bg-destructive/10 rounded-full text-destructive disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                      {m.correctedFrom && (
+                                        <CorrectedFromNote>
+                                          <p>
+                                            Previous: {m.correctedFrom.drugName} ·{" "}
+                                            {m.correctedFrom.dosage
+                                              ? `${m.correctedFrom.dosage}${m.correctedFrom.dosageUnit ? ` ${m.correctedFrom.dosageUnit}` : ""}`
+                                              : "—"}{" "}
+                                            · {m.correctedFrom.frequency || "—"}
+                                            {m.correctedFrom.durationDays ? ` · ${m.correctedFrom.durationDays} days` : ""}
+                                            {m.correctedFrom.route ? ` · ${m.correctedFrom.route}` : ""}
+                                          </p>
+                                        </CorrectedFromNote>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <EmptyState size="compact" illustration="pharmacy" title="No active medications" />
+                      )}
                     </div>
-                  )}
 
+                    {/* Medication History */}
+                    <div className="flex flex-col gap-3 md:pl-6">
+                      <p className="text-sm font-semibold text-foreground/90 flex items-center gap-1.5">
+                        Medication History
+                        {summary.medicationHistory.length > 0 && (
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                            {summary.medicationHistory.length}
+                          </span>
+                        )}
+                      </p>
+                      {summary.medicationHistory.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Drug</th>
+                                <th>Dosage</th>
+                                <th>Route</th>
+                                <th>Frequency</th>
+                                <th>Duration</th>
+                                <th>Ended</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {summary.medicationHistory.map((m) => (
+                                <tr key={m.medicationId}>
+                                  <td className="font-semibold">{m.drugName}</td>
+                                  <td>{m.dosage ? `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}` : "—"}</td>
+                                  <td>{m.route || "—"}</td>
+                                  <td>{m.frequency || "—"}</td>
+                                  <td>{m.durationDays ? `${m.durationDays} days` : "—"}</td>
+                                  <td className="text-xs text-muted-foreground">{m.endedAt ? formatDate(m.endedAt) : "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <EmptyState size="compact" illustration="medicationHistory" title="No medication history recorded" />
+                      )}
+                    </div>
+                  </div>
                 </div>
+
+                <PatientMedicalFormsSection
+                  patientId={selectedPatientId}
+                  visitId={summary?.latestEncounter?.visitId ?? visitIdParam ?? null}
+                  patientName={summary?.name}
+                  patientNumber={summary?.opNumber || summary?.opId}
+                />
 
               </div>
 
               <div className="flex flex-col gap-6">
-                <MedicationOrderPanel
-                  onSubmit={addMedication}
-                  editingMedication={editingMedication}
-                  onCancelEdit={() => setEditingMedication(null)}
-                />
+                <fieldset
+                  disabled={ordersReadOnly}
+                  title={ordersReadOnly ? visitLockHint : undefined}
+                  className="min-w-0 disabled:opacity-60"
+                >
+                  <MedicationOrderPanel
+                    onSubmit={addMedication}
+                    editingMedication={editingMedication}
+                    onCancelEdit={() => setEditingMedication(null)}
+                    prefillFromHistory={prefillMedication}
+                    onClearPrefill={() => setPrefillMedication(null)}
+                  />
+                </fieldset>
 
                 {/* Unified ordering - Lab, Radiology and Treatment all placed from one CPT-
                     code/procedure-name search, shown together in one grouped list below it.
@@ -2044,31 +2973,42 @@ function DoctorWorkbenchInner() {
                     create it (see components/orders/) - locked once the owning team has
                     started processing it, or the visit's finalized. */}
                 <div className="card p-6 flex flex-col gap-3">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <FlaskConical size={18} className="text-primary" /> Investigations &amp; Treatments
-                  </h2>
-                  <CatalogSearchInput
-                    placeholder="Search by CPT code or procedure name..."
-                    fetchOptions={async (search) => {
-                      const res = await ConfigListService.get("Procedure", search);
-                      const items: ListItemType[] = res.data || [];
-                      items.forEach((i) => procedureResultsRef.current.set(i.listItemId, i));
-                      return items.map((i) => ({
-                        id: i.listItemId,
-                        name: i.name,
-                        code: i.code,
-                        meta: [i.department, i.orderCategory].filter(Boolean).join(" · ") || undefined,
-                      }));
-                    }}
-                    onSelect={(opt) => {
-                      const item = procedureResultsRef.current.get(opt.id);
-                      if (item) {
-                        setOrderingModal({ mode: "create", item });
-                      } else {
-                        toast.error("Couldn't load that item — please search again");
-                      }
-                    }}
-                  />
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <FlaskConical size={18} className="text-primary" /> Investigations &amp; Treatments
+                    </h2>
+                    <button onClick={() => setShowOrderHistory(true)} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                      <History size={13} /> History
+                    </button>
+                  </div>
+                  <fieldset
+                    disabled={ordersReadOnly}
+                    title={ordersReadOnly ? visitLockHint : undefined}
+                    className="min-w-0 disabled:opacity-60"
+                  >
+                    <CatalogSearchInput
+                      placeholder="Search by CPT code or procedure name..."
+                      fetchOptions={async (search) => {
+                        const res = await ConfigListService.get("Procedure", search);
+                        const items: ListItemType[] = res.data || [];
+                        items.forEach((i) => procedureResultsRef.current.set(i.listItemId, i));
+                        return items.map((i) => ({
+                          id: i.listItemId,
+                          name: i.name,
+                          code: i.code,
+                          meta: [i.department, i.orderCategory].filter(Boolean).join(" · ") || undefined,
+                        }));
+                      }}
+                      onSelect={(opt) => {
+                        const item = procedureResultsRef.current.get(opt.id);
+                        if (item) {
+                          setOrderingModal({ mode: "create", item });
+                        } else {
+                          toast.error("Couldn't load that item — please search again");
+                        }
+                      }}
+                    />
+                  </fieldset>
                   <OrderedItemsList
                     labRequests={summary.labRequests}
                     radiologyRequests={summary.radiologyRequests}
@@ -2076,6 +3016,10 @@ function DoctorWorkbenchInner() {
                     onOpenLab={(item) => setOrderingModal({ mode: "edit-lab", item })}
                     onOpenRadiology={(item) => setOrderingModal({ mode: "edit-radiology", item })}
                     onOpenTreatment={(item) => setOrderingModal({ mode: "edit-treatment", item })}
+                    itemClassName="italic"
+                    showLockDetails
+                    visitLockHint={visitLockHint}
+                    hideVisitLocks={ordersReadOnly}
                   />
                 </div>
 
@@ -2084,18 +3028,15 @@ function DoctorWorkbenchInner() {
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <Share2 size={18} className="text-primary" /> Referral Module
                   </h2>
-                  <select
+                  <fieldset disabled={encounterReadOnly} className="min-w-0 flex flex-col gap-3 disabled:opacity-70">
+                  <SearchableSelect
                     value={referralForm.targetSpecializationId}
-                    onChange={(e) => setReferralForm((p) => ({ ...p, targetSpecializationId: e.target.value }))}
-                    className="h-10 text-sm"
-                  >
-                    <option value="">Select target specialty</option>
-                    {specializations.map((s) => (
-                      <option key={s.specializationId} value={s.specializationId}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setReferralForm((p) => ({ ...p, targetSpecializationId: v }))}
+                    options={[
+                      { value: "", label: "Select target specialty" },
+                      ...specializations.map((s) => ({ value: String(s.specializationId), label: s.name })),
+                    ]}
+                  />
                   <div className="flex gap-3">
                     <label className="flex items-center gap-2 text-sm">
                       <input
@@ -2212,23 +3153,7 @@ function DoctorWorkbenchInner() {
                               Seen by specialist on {new Date(r.dateSeenBySpecialist).toLocaleDateString()}
                             </span>
                           ) : (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="date"
-                                value={referralOutcomeDates[r.referralId] || ""}
-                                onChange={(e) =>
-                                  setReferralOutcomeDates((p) => ({ ...p, [r.referralId]: e.target.value }))
-                                }
-                                className="h-8 text-xs flex-1"
-                              />
-                              <button
-                                onClick={() => saveReferralOutcome(r.referralId)}
-                                disabled={savingOutcomeId === r.referralId}
-                                className="text-xs font-semibold text-primary hover:underline disabled:opacity-50"
-                              >
-                                Record seen date
-                              </button>
-                            </div>
+                            <span className="text-xs text-muted-foreground">Awaiting consultation</span>
                           )}
                           {r.correctedFrom && (
                             <CorrectedFromNote>
@@ -2243,44 +3168,8 @@ function DoctorWorkbenchInner() {
                       ))}
                     </div>
                   )}
+                  </fieldset>
                 </div>
-
-                {/* Dental checklist — only shown for a doctor whose specialization is
-                    flagged dental (see Specialization.IsDentalSpecialty), feeds the PL4.6,
-                    PL4.11, and PL5.2 KPI reports. */}
-                {dashboard?.isDentalSpecialty && (
-                  <div className="card p-6 flex flex-col gap-3">
-                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                      <Stethoscope size={18} className="text-primary" /> Dental Checklist
-                    </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {([
-                        ["fissureSealantApplied", "Fissure sealant applied"],
-                        ["fluorideApplied", "Fluoride varnish applied"],
-                        ["sdfApplied", "Silver diamine fluoride applied"],
-                        ["oralHygieneEducationGiven", "Oral hygiene education given"],
-                        ["lifestyleEducationGiven", "Lifestyle factors education given"],
-                        ["smokingCessationEducationGiven", "Smoking cessation education given"],
-                        ["comprehensiveDentalPlanProvided", "Comprehensive dental plan provided"],
-                      ] as const).map(([key, label]) => (
-                        <label key={key} className="flex items-center gap-2 text-sm">
-                          <ToggleButton
-                            checked={dentalForm[key]}
-                            onChange={(checked) => setDentalForm((p) => ({ ...p, [key]: checked }))}
-                          />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
-                    <button
-                      onClick={saveDentalExtras}
-                      disabled={isSavingDentalExtras}
-                      className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      Save Dental Checklist
-                    </button>
-                  </div>
-                )}
 
                 {/* Follow-up — an optional booking, not a confirmed appointment; front
                     office calls the patient to arrange the actual visit. */}
@@ -2288,6 +3177,7 @@ function DoctorWorkbenchInner() {
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <CalendarPlus size={18} className="text-primary" /> Follow-Up
                   </h2>
+                  <fieldset disabled={encounterReadOnly} className="min-w-0 flex flex-col gap-3 disabled:opacity-70">
                   <DatePicker
                     value={followUpForm.followUpDate}
                     onChange={(v) => setFollowUpForm((p) => ({ ...p, followUpDate: v }))}
@@ -2338,116 +3228,58 @@ function DoctorWorkbenchInner() {
                       ))}
                     </div>
                   )}
+                  </fieldset>
                 </div>
-
-                {/* Quick notes */}
-                <div className="card p-6 flex flex-col gap-3">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <FileText size={18} className="text-primary" /> Quick Notes
-                  </h2>
-                  <textarea
-                    placeholder="Add a quick note..."
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.target.value)}
-                    className="w-full min-h-16 text-sm"
-                  />
-                  <button
-                    onClick={addQuickNote}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-primary/30 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
-                  >
-                    <Plus size={15} /> Add Note
-                  </button>
-                  <div className="flex flex-col gap-2 max-h-56 overflow-y-auto">
-                    {quickNotes.length > 0 ? (
-                      quickNotes.map((n) =>
-                        editingQuickNoteId === n.consultationNoteId ? (
-                          <div
-                            key={n.consultationNoteId}
-                            className="rounded-lg border border-primary/40 bg-muted/30 px-3 py-2 text-sm flex flex-col gap-2"
-                          >
-                            <textarea
-                              value={editingQuickNoteText}
-                              onChange={(e) => setEditingQuickNoteText(e.target.value)}
-                              className="w-full min-h-14 text-sm"
-                              autoFocus
-                            />
-                            <div className="flex items-center gap-3 justify-end">
-                              <button
-                                onClick={cancelEditQuickNote}
-                                className="text-xs font-semibold text-muted-foreground hover:underline"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={saveEditQuickNote}
-                                className="text-xs font-semibold text-primary hover:underline"
-                              >
-                                Save
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div
-                            key={n.consultationNoteId}
-                            className="group rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm"
-                          >
-                            <p className="text-foreground">{n.notes}</p>
-                            <div className="flex items-center justify-between mt-1">
-                              <p className="text-xs text-muted-foreground">{formatDateTime(n.createdAt)}</p>
-                              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => startEditQuickNote(n)}
-                                  title="Edit note"
-                                  className="p-1 hover:bg-primary/10 rounded-full text-primary"
-                                >
-                                  <Pencil size={13} />
-                                </button>
-                                <button
-                                  onClick={() => removeQuickNote(n)}
-                                  title="Delete note"
-                                  className="p-1 hover:bg-destructive/10 rounded-full text-destructive"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      )
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No notes yet.</p>
-                    )}
-                  </div>
-                </div>
-
-                <PatientMedicalFormsSection
-                  patientId={selectedPatientId}
-                  visitId={summary?.latestEncounter?.visitId ?? visitIdParam ?? null}
-                  patientName={summary?.name}
-                  patientNumber={summary?.opNumber || summary?.opId}
-                />
               </div>
             </div>
 
-            {/* Dental Chart — full-width below the 3-col grid, dental dept only */}
-            {dashboard?.isDentalSpecialty && selectedPatientId && (
-              <div className="card p-4 flex flex-col gap-3">
+          </div>
+        )}
+
+        {showDentalChartModal && selectedPatientId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-card w-full max-w-[98vw] max-h-[96vh] rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Stethoscope size={18} className="text-primary" /> Dental Chart
                 </h2>
+                <button
+                  onClick={() => setShowDentalChartModal(false)}
+                  className="rounded-full p-1.5 text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-4">
                 {summary?.latestEncounter?.encounterId ? (
                   <DentalChartSection
                     encounterId={summary.latestEncounter.encounterId}
                     patientId={selectedPatientId}
                   />
                 ) : (
-                  <p className="text-sm text-muted-foreground py-4 text-center">
-                    No active encounter — start a visit to access the dental chart.
-                  </p>
+                  <EmptyState
+                    illustration="visits"
+                    title="No active encounter"
+                    description="Start a visit to access the dental chart."
+                  />
                 )}
               </div>
-            )}
+            </div>
           </div>
+        )}
+
+        {showImmunization && selectedPatientId && (
+          <ImmunizationScheduleModal
+            patientId={selectedPatientId}
+            role="doctor"
+            doctorId={doctorIdParam}
+            requireDoctorSelected={requireDoctorSelected}
+            encounterId={summary?.latestEncounter?.encounterId ?? null}
+            visitId={activeVisitId ?? summary?.latestEncounter?.visitId ?? null}
+            isAdmin={isAdmin}
+            currentUserId={getUserDetail()?.userId}
+            onClose={() => setShowImmunization(false)}
+          />
         )}
 
         {showPrescriptionPrint && summary && (
@@ -2471,6 +3303,7 @@ function DoctorWorkbenchInner() {
               totalQuantity: m.totalQuantity,
             }))}
             showPricing={false}
+            doctorSignatureUrl={getUserDetail()?.userSignature}
             onClose={() => setShowPrescriptionPrint(false)}
           />
         )}
@@ -2478,6 +3311,187 @@ function DoctorWorkbenchInner() {
         {showVitalsHistory && (
           <VitalsHistoryModal entries={vitalsHistory} onClose={() => setShowVitalsHistory(false)} />
         )}
+
+        {/* Diagnosis History Drawer */}
+        <HistoryDrawer
+          open={showDiagnosisHistory}
+          onClose={() => setShowDiagnosisHistory(false)}
+          title="Diagnosis History"
+          subtitle="Past diagnoses from previous visits — click Re-add to add to the current encounter."
+        >
+          {isDiagnosisHistoryLoading ? (
+            <div className="flex justify-center py-8"><LoadingSpinner /></div>
+          ) : diagnosisHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No past diagnoses found.</p>
+          ) : (
+            diagnosisHistory.map((d) => (
+              <div key={d.encounterDiagnosisId} className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="font-medium text-foreground truncate">{d.diagnosisName}</span>
+                  {d.diagnosisCode && <span className="text-xs text-muted-foreground">{d.diagnosisCode}</span>}
+                  {d.encounterDate && <span className="text-xs text-muted-foreground">{new Date(d.encounterDate).toLocaleDateString()}</span>}
+                </div>
+                {d.listItemId && (
+                  <button
+                    onClick={async () => { await addDiagnosis(d.listItemId!); setShowDiagnosisHistory(false); }}
+                    className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    Re-add
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </HistoryDrawer>
+
+        {/* Medication History Drawer */}
+        <HistoryDrawer
+          open={showMedHistory}
+          onClose={() => setShowMedHistory(false)}
+          title="Medication History"
+          subtitle="Past prescriptions — click Re-prescribe to pre-fill the prescription form."
+        >
+          {summary && summary.medicationHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No medication history found.</p>
+          ) : (
+            (summary?.medicationHistory ?? []).map((m) => (
+              <div key={m.medicationId} className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="font-medium text-foreground">{m.drugName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {[m.dosage && `${m.dosage}${m.dosageUnit ? ` ${m.dosageUnit}` : ""}`, m.frequency, m.route].filter(Boolean).join(" · ")}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{new Date(m.startedAt).toLocaleDateString()} · {m.status}</span>
+                </div>
+                <button
+                  onClick={() => { setPrefillMedication(m); setShowMedHistory(false); }}
+                  className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                >
+                  Re-prescribe
+                </button>
+              </div>
+            ))
+          )}
+        </HistoryDrawer>
+
+        {/* Orders History Drawer */}
+        <HistoryDrawer
+          open={showOrderHistory}
+          onClose={() => setShowOrderHistory(false)}
+          title="Investigation & Treatment History"
+          subtitle="Past lab, radiology, and treatment orders from all visits."
+        >
+          {summary && (summary.labRequests.length + summary.radiologyRequests.length + summary.treatments.length) === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No past orders found.</p>
+          ) : (
+            <>
+              {(summary?.labRequests ?? []).map((l) => (
+                <div key={l.labRequestId} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className="flex items-center gap-1.5"><span className="rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5">LAB</span><span className="font-medium truncate">{l.testType}</span></div>
+                    <span className="text-xs text-muted-foreground">{new Date(l.requestedDate).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+              {(summary?.radiologyRequests ?? []).map((r) => (
+                <div key={r.radiologyRequestId} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className="flex items-center gap-1.5"><span className="rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold px-1.5 py-0.5">XRAY</span><span className="font-medium truncate">{r.scanType}</span></div>
+                    <span className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+              {(summary?.treatments ?? []).map((t) => (
+                <div key={t.treatmentId} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className="flex items-center gap-1.5"><span className="rounded-full bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5">TRT</span><span className="font-medium truncate">{t.description}</span></div>
+                    <span className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </HistoryDrawer>
+
+        {/* Past Visits Drawer — lists all recorded encounters for this patient */}
+        <HistoryDrawer
+          open={showPastVisitsDrawer}
+          onClose={() => setShowPastVisitsDrawer(false)}
+          title="Past Visits"
+          subtitle="Select a visit to open it in read-only view. Completed visits can be reopened via an admin request."
+        >
+          {pastEncounters.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No past visits found.</p>
+          ) : (
+            pastEncounters.map((enc) => (
+              <div
+                key={enc.encounterId}
+                className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5"
+              >
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{formatDate(enc.createdAt)}</span>
+                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${enc.status === "Completed" ? "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400" : "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400"}`}>
+                      {enc.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate max-w-xs">{enc.chiefComplaint || "No chief complaint recorded"}</p>
+                  {enc.doctorName && <p className="text-xs text-muted-foreground">Dr. {enc.doctorName}</p>}
+                </div>
+                <button
+                  onClick={() => {
+                    if (selectedPatientId) openPatient(selectedPatientId, enc.visitId ?? undefined);
+                    setShowPastVisitsDrawer(false);
+                  }}
+                  className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                >
+                  Open
+                </button>
+              </div>
+            ))
+          )}
+        </HistoryDrawer>
+
+        {/* Encounter Notes History Drawer — shows previous encounter notes for reference during a new visit */}
+        <HistoryDrawer
+          open={showEncounterNotesHistory}
+          onClose={() => setShowEncounterNotesHistory(false)}
+          title="Encounter Notes History"
+          subtitle="Previous visits' chief complaints and dates — click Open to view the full encounter."
+        >
+          {pastEncounters.filter(e => e.encounterId !== summary?.latestEncounter?.encounterId).length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No previous encounter notes found.</p>
+          ) : (
+            pastEncounters
+              .filter(e => e.encounterId !== summary?.latestEncounter?.encounterId)
+              .map((enc) => (
+                <div
+                  key={enc.encounterId}
+                  className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5"
+                >
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">{formatDate(enc.createdAt)}</span>
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${enc.status === "Completed" ? "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400" : "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400"}`}>
+                        {enc.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-foreground/80 mt-0.5">{enc.chiefComplaint || "No chief complaint recorded"}</p>
+                    {enc.doctorName && <p className="text-xs text-muted-foreground">Dr. {enc.doctorName}</p>}
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (selectedPatientId) openPatient(selectedPatientId, enc.visitId ?? undefined);
+                      setShowEncounterNotesHistory(false);
+                    }}
+                    className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    Open
+                  </button>
+                </div>
+              ))
+          )}
+        </HistoryDrawer>
 
         {/* Unified ordering config popups - one open at a time, driven by orderingModal's
             mode. "create" branches on the picked catalog item's own OrderCategory; "edit-*"
@@ -2530,8 +3544,8 @@ function DoctorWorkbenchInner() {
               coInsurancePercent: orderingModal.item.coInsurancePercent != null ? String(orderingModal.item.coInsurancePercent) : "",
             }}
             coverageHint={coverageHintText("Lab")}
-            locked={orderingModal.item.locked}
-            lockedBy={orderingModal.item.lockedBy}
+            lock={summary?.labRequests.find((l) => l.labRequestId === orderingModal.item.labRequestId) ?? orderingModal.item}
+            visitLockHint={visitLockHint}
             saving={isSavingOrder}
             submitLabel="Save changes"
             onSave={submitLabRadiology}
@@ -2556,8 +3570,8 @@ function DoctorWorkbenchInner() {
               coInsurancePercent: orderingModal.item.coInsurancePercent != null ? String(orderingModal.item.coInsurancePercent) : "",
             }}
             coverageHint={coverageHintText("Radiology")}
-            locked={orderingModal.item.locked}
-            lockedBy={orderingModal.item.lockedBy}
+            lock={summary?.radiologyRequests.find((r) => r.radiologyRequestId === orderingModal.item.radiologyRequestId) ?? orderingModal.item}
+            visitLockHint={visitLockHint}
             saving={isSavingOrder}
             submitLabel="Save changes"
             onSave={submitLabRadiology}
@@ -2573,13 +3587,275 @@ function DoctorWorkbenchInner() {
               isPackage: orderingModal.item.isPackage,
               isBillingPending: orderingModal.item.isBillingPending,
             }}
-            locked={orderingModal.item.locked}
-            lockedBy={orderingModal.item.lockedBy}
+            lock={summary?.treatments.find((t) => t.treatmentId === orderingModal.item.treatmentId) ?? orderingModal.item}
+            visitLockHint={visitLockHint}
             saving={isSavingOrder}
             submitLabel="Save changes"
             onSave={submitTreatment}
             onClose={() => setOrderingModal(null)}
           />
+        )}
+
+        {/* Patient Documents modal */}
+        {showDocumentsModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-card w-full max-w-2xl rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden max-h-[85vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <FileText size={18} className="text-primary" /> Patient Documents
+                  {documents.length > 0 && (
+                    <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                      {documents.length}
+                    </span>
+                  )}
+                </h2>
+                <button onClick={() => setShowDocumentsModal(false)} className="p-1.5 rounded-full hover:bg-muted text-muted-foreground transition-colors">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="overflow-y-auto flex-1 p-5">
+                {documents.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                    <FileText size={32} className="opacity-30" />
+                    <p className="text-sm">No documents attached to this patient yet.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {documents.map((d) => {
+                      const fileUrl = backendAssetUrl(d.filePath);
+                      const ext = d.filePath?.split(".").pop()?.toLowerCase() ?? "";
+                      const isImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+                      const isPdf = ext === "pdf";
+                      return (
+                        <div key={d.patientDocumentId} className="flex flex-col gap-2">
+                          <div
+                            className={`rounded-lg border px-4 py-3 flex items-center justify-between gap-3 transition-colors ${
+                              !d.viewedByDoctor
+                                ? "border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20"
+                                : "border-border bg-muted/20"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold uppercase ${
+                                isPdf ? "bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400" :
+                                isImage ? "bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400" :
+                                "bg-muted text-muted-foreground"
+                              }`}>
+                                {isPdf ? "PDF" : isImage ? "IMG" : ext.toUpperCase() || "?"}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">{d.documentType}</p>
+                                <p className="text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</p>
+                              </div>
+                              {!d.viewedByDoctor && (
+                                <span className="shrink-0 rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white">NEW</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {fileUrl ? (
+                                <>
+                                  {isImage && (
+                                    <button
+                                      onClick={() => {
+                                        setPreviewDocUrl(previewDocUrl === fileUrl ? null : fileUrl);
+                                        if (!d.viewedByDoctor) markDocumentViewed(d.patientDocumentId);
+                                      }}
+                                      className="flex items-center gap-1 rounded-lg bg-primary/10 hover:bg-primary/20 px-3 py-1.5 text-xs font-semibold text-primary transition-colors"
+                                    >
+                                      {previewDocUrl === fileUrl ? "Hide" : "Preview"}
+                                    </button>
+                                  )}
+                                  <a
+                                    href={fileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={async () => { if (!d.viewedByDoctor) await markDocumentViewed(d.patientDocumentId); }}
+                                    className="flex items-center gap-1 rounded-lg bg-primary/10 hover:bg-primary/20 px-3 py-1.5 text-xs font-semibold text-primary transition-colors"
+                                  >
+                                    View
+                                  </a>
+                                  <a
+                                    href={fileUrl}
+                                    download
+                                    onClick={async () => { if (!d.viewedByDoctor) await markDocumentViewed(d.patientDocumentId); }}
+                                    className="flex items-center gap-1 rounded-lg border border-border hover:bg-muted px-3 py-1.5 text-xs font-semibold text-foreground transition-colors"
+                                  >
+                                    Download
+                                  </a>
+                                </>
+                              ) : (
+                                !d.viewedByDoctor && (
+                                  <button onClick={() => markDocumentViewed(d.patientDocumentId)} className="text-xs font-semibold text-primary hover:underline">
+                                    Mark reviewed
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          </div>
+                          {isImage && fileUrl && previewDocUrl === fileUrl && (
+                            <div className="rounded-lg overflow-hidden border border-border bg-muted/30 flex items-center justify-center">
+                              <img src={fileUrl} alt={d.documentType} className="max-h-96 w-full object-contain" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Upload section */}
+              <div className="px-5 py-4 border-t border-border flex flex-col gap-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Upload size={12} /> Attach Document
+                </p>
+                <div className="flex flex-wrap gap-2 items-end">
+                  <div>
+                    <SearchableSelect
+                      value={uploadDocType}
+                      onChange={setUploadDocType}
+                      options={[
+                        { value: "Report", label: "Report" },
+                        { value: "Lab Result", label: "Lab Result" },
+                        { value: "Radiology Image", label: "Radiology Image" },
+                        { value: "Prescription", label: "Prescription" },
+                        { value: "Referral Letter", label: "Referral Letter" },
+                        { value: "Insurance", label: "Insurance" },
+                        { value: "Other", label: "Other" },
+                      ]}
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted cursor-pointer transition-colors">
+                    <Upload size={13} />
+                    {uploadDocFile ? uploadDocFile.name : "Choose file"}
+                    <input type="file" className="hidden" accept="image/*,.pdf" onChange={(e) => setUploadDocFile(e.target.files?.[0] ?? null)} />
+                  </label>
+                  {uploadDocFile && (
+                    <button
+                      onClick={handleUploadDocument}
+                      disabled={isUploadingDoc}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {isUploadingDoc ? "Uploading…" : "Upload"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-3 border-t border-border flex justify-end">
+                <button
+                  onClick={() => setShowDocumentsModal(false)}
+                  className="rounded-lg border border-border px-5 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Release Patient confirmation modal */}
+        {showReleaseConfirm && (
+          <AdminPasswordConfirm
+            title="Release Patient?"
+            description="This will void any unsaved encounter data and return the patient to the appointment queue. Enter your password to confirm."
+            confirmLabel="Yes, Release"
+            confirmingLabel="Releasing..."
+            passwordPlaceholder="Your password"
+            onCancel={() => setShowReleaseConfirm(false)}
+            onConfirm={releasePatient}
+          />
+        )}
+
+        {showReEncounterConfirm && (
+          <AdminPasswordConfirm
+            title="Re-Encounter"
+            description="Re-open this finalized encounter so you can change notes and orders. Orders another team has already started stay locked until they revert them. Enter your password to confirm."
+            confirmLabel="Re-open"
+            confirmingLabel="Re-opening..."
+            passwordPlaceholder="Your password"
+            onCancel={() => setShowReEncounterConfirm(false)}
+            onConfirm={reEncounter}
+          />
+        )}
+
+        {/* Patient warning modal — shown once on file open when allergies or alert exist */}
+        {patientWarningModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-card w-full max-w-lg rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
+              {/* Header */}
+              <div className="bg-red-600 dark:bg-red-700 px-6 py-4 flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
+                  <AlertTriangle size={22} className="text-white" />
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Patient Safety Alert</h2>
+                  <p className="text-sm text-red-100">Review before proceeding with this patient</p>
+                </div>
+                <button
+                  onClick={() => setPatientWarningModal(null)}
+                  className="ml-auto p-1.5 rounded-full hover:bg-white/20 text-white transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="overflow-y-auto flex flex-col gap-4 p-5">
+                {/* Patient alert text */}
+                {patientWarningModal.alertText.trim() && (
+                  <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-1.5 flex items-center gap-1.5">
+                      <AlertTriangle size={13} /> Clinical Alert
+                    </p>
+                    <p className="text-sm text-amber-900 dark:text-amber-200 whitespace-pre-wrap">{patientWarningModal.alertText}</p>
+                  </div>
+                )}
+
+                {/* Allergies */}
+                {patientWarningModal.allergies.length > 0 && (
+                  <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-4 flex flex-col gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-400 mb-0.5">
+                      Known Allergies / Sensitivities ({patientWarningModal.allergies.length})
+                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      {patientWarningModal.allergies.map((a) => (
+                        <div key={a.patientAllergyId} className="flex flex-wrap items-center gap-2 text-sm">
+                          <span className="font-semibold text-red-700 dark:text-red-300">{a.substance}</span>
+                          {a.allergyCategory && (
+                            <span className="rounded px-1.5 py-0.5 text-xs bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-300">{a.allergyCategory}</span>
+                          )}
+                          {a.severity && (
+                            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                              a.severity === "Life-threatening" ? "bg-red-200 dark:bg-red-900 text-red-800 dark:text-red-200" :
+                              a.severity === "Severe" ? "bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300" :
+                              a.severity === "Moderate" ? "bg-yellow-100 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300" :
+                              "bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300"
+                            }`}>{a.severity}</span>
+                          )}
+                          {a.reaction && <span className="text-xs text-muted-foreground">→ {a.reaction}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-4 border-t border-border flex justify-end">
+                <button
+                  onClick={() => setPatientWarningModal(null)}
+                  className="rounded-lg bg-red-600 hover:bg-red-700 px-6 py-2.5 text-sm font-semibold text-white transition-colors"
+                >
+                  I Acknowledge — Continue
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );
@@ -2598,23 +3874,51 @@ function DoctorWorkbenchInner() {
           </p>
         </div>
         {isAdmin && (
-          <select
-            value={selectedDoctorId}
-            onChange={(e) => setSelectedDoctorId(e.target.value)}
-            className="h-10 w-48 shrink-0 text-sm"
-          >
-            <option value="">All doctors (system-wide)</option>
-            {assignedDoctors.map((d) => (
-              <option key={String(d.doctorId)} value={String(d.doctorId)}>
-                {d.userName} — {d.specializationName}
-              </option>
-            ))}
-          </select>
+          <div className="w-48 sm:w-72 shrink-0">
+            <label htmlFor="workbench-doctor" className="mb-1 block text-xs font-semibold text-muted-foreground">
+              Doctor
+            </label>
+            <SearchableSelect
+              id="workbench-doctor"
+              value={selectedDoctorId}
+              onChange={setSelectedDoctorId}
+              className={standaloneSelectClass}
+              options={[
+                { value: "", label: "All doctors (system-wide)" },
+                ...assignedDoctors.map((d) => ({ value: String(d.doctorId), label: `${d.userName} — ${d.specializationName}` })),
+              ]}
+            />
+          </div>
         )}
       </div>
 
       {isLoadingWorkbench ? (
-        <LoadingSpinner />
+        <div className="flex flex-col gap-6">
+          <div className="card p-6">
+            <div className="h-5 w-40 mb-4 animate-pulse rounded bg-muted/60" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-28 animate-pulse rounded-xl bg-muted/50" />
+              ))}
+            </div>
+          </div>
+          <div className="card p-6">
+            <div className="h-5 w-48 mb-4 animate-pulse rounded bg-muted/60" />
+            <div className="flex flex-col gap-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-16 animate-pulse rounded-lg bg-muted/50" />
+              ))}
+            </div>
+          </div>
+          <div className="card p-6">
+            <div className="h-5 w-36 mb-4 animate-pulse rounded bg-muted/60" />
+            <div className="flex flex-col gap-2">
+              {[...Array(2)].map((_, i) => (
+                <div key={i} className="h-16 animate-pulse rounded-lg bg-muted/50" />
+              ))}
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="flex flex-col gap-6">
           {/* Corrections an admin proposed for one of this doctor's finalized encounters —
@@ -2665,56 +3969,228 @@ function DoctorWorkbenchInner() {
             </div>
           )}
 
+          {/* Admin: pending encounter unlock requests */}
+          {isAdmin && unlockRequests.filter((r) => r.status === "Pending").length > 0 && (
+            <div className="card p-6 flex flex-col gap-3 border-l-4 border-l-amber-500">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <UnlockIcon size={18} className="text-amber-500" /> Encounter Unlock Requests
+                <span className="text-xs font-normal text-muted-foreground ml-1">
+                  ({unlockRequests.filter((r) => r.status === "Pending").length} pending)
+                </span>
+              </h2>
+              <div className="flex flex-col gap-2">
+                {unlockRequests.filter((r) => r.status === "Pending").map((r) => (
+                  <div key={r.encounterUnlockRequestId} className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="font-semibold text-foreground">{r.requestedByName ?? "Doctor"}</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          requests unlock for {r.patientName ?? "a patient"} · {formatDateTime(r.createdAt)}
+                        </span>
+                        {r.reason && (
+                          <p className="text-xs text-muted-foreground mt-0.5">Reason: {r.reason}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => resolveUnlockRequest(r.encounterUnlockRequestId, "approve")}
+                          disabled={resolvingUnlockId === r.encounterUnlockRequestId}
+                          className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                        >
+                          <Check size={13} /> Approve
+                        </button>
+                        <button
+                          onClick={() => resolveUnlockRequest(r.encounterUnlockRequestId, "deny")}
+                          disabled={resolvingUnlockId === r.encounterUnlockRequestId}
+                          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
+                        >
+                          <X size={13} /> Deny
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Scheduled vaccinations that are overdue or coming up - see ImmunizationReminderService. */}
+          <ImmunizationRemindersCard doctorId={doctorIdParam} onOpenPatient={(id) => void openPatient(id)} />
+
+          {/* Today's Patient Queue — doctor-only real-time queue */}
+          {(pendingNurseQueue.length > 0 || waitingForDoctorQueue.length > 0) && (
+            <div className="card p-5">
+              <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
+                <Stethoscope size={17} className="text-primary" /> Today&apos;s Patient Queue
+              </h2>
+              <div className="flex flex-col gap-5">
+                {/* Waiting for doctor */}
+                {waitingForDoctorQueue.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-2">
+                      Waiting for You ({waitingForDoctorQueue.length})
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {waitingForDoctorQueue.map((p) => (
+                        <div key={p.visitId} className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{p.patientName}</p>
+                            <p className="text-xs text-muted-foreground">{p.visitType} · {formatWait(p.checkedInAt)} waiting</p>
+                          </div>
+                          <button
+                            onClick={() => openPatient(p.patientId, p.visitId)}
+                            className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                          >
+                            See Patient
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Pending nurse encounter */}
+                {pendingNurseQueue.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-2">
+                      Pending Nurse Encounter ({pendingNurseQueue.length})
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {pendingNurseQueue.map((p) => (
+                        <div key={p.visitId} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2.5 opacity-70">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{p.patientName}</p>
+                            <p className="text-xs text-muted-foreground">{p.visitType} · {formatWait(p.checkedInAt)} waiting · nurse not done yet</p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-purple-100 dark:bg-purple-900/30 px-2.5 py-1 text-[11px] font-semibold text-purple-700 dark:text-purple-300">
+                            With Nurse
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <StatCard icon={<Users size={18} />} label="Patients Under Care" value={dashboard?.patientsUnderCare ?? 0} />
-            <StatCard icon={<Activity size={18} />} label="Active Cases" value={dashboard?.activeCases ?? 0} />
-            <StatCard icon={<CalendarClock size={18} />} label="Today's Appointments" value={dashboard?.todaysAppointments ?? 0} />
-            <StatCard icon={<FileText size={18} />} label="Pending Reports" value={dashboard?.pendingReports ?? 0} />
-            <StatCard icon={<AlertTriangle size={18} />} label="Urgent Items" value={dashboard?.urgentItems ?? 0} accent />
+            <StatCard icon={<Users size={18} />} label="Patients Under Care" value={dashboard?.patientsUnderCare ?? 0} hint="Total patients currently assigned to you with an open encounter." />
+            <StatCard icon={<Activity size={18} />} label="Active Cases" value={dashboard?.activeCases ?? 0} hint="Patients with an ongoing case that has not yet been closed or discharged." />
+            <StatCard icon={<CalendarClock size={18} />} label="Today's Appointments" value={dashboard?.todaysAppointments ?? 0} hint="Number of appointments scheduled for today across all your patients." />
+            <StatCard icon={<FileText size={18} />} label="Pending Reports" value={dashboard?.pendingReports ?? 0} hint="Lab and radiology results that have been completed but not yet reviewed by you." />
+            <StatCard icon={<AlertTriangle size={18} />} label="Urgent Items" value={dashboard?.urgentItems ?? 0} accent hint="High-priority tasks or alerts flagged for your immediate attention." />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 card p-6">
-              <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                <CalendarClock size={18} className="text-primary" /> Today&apos;s Schedule
-              </h2>
+              <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <CalendarClock size={18} className="text-primary" /> My Schedules
+                </h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="relative w-48">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search by name..."
+                      value={scheduleSearch}
+                      onChange={(e) => setScheduleSearch(e.target.value)}
+                      className="w-full h-9 pl-8 text-sm rounded-lg border border-border bg-muted px-3 text-foreground"
+                    />
+                  </div>
+                  <div className="w-44">
+                    <DatePicker
+                      value={scheduleDate}
+                      onChange={(val) => setScheduleDate(val)}
+                      dateFormat="dd/MM/yyyy"
+                      placeholder="Pick a date"
+                      className="flex h-9 w-full items-center gap-2 overflow-hidden rounded-lg border border-border bg-muted px-3 text-sm text-foreground transition-all focus-within:border-primary focus-within:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
               <div className="overflow-x-auto">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Patient</th>
-                      <th>Time</th>
-                      <th>Status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {schedule.length > 0 ? (
-                      schedule.map((item) => (
-                        <tr key={item.appointmentId}>
-                          <td className="font-semibold">{item.patientName}</td>
-                          <td>{new Date(item.appointmentDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
-                          <td>{item.status}</td>
-                          <td>
-                            <button
-                              onClick={() => openPatient(item.patientId)}
-                              className="text-sm font-semibold text-primary hover:underline"
-                            >
-                              Open EMR
-                            </button>
+                {isLoadingSchedule ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">Loading…</p>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Patient</th>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Appt. Status</th>
+                        <th>Visit Status</th>
+                        <th>Waiting</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const filtered = scheduleSearch.trim()
+                          ? schedule.filter((s) => s.patientName?.toLowerCase().includes(scheduleSearch.toLowerCase()))
+                          : schedule;
+                        return filtered.length > 0 ? (
+                        filtered.map((item) => (
+                          // A walk-in can come without an appointment id - fall back to its visit.
+                          <tr key={item.appointmentId || item.visitId || `${item.patientId}-${item.appointmentDate}`}>
+                            <td className="font-semibold">{item.patientName}</td>
+                            <td className="whitespace-nowrap">{new Date(item.appointmentDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                            <td>
+                              {item.isWalkIn ? (
+                                <span className="inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold px-2 py-0.5">
+                                  Walk-in
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5">
+                                  Scheduled
+                                </span>
+                              )}
+                            </td>
+                            <td className="text-sm">{item.status}</td>
+                            <td className="text-sm">
+                              {item.visitStatus ? (
+                                <span className="text-green-600 dark:text-green-400 font-medium">{item.visitStatus.replace(/([A-Z])/g, " $1").trim()}</span>
+                              ) : (
+                                <span className="text-muted-foreground">Not arrived</span>
+                              )}
+                            </td>
+                            <td className="whitespace-nowrap font-mono text-sm">
+                              {item.checkedInAt ? (
+                                <span className={`${formatWait(item.checkedInAt) !== "—" && parseInt(formatWait(item.checkedInAt)) >= 30 ? "text-amber-600 dark:text-amber-400 font-semibold" : ""}`}>
+                                  {formatWait(item.checkedInAt)}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                            <td>
+                              <button
+                                onClick={() => openPatient(item.patientId, item.visitId)}
+                                className="text-sm font-semibold text-primary hover:underline"
+                              >
+                                See Patient
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7}>
+                            {scheduleSearch.trim() ? (
+                              <EmptyState size="compact" illustration="search" title="No patients match your search" />
+                            ) : (
+                              <EmptyState size="compact" illustration="visits" title="No appointments on this date" />
+                            )}
                           </td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={4} className="text-center text-muted-foreground py-8">
-                          No appointments today.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                      );
+                      })()}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
 
@@ -2735,24 +4211,31 @@ function DoctorWorkbenchInner() {
                     </button>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">No open cases.</p>
+                  <EmptyState size="compact" illustration="clipboard" title="No open cases" />
                 )}
               </div>
             </div>
           </div>
 
           <div className="card p-6">
-            <div className="flex items-center justify-between mb-4 gap-4">
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Users size={18} className="text-primary" /> Patients
-              </h2>
+            <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Users size={18} className="text-primary" /> Patients
+                </h2>
+                {!searchTerm.trim() && patients.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {patients.length <= PAGE_SIZE ? `${patients.length} patients` : `Page ${patientsPage} of ${totalPatientPages}`}
+                  </span>
+                )}
+              </div>
               <div className="relative w-64">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Search by name or MRN..."
+                  placeholder="Search by name or MRN…"
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => { setSearchTerm(e.target.value); setPatientsPage(1); }}
                   className="w-full h-10 pl-9 text-sm"
                 />
               </div>
@@ -2770,8 +4253,8 @@ function DoctorWorkbenchInner() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPatients.length > 0 ? (
-                    filteredPatients.map((p) => (
+                  {pagedPatients.length > 0 ? (
+                    pagedPatients.map((p) => (
                       <tr key={p.opId}>
                         <td className="font-mono text-xs">{p.opNumber || p.opId}</td>
                         <td className="font-semibold">{p.name}</td>
@@ -2783,25 +4266,56 @@ function DoctorWorkbenchInner() {
                             onClick={() => openPatient(p.opId)}
                             className="text-sm font-semibold text-primary hover:underline"
                           >
-                            Open EMR
+                            Open Chart
                           </button>
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="text-center text-muted-foreground py-8">
-                        No patients found.
+                      <td colSpan={6}>
+                        <EmptyState size="compact" illustration="patients" title="No patients found" />
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
+            {!searchTerm.trim() && totalPatientPages > 1 && (
+              <div className="flex items-center justify-between px-2 pt-3 pb-1 border-t border-border">
+                <span className="text-xs text-muted-foreground">
+                  Page {patientsPage} of {totalPatientPages} &mdash; {filteredPatients.length} patients
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPatientsPage((p) => Math.max(1, p - 1))}
+                    disabled={patientsPage === 1}
+                    className="px-3 py-1 text-xs rounded-md border border-border disabled:opacity-40 hover:bg-muted transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() => setPatientsPage((p) => Math.min(totalPatientPages, p + 1))}
+                    disabled={patientsPage === totalPatientPages}
+                    className="px-3 py-1 text-xs rounded-md border border-border disabled:opacity-40 hover:bg-muted transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
+      {emrModal && (
+        <PatientEmrModal
+          patientId={emrModal.patientId}
+          patientName={emrModal.patientName}
+          isOpen={!!emrModal}
+          onClose={() => setEmrModal(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2823,17 +4337,22 @@ function StatCard({
   label,
   value,
   accent,
+  hint,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   accent?: boolean;
+  hint?: string;
 }) {
   return (
     <div className="card p-4 flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
-        <span className={accent && value > 0 ? "text-red-600" : "text-primary"}>{icon}</span>
+        <div className="flex items-center gap-1.5">
+          {hint && <HintTooltip text={hint} />}
+          <span className={accent && value > 0 ? "text-red-600" : "text-primary"}>{icon}</span>
+        </div>
       </div>
       <p className={`text-2xl font-semibold ${accent && value > 0 ? "text-red-600" : "text-foreground"}`}>
         {value}

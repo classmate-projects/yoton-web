@@ -4,6 +4,19 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { MdExpandMore } from "react-icons/md";
 
+// Trigger style for a SearchableSelect that stands on its own (e.g. a page-header picker)
+// rather than inside a form field that already draws the box - the default trigger is
+// borderless, which on its own reads as plain text instead of a dropdown. Pass as className.
+export const standaloneSelectClass =
+  "flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 text-left text-sm text-foreground shadow-sm transition-colors hover:border-primary/60 hover:bg-muted/40 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20";
+
+// Trigger styles matching the app's standard 40px small-text form fields, and the compact
+// 32px ones used inside table rows and editors. Pass as className.
+export const fieldSelectClass =
+  "flex h-10 w-full items-center justify-between gap-1 rounded-lg border border-border bg-background px-3 text-left text-sm text-foreground transition-colors hover:border-primary/60";
+export const compactSelectClass =
+  "flex h-8 w-full items-center justify-between gap-1 rounded-md border border-border bg-background px-2 text-left text-xs text-foreground transition-colors hover:border-primary/60";
+
 export interface SearchableSelectOption {
   value: string;
   label: string;
@@ -19,6 +32,9 @@ interface SearchableSelectProps {
   required?: boolean;
   disabled?: boolean;
   className?: string;
+  // Labels are shown Capitalized By Default; pass true to show them exactly as written -
+  // needed wherever case carries meaning (dose units like "mg"/"mL", frequency codes).
+  preserveCase?: boolean;
 }
 
 // Generic searchable dropdown for any small option list (roles, departments,
@@ -35,7 +51,9 @@ export default function SearchableSelect({
   required,
   disabled,
   className = "",
+  preserveCase = false,
 }: SearchableSelectProps) {
+  const caseClass = preserveCase ? "" : "capitalize";
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState(0);
@@ -205,7 +223,7 @@ export default function SearchableSelect({
         aria-expanded={open}
         className={`${
           className ||
-          "flex h-11 w-full items-center justify-between gap-1 px-3 text-left capitalize text-foreground transition-colors hover:bg-muted"
+          `flex h-10 w-full items-center justify-between gap-1 rounded-lg border border-border bg-background px-3 text-left ${caseClass} text-foreground transition-colors hover:border-primary/60`
         } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
       >
         <span className={`truncate ${selected ? "" : "text-muted-foreground"}`}>
@@ -221,7 +239,7 @@ export default function SearchableSelect({
           ref={setPopupRef}
           role="listbox"
           style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}
-          className="z-50 flex max-h-72 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          className="z-[300] flex max-h-72 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-150"
         >
           <div className="border-b border-border p-2">
             <input
@@ -261,7 +279,7 @@ export default function SearchableSelect({
                 onMouseEnter={() => setHighlighted(index)}
                 onClick={() => pick(o.value)}
                 className={[
-                  "flex w-full cursor-pointer items-center px-3 py-2 text-left text-sm capitalize transition-colors",
+                  `flex w-full cursor-pointer items-center px-3 py-2 text-left text-sm ${caseClass} transition-colors`,
                   index === highlighted ? "bg-muted" : "",
                   o.value === value ? "font-semibold text-primary" : "text-foreground",
                 ].join(" ")}

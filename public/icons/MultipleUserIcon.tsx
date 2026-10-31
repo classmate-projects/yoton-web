@@ -1,5 +1,3 @@
-import React from "react";
-
 interface MultipleUserIconProps {
   size?: number;
   color?: string;

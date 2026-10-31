@@ -1,5 +1,3 @@
-import React from "react";
-
 interface UserCardIconProps {
   size?: number;
   color?: string;

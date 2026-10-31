@@ -11,10 +11,6 @@ export interface RevenuePoint {
 export interface TopDoctor {
   doctorId: string;
   doctorName: string | null;
+  userImage: string | null;
   count: number;
-}
-
-export interface TopDoctorsResponse {
-  message: string;
-  data: TopDoctor[];
 }

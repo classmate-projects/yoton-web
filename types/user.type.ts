@@ -1,3 +1,5 @@
+import type { Region } from "@/types/region.type";
+
 // Shape written to localStorage["yoton_user_detail"] on login/registration and
 // read back by the sidebar for branding (company logo/name, avatar). Other pages
 // that only need the role read this same key ad hoc - adding fields here is safe
@@ -9,18 +11,27 @@ export interface CurrentUserDetail {
     companyId?: string;
     companyName?: string;
     companyLogoUrl?: string | null;
+    // The clinic's tax registration (TRN / GSTIN) - printed on bills where the region has tax.
+    companyTaxRegistrationNumber?: string | null;
     userImage?: string | null;
+    userSignature?: string | null;
     // navLinks the admin has granted this user's role (see RoleService.setAllowedModules) -
     // absent/empty means this role can reach nothing beyond the permanent "/settings"
     // exemption. Ignored entirely for role === "admin", who always has every module.
     allowedModules?: string[];
-    // Admin-configurable in Settings (CompanyController.UpdateSettings) - see lib/currency.ts
-    // for the single place every page should read this from rather than hardcoding a symbol.
+    // The installation's country/region, chosen by the super administrator - the single
+    // source of every country-specific rule (currency, phone code, national ID, address,
+    // tax, country-only features). Read it through lib/region.ts, never directly.
+    region?: Region | null;
+    // False only before the super administrator has chosen the country.
+    systemConfigured?: boolean;
+    // Set for an account still on a password it was issued (e.g. the seeded super
+    // administrator) - the app sends it to /change-password before anything else.
+    mustChangePassword?: boolean;
+    // Shortcuts to region.currency / region.country, kept because many pages read them -
+    // see lib/currency.ts for formatting amounts.
     currencyCode?: string;
     currencySymbol?: string;
-    // Admin-configurable in Settings - the clinic's own home country, used e.g. to decide
-    // which National ID format (Emirates ID, Aadhaar, ...) Patient Entry expects, regardless
-    // of any individual patient's own nationality. See helpers/nationalIdFormats.ts.
     country?: string;
     // Minutes of inactivity before an auto-logout - same value for every signed-in user,
     // no per-user override. See hooks/useIdleLogout.ts.
@@ -29,6 +40,14 @@ export interface CurrentUserDetail {
     // never assigned a branch, or a company with no non-main branches. Used to default the
     // Branch filter on User Management to "my branch" and to highlight it in Settings.
     branchId?: string | null;
+    // Admin-configurable in Settings >> Company Settings. When true the check-in button
+    // pulses until the user checks in and the daily prompt cannot be dismissed without
+    // checking in. Absent/false means check-in is optional.
+    staffCheckInRequired?: boolean;
+    // This user's own personal billing discount limit (%), set by the admin in User Management.
+    // Null means no personal cap. Stored here so the billing page can validate without an
+    // extra API call — populated from the login/Me response field userDiscountPercent.
+    userDiscountPercent?: number | null;
 }
 
 export interface UserType {
@@ -41,6 +60,7 @@ export interface UserType {
     isActive: boolean;
     createdAt: string;
     lastLogin: string | null;
+    userSignature?: string | null;
 }
 
 export interface UserCreateType {
@@ -59,6 +79,7 @@ export interface UserCreateType {
     // branch exists - see UserController's branch validation.
     branchId?: string;
     hireDate?: string;
+    maxDiscountPercent?: number | null;
 }
 
 
@@ -76,6 +97,7 @@ export interface UserUpdateType {
     hireDate?: string;
     // Only rehashed/applied server-side when non-empty - leave unset to keep the current password.
     password?: string;
+    maxDiscountPercent?: number | null;
 }
 
 export interface TerminateUserPayload {
@@ -99,5 +121,45 @@ export interface UserAssignedDoctorCreateType {
     SpecializationId: string;
     LicenseNumber: string;
     ExperienceYears: number;
-    ConsultationFee: number;
+    ConsultationServiceId?: string;
+}
+// Staff detail page (/user-management/[id]) - see Yoton-API's UserDetailsResponse.
+export interface UserDetailsType {
+    id: string;
+    name: string;
+    username: string;
+    role: string | null;
+    email: string | null;
+    phone: string | null;
+    gender: string | null;
+    nationality: string | null;
+    designation: string | null;
+    departmentName: string | null;
+    branchName: string | null;
+    userImage: string | null;
+    isActive: boolean;
+    isTerminated: boolean;
+    createdAt: string;
+    lastLogin: string | null;
+    deactivatedAt: string | null;
+    fteValue: number | null;
+    maxDiscountPercent: number | null;
+    joiningDate: string | null;
+    currentStintStartDate: string | null;
+    specializationName: string | null;
+    experienceYears: number | null;
+    licenseNumber: string | null;
+    consultationFee: number | null;
+    clinicianCode: string | null;
+    employmentHistory: StaffEmploymentEventType[];
+    todayCheckInAt: string | null;
+    todayCheckOutAt: string | null;
+}
+
+export interface StaffNoteType {
+    staffNoteId: string;
+    content: string;
+    createdByUserId: string;
+    createdByName: string | null;
+    createdAt: string;
 }

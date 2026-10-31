@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Lock, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import ToggleButton from "@/components/ToggleButton";
+import type { OrderLockFields } from "@/types/orderLock.type";
+import OrderLockNotice from "@/components/orders/OrderLockNotice";
 
 export interface TreatmentConfigValues {
   quantity: string;
@@ -21,10 +23,10 @@ export const DEFAULT_TREATMENT_VALUES: TreatmentConfigValues = {
 interface TreatmentConfigModalProps {
   itemName: string;
   values: TreatmentConfigValues;
-  // See LabRadiologyConfigModal's own comment - locked (started/finalized) vs readOnly
+  // See LabRadiologyConfigModal's own comment - lock (started/finalized) vs readOnly
   // (this viewer just can't edit here) are independent; either forces fields disabled.
-  locked?: boolean;
-  lockedBy?: string | null;
+  lock?: OrderLockFields | null;
+  visitLockHint?: string;
   readOnly?: boolean;
   saving?: boolean;
   submitLabel: string;
@@ -40,8 +42,8 @@ interface TreatmentConfigModalProps {
 export default function TreatmentConfigModal({
   itemName,
   values: initialValues,
-  locked = false,
-  lockedBy,
+  lock,
+  visitLockHint,
   readOnly = false,
   saving = false,
   submitLabel,
@@ -49,6 +51,7 @@ export default function TreatmentConfigModal({
   onClose,
 }: TreatmentConfigModalProps) {
   const [values, setValues] = useState(initialValues);
+  const locked = !!lock?.locked;
   const disabled = locked || readOnly;
 
   return (
@@ -65,12 +68,9 @@ export default function TreatmentConfigModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6">
-          {locked && (
-            <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
-              <Lock size={15} className="shrink-0" />
-              {lockedBy === "Visit"
-                ? "This visit has already been finalized and can no longer be edited."
-                : `This order has already been started by ${lockedBy ?? "another team"} — ask them to revert it before editing.`}
+          {lock && locked && (
+            <div className="mb-4">
+              <OrderLockNotice lock={lock} visitLockHint={visitLockHint} />
             </div>
           )}
 

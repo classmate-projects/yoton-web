@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
-import axios from "axios";
 import { toast } from "sonner";
 import { Lock, Pencil, Save, Trash2 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -10,14 +10,12 @@ import RichTextEditor from "@/components/RichTextEditor";
 import { EmrService } from "@/services/emr.service";
 import { NursingService } from "@/services/nursing.service";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { notifySaveStatus } from "@/lib/saveStatus";
 import { EmrPatientListItem } from "@/types/emr.type";
 import { ConfidentialNoteType } from "@/types/nursing.type";
-
-const errorMessage = (error: unknown, fallback: string) =>
-  axios.isAxiosError(error) ? error.response?.data?.message || fallback : fallback;
-
-const formatDateTime = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleString() : "—";
+import SearchableSelect from "@/components/SearchableSelect";
+import { apiErrorMessage } from "@/lib/apiError";
+import { formatDateTime } from "@/lib/date";
 
 // Nurse-only — no admin route, matching the backend, which hard-filters these to the
 // creator and refuses even admin access. See NursingController's confidential-note
@@ -49,7 +47,7 @@ export default function ConfidentialNotesPage() {
     setIsLoadingNotes(true);
     NursingService.getConfidentialNotes()
       .then((res) => setNotes(res.data || []))
-      .catch((error) => toast.error(errorMessage(error, "Failed to load confidential notes")))
+      .catch((error) => toast.error(apiErrorMessage(error, "Failed to load confidential notes")))
       .finally(() => setIsLoadingNotes(false));
   };
 
@@ -68,6 +66,7 @@ export default function ConfidentialNotesPage() {
       toast.error("Note content is required");
       return;
     }
+    notifySaveStatus("saving");
     try {
       setSaving(true);
       const payload = { contentHtml, isConfidential: true };
@@ -78,11 +77,13 @@ export default function ConfidentialNotesPage() {
         await NursingService.addConfidentialNote(selectedPatientId, payload);
         toast.success("Confidential note saved — visible only to you");
       }
+      notifySaveStatus("saved");
       setContentHtml("");
       setEditingNoteId(null);
       fetchNotes();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to save confidential note"));
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, "Failed to save confidential note"));
     } finally {
       setSaving(false);
     }
@@ -105,7 +106,7 @@ export default function ConfidentialNotesPage() {
         toast.success("Confidential note removed");
         fetchNotes();
       } catch (error) {
-        toast.error(errorMessage(error, "Failed to remove confidential note"));
+        toast.error(apiErrorMessage(error, "Failed to remove confidential note"));
       }
     });
   };
@@ -130,17 +131,15 @@ export default function ConfidentialNotesPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card p-6 flex flex-col gap-4">
           <h2 className="text-lg font-semibold text-foreground">{editingNoteId ? "Edit Confidential Note" : "New Confidential Note"}</h2>
-          <select
+          <SearchableSelect
             value={selectedPatientId}
-            onChange={(e) => setSelectedPatientId(e.target.value)}
+            onChange={setSelectedPatientId}
             disabled={!!editingNoteId}
-            className="h-10 text-sm disabled:opacity-60"
-          >
-            <option value="">Select patient...</option>
-            {patients.map((p) => (
-              <option key={p.opId} value={p.opId}>{p.name} ({p.opNumber || p.opId})</option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "Select patient..." },
+              ...patients.map((p) => ({ value: p.opId, label: `${p.name} (${p.opNumber || p.opId})` })),
+            ]}
+          />
           <RichTextEditor value={contentHtml} onChange={setContentHtml} placeholder="Confidential note..." />
           <div className="flex items-center gap-3">
             <button onClick={saveNote} disabled={saving} className="self-start flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
@@ -179,7 +178,7 @@ export default function ConfidentialNotesPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No confidential notes yet.</p>
+            <EmptyState illustration="notes" title="No confidential notes yet" />
           )}
         </div>
       </div>

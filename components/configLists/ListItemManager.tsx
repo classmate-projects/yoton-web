@@ -1,26 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { Download, FileSpreadsheet, FlaskConical, Plus, Trash2, Upload, X } from "lucide-react";
+import { Download, FileSpreadsheet, FlaskConical, Plus, Settings, Trash2, Upload, X } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ToggleButton from "@/components/ToggleButton";
 import EditIcon from "@/public/icons/EditIcon";
 import SearchIcon from "@/public/icons/SearchIcon";
-import { ConfigListService } from "@/services/configList.service";
+import { ConfigListService, ListTemplateService } from "@/services/configList.service";
 import { TestParameterService } from "@/services/testParameter.service";
-import { ConfigListType, ListItemType } from "@/types/configList.type";
+import { ConfigListType, ListItemType, ListTemplate } from "@/types/configList.type";
 import { TestParameterType } from "@/types/testParameter.type";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
-
-const errorMessage = (error: unknown, fallback: string) => {
-  if (error && typeof error === "object" && "response" in error) {
-    const resp = (error as { response?: { data?: { message?: string } } }).response;
-    return resp?.data?.message || fallback;
-  }
-  return fallback;
-};
+import TemplateBuilderModal from "@/components/configLists/TemplateBuilderModal";
+import { apiErrorMessage } from "@/lib/apiError";
 
 interface ListItemManagerProps {
   listType: ConfigListType;
@@ -44,7 +39,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   const [form, setForm] = useState({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isProcedure = listType === "Procedure";
-  const columnCount = isProcedure ? 8 : 5;
+  const columnCount = isProcedure ? 7 : 4;
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
@@ -55,12 +50,15 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   const [isBulkUploading, setIsBulkUploading] = useState(false);
 
   const [excelFile, setExcelFile] = useState<File | null>(null);
-  const [excelRows, setExcelRows] = useState<{ name: string; code?: string; department?: string; cashPrice?: number }[]>([]);
+  const [excelRows, setExcelRows] = useState<{ name: string; code?: string; department?: string; cashPrice?: number; extraFieldsJson?: string }[]>([]);
   const [excelSkipped, setExcelSkipped] = useState(0);
   const [isParsingExcel, setIsParsingExcel] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  const [template, setTemplate] = useState<ListTemplate | null>(null);
+  const [showTemplateBuilder, setShowTemplateBuilder] = useState(false);
 
   const PAGE_SIZE = 100;
   const [page, setPage] = useState(1);
@@ -98,7 +96,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setTotalCount(res.totalCount ?? 0);
     } catch (error) {
       console.log("error from here: ", error);
-      toast.error(errorMessage(error, "Failed to load list"));
+      toast.error(apiErrorMessage(error, "Failed to load list"));
       setItems([]);
       setTotalCount(0);
     } finally {
@@ -110,6 +108,13 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
     fetchItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listType, debouncedSearch, page]);
+
+  // Load the saved template schema for this list type (drives Excel download + upload parsing).
+  useEffect(() => {
+    ListTemplateService.get(listType)
+      .then((res) => setTemplate(res.data ?? null))
+      .catch(() => setTemplate(null));
+  }, [listType]);
 
   const addItem = async () => {
     if (!form.name.trim()) {
@@ -129,7 +134,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setForm({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
       await fetchItems();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add item"));
+      toast.error(apiErrorMessage(error, "Failed to add item"));
     } finally {
       setIsSubmitting(false);
     }
@@ -163,7 +168,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setEditingId(null);
       await fetchItems();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update item"));
+      toast.error(apiErrorMessage(error, "Failed to update item"));
     }
   };
 
@@ -172,7 +177,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       await ConfigListService.setActive(item.listItemId, !item.isActive);
       setItems((prev) => prev.map((i) => (i.listItemId === item.listItemId ? { ...i, isActive: !i.isActive } : i)));
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update status"));
+      toast.error(apiErrorMessage(error, "Failed to update status"));
     }
   };
 
@@ -187,7 +192,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
           toast.success("Item deleted");
           await fetchItems();
         } catch (error) {
-          toast.error(errorMessage(error, "Failed to delete item"));
+          toast.error(apiErrorMessage(error, "Failed to delete item"));
         }
       }
     );
@@ -217,19 +222,30 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setShowBulkUpload(false);
       await fetchItems();
     } catch (error) {
-      toast.error(errorMessage(error, "Bulk upload failed"));
+      toast.error(apiErrorMessage(error, "Bulk upload failed"));
     } finally {
       setIsBulkUploading(false);
     }
   };
 
   const downloadTemplate = () => {
-    const ws = isProcedure
-      ? XLSX.utils.aoa_to_sheet([["Department", "CPT Code", "Service Description", "Cash Price"]])
-      : XLSX.utils.aoa_to_sheet([["Code", "Description"]]);
-    ws["!cols"] = isProcedure
-      ? [{ wch: 26 }, { wch: 14 }, { wch: 60 }, { wch: 14 }]
-      : [{ wch: 16 }, { wch: 60 }];
+    let headers: string[];
+    let colWidths: { wch: number }[];
+
+    if (template && template.columns.length > 0) {
+      const sorted = [...template.columns].sort((a, b) => a.sortOrder - b.sortOrder);
+      headers = sorted.map((c) => c.label);
+      colWidths = sorted.map((c) => ({ wch: Math.max(14, c.label.length + 4) }));
+    } else if (isProcedure) {
+      headers = ["Department", "CPT Code", "Service Description", "Cash Price"];
+      colWidths = [{ wch: 26 }, { wch: 14 }, { wch: 60 }, { wch: 14 }];
+    } else {
+      headers = ["Code", "Description"];
+      colWidths = [{ wch: 16 }, { wch: 60 }];
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
+    ws["!cols"] = colWidths;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Template");
     XLSX.writeFile(wb, `${itemLabel.replace(/\s+/g, "_")}_Upload_Template.xlsx`);
@@ -243,16 +259,68 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
 
-      // Header matching is deliberately loose/case-insensitive so the exact same client-
-      // supplied file (e.g. "DEPARTMENT" / "CPT CODE" / "SERVICE DESCRIPTION (UNIQUE)" /
-      // "CASH PRICE") works here unmodified, alongside the simpler generic "Code"/
-      // "Description" template every other list type downloads. Department/Cash Price are
-      // only ever read for listType="Procedure" - parsed but silently unused otherwise.
-      const parsed = raw
-        .map((row) => {
+      const normalise = (s: string) =>
+        s.trim().toLowerCase().replace(/\s*\(.*?\)\s*/g, "").trim();
+
+      let parsed: { name: string; code?: string; department?: string; cashPrice?: number; extraFieldsJson?: string }[];
+
+      if (template && template.columns.length > 0) {
+        // Template-driven parsing: match each template column's label against file headers,
+        // map to the right ListItem field or collect into extraFields.
+        const sorted = [...template.columns].sort((a, b) => a.sortOrder - b.sortOrder);
+
+        parsed = raw.map((row) => {
+          const rowNorm: Record<string, string> = {};
+          for (const [k, v] of Object.entries(row)) {
+            rowNorm[normalise(k)] = String(v ?? "").trim();
+          }
+
+          let name = "";
+          let code: string | undefined;
+          let department: string | undefined;
+          let cashPrice: number | undefined;
+          const extraFields: Record<string, string> = {};
+
+          for (const col of sorted) {
+            const val = rowNorm[normalise(col.label)] ?? "";
+            if (!val) continue;
+
+            if (col.mappedField === "name") {
+              name = val;
+            } else if (col.mappedField === "code") {
+              code = val;
+            } else if (col.mappedField === "department") {
+              department = val;
+            } else if (col.mappedField === "cashPrice") {
+              const n = Number(val);
+              if (!Number.isNaN(n)) cashPrice = n;
+            } else {
+              // Custom column → goes into ExtraFieldsJson
+              extraFields[col.columnName] = val;
+            }
+          }
+
+          return {
+            name,
+            code: code || undefined,
+            department: department || undefined,
+            cashPrice,
+            extraFieldsJson: Object.keys(extraFields).length > 0
+              ? JSON.stringify(extraFields)
+              : undefined,
+          };
+        }).filter((r) => r.name);
+      } else {
+        // Fallback: legacy loose header matching when no template is saved yet.
+        // Header matching is deliberately loose/case-insensitive so the exact same client-
+        // supplied file (e.g. "DEPARTMENT" / "CPT CODE" / "SERVICE DESCRIPTION (UNIQUE)" /
+        // "CASH PRICE") works here unmodified, alongside the simpler generic "Code"/
+        // "Description" template every other list type downloads. Department/Cash Price are
+        // only ever read for listType="Procedure" - parsed but silently unused otherwise.
+        parsed = raw.map((row) => {
           const entries = Object.entries(row);
           const find = (...keys: string[]) =>
-            entries.find(([k]) => keys.includes(k.trim().toLowerCase().replace(/\s*\(.*\)\s*/g, "").trim()));
+            entries.find(([k]) => keys.includes(normalise(k)));
           const codeEntry = find("code", "cpt code", "cpt");
           const descEntry = find("description", "name", "service description");
           const deptEntry = find("department");
@@ -264,14 +332,16 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
             department: isProcedure ? String(deptEntry?.[1] ?? "").trim() || undefined : undefined,
             cashPrice: isProcedure && !Number.isNaN(priceRaw) ? priceRaw : undefined,
           };
-        })
-        .filter((row) => row.name);
+        }).filter((row) => row.name);
+      }
 
       if (parsed.length === 0) {
         toast.error(
-          isProcedure
-            ? 'No usable rows found — the file needs a "Service Description" (or "Description"/"Name") column'
-            : 'No usable rows found — the file needs "Code" and "Description" columns'
+          template
+            ? `No usable rows found — make sure the file uses the downloaded template's column headers`
+            : isProcedure
+              ? 'No usable rows found — the file needs a "Service Description" (or "Description"/"Name") column'
+              : 'No usable rows found — the file needs "Code" and "Description" columns'
         );
         setExcelFile(null);
         setExcelRows([]);
@@ -304,7 +374,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   // this promise chain happens to be running, chunk by chunk, regardless of
   // whether this component instance is still mounted by the time it finishes —
   // the closing fetchItems() call just becomes a harmless no-op if it isn't.
-  const uploadExcelInBackground = async (rows: { name: string; code?: string; department?: string; cashPrice?: number }[]) => {
+  const uploadExcelInBackground = async (rows: { name: string; code?: string; department?: string; cashPrice?: number; extraFieldsJson?: string }[]) => {
     const CHUNK_SIZE = 1000;
     const toastId = `excel-upload-${listType}`;
     const total = rows.length;
@@ -350,7 +420,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       const res = await TestParameterService.get(item.listItemId);
       setParameters(res.data || []);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to load parameters"));
+      toast.error(apiErrorMessage(error, "Failed to load parameters"));
       setParameters([]);
     } finally {
       setIsLoadingParameters(false);
@@ -388,7 +458,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       setNewParam({ name: "", unit: "", normalLow: "", normalHigh: "" });
       await fetchParameters(parametersFor);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to add parameter"));
+      toast.error(apiErrorMessage(error, "Failed to add parameter"));
     } finally {
       setIsSavingParam(false);
     }
@@ -401,7 +471,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
       toast.success("Parameter removed");
       await fetchParameters(parametersFor);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to remove parameter"));
+      toast.error(apiErrorMessage(error, "Failed to remove parameter"));
     }
   };
 
@@ -422,13 +492,6 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
             placeholder={isProcedure ? "CPT code (optional)" : "Code (optional)"}
             value={form.code}
             onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
-            className="h-10 text-sm"
-          />
-          <input
-            type="number"
-            placeholder="Sort order"
-            value={form.sortOrder}
-            onChange={(e) => setForm((p) => ({ ...p, sortOrder: e.target.value }))}
             className="h-10 text-sm"
           />
           {isProcedure && (
@@ -458,7 +521,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
             &quot;Radiology&quot; → Radiology, anything else (including blank) → Treatment.
           </p>
         )}
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button
             onClick={addItem}
             disabled={isSubmitting}
@@ -471,6 +534,13 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
             className="flex items-center gap-2 rounded-lg border border-primary/30 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
           >
             <Upload size={15} /> Bulk Upload
+          </button>
+          <button
+            onClick={() => setShowTemplateBuilder(true)}
+            className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors"
+            title="Customise Excel upload template columns"
+          >
+            <Settings size={15} /> Configure Template
           </button>
         </div>
 
@@ -602,7 +672,6 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
               {isProcedure && <th>Department</th>}
               {isProcedure && <th>Category</th>}
               {isProcedure && <th>Cash Price</th>}
-              <th>Sort Order</th>
               <th className="text-center">Active</th>
               <th className="text-center">Action</th>
             </tr>
@@ -616,8 +685,12 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={columnCount} className="py-16 text-center text-muted-foreground">
-                  {debouncedSearch ? `No ${itemLabel} matches "${debouncedSearch}".` : `No items in ${itemLabel} yet.`}
+                <td colSpan={columnCount}>
+                  {debouncedSearch ? (
+                    <EmptyState illustration="search" title="No matches" description={`No ${itemLabel} matches "${debouncedSearch}".`} />
+                  ) : (
+                    <EmptyState illustration="clipboard" title={`No items in ${itemLabel} yet`} />
+                  )}
                 </td>
               </tr>
             ) : (
@@ -665,14 +738,6 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                         />
                       </td>
                     )}
-                    <td>
-                      <input
-                        type="number"
-                        value={editForm.sortOrder}
-                        onChange={(e) => setEditForm((p) => ({ ...p, sortOrder: e.target.value }))}
-                        className="h-9 text-sm w-20"
-                      />
-                    </td>
                     <td className="text-center text-muted-foreground text-xs">—</td>
                     <td className="text-center">
                       <div className="flex justify-center items-center gap-2">
@@ -712,7 +777,6 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                       </td>
                     )}
                     {isProcedure && <td>{item.cashPrice != null ? item.cashPrice : "—"}</td>}
-                    <td>{item.sortOrder}</td>
                     <td className="text-center">
                       <div className="flex justify-center">
                         <ToggleButton checked={item.isActive} onChange={() => toggleActive(item)} />
@@ -873,6 +937,20 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
             </div>
           </div>
         </div>
+      )}
+
+      {showTemplateBuilder && (
+        <TemplateBuilderModal
+          listType={listType}
+          listLabel={itemLabel}
+          onClose={() => setShowTemplateBuilder(false)}
+          onSaved={() => {
+            // Reload the template so the next download/upload uses the new schema
+            ListTemplateService.get(listType)
+              .then((res) => setTemplate(res.data ?? null))
+              .catch(() => {});
+          }}
+        />
       )}
     </>
   );

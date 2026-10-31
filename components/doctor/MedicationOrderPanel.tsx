@@ -10,7 +10,9 @@ import { PharmacyService } from "@/services/pharmacy.service";
 import { MedicationPayload, MedicationType, TaperingStepPayload } from "@/types/emr.type";
 import { ListItemType } from "@/types/configList.type";
 import { MedicineType } from "@/types/pharmacy.type";
+import { packText } from "@/lib/packQuantity";
 import { toDateInputValue } from "@/lib/date";
+import SearchableSelect, { fieldSelectClass } from "@/components/SearchableSelect";
 
 interface MedicationOrderPanelProps {
   onSubmit: (payload: MedicationPayload) => Promise<boolean>;
@@ -19,6 +21,10 @@ interface MedicationOrderPanelProps {
   // mirrors how the doctor page's other add-forms double as their own edit form.
   editingMedication?: MedicationType | null;
   onCancelEdit?: () => void;
+  // Pre-fills the form from a historical medication but stays in "create new" mode
+  // (no correction/update — a fresh prescription is created on submit).
+  prefillFromHistory?: MedicationType | null;
+  onClearPrefill?: () => void;
 }
 
 interface TaperingStepForm {
@@ -46,9 +52,11 @@ function buildInstructionsPreview(dosage: string, dosageUnit: string, route: str
 // Inline "Prescribe Medications" panel on the doctor workbench — always in flow next to
 // Order Investigation, not a popup. Replaced the old MedicationOrderModal for consistency
 // with how investigation ordering already worked.
-export default function MedicationOrderPanel({ onSubmit, editingMedication, onCancelEdit }: MedicationOrderPanelProps) {
+export default function MedicationOrderPanel({ onSubmit, editingMedication, onCancelEdit, prefillFromHistory, onClearPrefill }: MedicationOrderPanelProps) {
   const [drugName, setDrugName] = useState("");
   const [medicineId, setMedicineId] = useState<string | undefined>(undefined);
+  // What the picked catalog medicine is dispensed in (Strip, Tablet...) - what Total quantity counts.
+  const [medicineUnit, setMedicineUnit] = useState<string | null>(null);
   const [drugType, setDrugType] = useState("");
   const [dosage, setDosage] = useState("");
   const [dosageUnit, setDosageUnit] = useState("");
@@ -117,6 +125,7 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
     if (!editingMedication) return;
     setDrugName(editingMedication.drugName);
     setMedicineId(editingMedication.medicineId ?? undefined);
+    setMedicineUnit(null);
     setDrugType(editingMedication.drugType ?? "");
     setDosage(editingMedication.dosage ?? "");
     setDosageUnit(editingMedication.dosageUnit ?? "");
@@ -144,9 +153,36 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingMedication?.medicationId]);
 
+  // Pre-fill from history without entering edit mode — creates a new prescription.
+  useEffect(() => {
+    if (!prefillFromHistory) return;
+    setDrugName(prefillFromHistory.drugName);
+    setMedicineId(prefillFromHistory.medicineId ?? undefined);
+    setMedicineUnit(null);
+    setDrugType(prefillFromHistory.drugType ?? "");
+    setDosage(prefillFromHistory.dosage ?? "");
+    setDosageUnit(prefillFromHistory.dosageUnit ?? "");
+    setFrequency(prefillFromHistory.frequency ?? "");
+    setMealTiming(prefillFromHistory.mealTiming ?? "");
+    setOrderType(prefillFromHistory.orderType ?? "");
+    setRoute(prefillFromHistory.route ?? "");
+    setDurationDays(prefillFromHistory.durationDays ? String(prefillFromHistory.durationDays) : "");
+    setTotalQuantity(prefillFromHistory.totalQuantity ? String(prefillFromHistory.totalQuantity) : "");
+    setStartDate(toDateInputValue(new Date()));
+    setPlannedEndDate("");
+    setInstructions(prefillFromHistory.instructions ?? "");
+    setInstructionsTouched(!!prefillFromHistory.instructions);
+    setRefillCount(String(prefillFromHistory.refillCount ?? 0));
+    setPrnReason(prefillFromHistory.prnReason ?? "");
+    setRequiresCounselling(prefillFromHistory.requiresCounselling);
+    setTaperingSteps([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillFromHistory?.medicationId]);
+
   const resetForm = () => {
     setDrugName("");
     setMedicineId(undefined);
+    setMedicineUnit(null);
     setDrugType("");
     setDosage("");
     setDosageUnit("");
@@ -221,6 +257,13 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
         <Pill size={18} className="text-primary" /> Prescribe Medication
       </h2>
 
+      {prefillFromHistory && (
+        <div className="flex items-center justify-between rounded-lg bg-primary/10 border border-primary/30 px-3 py-2 text-xs">
+          <span className="text-primary font-medium">Pre-filled from history: {prefillFromHistory.drugName}</span>
+          <button onClick={onClearPrefill} className="text-primary hover:underline font-semibold">Clear</button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-1">
         <label className="text-xs font-semibold text-muted-foreground">Drug name</label>
         {drugName ? (
@@ -228,7 +271,7 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
             <span className="font-medium">{drugName}</span>
             <button
               type="button"
-              onClick={() => { setDrugName(""); setMedicineId(undefined); }}
+              onClick={() => { setDrugName(""); setMedicineId(undefined); setMedicineUnit(null); }}
               className="text-xs font-semibold text-primary hover:underline"
             >
               Change
@@ -250,7 +293,7 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
                   m.genericName ? `Generic: ${m.genericName}` : null,
                   m.manufacturer,
                   m.route,
-                  m.isDiscontinued ? "⚠ Discontinued" : m.stock > 0 ? `Stock: ${m.stock}` : "No stock",
+                  m.isDiscontinued ? "⚠ Discontinued" : m.stock > 0 ? `Stock: ${packText(m.stock, m.unit, m.packUnit, m.packSize)}` : "No stock",
                 ]
                   .filter(Boolean)
                   .join(" · "),
@@ -260,6 +303,7 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
               setDrugName(opt.name);
               setMedicineId(opt.id);
               const medicine = medicineResultsRef.current.get(opt.id);
+              setMedicineUnit(medicine?.unit && medicine.unit !== "Unit" ? medicine.unit : null);
               if (medicine?.isDiscontinued) {
                 toast.warning("This medication was discontinued by the health authority — confirm before prescribing.");
               }
@@ -271,21 +315,23 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">Drug type</label>
-          <select value={drugType} onChange={(e) => setDrugType(e.target.value)} className="h-10 text-sm">
-            <option value="">Select drug type</option>
-            {drugTypes.map((d) => (
-              <option key={d.listItemId} value={d.name}>{d.name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={drugType}
+            onChange={setDrugType}
+            options={[{ value: "", label: "Select drug type" }, ...drugTypes.map((d) => ({ value: d.name, label: d.name }))]}
+            className={fieldSelectClass}
+            preserveCase
+          />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">Route of administration</label>
-          <select value={route} onChange={(e) => setRoute(e.target.value)} className="h-10 text-sm">
-            <option value="">Select route</option>
-            {routes.map((r) => (
-              <option key={r.listItemId} value={r.name}>{r.name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={route}
+            onChange={setRoute}
+            options={[{ value: "", label: "Select route" }, ...routes.map((r) => ({ value: r.name, label: r.name }))]}
+            className={fieldSelectClass}
+            preserveCase
+          />
         </div>
       </div>
 
@@ -296,53 +342,54 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">Dosage unit</label>
-          <select value={dosageUnit} onChange={(e) => setDosageUnit(e.target.value)} className="h-10 text-sm">
-            <option value="">Select unit</option>
-            {dosageUnits.map((u) => (
-              <option key={u.listItemId} value={u.name}>{u.name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={dosageUnit}
+            onChange={setDosageUnit}
+            options={[{ value: "", label: "Select unit" }, ...dosageUnits.map((u) => ({ value: u.name, label: u.name }))]}
+            className={fieldSelectClass}
+            preserveCase
+          />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">Order type</label>
-          <select value={orderType} onChange={(e) => setOrderType(e.target.value)} className="h-10 text-sm">
-            <option value="">Select order type</option>
-            {orderTypes.map((o) => (
-              <option key={o.listItemId} value={o.name}>{o.name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={orderType}
+            onChange={setOrderType}
+            options={[{ value: "", label: "Select order type" }, ...orderTypes.map((o) => ({ value: o.name, label: o.name }))]}
+            className={fieldSelectClass}
+            preserveCase
+          />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">Meal timing</label>
-          <select value={mealTiming} onChange={(e) => setMealTiming(e.target.value)} className="h-10 text-sm">
-            <option value="">Select timing</option>
-            {MEAL_TIMINGS.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={mealTiming}
+            onChange={setMealTiming}
+            options={[{ value: "", label: "Select timing" }, ...MEAL_TIMINGS.map((t) => ({ value: t, label: t }))]}
+            className={fieldSelectClass}
+            preserveCase
+          />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">Frequency</label>
-          <select
+          <SearchableSelect
             value={frequency}
-            onChange={(e) => setFrequency(e.target.value)}
+            onChange={setFrequency}
             disabled={isStat}
-            className="h-10 text-sm disabled:opacity-60"
-          >
-            <option value="">Select frequency</option>
-            {frequencies.map((f) => (
-              <option key={f.listItemId} value={f.name}>
-                {f.name}{f.code ? ` (${f.code})` : ""}
-              </option>
-            ))}
-            {isStat && <option value="Once daily">Once daily</option>}
-          </select>
+            options={[
+              { value: "", label: "Select frequency" },
+              ...frequencies.map((f) => ({ value: f.name, label: `${f.name}${f.code ? ` (${f.code})` : ""}` })),
+              ...(isStat && !frequencies.some((f) => f.name === "Once daily") ? [{ value: "Once daily", label: "Once daily" }] : []),
+            ]}
+            className={fieldSelectClass}
+            preserveCase
+          />
           {isStat && <p className="text-xs text-muted-foreground">Stat orders default to once daily.</p>}
         </div>
         <div className="flex flex-col gap-1">
@@ -373,7 +420,9 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-muted-foreground">Total quantity</label>
+          <label className="text-xs font-semibold text-muted-foreground">
+            Total quantity{medicineUnit ? ` (${medicineUnit.toLowerCase()}s)` : ""}
+          </label>
           <input type="number" min={0} value={totalQuantity} onChange={(e) => setTotalQuantity(e.target.value)} className="h-10 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
@@ -441,21 +490,23 @@ export default function MedicationOrderPanel({ onSubmit, editingMedication, onCa
             </div>
             <div className="flex flex-col gap-1">
               {index === 0 && <label className="text-[11px] text-muted-foreground">Unit</label>}
-              <select value={step.dosageUnit} onChange={(e) => updateTaperingStep(index, "dosageUnit", e.target.value)} className="h-9 text-xs">
-                <option value="">Unit</option>
-                {dosageUnits.map((u) => (
-                  <option key={u.listItemId} value={u.name}>{u.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={step.dosageUnit}
+                onChange={(v) => updateTaperingStep(index, "dosageUnit", v)}
+                options={[{ value: "", label: "Unit" }, ...dosageUnits.map((u) => ({ value: u.name, label: u.name }))]}
+                className="flex h-9 w-full items-center justify-between gap-1 rounded-lg border border-border bg-background px-2 text-left text-xs text-foreground transition-colors hover:border-primary/60"
+                preserveCase
+              />
             </div>
             <div className="flex flex-col gap-1">
               {index === 0 && <label className="text-[11px] text-muted-foreground">Frequency</label>}
-              <select value={step.frequency} onChange={(e) => updateTaperingStep(index, "frequency", e.target.value)} className="h-9 text-xs">
-                <option value="">Frequency</option>
-                {frequencies.map((f) => (
-                  <option key={f.listItemId} value={f.name}>{f.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={step.frequency}
+                onChange={(v) => updateTaperingStep(index, "frequency", v)}
+                options={[{ value: "", label: "Frequency" }, ...frequencies.map((f) => ({ value: f.name, label: f.name }))]}
+                className="flex h-9 w-full items-center justify-between gap-1 rounded-lg border border-border bg-background px-2 text-left text-xs text-foreground transition-colors hover:border-primary/60"
+                preserveCase
+              />
             </div>
             <div className="flex flex-col gap-1">
               {index === 0 && <label className="text-[11px] text-muted-foreground">Days</label>}

@@ -1,7 +1,22 @@
 import { ENDPOINTS } from "@/lib/endpoints";
 import api from "@/lib/axios";
+import { compressImageForUpload } from "@/lib/resizeImage";
+import { FormPlaceholderType } from "@/types/medicalForm.type";
+
+// The placeholder list never changes while the app is open - fetched once and shared.
+let placeholderCatalog: Promise<FormPlaceholderType[]> | null = null;
 
 export const FormTemplateService = {
+  getPlaceholderCatalog: () => {
+    placeholderCatalog ??= api
+      .get(ENDPOINTS.FORM_TEMPLATE.GET_PLACEHOLDERS)
+      .then(({ data }) => (data.data ?? []) as FormPlaceholderType[])
+      .catch((error) => {
+        placeholderCatalog = null;
+        throw error;
+      });
+    return placeholderCatalog;
+  },
   getAll: async () => {
     const { data } = await api.get(ENDPOINTS.FORM_TEMPLATE.GET_ALL);
     return data;
@@ -31,8 +46,9 @@ export const FormTemplateService = {
     return data;
   },
   uploadImage: async (file: File) => {
+    const compressed = await compressImageForUpload(file);
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", compressed);
     const { data } = await api.post(ENDPOINTS.FORM_TEMPLATE.UPLOAD_IMAGE, form, {
       headers: { "Content-Type": "multipart/form-data" },
     });
@@ -56,6 +72,11 @@ export const SavedMedicalFormService = {
   getByPatient: async (patientId: string) => {
     const { data } = await api.get(ENDPOINTS.SAVED_MEDICAL_FORM.GET_BY_PATIENT(patientId));
     return data;
+  },
+  // Only the placeholders this template uses, resolved for this patient/visit.
+  getPlaceholderValues: async (formTemplateId: string, patientId: string, visitId?: string | null) => {
+    const { data } = await api.get(ENDPOINTS.SAVED_MEDICAL_FORM.GET_PLACEHOLDER_VALUES(formTemplateId, patientId, visitId));
+    return (data.data ?? {}) as Record<string, string>;
   },
   handover: async (id: string, toUserId: string) => {
     const { data } = await api.post(ENDPOINTS.SAVED_MEDICAL_FORM.HANDOVER(id), { toUserId });

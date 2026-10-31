@@ -58,6 +58,7 @@ export interface CreateAppointmentPayload {
   userId?: string;
   isFollowUp?: boolean;
   urgencyLevel?: string; // Routine, Urgent
+  allowOverlap?: boolean;
 }
 
 export interface PatientListItemType {
@@ -74,6 +75,7 @@ export interface PatientListItemType {
   dateOfBirth: string | null;
   nationalID?: string | null;
   passportNumber?: string | null;
+  registrationType?: "Full" | "External";
 }
 
 export interface AppointmentRequestType {

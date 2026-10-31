@@ -11,7 +11,18 @@ import {
 } from "react-icons/md";
 import { format } from "date-fns";
 import { countryDetails } from "@/helpers/countyDetails";
-import { getNationalIdFormat, passportNumberRegex } from "@/helpers/nationalIdFormats";
+import { passportNumberRegex } from "@/lib/validation";
+import {
+  addressErrors,
+  defaultDialCode,
+  hasAnyAddressValue,
+  nationalIdError,
+  nationalIdLabel,
+  phoneError,
+  useRegion,
+  type AddressValues,
+} from "@/lib/region";
+import RegionAddressFields from "@/components/patients/RegionAddressFields";
 import { ReceptionService } from "@/services/reception.service";
 import { ConfigListService } from "@/services/configList.service";
 import { toast } from "sonner";
@@ -25,10 +36,18 @@ import {
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
 import CountryCodeSelect from "@/components/CountryCodeSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 import ToggleButton from "@/components/ToggleButton";
 import { toDateInputValue } from "@/lib/date";
 import { isValidEmail } from "@/lib/validation";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { useExistingPatientMatches } from "@/hooks/useExistingPatientMatches";
+import { Footprints, Paperclip } from "lucide-react";
+import ExistingPatientNotice from "@/components/patients/ExistingPatientNotice";
+import PatientDocumentsPanel from "@/components/patients/PatientDocuments";
+import DuplicatePatientPrompt from "@/components/patients/DuplicatePatientPrompt";
+import type { PatientMatchType } from "@/types/patient.type";
+import { apiErrorMessage } from "@/lib/apiError";
 
 // Cash needs nothing further; Insurance and Corporate share the exact same
 // eligibility + fee-schedule template, entered once off the patient's card.
@@ -65,6 +84,42 @@ const emptyCoverages = (): Record<string, CoverageFormRow> =>
     INSURANCE_SERVICE_CATEGORIES.map((category) => [category, { ...emptyCoverageRow }])
   );
 
+// What was typed before switching to an existing patient's record (see continueWithExisting),
+// handed over to the edit form that opens next.
+const ENTRY_DRAFT_KEY = "yoton_patient_entry_draft";
+
+type EntryDraft = { forId: string; data: Record<string, unknown>; coverages?: Record<string, CoverageFormRow> };
+
+const takeEntryDraft = (forId: string): EntryDraft | null => {
+  try {
+    const raw = sessionStorage.getItem(ENTRY_DRAFT_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(ENTRY_DRAFT_KEY);
+    const draft = JSON.parse(raw) as EntryDraft;
+    return draft?.forId === forId ? draft : null;
+  } catch {
+    return null;
+  }
+};
+
+// Fills only the fields still empty on the loaded record. A walk-in's "Cash" was a default,
+// not a choice, so payment details typed for them win.
+function fillBlanks<T extends Record<string, unknown>>(loaded: T, typed: Record<string, unknown>, typedPaymentWins: boolean): T {
+  const merged: Record<string, unknown> = { ...loaded };
+  for (const [key, value] of Object.entries(typed)) {
+    if (typeof value !== "string" || value === "" || !(key in merged)) continue;
+    if (merged[key] === "" || merged[key] == null) merged[key] = value;
+  }
+  if (typedPaymentWins && typeof typed.paymentType === "string" && typed.paymentType !== "Cash") {
+    for (const [key, value] of Object.entries(typed)) {
+      if (key === "paymentType" || /^(eligibility|insurance|subInsurance|networkType|extraCardNo|certificateNo|dependentsNo|maxInsurance|coPay)/.test(key)) {
+        if (typeof value === "string" && value !== "") merged[key] = value;
+      }
+    }
+  }
+  return merged as T;
+}
+
 export default function PatientEntryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -79,7 +134,7 @@ export default function PatientEntryPage() {
     sex: "",
     dateOfBirth: "",
     phone: "",
-    phoneCode: "+971",
+    phoneCode: defaultDialCode(),
     email: "",
     address: "",
     nationality: "",
@@ -95,7 +150,7 @@ export default function PatientEntryPage() {
     chronicStatus: false,
     emergencyContact: "",
     emergencyContactPhone: "",
-    emergencyContactPhoneCode: "+971",
+    emergencyContactPhoneCode: defaultDialCode(),
     paymentType: "Cash",
     eligibilityMode: "",
     eligibilityCheckedDate: "",
@@ -117,32 +172,56 @@ export default function PatientEntryPage() {
     coPayPatientPercent: "",
     password: "",
   });
+  // The installation's country: phone code, national ID format and the address structure.
+  const region = useRegion();
+  // A visa only applies to someone who isn't a citizen of the installation's own country.
+  const visaRequired = formData.nationality !== region?.country;
+  const structuredAddress = (region?.addressFields.length ?? 0) > 0;
+  const [addressFields, setAddressFields] = useState<AddressValues>({});
+  // The one-line address already on file for a record saved without the structured fields
+  // (or under another country) - kept as it is unless the fields are filled in.
+  const [savedAddressLine, setSavedAddressLine] = useState("");
+  const [showAddressErrors, setShowAddressErrors] = useState(false);
   const [coverages, setCoverages] = useState<Record<string, CoverageFormRow>>(emptyCoverages);
   const [insuranceProviders, setInsuranceProviders] = useState<ListItemType[]>([]);
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [companyCountry, setCompanyCountry] = useState<string | undefined>(undefined);
   const isInsuranceOrCorporate = formData.paymentType !== "Cash";
+
+  // Set when the record being edited was registered as a walk-in with minimal details -
+  // saving this full form completes their registration (same patient, same MRN).
+  const [loadedRegistrationType, setLoadedRegistrationType] = useState<string | null>(null);
+  // Existing patients sharing an ID / mobile / email with what's typed so far (new
+  // registrations only), and the same check once more on submit.
+  const { visibleMatches, dismiss: dismissMatches } = useExistingPatientMatches({
+    nationalID: formData.nationalID,
+    passportNumber: formData.passportNumber,
+    phone: formData.phone,
+    phoneCode: formData.phoneCode,
+    email: formData.email,
+    enabled: !isEditMode,
+  });
+  const [submitMatches, setSubmitMatches] = useState<PatientMatchType[] | null>(null);
+  const [pendingPayload, setPendingPayload] = useState<ReceptionCreatePatientType | null>(null);
+  const [openingMatchId, setOpeningMatchId] = useState<string | null>(null);
   // Only flagged once something's actually been typed - an empty required field is caught
   // by the browser's own `required` validation on submit, not this live format check.
   const emailInvalid = formData.email.length > 0 && !isValidEmail(formData.email);
-  // National ID format follows the clinic's own admin-configured Country (Settings), not
-  // whichever nationality is picked for this particular patient - a UAE clinic always
-  // expects Emirates ID, regardless of the patient's own nationality.
-  const nationalIdFormat = getNationalIdFormat(companyCountry);
+  // The national ID follows the installation's country (Qatar ID, Emirates ID, Aadhaar, ...),
+  // not whichever nationality is picked for this particular patient.
+  const idLabel = nationalIdLabel(region);
   // National significant number length for whichever dialing code is currently selected -
-  // caps how many digits the phone field accepts. Falls back to 15 (E.164's global max
-  // significant-digit count) if the code somehow isn't in the list.
-  const selectedPhoneLength =
-    countryDetails.find((c) => c.phoneCode === formData.phoneCode)?.phoneLength ?? 15;
-  const selectedEmergencyPhoneLength =
-    countryDetails.find((c) => c.phoneCode === formData.emergencyContactPhoneCode)?.phoneLength ?? 15;
-
-  useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}");
-    setCompanyCountry(stored.country);
-  }, []);
+  // caps how many digits the phone field accepts. The region's own code uses its exact
+  // length; others fall back to the country list, then 15 (E.164's global maximum).
+  const phoneLengthFor = (code: string) =>
+    region && code === region.phone.dialCode
+      ? region.phone.nationalNumberLength
+      : countryDetails.find((c) => c.phoneCode === code)?.phoneLength ?? 15;
+  const phonePlaceholderFor = (code: string) =>
+    region && code === region.phone.dialCode ? region.phone.example.replace(/\s/g, "") : "".padEnd(phoneLengthFor(code), "0");
+  const selectedPhoneLength = phoneLengthFor(formData.phoneCode);
+  const selectedEmergencyPhoneLength = phoneLengthFor(formData.emergencyContactPhoneCode);
 
   // Prefills the whole form from the existing patient's saved details when reached in edit
   // mode - the API has no separate dialing-code field for the emergency contact (see
@@ -160,17 +239,17 @@ export default function PatientEntryPage() {
         const emergencyCode = [...countryDetails]
           .sort((a, b) => b.phoneCode.length - a.phoneCode.length)
           .find((c) => p.emergencyContactPhone?.startsWith(c.phoneCode));
-        const emergencyContactPhoneCode = emergencyCode?.phoneCode ?? "+971";
+        const emergencyContactPhoneCode = emergencyCode?.phoneCode ?? defaultDialCode();
         const emergencyContactPhone = emergencyCode
           ? p.emergencyContactPhone.slice(emergencyCode.phoneCode.length)
           : p.emergencyContactPhone ?? "";
 
-        setFormData({
+        const loaded = {
           name: p.name ?? "",
           sex: p.sex ?? "",
           dateOfBirth: p.dateOfBirth ?? "",
           phone: p.phone ?? "",
-          phoneCode: p.phoneCode || "+971",
+          phoneCode: p.phoneCode || defaultDialCode(),
           email: p.email ?? "",
           address: p.address ?? "",
           nationality: p.nationality ?? "",
@@ -207,7 +286,18 @@ export default function PatientEntryPage() {
           maxInsuranceCopay: p.maxInsuranceCopay?.toString() ?? "",
           coPayPatientPercent: p.coPayPatientPercent?.toString() ?? "",
           password: "",
-        });
+        };
+        const isWalkInRecord = p.registrationType === "External";
+        setLoadedRegistrationType(p.registrationType ?? null);
+        setAddressFields(p.addressFields ?? {});
+        setSavedAddressLine(p.addressFields ? "" : p.address ?? "");
+        // Reached via "Continue with this profile" - what was typed fills the empty fields.
+        const draft = takeEntryDraft(editId);
+        setFormData(draft ? fillBlanks(loaded, draft.data, isWalkInRecord) : loaded);
+        if (draft) {
+          toast.info("The details you typed filled this record's empty fields - review them and save.");
+          if (isWalkInRecord && draft.coverages && draft.data.paymentType !== "Cash") setCoverages(draft.coverages);
+        }
 
         if (p.insuranceCoverages && p.insuranceCoverages.length > 0) {
           setCoverages((prev) => {
@@ -231,9 +321,24 @@ export default function PatientEntryPage() {
         toast.error("Failed to load patient details");
       } finally {
         setIsLoadingPatient(false);
+        setOpeningMatchId(null);
       }
     })();
   }, [editId]);
+
+  // Carries on with the existing record instead of creating a duplicate: it opens here in
+  // edit mode, with whatever was typed so far filling only the fields it doesn't have yet.
+  const continueWithExisting = (match: PatientMatchType) => {
+    setOpeningMatchId(match.opId);
+    try {
+      sessionStorage.setItem(ENTRY_DRAFT_KEY, JSON.stringify({ forId: match.opId, data: formData, coverages }));
+    } catch {
+      // Storage unavailable - the record still opens, just without the typed details.
+    }
+    setSubmitMatches(null);
+    setPendingPayload(null);
+    router.push(`/patient-entry?edit=${match.opId}`);
+  };
 
   // Re-clamps an already-typed phone number if switching to a dialing code with a shorter
   // national number length leaves it over the new limit (e.g. 10 digits typed for +234
@@ -369,6 +474,7 @@ export default function PatientEntryPage() {
 
   useSignalRRefetch(["appointmentCreated", "appointmentCancelled"], fetchSlots);
 
+
   const closeConsultFlow = () => {
     setRegisteredPatient(null);
     setShowConsultForm(false);
@@ -493,6 +599,21 @@ export default function PatientEntryPage() {
 
     setLoading(true);
 
+    // The starred dropdowns - a dropdown can't lean on the browser's own required check.
+    const missing = [
+      !formData.sex && "Sex",
+      !formData.nationality && "Nationality",
+      !formData.maritalStatus && "Marital Status",
+      visaRequired && !formData.visaType && "Visa Type",
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      const message = `Please choose: ${missing.join(", ")}`;
+      setError(message);
+      toast.error(message);
+      setLoading(false);
+      return;
+    }
+
     if (!isValidEmail(formData.email)) {
       setError("Enter a valid email address (e.g. john@example.com).");
       setLoading(false);
@@ -501,17 +622,32 @@ export default function PatientEntryPage() {
 
     // Validate that at least one of National ID or Passport Number is filled
     if (!formData.nationalID && !formData.passportNumber) {
-      setError("Please provide either National ID or Passport Number");
+      setError(`Please provide either ${idLabel} or Passport Number`);
       setLoading(false);
       return;
     }
 
-    // Format is nationality-specific for National ID (Emirates ID for UAE, Aadhaar for
-    // India, ...) and one standard pattern for Passport Number regardless of nationality.
-    if (formData.nationalID && nationalIdFormat.regex && !nationalIdFormat.regex.test(formData.nationalID)) {
-      setError(
-        `${nationalIdFormat.label} format looks incorrect. Expected format: ${nationalIdFormat.placeholder}`
-      );
+    // The national ID follows the installation's country (an edited record's ID that was
+    // saved earlier is left to the API, which keeps an unchanged one as it is); the passport
+    // has one standard pattern regardless of nationality.
+    const idProblem = nationalIdError(region, formData.nationalID);
+    if (idProblem && !isEditMode) {
+      setError(idProblem);
+      setLoading(false);
+      return;
+    }
+
+    const phoneProblem = phoneError(region, formData.phoneCode, formData.phone);
+    if (phoneProblem) {
+      setError(phoneProblem);
+      toast.error(phoneProblem);
+      setLoading(false);
+      return;
+    }
+
+    if (structuredAddress && Object.keys(addressErrors(region?.addressFields ?? [], addressFields)).length > 0) {
+      setShowAddressErrors(true);
+      toast.error("Check the highlighted address fields");
       setLoading(false);
       return;
     }
@@ -549,10 +685,20 @@ export default function PatientEntryPage() {
     const payload: ReceptionCreatePatientType = {
       ...formData,
       registeredBy,
+      // Saving the full form always means a complete registration - this is what turns a
+      // walk-in's minimal record into a fully registered patient.
+      registrationType: "Full",
       // The API has no separate dialing-code field for the emergency contact (unlike the
       // patient's own phone/phoneCode pair), so the selected code is folded into the one
       // string field it does expect.
       emergencyContactPhone: formData.emergencyContactPhoneCode + formData.emergencyContactPhone,
+      // Structured fields when any are filled (the API builds the address line from them);
+      // otherwise whatever single line is already on file stays as it is.
+      ...(structuredAddress
+        ? hasAnyAddressValue(addressFields)
+          ? { address: "", addressFields }
+          : { address: savedAddressLine, addressFields: null }
+        : { address: formData.address }),
       eligibilityCheckedDate: toDateOrUndefined(formData.eligibilityCheckedDate),
       insuranceEffectiveFrom: toDateOrUndefined(formData.insuranceEffectiveFrom),
       insuranceExpiryDate: toDateOrUndefined(formData.insuranceExpiryDate),
@@ -575,32 +721,66 @@ export default function PatientEntryPage() {
         : undefined,
     };
 
-    const wasManualEligibility = formData.eligibilityMode === "Manual";
-
-    try {
-      if (isEditMode) {
+    if (isEditMode) {
+      try {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, ...updatePayload } = payload;
         const data = await ReceptionService.updatePatient(editId!, updatePayload);
         toast.success(data.message || "Patient updated successfully");
         router.push("/patient-records");
+      } catch (error) {
+        toast.error(apiErrorMessage(error, "Failed to update patient"));
+      } finally {
+        setLoading(false);
+      }
+      setError("");
+      return;
+    }
+
+    // Last check before creating: is this person already on file (e.g. registered as a
+    // walk-in at the pharmacy or lab)? If so, offer their record instead of a duplicate.
+    try {
+      const res = await ReceptionService.matchPatients({
+        nationalID: formData.nationalID || undefined,
+        passportNumber: formData.passportNumber || undefined,
+        phone: formData.phone || undefined,
+        phoneCode: formData.phoneCode,
+        email: formData.email || undefined,
+      });
+      const found: PatientMatchType[] = res.data ?? [];
+      if (found.length > 0) {
+        setSubmitMatches(found);
+        setPendingPayload(payload);
+        setLoading(false);
         return;
       }
-      const data = await ReceptionService.createPatinet(payload)
-      toast.success(data.message)
+    } catch {
+      // Carry on - the server still refuses an ID that's already registered.
+    }
+
+    await createNewPatient(payload);
+    setError("");
+  };
+
+  const createNewPatient = async (payload: ReceptionCreatePatientType) => {
+    const wasManualEligibility = payload.eligibilityMode === "Manual";
+    try {
+      setLoading(true);
+      const data = await ReceptionService.createPatinet(payload);
+      toast.success(data.message);
       resetForm();
       setRegisteredPatient({ opId: data.data.opId, name: data.data.name });
       setNeedsEligibilityDoc(wasManualEligibility);
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || `Failed to ${isEditMode ? "update" : "register"} patient`);
-      } else {
-        toast.error(`Failed to ${isEditMode ? "update" : "register"} patient`);
+      // An ID that's already registered comes back with the matching record.
+      if (axios.isAxiosError(error) && error.response?.data?.duplicate && error.response.data.data?.length) {
+        setSubmitMatches(error.response.data.data);
+        setPendingPayload(null);
       }
+      toast.error(apiErrorMessage(error, "Failed to register patient"));
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-    setError("");
   };
 
   const resetForm = () => {
@@ -609,7 +789,7 @@ export default function PatientEntryPage() {
       sex: "",
       dateOfBirth: "",
       phone: "",
-      phoneCode: "+971",
+      phoneCode: defaultDialCode(),
       email: "",
       address: "",
       nationality: "",
@@ -625,7 +805,7 @@ export default function PatientEntryPage() {
       chronicStatus: false,
       emergencyContact: "",
       emergencyContactPhone: "",
-      emergencyContactPhoneCode: "+971",
+      emergencyContactPhoneCode: defaultDialCode(),
       paymentType: "Cash",
       eligibilityMode: "",
       eligibilityCheckedDate: "",
@@ -647,13 +827,29 @@ export default function PatientEntryPage() {
       coPayPatientPercent: "",
       password: "",
     });
+    setAddressFields({});
+    setSavedAddressLine("");
+    setShowAddressErrors(false);
     setCoverages(emptyCoverages());
   };
 
   if (isLoadingPatient) {
     return (
-      <div className="mainPage flex h-full items-center justify-center">
-        <LoadingSpinner />
+      <div className="mainPage flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-4xl font-bold text-foreground">Edit Patient</h1>
+          <p className="text-base text-foreground/80">Loading patient details…</p>
+        </div>
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-card rounded-lg shadow-md border border-border p-8">
+            <div className="h-5 w-40 mb-6 animate-pulse rounded bg-muted/60" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[...Array(4)].map((_, j) => (
+                <div key={j} className="h-10 animate-pulse rounded-md bg-muted/50" />
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -664,7 +860,7 @@ export default function PatientEntryPage() {
         {/* Header */}
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl font-bold text-foreground">
-            {isEditMode ? "Edit Patient" : "New Patient Entry"}
+            {isEditMode ? (loadedRegistrationType === "External" ? "Complete Registration" : "Edit Patient") : "New Patient Entry"}
           </h1>
           <p className="text-base text-foreground/80">
             {isEditMode
@@ -672,6 +868,17 @@ export default function PatientEntryPage() {
               : "Complete patient registration form. All fields marked with * are required."}
           </p>
         </div>
+
+        {isEditMode && loadedRegistrationType === "External" && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4">
+            <Footprints size={20} className="mt-0.5 shrink-0 text-amber-500" />
+            <p className="text-sm text-foreground/90">
+              This patient was registered as a <b>walk-in with minimal details</b> (for an outside prescription,
+              lab or radiology order). Fill in the rest and save to complete their registration - their MRN and
+              everything already on their record stay the same.
+            </p>
+          </div>
+        )}
 
         {/* Personal Information Section */}
         <div className="bg-card rounded-lg shadow-md border border-border p-4 sm:p-8">
@@ -706,19 +913,16 @@ export default function PatientEntryPage() {
               <label htmlFor="sex" className="font-semibold text-foreground/90">
                 Sex <span className="text-red-500">*</span>
               </label>
-              <select
-                id="sex"
-                name="sex"
+              <SearchableSelect
                 value={formData.sex}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="">Select Gender</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, sex: v }))}
+                options={[
+                  { value: "", label: "Select Gender" },
+                  { value: "Male", label: "Male" },
+                  { value: "Female", label: "Female" },
+                  { value: "Other", label: "Other" },
+                ]}
+              />
             </div>
 
             {/* Date of Birth */}
@@ -752,23 +956,14 @@ export default function PatientEntryPage() {
               >
                 Nationality <span className="text-red-500">*</span>
               </label>
-              <select
-                id="nationality"
-                name="nationality"
+              <SearchableSelect
                 value={formData.nationality}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="" disabled>
-                  Select Country
-                </option>
-                {countryDetails.map((country) => (
-                  <option key={country.country} value={country.country}>
-                    {country.country}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, nationality: v }))}
+                options={[
+                  { value: "", label: "Select Country" },
+                  ...countryDetails.map((country) => ({ value: country.country, label: country.country })),
+                ]}
+              />
             </div>
 
             {/* Father Name */}
@@ -817,20 +1012,17 @@ export default function PatientEntryPage() {
               >
                 Marital Status <span className="text-red-500">*</span>
               </label>
-              <select
-                id="maritalStatus"
-                name="maritalStatus"
+              <SearchableSelect
                 value={formData.maritalStatus}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="">Select Status</option>
-                <option value="Single">Single</option>
-                <option value="Married">Married</option>
-                <option value="Divorced">Divorced</option>
-                <option value="Widowed">Widowed</option>
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, maritalStatus: v }))}
+                options={[
+                  { value: "", label: "Select Status" },
+                  { value: "Single", label: "Single" },
+                  { value: "Married", label: "Married" },
+                  { value: "Divorced", label: "Divorced" },
+                  { value: "Widowed", label: "Widowed" },
+                ]}
+              />
             </div>
 
             {/* Designation */}
@@ -890,7 +1082,7 @@ export default function PatientEntryPage() {
                   onChange={handlePhoneChange}
                   required
                   maxLength={selectedPhoneLength}
-                  placeholder={"5".padEnd(selectedPhoneLength, "0")}
+                  placeholder={phonePlaceholderFor(formData.phoneCode)}
                   className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent rounded-none!"
                 />
               </div>
@@ -921,20 +1113,30 @@ export default function PatientEntryPage() {
               )}
             </div>
 
-            {/* Address */}
+            {/* Address - in the installation's country's own structure */}
             <div className="flex flex-col gap-2 md:col-span-2">
-              <label htmlFor="Address" className="font-semibold text-foreground/90">
+              <label htmlFor={structuredAddress ? undefined : "address"} className="font-semibold text-foreground/90">
                 Address
               </label>
-              <textarea
-                id="address"
-                name="address"
-                value={formData.address}
-                onChange={handleInputChange}
-                placeholder="Abu Dhabi"
-                rows={2}
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent resize-y min-h-11"
-              />
+              {structuredAddress ? (
+                <RegionAddressFields
+                  region={region}
+                  values={addressFields}
+                  onChange={setAddressFields}
+                  savedLine={savedAddressLine}
+                  showErrors={showAddressErrors}
+                />
+              ) : (
+                <textarea
+                  id="address"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleInputChange}
+                  placeholder="Address"
+                  rows={2}
+                  className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent resize-y min-h-11"
+                />
+              )}
             </div>
 
             {/* Emergency Contact */}
@@ -985,7 +1187,7 @@ export default function PatientEntryPage() {
                   onChange={handleEmergencyContactPhoneChange}
                   required
                   maxLength={selectedEmergencyPhoneLength}
-                  placeholder={"5".padEnd(selectedEmergencyPhoneLength, "0")}
+                  placeholder={phonePlaceholderFor(formData.emergencyContactPhoneCode)}
                   className="flex-1 px-4 py-2.5 focus:outline-none text-foreground bg-transparent rounded-none!"
                 />
               </div>
@@ -1002,7 +1204,7 @@ export default function PatientEntryPage() {
           <hr className="mb-6 border-border" />
           <p className="mb-6 text-sm text-foreground/80">
             <span className="text-red-500">*</span> Please provide either{" "}
-            {nationalIdFormat.label} or Passport Number
+            {idLabel} or Passport Number
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1012,7 +1214,7 @@ export default function PatientEntryPage() {
                 htmlFor="nationalID"
                 className="font-semibold text-foreground/90"
               >
-                {nationalIdFormat.label}
+                {idLabel}
               </label>
               <input
                 type="text"
@@ -1020,7 +1222,7 @@ export default function PatientEntryPage() {
                 name="nationalID"
                 value={formData.nationalID}
                 onChange={handleInputChange}
-                placeholder={nationalIdFormat.placeholder ?? "National ID"}
+                placeholder={region?.nationalId.placeholder ?? "National ID"}
                 className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-transparent"
               />
             </div>
@@ -1048,22 +1250,19 @@ export default function PatientEntryPage() {
             {/* Visa Type */}
             <div className="flex flex-col gap-2">
               <label htmlFor="visaType" className="font-semibold text-foreground/90">
-                Visa Type <span className="text-red-500">*</span>
+                Visa Type {visaRequired && <span className="text-red-500">*</span>}
               </label>
-              <select
-                id="visaType"
-                name="visaType"
+              <SearchableSelect
                 value={formData.visaType}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="">Select Visa Type</option>
-                <option value="Residency">Residency</option>
-                <option value="Tourist">Tourist</option>
-                <option value="Business">Business</option>
-                <option value="Student">Student</option>
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, visaType: v }))}
+                options={[
+                  { value: "", label: "Select Visa Type" },
+                  { value: "Residency", label: "Residency" },
+                  { value: "Tourist", label: "Tourist" },
+                  { value: "Business", label: "Business" },
+                  { value: "Student", label: "Student" },
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -1084,18 +1283,15 @@ export default function PatientEntryPage() {
               >
                 Patient Type <span className="text-red-500">*</span>
               </label>
-              <select
-                id="patientType"
-                name="patientType"
+              <SearchableSelect
                 value={formData.patientType}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="Normal">Normal</option>
-                <option value="VIP">VIP</option>
-                <option value="Emergency">Emergency</option>
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, patientType: v }))}
+                options={[
+                  { value: "Normal", label: "Normal" },
+                  { value: "VIP", label: "VIP" },
+                  { value: "Emergency", label: "Emergency" },
+                ]}
+              />
             </div>
 
             {/* Checkboxes */}
@@ -1133,18 +1329,15 @@ export default function PatientEntryPage() {
               <label htmlFor="paymentType" className="font-semibold text-foreground/90">
                 Payment Type <span className="text-red-500">*</span>
               </label>
-              <select
-                id="paymentType"
-                name="paymentType"
+              <SearchableSelect
                 value={formData.paymentType}
-                onChange={handleInputChange}
-                required
-                className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-              >
-                <option value="Cash">Cash</option>
-                <option value="Insurance">Insurance</option>
-                <option value="Corporate">Corporate</option>
-              </select>
+                onChange={(v) => setFormData((prev) => ({ ...prev, paymentType: v }))}
+                options={[
+                  { value: "Cash", label: "Cash" },
+                  { value: "Insurance", label: "Insurance" },
+                  { value: "Corporate", label: "Corporate" },
+                ]}
+              />
             </div>
           </div>
 
@@ -1156,17 +1349,15 @@ export default function PatientEntryPage() {
                   <label htmlFor="eligibilityMode" className="font-semibold text-foreground/90">
                     Eligibility Mode
                   </label>
-                  <select
-                    id="eligibilityMode"
-                    name="eligibilityMode"
+                  <SearchableSelect
                     value={formData.eligibilityMode}
-                    onChange={handleInputChange}
-                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-                  >
-                    <option value="">Not Done</option>
-                    <option value="Online">Online</option>
-                    <option value="Manual">Manual</option>
-                  </select>
+                    onChange={(v) => setFormData((prev) => ({ ...prev, eligibilityMode: v }))}
+                    options={[
+                      { value: "", label: "Not Done" },
+                      { value: "Online", label: "Online" },
+                      { value: "Manual", label: "Manual" },
+                    ]}
+                  />
                 </div>
 
                 {/* Eligibility Checked Date */}
@@ -1213,19 +1404,14 @@ export default function PatientEntryPage() {
                   <label htmlFor="insuranceProvider" className="font-semibold text-foreground/90">
                     {formData.paymentType} Provider <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    id="insuranceProvider"
-                    name="insuranceProvider"
+                  <SearchableSelect
                     value={formData.insuranceProvider}
-                    onChange={handleInputChange}
-                    required
-                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-                  >
-                    <option value="">{isLoadingProviders ? "Loading..." : "Select Provider"}</option>
-                    {insuranceProviders.map((p) => (
-                      <option key={p.listItemId} value={p.name}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setFormData((prev) => ({ ...prev, insuranceProvider: v }))}
+                    options={[
+                      { value: "", label: isLoadingProviders ? "Loading..." : "Select Provider" },
+                      ...insuranceProviders.map((p) => ({ value: p.name, label: p.name })),
+                    ]}
+                  />
                 </div>
 
                 {/* Sub Insurance */}
@@ -1245,18 +1431,16 @@ export default function PatientEntryPage() {
                 {/* Network Type */}
                 <div className="flex flex-col gap-2">
                   <label htmlFor="networkType" className="font-semibold text-foreground/90">Network Type</label>
-                  <select
-                    id="networkType"
-                    name="networkType"
+                  <SearchableSelect
                     value={formData.networkType}
-                    onChange={handleInputChange}
-                    className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-                  >
-                    <option value="">Select Network Type</option>
-                    <option value="Open Network">Open Network</option>
-                    <option value="Restricted Network">Restricted Network</option>
-                    <option value="Copay Network">Copay Network</option>
-                  </select>
+                    onChange={(v) => setFormData((prev) => ({ ...prev, networkType: v }))}
+                    options={[
+                      { value: "", label: "Select Network Type" },
+                      { value: "Open Network", label: "Open Network" },
+                      { value: "Restricted Network", label: "Restricted Network" },
+                      { value: "Copay Network", label: "Copay Network" },
+                    ]}
+                  />
                 </div>
 
                 {/* Insurance/Corporate Card No */}
@@ -1513,6 +1697,16 @@ export default function PatientEntryPage() {
           )}
         </div>
 
+        {/* Attachments (edit mode only) */}
+        {isEditMode && editId && (
+          <div className="card p-5 flex flex-col gap-4">
+            <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+              <Paperclip size={16} className="text-primary" /> Attachments
+            </h2>
+            <PatientDocumentsPanel patientId={editId} />
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex gap-4 my-8">
           <button
@@ -1532,6 +1726,36 @@ export default function PatientEntryPage() {
           </button>
         </div>
       </form>
+
+      {submitMatches && (
+        <DuplicatePatientPrompt
+          matches={submitMatches}
+          busyId={openingMatchId}
+          onContinue={continueWithExisting}
+          onCreateNew={
+            pendingPayload
+              ? () => {
+                  const toCreate = pendingPayload;
+                  setSubmitMatches(null);
+                  setPendingPayload(null);
+                  createNewPatient(toCreate);
+                }
+              : undefined
+          }
+          onCancel={() => {
+            setSubmitMatches(null);
+            setPendingPayload(null);
+          }}
+        />
+      )}
+      {!isEditMode && !submitMatches && (
+        <ExistingPatientNotice
+          matches={visibleMatches}
+          onContinue={continueWithExisting}
+          onDismiss={dismissMatches}
+          busyId={openingMatchId}
+        />
+      )}
 
       {/* Post-registration "add consultation?" popup */}
       {registeredPatient && (
@@ -1628,79 +1852,56 @@ export default function PatientEntryPage() {
                       <label className="font-semibold text-foreground/90 text-sm">
                         Department
                       </label>
-                      <select
+                      <SearchableSelect
                         value={selectedDepartmentId}
-                        onChange={(e) => {
-                          setSelectedDepartmentId(e.target.value);
+                        onChange={(v) => {
+                          setSelectedDepartmentId(v);
                           setSelectedDoctorId("");
                           setDaySlots(null);
                           setSelectedSlot(null);
                         }}
-                        className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-                      >
-                        <option value="">
-                          {isLoadingSpecializations
-                            ? "Loading..."
-                            : "Select department"}
-                        </option>
-                        {consultDepartments.map((d) => (
-                          <option key={d.value} value={d.value}>
-                            {d.label}
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: isLoadingSpecializations ? "Loading..." : "Select department" },
+                          ...consultDepartments.map((d) => ({ value: d.value, label: d.label })),
+                        ]}
+                      />
                     </div>
 
                     <div className="flex flex-col gap-2">
                       <label className="font-semibold text-foreground/90 text-sm">
                         Specialty
                       </label>
-                      <select
+                      <SearchableSelect
                         value={selectedSpecializationId}
-                        onChange={(e) => {
-                          setSelectedSpecializationId(e.target.value);
+                        onChange={(v) => {
+                          setSelectedSpecializationId(v);
                           setSelectedDoctorId("");
                           setDaySlots(null);
                           setSelectedSlot(null);
                         }}
-                        className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card"
-                      >
-                        <option value="">
-                          {isLoadingSpecializations
-                            ? "Loading..."
-                            : "Select specialty"}
-                        </option>
-                        {consultSpecializations.map((s) => (
-                          <option
-                            key={s.specializationId}
-                            value={s.specializationId}
-                          >
-                            {s.specializationName}
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: isLoadingSpecializations ? "Loading..." : "Select specialty" },
+                          ...consultSpecializations.map((s) => ({ value: String(s.specializationId), label: s.specializationName })),
+                        ]}
+                      />
                     </div>
 
                     <div className="flex flex-col gap-2">
                       <label className="font-semibold text-foreground/90 text-sm">
                         Doctor
                       </label>
-                      <select
+                      <SearchableSelect
                         value={selectedDoctorId}
-                        onChange={(e) => {
-                          setSelectedDoctorId(e.target.value);
+                        onChange={(v) => {
+                          setSelectedDoctorId(v);
                           setSelectedSlot(null);
                         }}
                         disabled={!selectedSpecializationId}
-                        className="px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground bg-card disabled:opacity-50"
-                      >
-                        <option value="">Select doctor</option>
-                        {doctorsForSpecialization.map((d) => (
-                          <option key={d.doctorId} value={d.doctorId}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: "Select doctor" },
+                          ...doctorsForSpecialization.map((d) => ({ value: String(d.doctorId), label: d.name })),
+                        ]}
+                      />
                     </div>
                   </div>
 

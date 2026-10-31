@@ -5,9 +5,8 @@ import { ChatService } from "@/services/chat.service";
 import { getChatConnection } from "@/lib/chatSignalR";
 import { playMessageReceivedSound } from "@/lib/chatSound";
 
-// Single source of truth for the sidebar's Messages badge - mirrors
-// useUnreadAppointmentRequests's shape (fetch the real total on mount, since live SignalR
-// events only cover what arrives while this tab is open; increment live after that).
+// Single source of truth for the sidebar's Messages badge - fetches the real total on mount
+// (live SignalR events only cover what arrives while this tab is open), then increments live.
 // Approximates "read" as "visited the Messages page" via clearUnread(), same simplification
 // the appointment-request bell already makes rather than tracking per-conversation state here.
 export function useUnreadChatCount(enabled: boolean) {

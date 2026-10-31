@@ -1,5 +1,3 @@
-import React from "react";
-
 interface DoctorIconProps {
   size?: number;
   color?: string;

@@ -6,17 +6,19 @@ import Link from "next/link";
 import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
 import { MdContacts, MdOutlinePersonAddAlt1, MdOutlineUploadFile, MdOutlineMailOutline, MdOutlineEdit } from "react-icons/md";
-import { CalendarDays, Clock, Loader2, Stethoscope, X } from "lucide-react";
-import { format } from "date-fns";
+import { CalendarDays, Clock, ClipboardList, Loader2, Stethoscope, X } from "lucide-react";
+import PatientEmrModal from "@/components/PatientEmrModal";
+import { format, isValid, parseISO } from "date-fns";
 import { toast } from "sonner";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import EmptyState from "@/components/EmptyState";
 import PasswordInput from "@/components/PasswordInput";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
 import { ReceptionService } from "@/services/reception.service";
 import { AuthService } from "@/services/auth.service";
 import { ConfigListService } from "@/services/configList.service";
-import { PatientFullDetailsType, PatientGetAllType, VisitListItemType } from "@/types/reception.type";
+import { PatientFullDetailsType, PatientGetAllType, PendingReferralType, VisitListItemType } from "@/types/reception.type";
 import {
   AppointmentSlotType,
   DoctorDaySlotsType,
@@ -26,9 +28,13 @@ import {
 import { ListItemType } from "@/types/configList.type";
 import { toDateInputValue } from "@/lib/date";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
+import { matchesPatientSearch } from "@/lib/patientSearch";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
+import { useViewModePreference } from "@/hooks/useViewModePreference";
+import ViewModeToggle from "@/components/ViewModeToggle";
+import { WalkInPatientBadge } from "@/components/patients/PatientBadges";
+import { PatientDocumentsModal } from "@/components/patients/PatientDocuments";
 
-const DOCUMENT_TYPES = ["ExternalLabReport", "ExternalRadiologyReport", "InsuranceEligibility", "Other"];
 
 // Walk-in-only payment/insurance touch-up (see openWalkInModal) - a lighter version of
 // patient-entry's own Payment Details section, same field set minus the per-category Fee
@@ -55,22 +61,32 @@ const emptyInsuranceForm = {
   coPayPatientPercent: "",
 };
 
-type PatientListMode = "register" | "visit";
+type PatientListMode = "register" | "visit" | "referral";
 const PATIENTS_PAGE_SIZE = 50;
 
-// Shared by both list modes - VisitListItemType extends PatientGetAllType, so this one
-// predicate covers both without needing a second copy. "Mobile Number" = phone; "MRN" =
-// opNumber (opId itself stays internal - never shown to or searched by a user, see the app-
-// wide MRN convention this mirrors).
-const matchesPatientSearch = (p: PatientGetAllType, term: string) => {
-  const q = term.trim().toLowerCase();
-  if (!q) return true;
-  return !!(
-    p.name?.toLowerCase().includes(q) ||
-    p.opNumber?.toLowerCase().includes(q) ||
-    p.phone?.toLowerCase().includes(q) ||
-    p.nationalID?.toLowerCase().includes(q)
-  );
+const getInitials = (name: string) =>
+  name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
+const visitStatusClass = (status: string) =>
+  status === "Completed"
+    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+    : status === "Cancelled"
+    ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+    : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+
+const visitTypeLabel = (visitType: string) =>
+  visitType === "WalkIn" ? "Walk-in" : visitType === "Referral" ? "Referral" : "Appointment";
+
+// Shared by the list-view tables of all three tabs.
+const TABLE_CLASS = "w-full min-w-[900px] text-left text-sm";
+const TH_CLASS = "px-4 py-3 font-semibold";
+const TD_CLASS = "px-4 py-3";
+
+// Formats a "yyyy-MM-dd" filter value as a local date; "—" if the field is cleared/invalid,
+// since date-fns' format() throws on an Invalid Date.
+const formatFilterDate = (value: string, pattern: string) => {
+  const d = parseISO(value);
+  return isValid(d) ? format(d, pattern) : "—";
 };
 
 export default function PatientRecordsPage() {
@@ -92,17 +108,28 @@ export default function PatientRecordsPage() {
 
   // ---------------- Register List / Visit List toggle ----------------
   const [listMode, setListMode] = useState<PatientListMode>("register");
+  // One grid/list choice for all three tabs, remembered per user across devices.
+  const [viewMode, setViewMode] = useViewModePreference("patientRecords.viewMode");
   const [visits, setVisits] = useState<VisitListItemType[]>([]);
   const [isLoadingVisits, setIsLoadingVisits] = useState(false);
+  const [pendingReferrals, setPendingReferrals] = useState<PendingReferralType[]>([]);
+  const [isLoadingReferrals, setIsLoadingReferrals] = useState(false);
+  const [referralSearchTerm, setReferralSearchTerm] = useState("");
+  // External referrals are hidden by default so reception can focus on in-clinic workflow.
+  const [showExternalReferrals, setShowExternalReferrals] = useState(false);
+  // Tracks referral IDs successfully registered this session so reception sees "In Queue" feedback
+  // without waiting for the doctor to open an encounter. Cleared on page refresh (intentional).
+  const [registeredReferralIds, setRegisteredReferralIds] = useState<Set<string>>(new Set());
   const todayValue = toDateInputValue(new Date());
   const [fromDate, setFromDate] = useState(todayValue);
   const [toDate, setToDate] = useState(todayValue);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Whose attachments are open (list + upload) - see PatientDocumentsModal.
   const [uploadTarget, setUploadTarget] = useState<PatientGetAllType | null>(null);
-  const [documentType, setDocumentType] = useState(DOCUMENT_TYPES[0]);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+
+  // ---------------- EMR modal state ----------------
+  const [emrPatient, setEmrPatient] = useState<{ id: string; name: string } | null>(null);
 
   // ---------------- Cancel Visit modal state ----------------
   const [cancelVisitTarget, setCancelVisitTarget] = useState<VisitListItemType | null>(null);
@@ -117,6 +144,8 @@ export default function PatientRecordsPage() {
   // whichever it is without the rest of the modal needing to care which.
   const [walkInPatient, setWalkInPatient] = useState<PatientGetAllType | null>(null);
   const [editingVisit, setEditingVisit] = useState<VisitListItemType | null>(null);
+  // Set when the modal is opened from the Referral List - drives which endpoint is called on submit.
+  const [walkInReferralId, setWalkInReferralId] = useState<string | null>(null);
   const [specializations, setSpecializations] = useState<SpecializationDoctorsType[]>([]);
   const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
   const [walkInDepartmentId, setWalkInDepartmentId] = useState("");
@@ -168,6 +197,19 @@ export default function PatientRecordsPage() {
     }
   };
 
+  const fetchPendingReferrals = async () => {
+    try {
+      setIsLoadingReferrals(true);
+      const data = await ReceptionService.getPendingReferrals();
+      setPendingReferrals(data.data || []);
+    } catch (error) {
+      console.error("Failed to fetch pending referrals", error);
+      toast.error("Failed to load referral list");
+    } finally {
+      setIsLoadingReferrals(false);
+    }
+  };
+
   // Register List is fetched eagerly (it's the default view, and other pages' patient-search
   // widgets share the underlying data too via the same signalR-driven refresh below) - Visit
   // List is fetched lazily, only once the toggle actually switches to it, and again whenever
@@ -179,17 +221,21 @@ export default function PatientRecordsPage() {
 
   useEffect(() => {
     if (listMode === "visit") fetchVisits(fromDate, toDate);
+    if (listMode === "referral") fetchPendingReferrals();
   }, [listMode, fromDate, toDate]);
 
   // Search/date/mode changes all invalidate whatever page the user was on - e.g. a filter
   // that now only matches 10 records shouldn't leave them stranded on page 3.
   useEffect(() => {
     setCurrentPage(1);
-  }, [listMode, searchTerm, fromDate, toDate]);
+  }, [listMode, searchTerm, referralSearchTerm, fromDate, toDate]);
 
   useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
   useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], () => {
     if (listMode === "visit") fetchVisits(fromDate, toDate);
+  });
+  useSignalRRefetch(["referralAdded", "referralUpdated", "referralRemoved", "visitCheckedIn"], () => {
+    if (listMode === "referral") fetchPendingReferrals();
   });
 
   const handleDelete = async (id: string) => {
@@ -279,6 +325,7 @@ export default function PatientRecordsPage() {
   const closeWalkInModal = () => {
     setWalkInPatient(null);
     setEditingVisit(null);
+    setWalkInReferralId(null);
     setSelectedDoctor(null);
     setDaySlots(null);
     setSelectedSlot(null);
@@ -438,6 +485,12 @@ export default function PatientRecordsPage() {
             appointmentDate: selectedSlot.start,
             notes: visitNotes || undefined,
           })
+        : walkInReferralId
+        ? await ReceptionService.registerFromReferral(walkInReferralId, {
+            doctorId: selectedDoctor.doctorId,
+            appointmentDate: selectedSlot.start,
+            notes: visitNotes || undefined,
+          })
         : await ReceptionService.walkIn({
             patientId: modalPatient.opId,
             doctorId: selectedDoctor.doctorId,
@@ -449,9 +502,16 @@ export default function PatientRecordsPage() {
         toast.error(data.message || "This slot has just been booked. Please choose another slot.");
         fetchWalkInSlots(selectedDoctor.doctorId, selectedDate);
       } else {
-        toast.success(data.message || (editingVisit ? "Visit updated" : "Walk-in visit registered"));
+        toast.success(data.message || (editingVisit ? "Visit updated" : "Patient registered successfully"));
+        const wasReferral = !!walkInReferralId;
+        const wasEditingVisit = !!editingVisit;
+        const completedReferralId = walkInReferralId;
         closeWalkInModal();
-        if (editingVisit) fetchVisits(fromDate, toDate);
+        if (wasEditingVisit) fetchVisits(fromDate, toDate);
+        if (wasReferral) {
+          fetchPendingReferrals();
+          if (completedReferralId) setRegisteredReferralIds((prev) => new Set(prev).add(completedReferralId));
+        }
       }
     } catch (error) {
       const fallback = `Failed to ${editingVisit ? "update visit" : "register walk-in visit"}`;
@@ -462,37 +522,6 @@ export default function PatientRecordsPage() {
       }
     } finally {
       setIsBookingWalkIn(false);
-    }
-  };
-
-  const closeUploadModal = () => {
-    setUploadTarget(null);
-    setUploadFile(null);
-    setDocumentType(DOCUMENT_TYPES[0]);
-  };
-
-  const handleUploadDocument = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!uploadTarget || !uploadFile) {
-      toast.warning("Please choose a file to upload");
-      return;
-    }
-    try {
-      setIsUploading(true);
-      const data = await ReceptionService.uploadDocument(uploadTarget.opId, {
-        documentType,
-        file: uploadFile,
-      });
-      toast.success(data.message || "Document uploaded");
-      closeUploadModal();
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || "Failed to upload document");
-      } else {
-        toast.error("Failed to upload document");
-      }
-    } finally {
-      setIsUploading(false);
     }
   };
 
@@ -555,8 +584,26 @@ export default function PatientRecordsPage() {
     () => visits.filter((v) => matchesPatientSearch(v, searchTerm)),
     [visits, searchTerm]
   );
+  const filteredReferrals = useMemo(() => {
+    const q = referralSearchTerm.trim().toLowerCase();
+    return pendingReferrals
+      .filter((r) => showExternalReferrals || !r.externalFacility)
+      .filter(
+        (r) =>
+          !q ||
+          r.patientName?.toLowerCase().includes(q) ||
+          r.patientOpNumber?.toLowerCase().includes(q) ||
+          r.patientPhone?.toLowerCase().includes(q) ||
+          r.targetSpecializationName?.toLowerCase().includes(q)
+      );
+  }, [pendingReferrals, referralSearchTerm, showExternalReferrals]);
 
-  const activeFilteredCount = listMode === "register" ? filteredPatients.length : filteredVisits.length;
+  const activeFilteredCount =
+    listMode === "register"
+      ? filteredPatients.length
+      : listMode === "visit"
+      ? filteredVisits.length
+      : filteredReferrals.length;
   const totalPages = Math.max(1, Math.ceil(activeFilteredCount / PATIENTS_PAGE_SIZE));
   // Clamped fallback for the one case the reset-to-1 effect above doesn't cover: the result
   // set shrinking (e.g. a patient deleted, or a signalR-driven visit refetch) while the user
@@ -572,14 +619,63 @@ export default function PatientRecordsPage() {
     () => filteredVisits.slice(pageStart, pageStart + PATIENTS_PAGE_SIZE),
     [filteredVisits, pageStart]
   );
+  const pagedReferrals = useMemo(
+    () => filteredReferrals.slice(pageStart, pageStart + PATIENTS_PAGE_SIZE),
+    [filteredReferrals, pageStart]
+  );
 
   // Register List row actions — operate on the patient record itself.
+  // Avatar + name + MRN chip - the first column of every list-view table.
+  const renderPatientCell = (name: string, mrn: string, avatarClass = "bg-primary/10 text-primary", registrationType?: string | null) => (
+    <div className="flex items-center gap-3">
+      <div className={`w-9 h-9 rounded-full font-bold text-xs flex items-center justify-center shrink-0 ${avatarClass}`}>
+        {getInitials(name === "—" ? "?" : name)}
+      </div>
+      <div className="min-w-0 max-w-[220px]">
+        <p className="font-semibold text-foreground truncate" title={name}>{name}</p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-block max-w-full truncate align-bottom font-mono text-[12px] text-foreground bg-muted px-1.5 py-0.5 rounded">
+            {mrn}
+          </span>
+          <WalkInPatientBadge registrationType={registrationType} />
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderReferralAction = (r: PendingReferralType) =>
+    r.externalFacility ? (
+      <p className="text-center text-sm text-muted-foreground py-1">Referred to external facility</p>
+    ) : registeredReferralIds.has(r.referralId) ? (
+      <div className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm font-semibold text-green-700 dark:text-green-400">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+        In Queue
+      </div>
+    ) : (
+      <button
+        onClick={async () => {
+          setWalkInReferralId(r.referralId);
+          await openWalkInModal({
+            opId: r.patientId,
+            opNumber: r.patientOpNumber ?? undefined,
+            name: r.patientName ?? "",
+            email: "",
+            phone: r.patientPhone ?? "",
+            address: "",
+          });
+        }}
+        className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+      >
+        <Stethoscope size={15} /> Register Visit
+      </button>
+    );
+
   const renderRegisterActions = (patient: PatientGetAllType) => (
-    <div className="flex items-center justify-center gap-1">
+    <div className="flex w-full items-center justify-evenly gap-1">
       <Link
         href={`/patient-entry?edit=${patient.opId}`}
         className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer inline-flex"
-        title="Edit Patient"
+        title={patient.registrationType === "External" ? "Complete registration (walk-in with minimal details)" : "Edit Patient"}
       >
         <MdOutlineEdit className="text-blue-600" size={18} />
       </Link>
@@ -591,9 +687,16 @@ export default function PatientRecordsPage() {
         <MdOutlinePersonAddAlt1 className="text-blue-600" size={18} />
       </button>
       <button
+        onClick={() => setEmrPatient({ id: patient.opId, name: patient.name })}
+        className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
+        title="View EMR"
+      >
+        <ClipboardList className="text-blue-600" size={18} />
+      </button>
+      <button
         onClick={() => setUploadTarget(patient)}
         className="hover:bg-blue-50 dark:hover:bg-blue-950/30 p-2 rounded transition-colors cursor-pointer"
-        title="Upload External Document"
+        title="Attachments (view or upload documents)"
       >
         <MdOutlineUploadFile className="text-blue-600" size={18} />
       </button>
@@ -654,8 +757,11 @@ export default function PatientRecordsPage() {
             View, search, and manage all registered patients in the system.
           </p>
         </div>
-        <Link href={"/patient-entry"} className="bg-blue-500 px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:bg-blue-600 transition duration-150">
-          Add Patient</Link>
+        <div className="flex items-center gap-3">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          <Link href={"/patient-entry"} className="bg-blue-500 px-4 py-2 rounded-md text-white text-lg flex gap-2 items-center cursor-pointer hover:bg-blue-600 transition duration-150">
+            Add Patient</Link>
+        </div>
       </div>
 
       <div className="card p-6">
@@ -684,6 +790,22 @@ export default function PatientRecordsPage() {
               }`}
             >
               Patient Visit List
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={listMode === "referral"}
+              onClick={() => setListMode("referral")}
+              className={`relative px-4 py-1.5 rounded-md text-sm font-semibold transition-colors cursor-pointer ${
+                listMode === "referral" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Referral List
+              {pendingReferrals.filter((r) => !r.externalFacility).length > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold w-4 h-4">
+                  {pendingReferrals.filter((r) => !r.externalFacility).length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -723,89 +845,364 @@ export default function PatientRecordsPage() {
               <span className="absolute left-3 top-1/2 transform -translate-y-1/2">
                 <SearchIcon color="#555" />
               </span>
-              <input
-                type="text"
-                autoComplete="off"
-                placeholder="Search by name, MRN, mobile number, or national ID..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
-              />
+              {listMode === "referral" ? (
+                <input
+                  type="text"
+                  autoComplete="off"
+                  placeholder="Search by name, MRN, phone, or specialty..."
+                  value={referralSearchTerm}
+                  onChange={(e) => setReferralSearchTerm(e.target.value)}
+                  className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
+                />
+              ) : (
+                <input
+                  type="text"
+                  autoComplete="off"
+                  placeholder="Search by name, MRN, mobile number, or national ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-12! pr-4 py-2 rounded-lg bg-(--color-highlight) border border-border focus:outline-none focus:border-blue-500"
+                />
+              )}
             </div>
           </div>
         </div>
 
         <hr className="text-neutral-400/50 mb-4" />
 
-        <div className="overflow-x-auto">
-          <table>
-            <thead>
-              <tr>
-                <th>Full Name</th>
-                <th>MRN</th>
-                {listMode === "register" ? (
-                  <>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Address</th>
-                  </>
-                ) : (
-                  <>
-                    <th>Phone</th>
-                    <th>Visit Date</th>
-                    <th>Visit Type</th>
-                  </>
-                )}
-                <th className="text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(listMode === "register" ? isLoading : isLoadingVisits) ? (
-                <tr>
-                  <td colSpan={6} className="py-16 text-center">
-                    <LoadingSpinner />
-                  </td>
-                </tr>
-              ) : listMode === "register" ? (
-                pagedPatients.length > 0 ? (
-                  pagedPatients.map((patient) => (
-                    <tr key={patient.opId}>
-                      <td className="font-semibold">{patient.name}</td>
-                      <td className="font-mono text-xs">{patient.opNumber || patient.opId}</td>
-                      <td>{patient.email}</td>
-                      <td>{patient.phone}</td>
-                      <td className="truncate max-w-xs">{patient.address || "N/A"}</td>
-                      <td className="text-center">{renderRegisterActions(patient)}</td>
-                    </tr>
-                  ))
-                ) : (
+        {/* ---- Patient / Visit / Referral card grid ---- */}
+        {(listMode === "register" ? isLoading : listMode === "visit" ? isLoadingVisits : isLoadingReferrals) ? (
+          <div className="flex items-center justify-center py-20"><LoadingSpinner /></div>
+        ) : listMode === "register" ? (
+          pagedPatients.length === 0 ? (
+            <EmptyState
+              illustration="patients"
+              title={searchTerm.trim() ? "No matching patients" : "No patients registered yet"}
+              description={
+                searchTerm.trim()
+                  ? `Nothing matches "${searchTerm.trim()}". Try a name, OP number, phone or national ID.`
+                  : "Registered patients will show up here."
+              }
+              action={searchTerm.trim() ? { label: "Clear search", onClick: () => setSearchTerm("") } : undefined}
+            />
+          ) : viewMode === "list" ? (
+            <div className="overflow-x-auto">
+              <table className={TABLE_CLASS}>
+                <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <td colSpan={6} className="py-16 text-center text-gray-500">
-                      No patients found.
-                    </td>
+                    <th className={TH_CLASS}>Patient</th>
+                    <th className={TH_CLASS}>Email</th>
+                    <th className={TH_CLASS}>Phone</th>
+                    <th className={TH_CLASS}>Address</th>
+                    <th className={`${TH_CLASS} text-center`}>Actions</th>
                   </tr>
-                )
-              ) : pagedVisits.length > 0 ? (
-                pagedVisits.map((visit) => (
-                  <tr key={visit.visitId}>
-                    <td className="font-semibold">{visit.name}</td>
-                    <td className="font-mono text-xs">{visit.opNumber || visit.opId}</td>
-                    <td>{visit.phone}</td>
-                    <td>{format(new Date(visit.checkedInAt), "dd MMM yyyy")}</td>
-                    <td>{visit.visitType === "WalkIn" ? "Walk-in" : "Appointment"}</td>
-                    <td className="text-center">{renderVisitActions(visit)}</td>
+                </thead>
+                <tbody>
+                  {pagedPatients.map((patient) => (
+                    <tr key={patient.opId} className="border-b border-border last:border-b-0 hover:bg-muted/40">
+                      <td className={TD_CLASS}>{renderPatientCell(patient.name, patient.opNumber || patient.opId, undefined, patient.registrationType)}</td>
+                      <td className={`${TD_CLASS} max-w-[220px] truncate text-muted-foreground`} title={patient.email}>{patient.email || "—"}</td>
+                      <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{patient.phone || "—"}</td>
+                      <td className={`${TD_CLASS} max-w-[280px] truncate text-muted-foreground`} title={patient.address}>{patient.address || "—"}</td>
+                      <td className={`${TD_CLASS} w-[300px]`}>{renderRegisterActions(patient)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pagedPatients.map((patient) => {
+                const initials = getInitials(patient.name);
+                return (
+                  <div key={patient.opId} className="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 text-primary font-bold text-sm flex items-center justify-center shrink-0">
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-foreground truncate">{patient.name}</p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="inline-block max-w-full truncate align-bottom font-mono text-[13px] text-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {patient.opNumber || patient.opId}
+                          </span>
+                          <WalkInPatientBadge registrationType={patient.registrationType} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+                      {patient.email && (
+                        <div className="flex items-center gap-2 truncate">
+                          <MdOutlineMailOutline size={15} className="shrink-0 text-muted-foreground/60" />
+                          <span className="truncate">{patient.email}</span>
+                        </div>
+                      )}
+                      {patient.phone && (
+                        <div className="flex items-center gap-2">
+                          <MdContacts size={15} className="shrink-0 text-muted-foreground/60" />
+                          <span>{patient.phone}</span>
+                        </div>
+                      )}
+                      {patient.address && (
+                        <div className="flex items-center gap-2 truncate">
+                          <svg className="shrink-0 text-muted-foreground/60" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                          <span className="truncate">{patient.address}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 pt-2 border-t border-border mt-auto">
+                      {renderRegisterActions(patient)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : listMode === "visit" ? (
+          pagedVisits.length === 0 ? (
+            <EmptyState
+              illustration="visits"
+              title={searchTerm.trim() ? "No matching visits" : "No visits in this period"}
+              description={
+                searchTerm.trim()
+                  ? `No visit between ${formatFilterDate(fromDate, "dd MMM")} and ${formatFilterDate(toDate, "dd MMM yyyy")} matches "${searchTerm.trim()}".`
+                  : fromDate === toDate
+                  ? `No patients have checked in on ${formatFilterDate(fromDate, "dd MMM yyyy")}.`
+                  : `No patients checked in between ${formatFilterDate(fromDate, "dd MMM")} and ${formatFilterDate(toDate, "dd MMM yyyy")}.`
+              }
+              action={
+                searchTerm.trim()
+                  ? { label: "Clear search", onClick: () => setSearchTerm("") }
+                  : fromDate !== todayValue || toDate !== todayValue
+                  ? { label: "Show today's visits", onClick: () => { setFromDate(todayValue); setToDate(todayValue); } }
+                  : undefined
+              }
+            />
+          ) : viewMode === "list" ? (
+            <div className="overflow-x-auto">
+              <table className={TABLE_CLASS}>
+                <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className={TH_CLASS}>Patient</th>
+                    <th className={TH_CLASS}>Phone</th>
+                    <th className={TH_CLASS}>Checked in</th>
+                    <th className={TH_CLASS}>Type</th>
+                    <th className={TH_CLASS}>Status</th>
+                    <th className={`${TH_CLASS} text-center`}>Actions</th>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="py-16 text-center text-gray-500">
-                    No visits found for the selected date range.
-                  </td>
-                </tr>
+                </thead>
+                <tbody>
+                  {pagedVisits.map((visit) => (
+                    <tr key={visit.visitId} className="border-b border-border last:border-b-0 hover:bg-muted/40">
+                      <td className={TD_CLASS}>{renderPatientCell(visit.name, visit.opNumber || visit.opId)}</td>
+                      <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{visit.phone || "—"}</td>
+                      <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{format(new Date(visit.checkedInAt), "dd MMM yyyy")}</td>
+                      <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{visitTypeLabel(visit.visitType)}</td>
+                      <td className={TD_CLASS}>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${visitStatusClass(visit.status)}`}>
+                          {visit.status}
+                        </span>
+                      </td>
+                      <td className={TD_CLASS}>{renderVisitActions(visit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pagedVisits.map((visit) => {
+                const initials = getInitials(visit.name);
+                const statusColor = visitStatusClass(visit.status);
+                return (
+                  <div key={visit.visitId} className="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 text-primary font-bold text-sm flex items-center justify-center shrink-0">
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-foreground truncate">{visit.name}</p>
+                        <span className="inline-block max-w-full truncate align-bottom font-mono text-[13px] text-foreground bg-muted px-1.5 py-0.5 rounded">
+                          {visit.opNumber || visit.opId}
+                        </span>
+                      </div>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
+                        {visit.status}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+                      {visit.phone && (
+                        <div className="flex items-center gap-2">
+                          <MdContacts size={15} className="shrink-0 text-muted-foreground/60" />
+                          <span>{visit.phone}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <CalendarDays size={15} className="shrink-0 text-muted-foreground/60" />
+                        <span>{format(new Date(visit.checkedInAt), "dd MMM yyyy")}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock size={15} className="shrink-0 text-muted-foreground/60" />
+                        <span>{visitTypeLabel(visit.visitType)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 pt-2 border-t border-border mt-auto">
+                      {renderVisitActions(visit)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : (
+          <>
+            {/* External referral toggle row */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExternalReferrals((p) => !p)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${showExternalReferrals ? "bg-primary" : "bg-muted-foreground/30"}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${showExternalReferrals ? "translate-x-4" : "translate-x-0.5"}`} />
+                </button>
+                <span className="text-xs text-muted-foreground">Show external referrals</span>
+              </div>
+              {pendingReferrals.filter((r) => !!r.externalFacility).length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {pendingReferrals.filter((r) => !!r.externalFacility).length} external
+                  {!showExternalReferrals && " (hidden)"}
+                </span>
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+
+            {pagedReferrals.length === 0 ? (
+              <EmptyState
+                illustration="referrals"
+                title={referralSearchTerm.trim() ? "No matching referrals" : "No pending referrals"}
+                description={
+                  referralSearchTerm.trim()
+                    ? `Nothing matches "${referralSearchTerm.trim()}".`
+                    : "Referrals from doctors that still need a visit registered will appear here."
+                }
+                action={
+                  referralSearchTerm.trim()
+                    ? { label: "Clear search", onClick: () => setReferralSearchTerm("") }
+                    : !showExternalReferrals && pendingReferrals.some((r) => !!r.externalFacility)
+                    ? { label: "Show external referrals", onClick: () => setShowExternalReferrals(true) }
+                    : undefined
+                }
+              />
+            ) : viewMode === "list" ? (
+              <div className="overflow-x-auto">
+                <table className={TABLE_CLASS}>
+                  <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className={TH_CLASS}>Patient</th>
+                      <th className={TH_CLASS}>Phone</th>
+                      <th className={TH_CLASS}>Specialty</th>
+                      <th className={TH_CLASS}>Referred on</th>
+                      <th className={TH_CLASS}>Priority</th>
+                      <th className={`${TH_CLASS} text-center`}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedReferrals.map((r) => {
+                      const isExternal = !!r.externalFacility;
+                      return (
+                        <tr
+                          key={r.referralId}
+                          className={`border-b border-border last:border-b-0 ${isExternal ? "opacity-50" : "hover:bg-muted/40"}`}
+                        >
+                          <td className={TD_CLASS}>
+                            {renderPatientCell(r.patientName ?? "—", r.patientOpNumber ?? "—", isExternal ? "bg-muted text-muted-foreground" : "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400")}
+                          </td>
+                          <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{r.patientPhone || "—"}</td>
+                          <td className={`${TD_CLASS} max-w-[260px] truncate text-muted-foreground`}>
+                            {r.targetSpecializationName ?? "—"}
+                            {r.cancerSiteName && <span className="ml-1">({r.cancerSiteName})</span>}
+                            {r.externalFacility && <span className="ml-1 font-medium text-slate-500 dark:text-slate-400">· {r.externalFacility}</span>}
+                          </td>
+                          <td className={`${TD_CLASS} whitespace-nowrap text-muted-foreground`}>{format(new Date(r.createdAt), "dd MMM yyyy")}</td>
+                          <td className={TD_CLASS}>
+                            <div className="flex flex-wrap items-center gap-1">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${r.priority === "Urgent" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : "bg-muted text-muted-foreground"}`}>
+                                {r.priority}
+                              </span>
+                              {isExternal && (
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                  External
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className={`${TD_CLASS} w-[220px]`}>{renderReferralAction(r)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pagedReferrals.map((r) => {
+                  const isExternal = !!r.externalFacility;
+                  return (
+                    <div
+                      key={r.referralId}
+                      className={`card p-4 flex flex-col gap-3 transition-shadow ${isExternal ? "opacity-50" : "hover:shadow-md"}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`w-10 h-10 rounded-full font-bold text-sm flex items-center justify-center shrink-0 ${isExternal ? "bg-muted text-muted-foreground" : "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"}`}>
+                          {(r.patientName ?? "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-foreground truncate">{r.patientName ?? "—"}</p>
+                          <span className="inline-block max-w-full truncate align-bottom font-mono text-[13px] text-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {r.patientOpNumber ?? "—"}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${r.priority === "Urgent" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : "bg-muted text-muted-foreground"}`}>
+                            {r.priority}
+                          </span>
+                          {isExternal && (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                              External
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+                        {r.patientPhone && (
+                          <div className="flex items-center gap-2">
+                            <MdContacts size={15} className="shrink-0 text-muted-foreground/60" />
+                            <span>{r.patientPhone}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <Stethoscope size={15} className="shrink-0 text-muted-foreground/60" />
+                          <span className="truncate">
+                            {r.targetSpecializationName ?? "—"}
+                            {r.cancerSiteName && <span className="ml-1">({r.cancerSiteName})</span>}
+                            {r.externalFacility && <span className="ml-1 font-medium text-slate-500 dark:text-slate-400">· {r.externalFacility}</span>}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CalendarDays size={15} className="shrink-0 text-muted-foreground/60" />
+                          <span>{format(new Date(r.createdAt), "dd MMM yyyy")}</span>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-border mt-auto">
+                        {renderReferralAction(r)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
 
         {activeFilteredCount > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-border">
@@ -843,7 +1240,7 @@ export default function PatientRecordsPage() {
             <div className="flex items-start justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-semibold text-foreground">
-                  {editingVisit ? "Edit visit" : "Walk-in visit"}
+                  {editingVisit ? "Edit visit" : walkInReferralId ? "Register referral" : "Walk-in visit"}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
                   {modalPatient.name}
@@ -1047,15 +1444,17 @@ export default function PatientRecordsPage() {
                     <>
                       <div>
                         <label className="block text-xs font-semibold text-muted-foreground mb-1">Payment Type</label>
-                        <select
-                          value={insuranceForm.paymentType}
-                          onChange={(e) => setInsuranceForm((p) => ({ ...p, paymentType: e.target.value }))}
-                          className="w-full h-10 text-sm"
-                        >
-                          <option value="Cash">Cash</option>
-                          <option value="Insurance">Insurance</option>
-                          <option value="Corporate">Corporate</option>
-                        </select>
+                        <div>
+                          <SearchableSelect
+                            value={insuranceForm.paymentType}
+                            onChange={(v) => setInsuranceForm((p) => ({ ...p, paymentType: v }))}
+                            options={[
+                              { value: "Cash", label: "Cash" },
+                              { value: "Insurance", label: "Insurance" },
+                              { value: "Corporate", label: "Corporate" },
+                            ]}
+                          />
+                        </div>
                       </div>
 
                       {isInsuranceOrCorporate && (
@@ -1064,17 +1463,16 @@ export default function PatientRecordsPage() {
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">
                               {insuranceForm.paymentType} Provider <span className="text-red-500">*</span>
                             </label>
-                            <select
-                              value={insuranceForm.insuranceProvider}
-                              onChange={(e) => setInsuranceForm((p) => ({ ...p, insuranceProvider: e.target.value }))}
-                              required
-                              className="w-full h-10 text-sm"
-                            >
-                              <option value="">{isLoadingInsuranceProviders ? "Loading..." : "Select Provider"}</option>
-                              {insuranceProviders.map((p) => (
-                                <option key={p.listItemId} value={p.name}>{p.name}</option>
-                              ))}
-                            </select>
+                            <div>
+                              <SearchableSelect
+                                value={insuranceForm.insuranceProvider}
+                                onChange={(v) => setInsuranceForm((p) => ({ ...p, insuranceProvider: v }))}
+                                options={[
+                                  { value: "", label: isLoadingInsuranceProviders ? "Loading..." : "Select Provider" },
+                                  ...insuranceProviders.map((p) => ({ value: p.name, label: p.name })),
+                                ]}
+                              />
+                            </div>
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">Sub Insurance</label>
@@ -1088,16 +1486,18 @@ export default function PatientRecordsPage() {
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">Network Type</label>
-                            <select
-                              value={insuranceForm.networkType}
-                              onChange={(e) => setInsuranceForm((p) => ({ ...p, networkType: e.target.value }))}
-                              className="w-full h-10 text-sm"
-                            >
-                              <option value="">Select Network Type</option>
-                              <option value="Open Network">Open Network</option>
-                              <option value="Restricted Network">Restricted Network</option>
-                              <option value="Copay Network">Copay Network</option>
-                            </select>
+                            <div>
+                              <SearchableSelect
+                                value={insuranceForm.networkType}
+                                onChange={(v) => setInsuranceForm((p) => ({ ...p, networkType: v }))}
+                                options={[
+                                  { value: "", label: "Select Network Type" },
+                                  { value: "Open Network", label: "Open Network" },
+                                  { value: "Restricted Network", label: "Restricted Network" },
+                                  { value: "Copay Network", label: "Copay Network" },
+                                ]}
+                              />
+                            </div>
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">
@@ -1245,60 +1645,17 @@ export default function PatientRecordsPage() {
       )}
 
       {uploadTarget && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-xl shadow-2xl max-w-sm w-full p-6 border border-border">
-            <h2 className="text-xl font-semibold text-foreground">
-              Upload document
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              {uploadTarget.name}
-            </p>
-            <form onSubmit={handleUploadDocument} className="mt-4 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">
-                  Document type
-                </label>
-                <select
-                  value={documentType}
-                  onChange={(e) => setDocumentType(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-blue-500 text-foreground"
-                >
-                  {DOCUMENT_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">
-                  File
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                  className="w-full text-sm text-foreground"
-                />
-              </div>
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={closeUploadModal}
-                  className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isUploading}
-                  className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
-                >
-                  {isUploading ? "Uploading..." : "Upload"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <PatientDocumentsModal patient={{ id: uploadTarget.opId, name: uploadTarget.name }} onClose={() => setUploadTarget(null)} />
+      )}
+
+      {/* EMR modal */}
+      {emrPatient && (
+        <PatientEmrModal
+          patientId={emrPatient.id}
+          patientName={emrPatient.name}
+          isOpen={!!emrPatient}
+          onClose={() => setEmrPatient(null)}
+        />
       )}
 
       {/* Cancel Visit — password confirmation modal */}

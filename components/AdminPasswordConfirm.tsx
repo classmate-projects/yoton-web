@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import { ShieldAlert } from "lucide-react";
 import PasswordInput from "@/components/PasswordInput";
@@ -58,7 +59,7 @@ export default function AdminPasswordConfirm({
     }
   };
 
-  return (
+  const dialog = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-md">
       <div className="bg-card w-full max-w-sm rounded-xl border border-border p-6 shadow-2xl mx-4">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/40">
@@ -97,4 +98,8 @@ export default function AdminPasswordConfirm({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined"
+    ? createPortal(dialog, document.body)
+    : dialog;
 }

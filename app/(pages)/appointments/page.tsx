@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 import axios from "axios";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -11,24 +12,27 @@ import {
   CalendarDays,
   CalendarPlus,
   Check,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   GraduationCap,
+  HelpCircle,
   ListChecks,
-  LogIn,
+  Paperclip,
   Pencil,
   RefreshCw,
   RotateCcw,
   Search,
   Stethoscope,
+  UserCheck,
   Users,
   X,
   XCircle,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
+import SearchableSelect from "@/components/SearchableSelect";
+import PatientRegistrationModal from "@/components/PatientRegistrationModal";
 import { ReceptionService } from "@/services/reception.service";
+import { AuthService } from "@/services/auth.service";
 import { ChatService } from "@/services/chat.service";
 import { getChatConnection } from "@/lib/chatSignalR";
 import {
@@ -36,22 +40,44 @@ import {
   AppointmentSlotType,
   DoctorDaySlotsType,
   DoctorGridType,
-  PatientListItemType,
   SpecializationDoctorsType,
 } from "@/types/appointment.type";
 import { PendingFollowUpType } from "@/types/emr.type";
-import { VisitType } from "@/types/visit.type";
 import { SpecializationAvailabilityType } from "@/types/doctorAvailability.type";
 import { useAppointmentRequestSignalR } from "@/hooks/useAppointmentRequestSignalR";
 import { getInitials } from "@/lib/getInitials";
 import { useSignalRRefetch } from "@/hooks/useSignalRRefetch";
 import { getCurrencySymbol } from "@/lib/currency";
+import { notifySaveStatus } from "@/lib/saveStatus";
+import { apiErrorMessage } from "@/lib/apiError";
+import PatientPicker from "@/components/patients/PatientPicker";
+import { PatientDocumentsModal } from "@/components/patients/PatientDocuments";
+import { PatientSummaryType } from "@/types/patient.type";
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const VISIT_STATUS_META: Record<string, { label: string; className: string }> = {
+  CheckedIn:      { label: "Waiting",        className: "bg-amber-500/15 text-amber-400" },
+  WithNurse:      { label: "With Nurse",     className: "bg-sky-500/15 text-sky-400" },
+  WithDoctor:     { label: "With Doctor",    className: "bg-emerald-500/15 text-emerald-400" },
+  Investigations: { label: "Investigations", className: "bg-orange-500/15 text-orange-400" },
+  Pharmacy:       { label: "Pharmacy",       className: "bg-violet-500/15 text-violet-400" },
+  Billing:        { label: "Billing",        className: "bg-rose-500/15 text-rose-400" },
+  Completed:      { label: "Completed",      className: "bg-gray-500/15 text-gray-400" },
+};
+
+const visitStatusBadge = (status: string) => {
+  const meta = VISIT_STATUS_META[status] ?? { label: status, className: "bg-primary/10 text-primary" };
+  return (
+    <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${meta.className}`}>
+      {meta.label}
+    </span>
+  );
 };
 
 // A doctor's status dot, shown on their own card (and, for a whole specialty's heading,
@@ -102,10 +128,11 @@ export default function Appointments() {
     SpecializationDoctorsType[]
   >([]);
 
-  // ---------------- Date range filter (doctor availability + the lists below it) ----------------
+  // ---------------- Date range (doctor availability + the lists below it) ----------------
+  // Fixed to today - the page no longer has a range picker.
   const todayValue = useMemo(() => toDateInputValue(new Date()), []);
-  const [fromDate, setFromDate] = useState(todayValue);
-  const [toDate, setToDate] = useState(todayValue);
+  const fromDate = todayValue;
+  const toDate = todayValue;
 
   // ---------------- Doctor status dots (schedule + live chat presence) ----------------
   const [doctorAvailability, setDoctorAvailability] = useState<SpecializationAvailabilityType[]>([]);
@@ -122,7 +149,6 @@ export default function Appointments() {
   const [daySlots, setDaySlots] = useState<DoctorDaySlotsType | null>(null);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
 
-  const [patients, setPatients] = useState<PatientListItemType[]>([]);
 
   const [bookingSlot, setBookingSlot] = useState<
     DoctorDaySlotsType["slots"][number] | null
@@ -130,28 +156,35 @@ export default function Appointments() {
   const [cancelSlot, setCancelSlot] = useState<
     DoctorDaySlotsType["slots"][number] | null
   >(null);
-  const [patientSearch, setPatientSearch] = useState("");
-  const [selectedPatient, setSelectedPatient] =
-    useState<PatientListItemType | null>(null);
+
+  // ---------------- Department filter (defaults to user's assigned department) ----------------
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("all");
+  const [userDeptInfo, setUserDeptInfo] = useState<{ id: string; name: string } | null>(null);
+
+  useEffect(() => {
+    AuthService.getMe().then((data) => {
+      const deptId: string | null = data?.departmentId ?? null;
+      const deptName: string | null = data?.departmentName ?? null;
+      if (deptId) {
+        setSelectedDeptFilter(deptId);
+        if (deptName) setUserDeptInfo({ id: deptId, name: deptName });
+      }
+    }).catch(() => {});
+  }, []);
+
+  // ---------------- Book Appointment modals ----------------
+  const [showBookModal, setShowBookModal] = useState(false);
+  const [bookModalDeptFilter, setBookModalDeptFilter] = useState("all");
+  const [selectedPatient, setSelectedPatient] = useState<PatientSummaryType | null>(null);
+  const [showNewPatientModal, setShowNewPatientModal] = useState(false);
   const [notes, setNotes] = useState("");
   const [isFollowUp, setIsFollowUp] = useState(false);
   const [urgencyLevel, setUrgencyLevel] = useState("Routine");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [visitQueue, setVisitQueue] = useState<VisitType[]>([]);
-  const [isLoadingQueue, setIsLoadingQueue] = useState(false);
-  const [queuePage, setQueuePage] = useState(1);
-  const QUEUE_PAGE_SIZE = 5;
-
-  // ---------------- Edit visit (Visit queue "Edit") ----------------
-  // Nurses already see checked-in patients waiting for them on their own Nursing dashboard
-  // (Patient Monitoring's "untouched" list), so a "Start Nursing" shortcut here was a
-  // redundant second door into the same queue. Reception's actual day-to-day need on this
-  // table is fixing a visit that's wrong - moved to the wrong doctor, booked for the wrong
-  // time - so this reuses the same PUT /api/reception/visit/{id} reassignment the Patient
-  // Records "Edit Visit" button already calls, just in a lighter modal (this page already
-  // has every doctor loaded for its own booking grid above, so no extra fetch is needed).
-  const [editingQueueVisit, setEditingQueueVisit] = useState<VisitType | null>(null);
+  // ---------------- Doctor/slot picker for the Edit Appointment modal ----------------
+  // This page already has every doctor loaded for its own booking grid above, so no extra
+  // fetch is needed.
   const [editVisitDoctorSearch, setEditVisitDoctorSearch] = useState("");
   const [editVisitSelectedDoctor, setEditVisitSelectedDoctor] = useState<DoctorGridType | null>(null);
   const [editVisitDate, setEditVisitDate] = useState<Date>(new Date());
@@ -159,7 +192,62 @@ export default function Appointments() {
   const [isLoadingEditVisitSlots, setIsLoadingEditVisitSlots] = useState(false);
   const [editVisitSelectedSlot, setEditVisitSelectedSlot] = useState<AppointmentSlotType | null>(null);
   const [editVisitNotes, setEditVisitNotes] = useState("");
-  const [isSavingEditVisit, setIsSavingEditVisit] = useState(false);
+  const [editVisitDeptFilter, setEditVisitDeptFilter] = useState("all");
+  const [editVisitSpecFilter, setEditVisitSpecFilter] = useState("all");
+
+  // ---------------- Appointment Registration (walk-in desk: find today's appointment, register the visit) ----------------
+  type ScheduledAppointmentItem = {
+    appointmentId: string | null;
+    appointmentDate: string | null;
+    status: string;
+    patientId: string | null;
+    patientName: string | null;
+    patientPhone: string | null;
+    patientNationalId: string | null;
+    patientOpNumber: string | null;
+    doctorId: string | null;
+    departmentId: string | null;
+    doctorName: string | null;
+    specializationName: string | null;
+    notes: string | null;
+    isWalkIn: boolean;
+    isFollowUp: boolean;
+    urgencyLevel: string | null;
+    alreadyRegistered: boolean;
+    visitId: string | null;
+    visitStatus: string | null;
+    hasEncounter: boolean;
+  };
+  const [scheduledAppointments, setScheduledAppointments] = useState<ScheduledAppointmentItem[]>([]);
+  const [isLoadingScheduled, setIsLoadingScheduled] = useState(false);
+  const [registrationDate, setRegistrationDate] = useState(todayValue);
+  const [registrationSearch, setRegistrationSearch] = useState("");
+  const [registeringId, setRegisteringId] = useState<string | null>(null);
+
+  // ---------------- Today's Appointment Queue (column 1, non-walk-in only) ----------------
+  const [todayAppointmentQueue, setTodayAppointmentQueue] = useState<ScheduledAppointmentItem[]>([]);
+  const [isLoadingTodayQueue, setIsLoadingTodayQueue] = useState(false);
+  const [appointmentQueueSearch, setAppointmentQueueSearch] = useState("");
+
+  // ---------------- Edit Appointment (pre-registration, uses the doctor/slot picker state above) ----------------
+  const [editingQueueAppointment, setEditingQueueAppointment] = useState<ScheduledAppointmentItem | null>(null);
+  const [isSavingEditAppointment, setIsSavingEditAppointment] = useState(false);
+  const [editUrgencyLevel, setEditUrgencyLevel] = useState("Routine");
+  const [editIsFollowUp, setEditIsFollowUp] = useState(false);
+
+  // ---------------- Revert registration ----------------
+  const [revertingVisitId, setRevertingVisitId] = useState<string | null>(null);
+
+  // ---------------- Attachments modal ----------------
+  const [attachmentPatient, setAttachmentPatient] = useState<{ id: string; name: string } | null>(null);
+  const openAttachments = (patientId: string, patientName: string) => setAttachmentPatient({ id: patientId, name: patientName });
+
+  // ---------------- Overlap booking (add a 2nd / 3rd patient to an already-booked slot) ----------------
+  const [overlapSlot, setOverlapSlot] = useState<DoctorDaySlotsType["slots"][number] | null>(null);
+  const [overlapDoctorId, setOverlapDoctorId] = useState<string | null>(null);
+  const [overlapSelectedPatient, setOverlapSelectedPatient] = useState<PatientSummaryType | null>(null);
+  const [overlapNotes, setOverlapNotes] = useState("");
+  const [isSubmittingOverlap, setIsSubmittingOverlap] = useState(false);
 
   const [appointmentRequests, setAppointmentRequests] = useState<
     AppointmentRequestType[]
@@ -297,80 +385,110 @@ export default function Appointments() {
   const isSpecialtyAvailable = (spec: SpecializationDoctorsType) =>
     spec.doctors.some((d) => scheduledDoctorIds.has(d.doctorId));
 
-  // ---------------- Fetch patients (for booking search) ----------------
-  const fetchPatients = async () => {
+  // ---------------- Fetch scheduled appointments for registration ----------------
+  const fetchScheduledAppointments = async (date?: string) => {
     try {
-      const data = await ReceptionService.getAllPatients();
-      setPatients(data.patients ?? []);
-    } catch (error) {
-      console.error("Failed to fetch patients:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchPatients();
-  }, []);
-
-  useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
-
-  // ---------------- Fetch visit queue ----------------
-  const fetchVisitQueue = async () => {
-    try {
-      setIsLoadingQueue(true);
-      const data = await ReceptionService.getVisitQueue();
-      setVisitQueue(data.data ?? []);
-    } catch (error) {
-      console.error("Failed to fetch visit queue:", error);
+      setIsLoadingScheduled(true);
+      const res = await ReceptionService.getScheduledAppointments(date);
+      setScheduledAppointments(res.items ?? []);
+    } catch {
+      setScheduledAppointments([]);
     } finally {
-      setIsLoadingQueue(false);
+      setIsLoadingScheduled(false);
     }
   };
 
-  useEffect(() => {
-    fetchVisitQueue();
-    // Long-interval safety net only, not the primary refresh mechanism - every stage
-    // transition (check-in, nursing, doctor, investigations, pharmacy, billing) now
-    // broadcasts visitCheckedIn/visitStatusUpdated (see useSignalRRefetch below), so this
-    // is just insurance against a dropped connection instead of the 20s poll this used to
-    // be running unconditionally for every open tab.
-    const interval = setInterval(fetchVisitQueue, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+  useEffect(() => { fetchScheduledAppointments(registrationDate); }, [registrationDate]);
+  useSignalRRefetch(["visitCheckedIn", "appointmentCreated", "appointmentStatusUpdated", "visitStatusUpdated", "encounterSaved", "encounterFinished"], () => fetchScheduledAppointments(registrationDate));
 
-  useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], fetchVisitQueue);
-
-  const openEditQueueVisit = (visit: VisitType) => {
-    setEditingQueueVisit(visit);
-    setEditVisitDoctorSearch("");
-    setEditVisitSelectedDoctor(null);
-    setEditVisitDate(visit.appointmentDate ? new Date(visit.appointmentDate) : new Date());
-    setEditVisitDaySlots(null);
-    setEditVisitSelectedSlot(null);
-    setEditVisitNotes(visit.notes ?? "");
+  const fetchTodayAppointmentQueue = async () => {
+    try {
+      setIsLoadingTodayQueue(true);
+      const res = await ReceptionService.getScheduledAppointments(todayValue);
+      const appts = (res.items ?? []).filter((a: ScheduledAppointmentItem) => !a.isWalkIn && !a.alreadyRegistered);
+      appts.sort((a: ScheduledAppointmentItem, b: ScheduledAppointmentItem) =>
+        new Date(a.appointmentDate ?? 0).getTime() - new Date(b.appointmentDate ?? 0).getTime()
+      );
+      setTodayAppointmentQueue(appts);
+    } catch {
+      setTodayAppointmentQueue([]);
+    } finally {
+      setIsLoadingTodayQueue(false);
+    }
   };
 
-  const closeEditQueueVisit = () => {
-    setEditingQueueVisit(null);
-    setEditVisitSelectedDoctor(null);
-    setEditVisitDaySlots(null);
-    setEditVisitSelectedSlot(null);
+  useEffect(() => { fetchTodayAppointmentQueue(); }, []);
+  useSignalRRefetch(["visitCheckedIn", "appointmentCreated", "appointmentStatusUpdated", "visitStatusUpdated"], fetchTodayAppointmentQueue);
+
+  const handleRegister = async (appointmentId: string) => {
+    try {
+      setRegisteringId(appointmentId);
+      notifySaveStatus("saving");
+      const data = await ReceptionService.checkIn({ appointmentId });
+      toast.success(data.message || "Patient registered for consultation");
+      notifySaveStatus("saved");
+      setScheduledAppointments((prev) =>
+        prev.map((a) =>
+          a.appointmentId === appointmentId
+            ? { ...a, alreadyRegistered: true, visitId: data.data?.visitId ?? a.visitId, visitStatus: data.data?.status ?? "CheckedIn" }
+            : a
+        )
+      );
+      setTodayAppointmentQueue((prev) =>
+        prev.map((a) =>
+          a.appointmentId === appointmentId
+            ? { ...a, alreadyRegistered: true, visitId: data.data?.visitId ?? a.visitId, visitStatus: data.data?.status ?? "CheckedIn" }
+            : a
+        )
+      );
+    } catch (error) {
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, "Registration failed"));
+    } finally {
+      setRegisteringId(null);
+    }
   };
 
   // Flattened once from the same `specializations` catalog the main booking grid above
-  // already loads - an 11-doctor clinic doesn't need its own department/specialty dropdowns
-  // on top of a search box, just something to narrow the list by name or specialty.
+  // already loads - department/specialty dropdowns narrow the list before the text search.
   const editVisitDoctorOptions = useMemo(
-    () => specializations.flatMap((s) => s.doctors.map((d) => ({ ...d, specializationName: s.specializationName }))),
+    () =>
+      specializations.flatMap((s) =>
+        s.doctors.map((d) => ({
+          ...d,
+          specializationName: s.specializationName,
+          specializationId: s.specializationId,
+          departmentId: s.departmentId,
+          departmentName: s.departmentName,
+        }))
+      ),
     [specializations]
   );
 
+  // Unique departments and specializations for the filter dropdowns.
+  const editVisitDeptOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    specializations.forEach((s) => {
+      if (s.departmentId && s.departmentName) seen.set(s.departmentId, s.departmentName);
+    });
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+  }, [specializations]);
+
+  const editVisitSpecOptions = useMemo(() => {
+    return specializations
+      .filter((s) => editVisitDeptFilter === "all" || s.departmentId === editVisitDeptFilter)
+      .map((s) => ({ id: s.specializationId, name: s.specializationName }));
+  }, [specializations, editVisitDeptFilter]);
+
   const editVisitDoctorResults = useMemo(() => {
     const term = editVisitDoctorSearch.trim().toLowerCase();
-    if (term.length === 0) return editVisitDoctorOptions;
-    return editVisitDoctorOptions.filter(
-      (d) => d.name.toLowerCase().includes(term) || d.specializationName.toLowerCase().includes(term)
-    );
-  }, [editVisitDoctorOptions, editVisitDoctorSearch]);
+    return editVisitDoctorOptions.filter((d) => {
+      if (editVisitDeptFilter !== "all" && d.departmentId !== editVisitDeptFilter) return false;
+      if (editVisitSpecFilter !== "all" && d.specializationId !== editVisitSpecFilter) return false;
+      if (term.length === 0) return true;
+      return d.name.toLowerCase().includes(term) || d.specializationName.toLowerCase().includes(term);
+    });
+  }, [editVisitDoctorOptions, editVisitDoctorSearch, editVisitDeptFilter, editVisitSpecFilter]);
 
   const fetchEditVisitSlots = async (doctorId: string, date: Date) => {
     try {
@@ -391,32 +509,84 @@ export default function Appointments() {
     if (editVisitSelectedDoctor) fetchEditVisitSlots(editVisitSelectedDoctor.doctorId, editVisitDate);
   }, [editVisitSelectedDoctor, editVisitDate]);
 
-  const handleSaveEditVisit = async () => {
-    if (!editingQueueVisit || !editVisitSelectedDoctor || !editVisitSelectedSlot) {
+  // ---------------- Edit Appointment handlers ----------------
+  const openEditAppointment = (apt: ScheduledAppointmentItem) => {
+    setEditingQueueAppointment(apt);
+    setEditVisitDoctorSearch("");
+    setEditVisitSelectedDoctor(null);
+    setEditVisitDate(apt.appointmentDate ? new Date(apt.appointmentDate) : new Date());
+    setEditVisitDaySlots(null);
+    setEditVisitSelectedSlot(null);
+    setEditVisitNotes(apt.notes ?? "");
+    setEditVisitDeptFilter("all");
+    setEditVisitSpecFilter("all");
+    setEditUrgencyLevel(apt.urgencyLevel ?? "Routine");
+    setEditIsFollowUp(apt.isFollowUp ?? false);
+  };
+
+  const closeEditAppointment = () => {
+    setEditingQueueAppointment(null);
+    setEditVisitSelectedDoctor(null);
+    setEditVisitDaySlots(null);
+    setEditVisitSelectedSlot(null);
+    setEditVisitDeptFilter("all");
+    setEditVisitSpecFilter("all");
+  };
+
+  const handleSaveEditAppointment = async () => {
+    if (!editingQueueAppointment || !editVisitSelectedDoctor || !editVisitSelectedSlot || !editingQueueAppointment.appointmentId) {
       toast.warning("Please select a doctor and an available time slot");
       return;
     }
+    notifySaveStatus("saving");
     try {
-      setIsSavingEditVisit(true);
-      const data = await ReceptionService.reassignVisit(editingQueueVisit.visitId, {
+      setIsSavingEditAppointment(true);
+      const data = await ReceptionService.updateAppointment(editingQueueAppointment.appointmentId, {
         doctorId: editVisitSelectedDoctor.doctorId,
         appointmentDate: editVisitSelectedSlot.start,
         notes: editVisitNotes || undefined,
+        urgencyLevel: editUrgencyLevel,
+        isFollowUp: editIsFollowUp,
       });
       if (data.status === false) {
+        notifySaveStatus("error");
         toast.error(data.message || "This slot has just been booked. Please choose another slot.");
         fetchEditVisitSlots(editVisitSelectedDoctor.doctorId, editVisitDate);
         return;
       }
-      toast.success(data.message || "Visit updated");
-      closeEditQueueVisit();
-      fetchVisitQueue();
+      toast.success(data.message || "Appointment updated");
+      notifySaveStatus("saved");
+      closeEditAppointment();
+      fetchTodayAppointmentQueue();
+      fetchScheduledAppointments(registrationDate);
     } catch (error) {
-      toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to update visit" : "Failed to update visit"
-      );
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, "Failed to update appointment"));
     } finally {
-      setIsSavingEditVisit(false);
+      setIsSavingEditAppointment(false);
+    }
+  };
+
+  // ---------------- Revert registration handler ----------------
+  const handleRevertCheckIn = async (apt: ScheduledAppointmentItem) => {
+    if (!apt.visitId) return;
+    if ((apt.visitStatus && apt.visitStatus !== "CheckedIn") || apt.hasEncounter) {
+      toast.error("Doctor has already started the encounter for this patient. Kindly contact the doctor.");
+      return;
+    }
+    try {
+      setRevertingVisitId(apt.visitId);
+      notifySaveStatus("saving");
+      const data = await ReceptionService.revertCheckIn(apt.visitId);
+      toast.success(data.message || "Registration reverted");
+      notifySaveStatus("saved");
+      fetchTodayAppointmentQueue();
+      fetchScheduledAppointments(registrationDate);
+    } catch (error) {
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, "Failed to revert registration"));
+    } finally {
+      setRevertingVisitId(null);
     }
   };
 
@@ -462,6 +632,7 @@ export default function Appointments() {
     request: AppointmentRequestType,
     status: "Scheduled" | "Cancelled"
   ) => {
+    notifySaveStatus("saving");
     try {
       setProcessingRequestId(request.appointmentId);
       const data = await ReceptionService.updateAppointmentStatus(
@@ -473,6 +644,7 @@ export default function Appointments() {
           ? "Appointment confirmed"
           : data.message || "Request declined"
       );
+      notifySaveStatus("saved");
       setAppointmentRequests((prev) =>
         prev.filter((r) => r.appointmentId !== request.appointmentId)
       );
@@ -480,6 +652,7 @@ export default function Appointments() {
         fetchSlots(selectedDoctor.doctorId, selectedDate);
       }
     } catch (error) {
+      notifySaveStatus("error");
       if (axios.isAxiosError(error)) {
         toast.error(error.response?.data?.message || "Failed to update the request");
       } else {
@@ -508,8 +681,8 @@ export default function Appointments() {
   }, []);
 
   // A full refetch (rather than a bespoke incremental merge) on either event - same
-  // "just reload the small list" approach this page already uses for the grid/patients/
-  // visit queue above, and simpler to keep correct than hand-merging live payloads.
+  // "just reload the small list" approach this page already uses for the grid above, and
+  // simpler to keep correct than hand-merging live payloads.
   useSignalRRefetch(["followUpAdded", "followUpResolved"], fetchPendingFollowUps);
 
   const openConfirmFollowUp = (followUp: PendingFollowUpType) => {
@@ -551,20 +724,24 @@ export default function Appointments() {
       toast.warning("Please select an available time slot");
       return;
     }
+    notifySaveStatus("saving");
     try {
       setIsConfirmingFollowUp(true);
       const data = await ReceptionService.confirmFollowUp(confirmingFollowUp.followUpId, followUpSelectedSlot.start);
       if (data.status === false) {
+        notifySaveStatus("error");
         toast.error(data.message || "This slot has just been booked. Please choose another slot.");
         fetchFollowUpSlots(confirmingFollowUp.doctorId!, followUpConfirmDate);
         return;
       }
       toast.success(data.message || "Follow-up confirmed and appointment booked");
+      notifySaveStatus("saved");
       setPendingFollowUps((prev) => prev.filter((f) => f.followUpId !== confirmingFollowUp.followUpId));
       closeConfirmFollowUp();
     } catch (error) {
+      notifySaveStatus("error");
       toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to confirm follow-up" : "Failed to confirm follow-up"
+        apiErrorMessage(error, "Failed to confirm follow-up")
       );
     } finally {
       setIsConfirmingFollowUp(false);
@@ -579,43 +756,12 @@ export default function Appointments() {
       setPendingFollowUps((prev) => prev.filter((f) => f.followUpId !== followUp.followUpId));
     } catch (error) {
       toast.error(
-        axios.isAxiosError(error) ? error.response?.data?.message || "Failed to dismiss follow-up" : "Failed to dismiss follow-up"
+        apiErrorMessage(error, "Failed to dismiss follow-up")
       );
     } finally {
       setDismissingFollowUpId(null);
     }
   };
-
-  // Walk-ins have no appointmentDate, so they fall back to when they were actually checked in -
-  // both are "when this visit happened/is happening", just from whichever source the visit has.
-  const dateFilteredVisitQueue = useMemo(
-    () => visitQueue.filter((v) => isDateWithinRange(v.appointmentDate ?? v.checkedInAt, fromDate, toDate)),
-    [visitQueue, fromDate, toDate]
-  );
-
-  const sortedVisitQueue = useMemo(() => {
-    return [...dateFilteredVisitQueue].sort((a, b) => {
-      const aTime = new Date(a.appointmentDate ?? a.checkedInAt).getTime();
-      const bTime = new Date(b.appointmentDate ?? b.checkedInAt).getTime();
-      return aTime - bTime;
-    });
-  }, [dateFilteredVisitQueue]);
-
-  const queueTotalPages = Math.max(
-    1,
-    Math.ceil(sortedVisitQueue.length / QUEUE_PAGE_SIZE)
-  );
-
-  useEffect(() => {
-    if (queuePage > queueTotalPages) {
-      setQueuePage(queueTotalPages);
-    }
-  }, [queuePage, queueTotalPages]);
-
-  const paginatedVisitQueue = sortedVisitQueue.slice(
-    (queuePage - 1) * QUEUE_PAGE_SIZE,
-    queuePage * QUEUE_PAGE_SIZE
-  );
 
   // ---------------- Fetch slots for selected doctor + date ----------------
   const fetchSlots = async (doctorId: string, date: Date) => {
@@ -645,38 +791,45 @@ export default function Appointments() {
     if (selectedDoctor) fetchSlots(selectedDoctor.doctorId, selectedDate);
   });
 
-  const specializationOptions = specializations.map((s) => ({
-    id: s.specializationId,
-    name: s.specializationName,
-  }));
+  const bookModalDepts = useMemo(() => {
+    const seen = new Map<string, string>();
+    specializations.forEach((s) => {
+      if (s.departmentId && s.departmentName) seen.set(s.departmentId, s.departmentName);
+    });
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+  }, [specializations]);
+
+  // If the user's dept from getMe() isn't a known dept (no doctors/specializations assigned to it),
+  // the select would visually show "All departments" while the state still holds the dept ID,
+  // silently filtering out all appointments. Fall back to "all" in that case.
+  useEffect(() => {
+    if (selectedDeptFilter === "all" || bookModalDepts.length === 0) return;
+    const exists = bookModalDepts.some((d) => d.id === selectedDeptFilter);
+    if (!exists) setSelectedDeptFilter("all");
+  }, [bookModalDepts, selectedDeptFilter]);
+
+  const bookModalSpecOptions = useMemo(() => {
+    return specializations
+      .filter((s) => bookModalDeptFilter === "all" || s.departmentId === bookModalDeptFilter)
+      .map((s) => ({ id: s.specializationId, name: s.specializationName }));
+  }, [specializations, bookModalDeptFilter]);
 
   const filteredSpecializations = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
-
     return specializations
-      .filter(
-        (s) =>
-          selectedSpecializationId === "all" ||
-          s.specializationId === selectedSpecializationId
-      )
+      .filter((s) => {
+        if (bookModalDeptFilter !== "all" && s.departmentId !== bookModalDeptFilter) return false;
+        return selectedSpecializationId === "all" || s.specializationId === selectedSpecializationId;
+      })
       .map((s) => {
-        const matchesSpec = s.specializationName
-          .toLowerCase()
-          .includes(normalizedSearch);
+        const matchesSpec = s.specializationName.toLowerCase().includes(normalizedSearch);
         const doctors = matchesSpec
           ? s.doctors
-          : s.doctors.filter((d) =>
-              d.name.toLowerCase().includes(normalizedSearch)
-            );
+          : s.doctors.filter((d) => d.name.toLowerCase().includes(normalizedSearch));
         return { ...s, doctors };
       })
       .filter((s) => normalizedSearch.length === 0 || s.doctors.length > 0);
-  }, [specializations, searchTerm, selectedSpecializationId]);
-
-  // The doctor grid is search-driven, not shown by default - with every specialty and
-  // every one of its doctors rendered at once, an empty search would otherwise dump the
-  // entire staff directory onto the page before the user has asked to find anyone.
-  const hasActiveDoctorFilter = searchTerm.trim().length > 0 || selectedSpecializationId !== "all";
+  }, [specializations, searchTerm, selectedSpecializationId, bookModalDeptFilter]);
 
   const filteredPendingFollowUps = useMemo(
     () => pendingFollowUps.filter((f) => isDateWithinRange(f.followUpDate, fromDate, toDate)),
@@ -692,7 +845,6 @@ export default function Appointments() {
     if (slot.isPast) return;
     if (slot.isAvailable) {
       setBookingSlot(slot);
-      setPatientSearch("");
       setSelectedPatient(null);
       setNotes("");
       setIsFollowUp(false);
@@ -702,32 +854,25 @@ export default function Appointments() {
     }
   };
 
-  const filteredPatients = patientSearch.trim()
-    ? patients.filter(
-        (p) =>
-          p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.phone?.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.opNumber?.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.opId?.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.nationalID?.toLowerCase().includes(patientSearch.toLowerCase()) ||
-          p.passportNumber?.toLowerCase().includes(patientSearch.toLowerCase())
-      )
-    : [];
-
   const handleConfirmBooking = async () => {
-    if (!bookingSlot || !selectedDoctor || !selectedPatient) {
+    if (!bookingSlot || !selectedDoctor) return;
+
+    if (!selectedPatient) {
       toast.warning("Please select a patient first");
       return;
     }
 
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const userId =
         JSON.parse(localStorage.getItem("yoton_user_detail") || "{}")
           .userId ?? undefined;
 
+      const patientId = selectedPatient?.opId ?? "";
+
       const data = await ReceptionService.createAppointment({
-        patientId: selectedPatient.opId,
+        patientId,
         doctorId: selectedDoctor.doctorId,
         appointmentDate: bookingSlot.start,
         notes,
@@ -737,13 +882,22 @@ export default function Appointments() {
       });
 
       if (data.status === false) {
+        notifySaveStatus("error");
         toast.error(data.message || "Could not book this slot");
       } else {
         toast.success(data.message || "Appointment booked");
+        notifySaveStatus("saved");
         setBookingSlot(null);
+        setShowBookModal(false);
+        setSelectedDoctor(null);
+        setSelectedPatient(null);
+        setNotes("");
+        setIsFollowUp(false);
+        setUrgencyLevel("Routine");
       }
       fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
+      notifySaveStatus("error");
       if (axios.isAxiosError(error)) {
         toast.error(error.response?.data?.message || "Failed to book appointment");
       } else {
@@ -754,47 +908,21 @@ export default function Appointments() {
     }
   };
 
-  const handleCheckIn = async (appointmentId?: string) => {
-    const targetId = appointmentId ?? cancelSlot?.appointmentId;
-    if (!targetId) return;
-
-    try {
-      setIsSubmitting(true);
-      const data = await ReceptionService.checkIn({
-        appointmentId: targetId,
-      });
-      toast.success(data.message || "Patient checked in");
-      // Only a single-booking slot closes the modal automatically; a shared
-      // slot stays open so staff can act on the remaining bookings too.
-      if (!cancelSlot || cancelSlot.bookings.length <= 1) {
-        setCancelSlot(null);
-      }
-      fetchVisitQueue();
-      if (selectedDoctor) fetchSlots(selectedDoctor.doctorId, selectedDate);
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || "Failed to check in patient");
-      } else {
-        toast.error("Failed to check in patient");
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleConfirmCancel = async (appointmentId?: string) => {
     const targetId = appointmentId ?? cancelSlot?.appointmentId;
     if (!targetId || !selectedDoctor) return;
 
+    notifySaveStatus("saving");
     try {
       setIsSubmitting(true);
       const data = await ReceptionService.cancelAppointment(targetId);
       toast.success(data.message || "Appointment cancelled");
-      if (!cancelSlot || cancelSlot.bookings.length <= 1) {
-        setCancelSlot(null);
-      }
+      notifySaveStatus("saved");
+      setCancelSlot(null);
       fetchSlots(selectedDoctor.doctorId, selectedDate);
     } catch (error) {
+      notifySaveStatus("error");
       if (axios.isAxiosError(error)) {
         toast.error(error.response?.data?.message || "Failed to cancel appointment");
       } else {
@@ -802,6 +930,48 @@ export default function Appointments() {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openOverlapBooking = (slot: DoctorDaySlotsType["slots"][number], doctorId: string) => {
+    setOverlapSlot(slot);
+    setOverlapDoctorId(doctorId);
+    setOverlapSelectedPatient(null);
+    setOverlapNotes("");
+    setCancelSlot(null);
+  };
+
+  const handleOverlapBooking = async () => {
+    if (!overlapSlot || !overlapDoctorId || !overlapSelectedPatient) {
+      toast.warning("Please select a patient first");
+      return;
+    }
+    notifySaveStatus("saving");
+    try {
+      setIsSubmittingOverlap(true);
+      const userId = JSON.parse(localStorage.getItem("yoton_user_detail") || "{}").userId ?? undefined;
+      const data = await ReceptionService.overlapAppointment({
+        patientId: overlapSelectedPatient.opId,
+        doctorId: overlapDoctorId,
+        appointmentDate: overlapSlot.start,
+        notes: overlapNotes || undefined,
+        userId,
+      });
+      if (data.status === false) {
+        notifySaveStatus("error");
+        toast.error(data.message || "Could not add patient to this slot");
+        return;
+      }
+      toast.success(data.message || "Patient added to slot");
+      notifySaveStatus("saved");
+      setOverlapSlot(null);
+      setOverlapDoctorId(null);
+      if (selectedDoctor) fetchSlots(selectedDoctor.doctorId, selectedDate);
+    } catch (error) {
+      notifySaveStatus("error");
+      toast.error(apiErrorMessage(error, "Failed to add patient"));
+    } finally {
+      setIsSubmittingOverlap(false);
     }
   };
 
@@ -838,81 +1008,26 @@ export default function Appointments() {
               <CalendarDays className="text-primary" /> Appointments
             </h1>
             <p className="text-sm text-muted-foreground">
-              Pick a specialization, choose a doctor, then book an open slot
-              on the calendar.
+              Manage today&apos;s queue, book appointments, and register walk-ins.
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <label className="relative block w-full sm:w-72">
-              <Search
-                size={18}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+          {(bookModalDepts.length > 0 || userDeptInfo) && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Department</label>
+              <SearchableSelect
+                value={selectedDeptFilter}
+                onChange={setSelectedDeptFilter}
+                options={[
+                  { value: "all", label: "All departments" },
+                  ...bookModalDepts.map((d) => ({ value: d.id, label: d.name })),
+                  ...(userDeptInfo && !bookModalDepts.some((d) => d.id === userDeptInfo.id)
+                    ? [{ value: userDeptInfo.id, label: userDeptInfo.name }]
+                    : []),
+                ]}
               />
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search doctor or specialty"
-                className="h-11 pl-11 text-base"
-              />
-            </label>
-            <select
-              value={selectedSpecializationId}
-              onChange={(event) =>
-                setSelectedSpecializationId(event.target.value)
-              }
-              className="h-11 w-full text-base sm:w-52"
-            >
-              <option value="all">All specializations</option>
-              {specializationOptions.map((spec) => (
-                <option key={spec.id} value={spec.id}>
-                  {spec.name}
-                </option>
-              ))}
-            </select>
-            <div className="flex items-end gap-2">
-              <div className="w-full sm:w-36">
-                <label className="mb-1 block text-xs font-semibold text-muted-foreground">
-                  From
-                </label>
-                <DatePicker
-                  value={fromDate}
-                  onChange={(value) => {
-                    setFromDate(value);
-                    if (value > toDate) setToDate(value);
-                  }}
-                  dateFormat="dd-MM-yyyy"
-                  placeholder="DD-MM-YYYY"
-                />
-              </div>
-              <div className="w-full sm:w-36">
-                <label className="mb-1 block text-xs font-semibold text-muted-foreground">
-                  To
-                </label>
-                <DatePicker
-                  value={toDate}
-                  min={fromDate}
-                  onChange={(value) => setToDate(value)}
-                  dateFormat="dd-MM-yyyy"
-                  placeholder="DD-MM-YYYY"
-                />
-              </div>
-              {(fromDate !== todayValue || toDate !== todayValue) && (
-                <button
-                  onClick={() => {
-                    setFromDate(todayValue);
-                    setToDate(todayValue);
-                  }}
-                  title="Reset to today"
-                  aria-label="Reset to today"
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-input text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <RotateCcw size={16} />
-                </button>
-              )}
             </div>
-          </div>
+          )}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -938,11 +1053,15 @@ export default function Appointments() {
           {isLoadingFollowUps ? (
             <LoadingSpinner />
           ) : filteredPendingFollowUps.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {pendingFollowUps.length === 0
-                ? "No follow-ups awaiting confirmation."
-                : "No follow-ups in the selected date range."}
-            </p>
+            <EmptyState
+              illustration="visits"
+              title={pendingFollowUps.length === 0 ? "No follow-ups awaiting confirmation" : "No follow-ups in this period"}
+              description={
+                pendingFollowUps.length === 0
+                  ? "Follow-ups booked by doctors will appear here for confirmation."
+                  : "Try widening the date range."
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1018,11 +1137,15 @@ export default function Appointments() {
           {isLoadingRequests ? (
             <LoadingSpinner />
           ) : filteredAppointmentRequests.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {appointmentRequests.length === 0
-                ? "No pending requests from the mobile app."
-                : "No requests in the selected date range."}
-            </p>
+            <EmptyState
+              illustration="messages"
+              title={appointmentRequests.length === 0 ? "No pending requests" : "No requests in this period"}
+              description={
+                appointmentRequests.length === 0
+                  ? "Appointment requests patients send from the mobile app will appear here."
+                  : "Try widening the date range."
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1077,293 +1200,355 @@ export default function Appointments() {
         </section>
         </div>
 
+        {/* ---- Queue columns: Appointment Queue (col 1) + Doctor Registration Queue (col 2) ---- */}
+        <div className="grid gap-6 lg:grid-cols-2">
+
+        {/* ---- Appointment Queue (today's booked appointments, max 10) ---- */}
         <section className="card p-5">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <ListChecks className="text-primary" size={20} /> Visit queue
-            </h2>
-            <button
-              onClick={fetchVisitQueue}
-              title="Refresh"
-              aria-label="Refresh"
-              className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 cursor-pointer"
-            >
-              <RefreshCw size={16} />
-            </button>
+          <div className="flex flex-col gap-3 mb-4">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                <CalendarCheck2 className="text-primary" size={20} /> Appointment Queue
+                {todayAppointmentQueue.length > 0 && (
+                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-bold text-primary">
+                    {todayAppointmentQueue.length}
+                  </span>
+                )}
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setShowBookModal(true);
+                    setSearchTerm("");
+                    setSelectedSpecializationId("all");
+                    setBookModalDeptFilter("all");
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 cursor-pointer"
+                >
+                  <CalendarPlus size={14} /> Check Appointment
+                </button>
+                <button
+                  onClick={fetchTodayAppointmentQueue}
+                  title="Refresh"
+                  aria-label="Refresh"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 cursor-pointer"
+                >
+                  <RefreshCw size={16} />
+                </button>
+              </div>
+            </div>
+            <label className="relative block">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                value={appointmentQueueSearch}
+                onChange={(e) => setAppointmentQueueSearch(e.target.value)}
+                placeholder="Search by name, OP no., mobile, national ID…"
+                className="h-9 w-full pl-9 pr-3 text-sm"
+              />
+            </label>
           </div>
-          {isLoadingQueue ? (
+          {isLoadingTodayQueue ? (
             <LoadingSpinner />
-          ) : sortedVisitQueue.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No patients currently in the queue.
-            </p>
-          ) : (
-            <>
+          ) : todayAppointmentQueue.length === 0 ? (
+            <EmptyState size="compact" illustration="visits" title="No pending appointments for today" />
+          ) : (() => {
+            const byDept = selectedDeptFilter === "all"
+              ? todayAppointmentQueue
+              : todayAppointmentQueue.filter((a) => a.departmentId === selectedDeptFilter);
+            const term = appointmentQueueSearch.trim().toLowerCase();
+            const filtered = term
+              ? byDept.filter(
+                  (a) =>
+                    a.patientName?.toLowerCase().includes(term) ||
+                    a.patientOpNumber?.toLowerCase().includes(term) ||
+                    a.patientPhone?.toLowerCase().includes(term) ||
+                    a.patientNationalId?.toLowerCase().includes(term)
+                )
+              : byDept;
+            if (filtered.length === 0)
+              return <EmptyState size="compact" illustration="search" title="No results match your search" />;
+            return (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs font-semibold uppercase text-muted-foreground border-b border-border">
+                    <th className="pb-2 pr-4">Time</th>
+                    <th className="pb-2 pr-4">Patient</th>
+                    <th className="pb-2 pr-4">Doctor</th>
+                    <th className="pb-2 pr-4">Urgency</th>
+                    <th className="pb-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((apt) => (
+                    <tr key={apt.appointmentId} className="border-b border-border last:border-0">
+                      <td className="py-2.5 pr-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-muted-foreground">{apt.appointmentDate ? format(new Date(apt.appointmentDate), "h:mm a") : "—"}</span>
+                          {/* Appointment info tooltip */}
+                          <div className="relative group/aptip">
+                            <HelpCircle size={13} className="text-primary/60 cursor-help" />
+                            <div className="pointer-events-none invisible group-hover/aptip:visible absolute left-0 top-full mt-1.5 z-50 w-52 rounded-lg bg-popover border border-border shadow-lg p-2.5 text-xs text-foreground">
+                              <p className="font-semibold mb-1">Appointment details</p>
+                              <p className="text-muted-foreground">Time: {apt.appointmentDate ? format(new Date(apt.appointmentDate), "h:mm a") : "—"}</p>
+                              {apt.doctorName && <p className="text-muted-foreground">Doctor: {apt.doctorName}</p>}
+                              {apt.specializationName && <p className="text-muted-foreground">Specialty: {apt.specializationName}</p>}
+                              {apt.urgencyLevel === "Urgent" && <p className="text-red-400 font-medium mt-1">⚠ Urgent</p>}
+                              {apt.notes && <p className="text-muted-foreground mt-1 italic">"{apt.notes}"</p>}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2.5 pr-4">
+                        <p className="font-semibold text-foreground">{apt.patientName ?? "Unknown"}</p>
+                        {apt.patientOpNumber && (
+                          <p className="text-xs text-muted-foreground">MRN: {apt.patientOpNumber}</p>
+                        )}
+                      </td>
+                      <td className="py-2.5 pr-4">
+                        {apt.doctorName ? (
+                          <>
+                            <p className="text-foreground font-medium">{apt.doctorName}</p>
+                            {apt.specializationName && (
+                              <p className="text-xs text-muted-foreground">{apt.specializationName}</p>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 pr-4">
+                        {apt.urgencyLevel === "Urgent" ? (
+                          <span className="rounded-md bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-400">Urgent</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Routine</span>
+                        )}
+                      </td>
+                      <td className="py-2.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            onClick={() => openEditAppointment(apt)}
+                            title="Edit appointment"
+                            className="flex items-center gap-1 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted cursor-pointer"
+                          >
+                            <Pencil size={12} />
+                            Edit
+                          </button>
+                          {apt.patientId && (
+                            <button
+                              onClick={() => openAttachments(apt.patientId!, apt.patientName ?? "Patient")}
+                              title="Attachments"
+                              className="flex items-center gap-1 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted cursor-pointer"
+                            >
+                              <Paperclip size={12} />
+                              Attach
+                            </button>
+                          )}
+                          {apt.status === "Pending" ? (
+                            <span className="text-xs text-muted-foreground">Confirm first</span>
+                          ) : apt.appointmentId ? (
+                            <button
+                              onClick={() => handleRegister(apt.appointmentId!)}
+                              disabled={registeringId === apt.appointmentId}
+                              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                            >
+                              <UserCheck size={13} />
+                              {registeringId === apt.appointmentId ? "Registering…" : "Register"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            );
+          })()}
+        </section>
+
+        {/* ---- Registered Patients ---- */}
+        <section className="card p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+              <ListChecks className="text-primary" size={20} /> Registered Patients
+            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="relative block">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  value={registrationSearch}
+                  onChange={(e) => setRegistrationSearch(e.target.value)}
+                  placeholder="Search patient or doctor..."
+                  className="h-9 pl-9 pr-3 text-sm w-56"
+                />
+              </label>
+              <DatePicker
+                value={registrationDate}
+                onChange={(v) => { if (v) setRegistrationDate(v); }}
+                dateFormat="dd-MM-yyyy"
+                placeholder="DD-MM-YYYY"
+              />
+              <button
+                onClick={() => fetchScheduledAppointments(registrationDate)}
+                title="Refresh"
+                aria-label="Refresh"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 cursor-pointer"
+              >
+                <RefreshCw size={15} />
+              </button>
+            </div>
+          </div>
+
+          {isLoadingScheduled ? (
+            <LoadingSpinner />
+          ) : (() => {
+            const term = registrationSearch.trim().toLowerCase();
+            const byDept = selectedDeptFilter === "all"
+              ? scheduledAppointments
+              : scheduledAppointments.filter((a) => a.departmentId === selectedDeptFilter);
+            // Right panel shows only registered patients
+            const registered = byDept.filter((a) => a.alreadyRegistered);
+            if (registered.length === 0)
+              return <EmptyState size="compact" illustration="patients" title="No patients registered for this date yet" />;
+            const filtered = term
+              ? registered.filter(
+                  (a) =>
+                    a.patientName?.toLowerCase().includes(term) ||
+                    a.doctorName?.toLowerCase().includes(term) ||
+                    a.specializationName?.toLowerCase().includes(term) ||
+                    a.patientOpNumber?.toLowerCase().includes(term)
+                )
+              : registered;
+            if (filtered.length === 0)
+              return <EmptyState size="compact" illustration="search" title="No results match your search" />;
+            return (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs font-semibold uppercase text-muted-foreground border-b border-border">
+                      <th className="pb-2 pr-4">Appt. Time</th>
                       <th className="pb-2 pr-4">Patient</th>
-                      <th className="pb-2 pr-4">Type</th>
-                      <th className="pb-2 pr-4">Status</th>
-                      <th className="pb-2 pr-4">Appointment time</th>
-                      <th className="pb-2 pr-4">Checked in</th>
-                      <th className="pb-2 pr-4">Action</th>
+                      <th className="pb-2 pr-4">Doctor / Specialty</th>
+                      <th className="pb-2 pr-4">Urgency</th>
+                      <th className="pb-2 pr-4">Visit Status</th>
+                      <th className="pb-2">Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedVisitQueue.map((visit) => (
-                      <tr key={visit.visitId} className="border-b border-border last:border-0">
-                        <td className="py-2 pr-4 font-medium text-foreground">
-                          {visit.patientName ?? "Unknown"}
+                    {filtered.map((apt) => (
+                      <tr key={apt.appointmentId ?? apt.visitId ?? apt.patientId} className="border-b border-border last:border-0">
+                        <td className="py-2.5 pr-4 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            {apt.appointmentDate
+                              ? <span className="text-muted-foreground">{format(new Date(apt.appointmentDate), "h:mm a")}</span>
+                              : <span className="text-muted-foreground text-xs italic">Walk-in</span>}
+                            {/* Appointment detail tooltip — only for appointment-based entries */}
+                            {apt.appointmentId && (
+                            <div className="relative group/regtip">
+                              <HelpCircle size={13} className="text-primary/60 cursor-help" />
+                              <div className="pointer-events-none invisible group-hover/regtip:visible absolute left-0 top-full mt-1.5 z-50 w-52 rounded-lg bg-popover border border-border shadow-lg p-2.5 text-xs text-foreground">
+                                <p className="font-semibold mb-1">Appointment details</p>
+                                <p className="text-muted-foreground">Booked for: {format(new Date(apt.appointmentDate!), "h:mm a")}</p>
+                                {apt.doctorName && <p className="text-muted-foreground">Doctor: {apt.doctorName}</p>}
+                                {apt.specializationName && <p className="text-muted-foreground">Specialty: {apt.specializationName}</p>}
+                                {apt.urgencyLevel === "Urgent" && <p className="text-red-400 font-medium mt-1">⚠ Urgent</p>}
+                                {apt.notes && <p className="text-muted-foreground mt-1 italic">"{apt.notes}"</p>}
+                              </div>
+                            </div>
+                            )}
+                          </div>
                         </td>
-                        <td className="py-2 pr-4 text-muted-foreground">
-                          {visit.visitType}
+                        <td className="py-2.5 pr-4">
+                          <p className="font-semibold text-foreground">{apt.patientName ?? "Unknown"}</p>
+                          {apt.patientOpNumber && (
+                            <p className="text-xs text-muted-foreground">MRN: {apt.patientOpNumber}</p>
+                          )}
+                          {apt.patientPhone && (
+                            <p className="text-xs text-muted-foreground">{apt.patientPhone}</p>
+                          )}
                         </td>
-                        <td className="py-2 pr-4">
-                          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                            {visit.status}
-                          </span>
+                        <td className="py-2.5 pr-4">
+                          {apt.doctorName ? (
+                            <>
+                              <p className="text-foreground font-medium">{apt.doctorName}</p>
+                              {apt.specializationName && (
+                                <p className="text-xs text-muted-foreground">{apt.specializationName}</p>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
-                        <td className="py-2 pr-4 text-muted-foreground">
-                          {visit.appointmentDate
-                            ? format(new Date(visit.appointmentDate), "d MMM, h:mm a")
-                            : "—"}
+                        <td className="py-2.5 pr-4">
+                          {apt.urgencyLevel === "Urgent" ? (
+                            <span className="rounded-md bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-400">Urgent</span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Routine</span>
+                          )}
                         </td>
-                        <td className="py-2 pr-4 text-muted-foreground">
-                          {format(new Date(visit.checkedInAt), "h:mm a")}
+                        <td className="py-2.5 pr-4">
+                          {apt.visitStatus
+                            ? visitStatusBadge(apt.visitStatus)
+                            : visitStatusBadge("CheckedIn")}
                         </td>
-                        <td className="py-2 pr-4">
-                          <button
-                            type="button"
-                            onClick={() => openEditQueueVisit(visit)}
-                            className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline cursor-pointer"
-                          >
-                            <Pencil size={12} /> Edit
-                          </button>
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {apt.patientId && (
+                              <button
+                                onClick={() => openAttachments(apt.patientId!, apt.patientName ?? "Patient")}
+                                title="Attachments"
+                                className="flex items-center gap-1 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted cursor-pointer"
+                              >
+                                <Paperclip size={12} />
+                                Attach
+                              </button>
+                            )}
+                            {(() => {
+                              const isLocked = (apt.visitStatus != null && apt.visitStatus !== "CheckedIn") || apt.hasEncounter;
+                              return (
+                                <button
+                                  onClick={() => {
+                                    if (isLocked) {
+                                      toast.error("Doctor has already started the encounter at this time. Kindly contact the doctor.");
+                                    } else {
+                                      handleRevertCheckIn(apt);
+                                    }
+                                  }}
+                                  disabled={revertingVisitId === apt.visitId}
+                                  title={isLocked ? "Cannot revert — encounter in progress" : "Revert registration"}
+                                  className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium cursor-pointer transition-colors ${
+                                    isLocked
+                                      ? "border-border bg-muted/30 text-muted-foreground opacity-50"
+                                      : "border-orange-500/30 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"
+                                  } disabled:opacity-50`}
+                                >
+                                  <RotateCcw size={12} />
+                                  {revertingVisitId === apt.visitId ? "Reverting…" : "Revert"}
+                                </button>
+                              );
+                            })()}
+                          </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-
-              <div className="flex items-center justify-between gap-4 mt-4">
-                <p className="text-xs text-muted-foreground">
-                  Showing {(queuePage - 1) * QUEUE_PAGE_SIZE + 1}
-                  {"–"}
-                  {Math.min(queuePage * QUEUE_PAGE_SIZE, sortedVisitQueue.length)} of{" "}
-                  {sortedVisitQueue.length}
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setQueuePage((p) => Math.max(1, p - 1))}
-                    disabled={queuePage === 1}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors cursor-pointer"
-                    aria-label="Previous page"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Page {queuePage} of {queueTotalPages}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setQueuePage((p) => Math.min(queueTotalPages, p + 1))
-                    }
-                    disabled={queuePage === queueTotalPages}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors cursor-pointer"
-                    aria-label="Next page"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+            );
+          })()}
         </section>
 
-        {selectedDoctor && (
-          <section className="card p-5">
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                <div className="flex items-start gap-4">
-                  <button
-                    onClick={() => {
-                      setSelectedDoctor(null);
-                      setDaySlots(null);
-                    }}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-foreground transition-colors hover:bg-muted/70"
-                    aria-label="Back to doctors"
-                  >
-                    <ArrowLeft size={18} />
-                  </button>
-                  <div>
-                    <p className="flex items-center gap-2 text-sm font-semibold text-primary">
-                      <CalendarDays size={17} /> Slot calendar
-                    </p>
-                    <h2 className="mt-1 text-2xl font-semibold text-foreground">
-                      {selectedDoctor.name}
-                    </h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {selectedDoctor.specializationName} • {getCurrencySymbol()}{" "}
-                      {selectedDoctor.consultationFee} • {selectedDoctor.experienceYears}{" "}
-                      years experience
-                    </p>
-                  </div>
-                </div>
+        </div>{/* end queue columns grid */}
 
-                <div className="flex items-center gap-3">
-                  <DatePicker
-                    value={toDateInputValue(selectedDate)}
-                    min={toDateInputValue(new Date())}
-                    onChange={(v) => {
-                      if (v) {
-                        setSelectedDate(new Date(`${v}T00:00:00`));
-                      }
-                    }}
-                    className="flex h-10 w-44 items-center justify-between gap-2 rounded-xl border border-input bg-card px-3 py-1.5 text-left text-sm text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                  <span className="rounded-lg border border-emerald-600 bg-emerald-600 px-3 py-1 text-xs font-semibold text-white">
-                    Available
-                  </span>
-                  <span className="rounded-lg border border-blue-600 bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
-                    Booked
-                  </span>
-                  <span className="rounded-lg border border-amber-600 bg-amber-600 px-3 py-1 text-xs font-semibold text-white">
-                    Needs confirmation
-                  </span>
-                </div>
-              </div>
 
-              {isLoadingSlots ? (
-                <LoadingSpinner />
-              ) : (daySlots?.slots.length ?? 0) === 0 ? (
-                <div className="rounded-lg border border-border bg-muted/40 p-10 text-center text-sm text-muted-foreground">
-                  This doctor has no schedule configured for this day.
-                </div>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-                  {daySlots!.slots.map((slot) => {
-                  const hasPendingBooking =
-                    slot.status === "Pending" ||
-                    slot.bookings.some((b) => b.status === "Pending");
-                  return (
-                    <button
-                      key={slot.start}
-                      onClick={() => handleSelectSlot(slot)}
-                      disabled={slot.isPast}
-                      title={slot.isPast ? "This slot has already passed" : undefined}
-                      className={`group flex flex-col gap-2 rounded-xl border p-4 text-left shadow-sm transition-all ${
-                        slot.isPast
-                          ? "cursor-not-allowed border-border bg-muted/40 opacity-60"
-                          : "hover:-translate-y-0.5 hover:shadow-md " +
-                            (slot.isAvailable
-                              ? "border-emerald-600/30 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30"
-                              : hasPendingBooking
-                              ? "border-amber-600/30 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30"
-                              : "border-blue-600/30 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/30")
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span
-                          className={`flex items-center gap-1.5 text-sm font-semibold ${
-                            slot.isPast
-                              ? "text-muted-foreground"
-                              : slot.isAvailable
-                              ? "text-emerald-700 dark:text-emerald-400"
-                              : hasPendingBooking
-                              ? "text-amber-700 dark:text-amber-400"
-                              : "text-blue-700 dark:text-blue-400"
-                          }`}
-                        >
-                          <Clock size={14} />
-                          {format(new Date(slot.start), "h:mm a")}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          {slot.maxCapacity > 1 && (
-                            <span
-                              title="Multiple patients can share this slot"
-                              className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground"
-                            >
-                              <Users size={11} /> {slot.bookedCount}/{slot.maxCapacity}
-                            </span>
-                          )}
-                          {!slot.isPast && hasPendingBooking && (
-                            <span
-                              title="Awaiting confirmation"
-                              className="flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
-                            >
-                              Pending
-                            </span>
-                          )}
-                          {!slot.isPast && (slot.isAvailable ? (
-                            <CalendarPlus
-                              size={16}
-                              className="text-emerald-600 dark:text-emerald-400"
-                            />
-                          ) : (
-                            <CalendarCheck2
-                              size={16}
-                              className="text-blue-600 dark:text-blue-400"
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        ends {format(new Date(slot.end), "h:mm a")}
-                      </span>
-                      <span
-                        className={`mt-1 truncate rounded-md px-2 py-1 text-xs font-semibold ${
-                          slot.isPast
-                            ? "bg-muted text-muted-foreground"
-                            : slot.isAvailable
-                            ? "bg-emerald-600 text-white"
-                            : hasPendingBooking
-                            ? "bg-amber-600 text-white"
-                            : "bg-blue-600 text-white"
-                        }`}
-                      >
-                        {slot.isPast
-                          ? "Past"
-                          : slot.maxCapacity > 1
-                          ? slot.isAvailable
-                            ? slot.bookedCount > 0
-                              ? `${slot.bookedCount}/${slot.maxCapacity} booked — open`
-                              : "Available"
-                            : hasPendingBooking
-                            ? `Needs confirmation (${slot.bookedCount}/${slot.maxCapacity})`
-                            : `Full (${slot.bookedCount}/${slot.maxCapacity})`
-                          : slot.isAvailable
-                          ? "Available"
-                          : slot.status === "Pending"
-                          ? `${slot.patientName || "Patient"} - Pending confirmation`
-                          : slot.isWalkIn
-                          ? `${slot.patientName || "Patient"} - Walk-in Visit`
-                          : slot.patientName || "Booked"}
-                      </span>
-                    </button>
-                  );
-                  })}
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
-        {!selectedDoctor && hasActiveDoctorFilter && (
+        {false && (
           <>
             {isLoadingGrid ? (
               <LoadingSpinner />
             ) : filteredSpecializations.length > 0 ? (
-              // One flat grid for every doctor, not a grid-per-specialty - with only a handful
-              // of specialties having more than one doctor, a per-specialty grid would mostly
-              // just be a very wide single-column list. Each specialty's heading spans every
-              // column (col-span-full) so it still reads as a group break, while the doctor
-              // cards packed under it flow into whatever columns are free instead of each
-              // specialty forcing its own full-width row.
               <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                 {filteredSpecializations.map((spec, specIndex) => (
                   <Fragment key={spec.specializationId}>
@@ -1467,11 +1652,234 @@ export default function Appointments() {
         )}
       </div>
 
+      {/* ---- Modal 1: Doctor Picker ---- */}
+      {showBookModal && !selectedDoctor && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40 p-4">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-border">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-border shrink-0">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Check Appointment</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">Choose a department, specialty, then a doctor</p>
+              </div>
+              <button
+                onClick={() => setShowBookModal(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-col gap-3 p-5 pb-0 shrink-0 sm:flex-row">
+              <div className="flex-1">
+                <SearchableSelect
+                  value={bookModalDeptFilter}
+                  onChange={(v) => {
+                    setBookModalDeptFilter(v);
+                    setSelectedSpecializationId("all");
+                  }}
+                  options={[
+                    { value: "all", label: "All departments" },
+                    ...bookModalDepts.map((d) => ({ value: d.id, label: d.name })),
+                  ]}
+                />
+              </div>
+              <div className="flex-1">
+                <SearchableSelect
+                  value={selectedSpecializationId}
+                  onChange={setSelectedSpecializationId}
+                  options={[
+                    { value: "all", label: "All specializations" },
+                    ...bookModalSpecOptions.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                />
+              </div>
+              <label className="relative flex-1">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search doctor or specialty…"
+                  className="h-10 w-full pl-9 pr-3 text-sm rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:border-primary"
+                />
+              </label>
+            </div>
+
+            {/* Doctor grid */}
+            <div className="overflow-y-auto p-5 pt-4">
+              {isLoadingGrid ? (
+                <LoadingSpinner />
+              ) : filteredSpecializations.length === 0 || filteredSpecializations.every((s) => s.doctors.length === 0) ? (
+                <div className="flex flex-col items-center justify-center py-14 text-center">
+                  <Stethoscope className="text-muted-foreground/40" size={38} />
+                  <p className="mt-3 text-sm text-muted-foreground">No doctors match your filters.</p>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {filteredSpecializations.flatMap((spec) =>
+                    spec.doctors.map((doctor) => (
+                      <button
+                        key={doctor.doctorId}
+                        onClick={() => {
+                          setShowBookModal(false);
+                          setSelectedDoctor(doctor);
+                          setSelectedDate(new Date());
+                        }}
+                        className="flex items-center gap-4 rounded-xl border border-border bg-muted/30 p-4 text-left hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer"
+                      >
+                        <div className="relative shrink-0">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-base font-semibold text-primary-foreground">
+                            {getInitials(doctor.name)}
+                          </div>
+                          <span
+                            title={STATUS_LABEL[getDoctorStatus(doctor)]}
+                            className={`absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full border-2 border-card ${STATUS_DOT_CLASS[getDoctorStatus(doctor)]}`}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold text-foreground">{doctor.name}</p>
+                          <p className="text-xs text-primary font-medium">{spec.specializationName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {getCurrencySymbol()} {doctor.consultationFee} · {doctor.experienceYears} yrs
+                          </p>
+                        </div>
+                        <CalendarPlus size={16} className="shrink-0 text-primary" />
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Modal 2: Slot Calendar ---- */}
+      {selectedDoctor && !bookingSlot && !cancelSlot && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40 p-4">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col border border-border">
+            {/* Header */}
+            <div className="flex items-start justify-between p-6 border-b border-border shrink-0">
+              <div className="flex items-start gap-4">
+                <button
+                  onClick={() => {
+                    setSelectedDoctor(null);
+                    setDaySlots(null);
+                    setShowBookModal(true);
+                    setSearchTerm("");
+                    setSelectedSpecializationId("all");
+                    setBookModalDeptFilter("all");
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-muted text-foreground hover:bg-muted/70 transition-colors shrink-0"
+                  aria-label="Back to doctors"
+                >
+                  <ArrowLeft size={17} />
+                </button>
+                <div>
+                  <p className="flex items-center gap-2 text-xs font-semibold text-primary uppercase tracking-wide">
+                    <CalendarDays size={14} /> Slot Calendar
+                  </p>
+                  <h2 className="mt-0.5 text-xl font-semibold text-foreground">{selectedDoctor.name}</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedDoctor.specializationName} · {getCurrencySymbol()} {selectedDoctor.consultationFee} · {selectedDoctor.experienceYears} yrs experience
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setSelectedDoctor(null); setDaySlots(null); }}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Date + legend */}
+            <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-border shrink-0">
+              <DatePicker
+                value={toDateInputValue(selectedDate)}
+                min={toDateInputValue(new Date())}
+                onChange={(v) => { if (v) setSelectedDate(new Date(`${v}T00:00:00`)); }}
+                className="flex h-10 w-44 items-center justify-between gap-2 rounded-xl border border-input bg-muted px-3 py-1.5 text-left text-sm text-foreground"
+              />
+              <span className="rounded-lg border border-emerald-600 bg-emerald-600 px-3 py-1 text-xs font-semibold text-white">Available</span>
+              <span className="rounded-lg border border-blue-600 bg-blue-600 px-3 py-1 text-xs font-semibold text-white">Booked</span>
+              <span className="rounded-lg border border-amber-600 bg-amber-600 px-3 py-1 text-xs font-semibold text-white">Needs confirmation</span>
+              <span className="rounded-lg border border-purple-600 bg-purple-600 px-3 py-1 text-xs font-semibold text-white">Overlap</span>
+            </div>
+
+            {/* Slot grid */}
+            <div className="overflow-y-auto p-6">
+              {isLoadingSlots ? (
+                <LoadingSpinner />
+              ) : (daySlots?.slots.length ?? 0) === 0 ? (
+                <div className="flex flex-col items-center justify-center py-14 text-center text-sm text-muted-foreground">
+                  This doctor has no schedule configured for this day.
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {daySlots!.slots.map((slot) => {
+                    const hasPendingBooking = slot.status === "Pending" || slot.bookings.some((b) => b.status === "Pending");
+                    const hasOverlap = slot.bookedCount > slot.maxCapacity;
+                    return (
+                      <button
+                        key={slot.start}
+                        onClick={() => handleSelectSlot(slot)}
+                        disabled={slot.isPast}
+                        title={slot.isPast ? "This slot has already passed" : undefined}
+                        className={`group flex flex-col gap-2 rounded-xl border p-4 text-left shadow-sm transition-all ${
+                          slot.isPast
+                            ? "cursor-not-allowed border-border bg-muted/40 opacity-60"
+                            : "hover:-translate-y-0.5 hover:shadow-md cursor-pointer " +
+                              (hasOverlap
+                                ? "border-purple-600/30 bg-purple-50 dark:border-purple-900/50 dark:bg-purple-950/30"
+                                : slot.isAvailable
+                                ? "border-emerald-600/30 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30"
+                                : hasPendingBooking
+                                ? "border-amber-600/30 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30"
+                                : "border-blue-600/30 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/30")
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`flex items-center gap-1.5 text-sm font-semibold ${
+                            slot.isPast ? "text-muted-foreground" : hasOverlap ? "text-purple-700 dark:text-purple-400" : slot.isAvailable ? "text-emerald-700 dark:text-emerald-400" : hasPendingBooking ? "text-amber-700 dark:text-amber-400" : "text-blue-700 dark:text-blue-400"
+                          }`}>
+                            <Clock size={14} />
+                            {format(new Date(slot.start), "h:mm a")}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {slot.bookedCount > 0 && (
+                              <span title={hasOverlap ? `Overlap: ${slot.bookedCount} patients` : "Multiple patients"} className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${hasOverlap ? "bg-purple-100 text-purple-700 dark:bg-purple-500/10 dark:text-purple-400" : "bg-muted text-muted-foreground"}`}>
+                                <Users size={11} /> {slot.bookedCount}{hasOverlap ? `/3` : slot.maxCapacity > 1 ? `/${slot.maxCapacity}` : ""}
+                              </span>
+                            )}
+                            {!slot.isPast && hasOverlap && <span className="rounded-md bg-purple-100 px-1.5 py-0.5 text-[10px] font-bold text-purple-700 dark:bg-purple-500/10 dark:text-purple-400">Overlap</span>}
+                            {!slot.isPast && hasPendingBooking && <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">Pending</span>}
+                            {!slot.isPast && (slot.isAvailable ? <CalendarPlus size={16} className="text-emerald-600 dark:text-emerald-400" /> : <CalendarCheck2 size={16} className="text-blue-600 dark:text-blue-400" />)}
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground">ends {format(new Date(slot.end), "h:mm a")}</span>
+                        <span className={`mt-1 truncate rounded-md px-2 py-1 text-xs font-semibold ${
+                          slot.isPast ? "bg-muted text-muted-foreground" : hasOverlap ? "bg-purple-600 text-white" : slot.isAvailable ? "bg-emerald-600 text-white" : hasPendingBooking ? "bg-amber-600 text-white" : "bg-blue-600 text-white"
+                        }`}>
+                          {slot.isPast ? "Past" : hasOverlap ? `Overlap — ${slot.bookedCount} patients` : slot.maxCapacity > 1 ? (slot.isAvailable ? (slot.bookedCount > 0 ? `${slot.bookedCount}/${slot.maxCapacity} booked — open` : "Available") : hasPendingBooking ? `Needs confirmation (${slot.bookedCount}/${slot.maxCapacity})` : `Full (${slot.bookedCount}/${slot.maxCapacity})`) : slot.isAvailable ? "Available" : slot.status === "Pending" ? `${slot.patientName || "Patient"} - Pending confirmation` : slot.isWalkIn ? `${slot.patientName || "Patient"} - Walk-in Visit` : slot.patientName || "Booked"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Book appointment modal */}
       {bookingSlot && selectedDoctor && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-border">
-            <div className="flex items-start justify-between mb-6">
+          <div className="bg-card rounded-xl shadow-2xl max-w-2xl w-full p-5 max-h-[96vh] overflow-y-auto border border-border">
+            <div className="flex items-start justify-between mb-4">
               <div>
                 <h2 className="text-2xl font-semibold text-foreground">
                   Book appointment
@@ -1491,104 +1899,55 @@ export default function Appointments() {
             </div>
 
             <div className="space-y-4">
-              <div className="relative">
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">
-                  Patient
-                </label>
-                <input
-                  type="text"
-                  value={patientSearch}
-                  onChange={(event) => {
-                    setPatientSearch(event.target.value);
-                    setSelectedPatient(null);
-                  }}
-                  placeholder="Search by name, phone, MRN, national ID, or passport..."
-                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
-                />
-                {!selectedPatient && filteredPatients.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-                    {filteredPatients.map((patient) => (
-                      <button
-                        key={patient.opId}
-                        onClick={() => {
-                          setSelectedPatient(patient);
-                          setPatientSearch(patient.name);
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-primary/5 border-b border-border last:border-b-0 transition-colors"
-                      >
-                        <div className="font-medium text-foreground">
-                          {patient.name}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {patient.opNumber || patient.opId} • {patient.phone}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {selectedPatient && (
-                  <div className="mt-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
-                    <p className="text-sm text-foreground/90">
-                      <span className="font-semibold">Selected: </span>
-                      {selectedPatient.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedPatient.opNumber || selectedPatient.opId} • {selectedPatient.phone}
-                    </p>
-                  </div>
-                )}
+              {/* Patient mode toggle */}
+              <div className="flex rounded-lg border border-border overflow-hidden text-sm font-semibold">
+                <button
+                  type="button"
+                  className="flex-1 py-2 bg-primary text-white"
+                >
+                  Existing patient
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowNewPatientModal(true)}
+                  className="flex-1 py-2 bg-muted text-muted-foreground hover:bg-muted/70 transition-colors cursor-pointer"
+                >
+                  New patient
+                </button>
               </div>
 
+              {/* Patient search - new patients use "New patient" (full registration) above */}
+              <PatientPicker value={selectedPatient} onChange={setSelectedPatient} allowQuickAdd={false} required />
+
               <div>
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">
-                  Notes
-                </label>
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">Notes</label>
                 <textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   placeholder="Reason for visit"
-                  className="w-full min-h-20 px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground"
+                  rows={2}
+                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary text-foreground resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-semibold text-foreground/90">
-                  Follow-up visit
-                </label>
-                <input
-                  type="checkbox"
-                  checked={isFollowUp}
-                  onChange={(event) => setIsFollowUp(event.target.checked)}
-                  className="h-5 w-5"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-foreground/90 mb-2">
-                  Urgency
-                </label>
-                <div className="flex gap-3">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      checked={urgencyLevel === "Routine"}
-                      onChange={() => setUrgencyLevel("Routine")}
-                    />
-                    Routine
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="followUpCheck" checked={isFollowUp} onChange={(event) => setIsFollowUp(event.target.checked)} className="h-4 w-4" />
+                  <label htmlFor="followUpCheck" className="text-sm font-semibold text-foreground/90 cursor-pointer">Follow-up visit</label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-foreground/90">Urgency:</span>
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" checked={urgencyLevel === "Routine"} onChange={() => setUrgencyLevel("Routine")} /> Routine
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      checked={urgencyLevel === "Urgent"}
-                      onChange={() => setUrgencyLevel("Urgent")}
-                    />
-                    Urgent
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" checked={urgencyLevel === "Urgent"} onChange={() => setUrgencyLevel("Urgent")} /> Urgent
                   </label>
                 </div>
               </div>
             </div>
 
-            <div className="flex gap-3 mt-8">
+            <div className="flex gap-3 mt-5">
               <button
                 onClick={() => setBookingSlot(null)}
                 className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors"
@@ -1624,116 +1983,138 @@ export default function Appointments() {
               {format(new Date(cancelSlot.end), "h:mm a")}
             </p>
 
-            {cancelSlot.bookings.length > 1 ? (
-              <div className="mt-4 flex flex-col gap-3">
-                {cancelSlot.bookings.map((booking) => {
+            {/* Patient list */}
+            <div className="mt-4 flex flex-col gap-2">
+              {cancelSlot.bookings.length > 0 ? (
+                cancelSlot.bookings.map((booking) => {
                   const isPending = booking.status === "Pending";
                   return (
-                    <div
-                      key={booking.appointmentId}
-                      className="rounded-lg border border-border bg-muted/40 p-3"
-                    >
+                    <div key={booking.appointmentId} className="rounded-lg border border-border bg-muted/40 p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-foreground">
-                          {booking.patientName ?? "Patient"}
-                        </p>
-                        {isPending ? (
-                          <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                            Pending confirmation
-                          </span>
-                        ) : booking.isWalkIn ? (
-                          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                            Walk-in
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        {isPending ? (
+                        <p className="text-sm font-semibold text-foreground">{booking.patientName ?? "Patient"}</p>
+                        <div className="flex items-center gap-2">
+                          {isPending && (
+                            <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                              Pending
+                            </span>
+                          )}
+                          {isPending ? (
+                            <button
+                              onClick={() => handleConfirmPendingRequest(booking.appointmentId ?? undefined)}
+                              disabled={isSubmitting}
+                              className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                            >
+                              <Check size={13} /> Confirm
+                            </button>
+                          ) : null}
                           <button
-                            onClick={() => handleConfirmPendingRequest(booking.appointmentId ?? undefined)}
+                            onClick={() => handleConfirmCancel(booking.appointmentId ?? undefined)}
                             disabled={isSubmitting}
-                            className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                            className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:border-red-300 hover:text-red-600 disabled:opacity-50"
                           >
-                            <Check size={13} /> Confirm
+                            <XCircle size={13} /> {isPending ? "Decline" : "Cancel"}
                           </button>
-                        ) : (
-                          <button
-                            onClick={() => handleCheckIn(booking.appointmentId ?? undefined)}
-                            disabled={isSubmitting}
-                            className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50"
-                          >
-                            <LogIn size={13} /> Check in
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleConfirmCancel(booking.appointmentId ?? undefined)}
-                          disabled={isSubmitting}
-                          className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:border-red-300 hover:text-red-600 disabled:opacity-50"
-                        >
-                          <XCircle size={13} /> {isPending ? "Decline" : "Cancel"}
-                        </button>
+                        </div>
                       </div>
                     </div>
                   );
-                })}
-              </div>
-            ) : (
-              <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">
-                    Patient
-                  </p>
-                  {cancelSlot.status === "Pending" ? (
-                    <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                      Pending confirmation
-                    </span>
-                  ) : cancelSlot.isWalkIn ? (
-                    <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                      Walk-in Visit
-                    </span>
-                  ) : null}
+                })
+              ) : (
+                <div className="rounded-lg border border-border bg-muted/40 p-4">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Patient</p>
+                  <p className="mt-1 text-lg font-semibold text-foreground">{cancelSlot.patientName ?? "Patient"}</p>
                 </div>
-                <p className="mt-1 text-lg font-semibold text-foreground">
-                  {cancelSlot.patientName ?? "Patient"}
-                </p>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="flex flex-col gap-3 mt-6">
-              {cancelSlot.bookings.length <= 1 && (
-                <>
-                  {cancelSlot.status === "Pending" ? (
-                    <button
-                      onClick={() => handleConfirmPendingRequest()}
-                      disabled={isSubmitting}
-                      className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
-                    >
-                      <Check size={16} /> Confirm appointment
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleCheckIn()}
-                      disabled={isSubmitting}
-                      className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
-                    >
-                      <LogIn size={16} /> Check in patient
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleConfirmCancel()}
-                    disabled={isSubmitting}
-                    className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
-                  >
-                    <XCircle size={16} />{" "}
-                    {cancelSlot.status === "Pending" ? "Decline request" : "Cancel appointment"}
-                  </button>
-                </>
+              {cancelSlot.bookedCount < 3 && selectedDoctor && (
+                <button
+                  onClick={() => openOverlapBooking(cancelSlot, selectedDoctor.doctorId)}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  <Users size={16} /> Add another patient to this slot
+                  <span className="ml-1 rounded-md bg-white/20 px-1.5 py-0.5 text-[10px] font-bold">
+                    {cancelSlot.bookedCount}/3
+                  </span>
+                </button>
+              )}
+              {cancelSlot.bookings.length <= 1 && cancelSlot.status === "Pending" && (
+                <button
+                  onClick={() => handleConfirmPendingRequest()}
+                  disabled={isSubmitting}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  <Check size={16} /> Confirm appointment
+                </button>
+              )}
+              {cancelSlot.bookings.length <= 1 && cancelSlot.status !== "Pending" && (
+                <button
+                  onClick={() => handleConfirmCancel()}
+                  disabled={isSubmitting}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  <XCircle size={16} /> Cancel appointment
+                </button>
               )}
               <button
                 onClick={() => setCancelSlot(null)}
                 className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overlap booking modal — add a 2nd / 3rd patient to an already-booked slot */}
+      {overlapSlot && overlapDoctorId && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl shadow-2xl max-w-md w-full p-6 border border-border">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Add another patient</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {format(new Date(overlapSlot.start), "d MMM yyyy, h:mm a")} — {format(new Date(overlapSlot.end), "h:mm a")}
+                </p>
+                <span className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-500/10 dark:text-purple-400">
+                  <Users size={11} /> Overlap booking · {overlapSlot.bookedCount}/3 patients
+                </span>
+              </div>
+              <button onClick={() => setOverlapSlot(null)} className="text-muted-foreground hover:text-foreground cursor-pointer">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <PatientPicker value={overlapSelectedPatient} onChange={setOverlapSelectedPatient} allowQuickAdd={false} required />
+
+              <div>
+                <label className="block text-sm font-semibold text-foreground/90 mb-2">Notes (optional)</label>
+                <textarea
+                  value={overlapNotes}
+                  onChange={(e) => setOverlapNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Reason for visit"
+                  className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-purple-500 text-foreground resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setOverlapSlot(null)}
+                className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleOverlapBooking}
+                disabled={isSubmittingOverlap || !overlapSelectedPatient}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                <Users size={16} /> {isSubmittingOverlap ? "Booking..." : "Book overlap"}
               </button>
             </div>
           </div>
@@ -1819,18 +2200,19 @@ export default function Appointments() {
         </div>
       )}
 
-      {editingQueueVisit && (
+      {/* ---- Edit Appointment modal (pre-registration, reuses same doctor/slot picker state) ---- */}
+      {editingQueueAppointment && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-border">
+          <div className="bg-card rounded-xl shadow-2xl max-w-2xl w-full p-6 border border-border">
             <div className="flex items-start justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-semibold text-foreground">Edit visit</h2>
+                <h2 className="text-2xl font-semibold text-foreground">Edit appointment</h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {editingQueueVisit.patientName ?? "Unknown"}
+                  {editingQueueAppointment.patientName ?? "Unknown"}
                 </p>
               </div>
               <button
-                onClick={closeEditQueueVisit}
+                onClick={closeEditAppointment}
                 className="text-muted-foreground hover:text-foreground cursor-pointer"
               >
                 <X size={20} />
@@ -1838,6 +2220,38 @@ export default function Appointments() {
             </div>
 
             <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Department</label>
+                  <SearchableSelect
+                    value={editVisitDeptFilter}
+                    onChange={(v) => {
+                      setEditVisitDeptFilter(v);
+                      setEditVisitSpecFilter("all");
+                      setEditVisitSelectedDoctor(null);
+                    }}
+                    options={[
+                      { value: "all", label: "All departments" },
+                      ...editVisitDeptOptions.map((d) => ({ value: d.id, label: d.name })),
+                    ]}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Specialty</label>
+                  <SearchableSelect
+                    value={editVisitSpecFilter}
+                    onChange={(v) => {
+                      setEditVisitSpecFilter(v);
+                      setEditVisitSelectedDoctor(null);
+                    }}
+                    options={[
+                      { value: "all", label: "All specialties" },
+                      ...editVisitSpecOptions.map((s) => ({ value: s.id, label: s.name })),
+                    ]}
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-foreground/90 mb-2">Doctor</label>
                 <input
@@ -1939,27 +2353,80 @@ export default function Appointments() {
                       className="w-full px-4 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-blue-500 text-foreground resize-none"
                     />
                   </div>
+
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editIsFollowUp}
+                        onChange={(e) => setEditIsFollowUp(e.target.checked)}
+                      />
+                      <span className="font-semibold text-foreground/90">Follow-up visit</span>
+                    </label>
+                    <div className="flex items-center gap-3 text-sm">
+                      <span className="font-semibold text-foreground/90">Urgency:</span>
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={editUrgencyLevel === "Routine"}
+                          onChange={() => setEditUrgencyLevel("Routine")}
+                        />
+                        Routine
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={editUrgencyLevel === "Urgent"}
+                          onChange={() => setEditUrgencyLevel("Urgent")}
+                        />
+                        Urgent
+                      </label>
+                    </div>
+                  </div>
                 </>
               )}
             </div>
 
             <div className="flex gap-3 mt-6">
               <button
-                onClick={closeEditQueueVisit}
+                onClick={closeEditAppointment}
                 className="flex-1 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
-                onClick={handleSaveEditVisit}
-                disabled={isSavingEditVisit || !editVisitSelectedDoctor || !editVisitSelectedSlot}
+                onClick={handleSaveEditAppointment}
+                disabled={isSavingEditAppointment || !editVisitSelectedDoctor || !editVisitSelectedSlot}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors cursor-pointer"
               >
-                {isSavingEditVisit ? "Saving..." : "Save changes"}
+                {isSavingEditAppointment ? "Saving..." : "Save changes"}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* New Patient Registration Modal */}
+      <PatientRegistrationModal
+        isOpen={showNewPatientModal}
+        onClose={() => setShowNewPatientModal(false)}
+        onBooked={() => {
+          setBookingSlot(null);
+          if (selectedDoctor) fetchSlots(selectedDoctor.doctorId, selectedDate);
+        }}
+        presetDoctorId={selectedDoctor?.doctorId ?? ""}
+        presetSpecId={selectedDoctor?.specializationId ?? ""}
+        presetDeptId={specializations.find(s => s.specializationId === selectedDoctor?.specializationId)?.departmentId ?? ""}
+        presetSlotStart={bookingSlot?.start ?? ""}
+        presetDate={toDateInputValue(selectedDate)}
+        doctorName={selectedDoctor?.name ?? ""}
+        slotDisplayTime={bookingSlot ? format(new Date(bookingSlot.start), "dd MMM yyyy, h:mm a") : ""}
+        specializations={specializations}
+      />
+
+      {/* ---- Attachments modal ---- */}
+      {attachmentPatient && (
+        <PatientDocumentsModal patient={attachmentPatient} onClose={() => setAttachmentPatient(null)} />
       )}
     </div>
   );

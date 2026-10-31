@@ -4,13 +4,16 @@ import { useState } from "react";
 import { ListPlus } from "lucide-react";
 import ListItemManager from "@/components/configLists/ListItemManager";
 import MedicineCatalogManager from "@/components/configLists/MedicineCatalogManager";
+import VaccineMasterManager from "@/components/configLists/VaccineMasterManager";
 import { ConfigListType } from "@/types/configList.type";
+import { useRegion } from "@/lib/region";
+import type { Region } from "@/types/region.type";
 
 // "Medication" isn't a real ConfigListType/ListItem-backed list like the others below - the
 // Medicine catalog is its own dedicated model (see PharmacyController) - but it's curated
 // here, admin-only, for the same reason Procedure's bulk upload lives here: catalog curation
 // is an admin/IT job, distinct from Pharmacy's day-to-day stock/dispensing work.
-type TabValue = ConfigListType | "Medication";
+type TabValue = ConfigListType | "Medication" | "FamilyHistory" | "Vaccine";
 
 const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
   {
@@ -33,9 +36,34 @@ const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
   { value: "InsuranceProvider", label: "Insurance Provider", hint: "Selectable at patient registration when Payment Type is Insurance or Corporate" },
   { value: "DrugType", label: "Drug Type", hint: "Tablet, Syrup, Injection, Cream — selectable when prescribing on the doctor workbench" },
   { value: "CancerSite", label: "Cancer Site", hint: "Selectable on an urgent suspected-cancer referral in the doctor workbench" },
+  { value: "FamilyHistory", label: "Family History", hint: "The Relation and Condition dropdowns on the Family History section (doctor and nurse workbenches) — managed together here." },
+  {
+    value: "Vaccine",
+    label: "Vaccines",
+    hint: "The vaccine master behind the Pediatric Immunization Schedule. Routine vaccines carry the recommended schedule every pediatric patient gets (seeded from Qatar's national childhood immunization schedule - review it against the current MoPH schedule); other categories, such as Influenza, Meningococcal for Hajj/Umrah and travel vaccines, are ordered on demand. Add your organization's own vaccines here; a vaccine already on patients' records can be deactivated but not deleted.",
+  },
 ];
 
+// The Medication and Vaccines hints depend on the installation's country - its medication
+// registries (DDC / Riayati in the UAE) and its national immunization schedule.
+function hintFor(type: { value: TabValue; hint: string }, region: Region | null): string {
+  if (type.value === "Medication") {
+    const registries = region?.regulatory.medicationRegistries ?? [];
+    return registries.length > 0
+      ? `The medication catalog doctors search when prescribing. Upload the ${registries.join(" or ")} medication registry export as-is - columns are matched automatically. Day-to-day stock, pricing overrides, high-risk flagging, and alternatives are managed separately on the Pharmacy page.`
+      : "The medication catalog doctors search when prescribing. Medicines are added on the Pharmacy page (Add Medicine), which also manages day-to-day stock, pricing overrides, high-risk flagging, and alternatives.";
+  }
+  if (type.value === "Vaccine") {
+    const schedule = region && region.routineVaccineCount > 0
+      ? `Routine vaccines carry the recommended schedule every pediatric patient gets (seeded from ${region.vaccineScheduleSource} - review it against the current national schedule)`
+      : "No national schedule is seeded for this country - give a vaccine a routine schedule here to have it recommended by age";
+    return `The vaccine master behind the Pediatric Immunization Schedule. ${schedule}; other categories, such as Influenza, Meningococcal and travel vaccines, are ordered on demand. Add your organization's own vaccines here; a vaccine already on patients' records can be deactivated but not deleted.`;
+  }
+  return type.hint;
+}
+
 export default function ConfigListsPage() {
+  const region = useRegion();
   const [listType, setListType] = useState<TabValue>("Procedure");
 
   const activeType = LIST_TYPES.find((t) => t.value === listType)!;
@@ -68,10 +96,17 @@ export default function ConfigListsPage() {
         ))}
       </div>
 
-      <p className="text-xs text-muted-foreground mb-4">{activeType.hint}</p>
+      <p className="text-xs text-muted-foreground mb-4">{hintFor(activeType, region)}</p>
 
       {listType === "Medication" ? (
         <MedicineCatalogManager key={listType} />
+      ) : listType === "Vaccine" ? (
+        <VaccineMasterManager />
+      ) : listType === "FamilyHistory" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <ListItemManager listType="FamilyRelation" itemLabel="Relation" />
+          <ListItemManager listType="FamilyHistoryCondition" itemLabel="Condition" />
+        </div>
       ) : (
         <ListItemManager key={listType} listType={listType} itemLabel={activeType.label} />
       )}
