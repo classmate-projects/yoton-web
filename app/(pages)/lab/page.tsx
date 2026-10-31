@@ -4,15 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import EmptyState from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { FlaskConical, Pencil, Settings, Trash2, Undo2 } from "lucide-react";
+import { ClipboardList, FlaskConical, Pencil, Settings, Trash2, Undo2 } from "lucide-react";
 import { notifySaveStatus } from "@/lib/saveStatus";
 import { MdAdd, MdOutlineFileUpload } from "react-icons/md";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DatePicker from "@/components/DatePicker";
-import { toDateInputValue, formatDateTime, formatDate } from "@/lib/date";
+import { toDateInputValue, formatDateTime } from "@/lib/date";
 import CatalogSearchInput from "@/components/doctor/CatalogSearchInput";
 import SearchableSelect from "@/components/SearchableSelect";
-import SampleBarcodeLabel from "@/components/SampleBarcodeLabel";
+import SampleBarcodeLabels from "@/components/SampleBarcodeLabel";
+import SpecimenChips from "@/components/lab/SpecimenChips";
+import CollectionGuideModal from "@/components/lab/CollectionGuideModal";
 import LabRadiologyConfigModal from "@/components/orders/LabRadiologyConfigModal";
 import CorrectedFromNote from "@/components/CorrectedFromNote";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
@@ -92,7 +94,13 @@ export default function LaboratoryPage() {
   const [nurses, setNurses] = useState<UserType[]>([]);
   const [selectedNurseId, setSelectedNurseId] = useState("");
   const [collectingId, setCollectingId] = useState<string | null>(null);
-  const [barcodeLabId, setBarcodeLabId] = useState<string | null>(null);
+  // Requests whose tube labels are showing - one after a single collection, several after
+  // "Mark all collected" from the collection guide.
+  const [barcodeLabIds, setBarcodeLabIds] = useState<string[]>([]);
+  // The patient whose collection guide is open: every one of their tests still waiting for
+  // collection, grouped by container in the region's order of draw.
+  const [guideFor, setGuideFor] = useState<LabRequestType | null>(null);
+  const [collectingAll, setCollectingAll] = useState(false);
 
   // Read-only configuration view (gear icon) and the Revert action that undoes a started
   // request back to Requested, handing editing control back to the doctor - see
@@ -150,7 +158,7 @@ export default function LaboratoryPage() {
   }, [checkedAuth, filter, selectedDate]);
 
   useSignalRRefetch(
-    ["labRequestCreated", "labStatusUpdated", "labRequestUpdated", "labRequestRemoved", "encounterFinished", "encounterReopened"],
+    ["labRequestCreated", "labStatusUpdated", "labRequestUpdated", "labRequestRemoved", "encounterFinished", "encounterReopened", "labSpecimensUpdated"],
     () => fetchAll(true)
   );
 
@@ -282,12 +290,38 @@ export default function LaboratoryPage() {
       setCollectingId(labRequestId);
       await LabService.collectSample(labRequestId, isAdmin ? selectedNurseId : undefined);
       toast.success("Sample collected");
-      setBarcodeLabId(labRequestId);
+      setBarcodeLabIds([labRequestId]);
       await fetchAll();
     } catch (error) {
       toast.error(apiErrorMessage(error, "Failed to collect sample"));
     } finally {
       setCollectingId(null);
+    }
+  };
+
+  // Same visit (or both walk-in) - what one venipuncture covers.
+  const waitingForSameDraw = (r: LabRequestType) =>
+    requests.filter(
+      (x) => x.status === "Requested" && x.patientId === r.patientId && (x.visitId ?? null) === (r.visitId ?? null)
+    );
+
+  const collectAll = async (pending: LabRequestType[]) => {
+    if (!requireNurseSelected()) return;
+    const collected: string[] = [];
+    try {
+      setCollectingAll(true);
+      for (const r of pending) {
+        await LabService.collectSample(r.labRequestId, isAdmin ? selectedNurseId : undefined);
+        collected.push(r.labRequestId);
+      }
+      toast.success(collected.length === 1 ? "Sample collected" : `${collected.length} samples collected`);
+      setGuideFor(null);
+    } catch (error) {
+      toast.error(apiErrorMessage(error, collected.length ? `Collected ${collected.length}, then failed` : "Failed to collect samples"));
+    } finally {
+      if (collected.length) setBarcodeLabIds(collected);
+      setCollectingAll(false);
+      await fetchAll();
     }
   };
 
@@ -413,7 +447,7 @@ export default function LaboratoryPage() {
     }
   };
 
-  const barcodeLab = requests.find((l) => l.labRequestId === barcodeLabId);
+  const barcodeLabs = requests.filter((l) => barcodeLabIds.includes(l.labRequestId));
 
   if (!checkedAuth) {
     return (
@@ -628,23 +662,35 @@ export default function LaboratoryPage() {
         </div>
       )}
 
-      {barcodeLab && (
+      {barcodeLabs.length > 0 && (
         <div className="card p-6 flex flex-col items-start gap-2 mb-6">
-          <h2 className="text-lg font-semibold text-foreground">Sample Label — {barcodeLab.testType}</h2>
-          <SampleBarcodeLabel
-            label={{
-              labRequestId: barcodeLab.labRequestId,
-              testName: barcodeLab.testType || "Lab Test",
-              doctorName: barcodeLab.doctorName || "Unassigned",
-              date: formatDate(barcodeLab.sampleCollectedAt || barcodeLab.requestedDate),
-              mrn: barcodeLab.patientOPNumber || barcodeLab.patientId || "—",
-              collectedByName: barcodeLab.sampleCollectedByName || "—",
-              visitId: barcodeLab.visitId,
-            }}
-            onPrint={() => recordPrint(barcodeLab.labRequestId)}
-            printCount={barcodeLab.printCount}
-            lastPrintedByName={barcodeLab.lastPrintedByName}
-            lastPrintedAt={barcodeLab.lastPrintedAt}
+          <div className="flex w-full items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-foreground">
+              Sample Labels — {barcodeLabs.length === 1 ? barcodeLabs[0].testType : `${barcodeLabs[0].patientName} (${barcodeLabs.length} tests)`}
+            </h2>
+            <button onClick={() => setBarcodeLabIds([])} className="text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer">
+              Close
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">One label per tube or container - stick each on its matching tube.</p>
+          <SampleBarcodeLabels
+            sets={barcodeLabs.map((l) => ({
+              label: {
+                labRequestId: l.labRequestId,
+                testName: l.testType || "Lab Test",
+                patientName: l.patientName,
+                doctorName: l.doctorName || "Unassigned",
+                collectedAt: formatDateTime(l.sampleCollectedAt || l.requestedDate),
+                mrn: l.patientOPNumber || l.patientId || "—",
+                collectedByName: l.sampleCollectedByName || "—",
+                visitId: l.visitId,
+              },
+              specimens: l.specimens,
+            }))}
+            onPrint={() => barcodeLabs.forEach((l) => recordPrint(l.labRequestId))}
+            printCount={barcodeLabs.length === 1 ? barcodeLabs[0].printCount : undefined}
+            lastPrintedByName={barcodeLabs.length === 1 ? barcodeLabs[0].lastPrintedByName : undefined}
+            lastPrintedAt={barcodeLabs.length === 1 ? barcodeLabs[0].lastPrintedAt : undefined}
           />
         </div>
       )}
@@ -709,6 +755,9 @@ export default function LaboratoryPage() {
                 {/* Test name + result values */}
                 <div>
                   <p className="text-sm text-foreground/80 font-medium leading-snug">{r.testType}</p>
+                  <div className="mt-1.5">
+                    <SpecimenChips specimens={r.specimens} source={r.specimenSource} />
+                  </div>
                   {r.resultValues.length > 0 && (
                     <div className="mt-1.5 flex flex-col gap-0.5">
                       {r.resultValues.map((v, i) => (
@@ -734,9 +783,18 @@ export default function LaboratoryPage() {
                       {collectingId === r.labRequestId ? "Collecting..." : "Mark Sample Collected"}
                     </button>
                   )}
+                  {r.status === "Requested" && (
+                    <button
+                      onClick={() => setGuideFor(r)}
+                      title="Which tubes to draw, in order, for all of this patient's waiting tests"
+                      className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      <ClipboardList size={13} /> Collection guide
+                    </button>
+                  )}
                   {(isNurse || isAdmin) && r.sampleCollectedByName && (
                     <button
-                      onClick={() => setBarcodeLabId(r.labRequestId)}
+                      onClick={() => setBarcodeLabIds([r.labRequestId])}
                       className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
                     >
                       {r.printCount > 0 ? "Reprint Barcode" : "Barcode"}
@@ -816,6 +874,17 @@ export default function LaboratoryPage() {
             );
           })}
         </div>
+      )}
+
+      {guideFor && (
+        <CollectionGuideModal
+          patientName={guideFor.patientName}
+          requests={waitingForSameDraw(guideFor)}
+          canCollect={isNurse || isAdmin}
+          collecting={collectingAll}
+          onCollectAll={() => collectAll(waitingForSameDraw(guideFor))}
+          onClose={() => setGuideFor(null)}
+        />
       )}
 
       {resultEntryTarget && (

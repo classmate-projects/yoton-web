@@ -11,6 +11,11 @@ interface CatalogOption {
   meta?: string | null; // optional subtitle line, e.g. "Generic: Paracetamol · Stock: 120"
 }
 
+// Minimum characters before we hit the catalog. Below this the dropdown shows a prompt
+// instead of firing a search (and, crucially, instead of a misleading "No matches found"
+// the moment the empty field is focused).
+const MIN_SEARCH_CHARS = 2;
+
 interface CatalogSearchInputProps {
   placeholder: string;
   fetchOptions: (search: string) => Promise<CatalogOption[]>;
@@ -66,6 +71,13 @@ export default function CatalogSearchInput({ placeholder, fetchOptions, onSelect
 
   useEffect(() => {
     if (!isOpen) return;
+    // Don't search (or show "no matches") until the user has typed enough.
+    if (query.trim().length < MIN_SEARCH_CHARS) {
+      setOptions([]);
+      setHasError(false);
+      setIsLoading(false);
+      return;
+    }
     const timer = setTimeout(async () => {
       setIsLoading(true);
       setHasError(false);
@@ -102,7 +114,7 @@ export default function CatalogSearchInput({ placeholder, fetchOptions, onSelect
           className="w-full h-10 pl-9 text-sm"
         />
       </div>
-      {isOpen && coords && createPortal(
+      {isOpen && coords && query.trim().length >= MIN_SEARCH_CHARS && createPortal(
         <div
           ref={popupRef}
           style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}

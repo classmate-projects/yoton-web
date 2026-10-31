@@ -75,6 +75,7 @@ export default function PrescriptionPrintout({
     : 0;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 no-print-backdrop">
       <div className="no-print flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border p-4">
@@ -110,9 +111,11 @@ export default function PrescriptionPrintout({
           />
         </div>
       </div>
+    </div>
 
-      {/* Print-only render: the modal chrome above is hidden on print via .no-print, this
-          is what actually reaches paper. */}
+      {/* Print-only render — a SIBLING of the .no-print-backdrop root above, not a child of
+          it. The print CSS sets `.no-print-backdrop { display: none }`, and display:none on
+          an ancestor hides its whole subtree, so nesting this inside it printed a blank page. */}
       <div className="print-only">
         <PrintablePrescriptionBody
           companyName={companyName}
@@ -132,6 +135,9 @@ export default function PrescriptionPrintout({
         />
       </div>
 
+      {/* Paper colors for the printout table (overriding the app's global themed-table
+          styles) live in globals.css under @layer base — a layered !important rule can't be
+          beaten from an unlayered styled-jsx block, so it must sit in the same layer. */}
       <style jsx global>{`
         .print-only {
           display: none;
@@ -157,7 +163,7 @@ export default function PrescriptionPrintout({
           }
         }
       `}</style>
-    </div>
+    </>
   );
 }
 
@@ -195,7 +201,7 @@ function PrintablePrescriptionBody({
   doctorSignatureUrl,
 }: BodyProps) {
   return (
-    <div className="bg-white p-6 text-black" style={{ width: "100%" }}>
+    <div className="rx-print bg-white p-6 text-black" style={{ width: "100%" }}>
       <div className="flex items-center gap-3 border-b-2 border-black pb-3">
         {companyLogo && (
           // eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path

@@ -332,6 +332,7 @@ export const ENDPOINTS = {
         UPDATE_STATUS: `/api/Radiology/status`,
         UPLOAD_RESULT: `/api/Radiology/upload-result`,
         UPLOAD_IMAGES: `/api/Radiology/upload-images`,
+        DELETE_IMAGE: `/api/Radiology/image`,
         REVERT: (id: string) => `/api/Radiology/${id}/revert`,
     },
     TREATMENTS: {
@@ -340,6 +341,16 @@ export const ENDPOINTS = {
         START: (id: string) => `/api/treatments/${id}/start`,
         REVERT: (id: string) => `/api/treatments/${id}/revert`,
         MARK_DONE: (id: string) => `/api/treatments/${id}/mark-done`,
+    },
+    LAB_SPECIMENS: {
+        CONTAINERS: (includeInactive = false) => `/api/lab-specimens/containers${includeInactive ? "?includeInactive=true" : ""}`,
+        CREATE_CONTAINER: `/api/lab-specimens/containers`,
+        CONTAINER: (id: string) => `/api/lab-specimens/containers/${id}`,
+        TESTS: (listItemIds: string[]) => `/api/lab-specimens/tests?listItemIds=${encodeURIComponent(listItemIds.join(","))}`,
+        TEST: (listItemId: string) => `/api/lab-specimens/tests/${encodeURIComponent(listItemId)}`,
+        RESET_TEST: (listItemId: string) => `/api/lab-specimens/tests/${encodeURIComponent(listItemId)}/reset`,
+        COVERAGE: `/api/lab-specimens/coverage`,
+        APPLY_DEFAULTS: `/api/lab-specimens/apply-defaults`,
     },
     TEST_PARAMETERS: {
         GET: (listItemId: string) => `/api/test-parameters?listItemId=${encodeURIComponent(listItemId)}`,

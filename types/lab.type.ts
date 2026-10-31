@@ -8,6 +8,7 @@ export interface LabResultValueType {
 }
 
 import type { OrderLockFields } from "./orderLock.type";
+import type { LabSpecimenSource, LabSpecimenType } from "./labSpecimen.type";
 import type { WalkInOrderFields } from "./patient.type";
 
 export interface LabRequestType extends OrderLockFields, WalkInOrderFields {
@@ -41,6 +42,10 @@ export interface LabRequestType extends OrderLockFields, WalkInOrderFields {
   lastPrintedAt: string | null;
   lastPrintedByName: string | null;
   resultValues: LabResultValueType[];
+  // Container(s) the sample goes in - frozen once collected, otherwise from the test's
+  // catalog setup or the region's rules (see LabSpecimenSource).
+  specimens: LabSpecimenType[];
+  specimenSource: LabSpecimenSource | null;
   correctedFromId: string | null;
   correctedFrom: LabRequestType | null;
 }

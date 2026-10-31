@@ -56,6 +56,14 @@ export const RadiologyService = {
     });
     return data;
   },
+  // Removes one attached scan image (wrong/accidental upload). Allowed until the study is
+  // Delivered and as long as it isn't billed - the server enforces both.
+  deleteImage: async (radiologyRequestId: string, filePath: string) => {
+    const { data } = await api.delete(ENDPOINTS.RADIOLOGY.DELETE_IMAGE, {
+      data: { radiologyRequestId, filePath },
+    });
+    return data;
+  },
   // Undoes Scheduled (or any later status) back to Requested, handing editing control back
   // to the doctor - see OrderLockHelper on the backend.
   revert: async (id: string) => {

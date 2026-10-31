@@ -86,6 +86,8 @@ export interface PatientGetAllType {
     nationalID?: string | null;
     passportNumber?: string | null;
     registrationType?: "Full" | "External";
+    // Registration timestamp (ISO) - used to sort the register list by registration date.
+    registerDate?: string | null;
 }
 
 // One row in the front-office referral queue - see ReceptionController.GetPendingReferrals.

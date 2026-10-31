@@ -451,6 +451,11 @@ export default function LoginPage() {
                   <Link
                     href="/forgot-password"
                     title="Forgot Password"
+                    // Kept out of the Tab sequence so Tab from the username field lands on the
+                    // password input (its natural next field), not on this link which sits
+                    // before the input in the DOM. Still clickable, and reachable by Tab after
+                    // the password field.
+                    tabIndex={-1}
                     className="text-xs font-semibold text-primary transition-colors hover:text-primary/75"
                   >
                     Forgot password?

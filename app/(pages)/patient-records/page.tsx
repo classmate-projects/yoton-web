@@ -15,6 +15,7 @@ import EmptyState from "@/components/EmptyState";
 import PasswordInput from "@/components/PasswordInput";
 import DatePicker from "@/components/DatePicker";
 import SearchableSelect from "@/components/SearchableSelect";
+import SortMenu from "@/components/SortMenu";
 import { ReceptionService } from "@/services/reception.service";
 import { AuthService } from "@/services/auth.service";
 import { ConfigListService } from "@/services/configList.service";
@@ -64,6 +65,10 @@ const emptyInsuranceForm = {
 type PatientListMode = "register" | "visit" | "referral";
 const PATIENTS_PAGE_SIZE = 50;
 
+// Register-list sort is two independent choices: which field to sort on, and the direction.
+type PatientSortField = "reg" | "name";
+type PatientSortDir = "asc" | "desc";
+
 const getInitials = (name: string) =>
   name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
@@ -105,6 +110,9 @@ export default function PatientRecordsPage() {
   }, []);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  // Register-list sort: by registration date (default) or name, newest/Z-A first by default.
+  const [sortField, setSortField] = useState<PatientSortField>("reg");
+  const [sortDir, setSortDir] = useState<PatientSortDir>("desc");
 
   // ---------------- Register List / Visit List toggle ----------------
   const [listMode, setListMode] = useState<PatientListMode>("register");
@@ -228,7 +236,7 @@ export default function PatientRecordsPage() {
   // that now only matches 10 records shouldn't leave them stranded on page 3.
   useEffect(() => {
     setCurrentPage(1);
-  }, [listMode, searchTerm, referralSearchTerm, fromDate, toDate]);
+  }, [listMode, searchTerm, referralSearchTerm, fromDate, toDate, sortField, sortDir]);
 
   useSignalRRefetch(["patientRegistered", "PatientUpdated", "patientSoftDeleted"], fetchPatients);
   useSignalRRefetch(["visitCheckedIn", "visitStatusUpdated"], () => {
@@ -576,10 +584,19 @@ export default function PatientRecordsPage() {
     }
   };
 
-  const filteredPatients = useMemo(
-    () => patients.filter((p) => matchesPatientSearch(p, searchTerm)),
-    [patients, searchTerm]
-  );
+  const filteredPatients = useMemo(() => {
+    const out = patients.filter((p) => matchesPatientSearch(p, searchTerm));
+    const dir = sortDir === "asc" ? 1 : -1;
+    const regTime = (p: PatientGetAllType) => (p.registerDate ? Date.parse(p.registerDate) : 0);
+    out.sort((a, b) => {
+      const cmp =
+        sortField === "name"
+          ? a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+          : regTime(a) - regTime(b);
+      return cmp * dir;
+    });
+    return out;
+  }, [patients, searchTerm, sortField, sortDir]);
   const filteredVisits = useMemo(
     () => visits.filter((v) => matchesPatientSearch(v, searchTerm)),
     [visits, searchTerm]
@@ -839,6 +856,19 @@ export default function PatientRecordsPage() {
                   />
                 </div>
               </>
+            )}
+
+            {listMode === "register" && (
+              <SortMenu
+                fieldValue={sortField}
+                onFieldChange={(v) => setSortField(v as PatientSortField)}
+                fieldOptions={[
+                  { value: "reg", label: "Registered date" },
+                  { value: "name", label: "Name" },
+                ]}
+                dirValue={sortDir}
+                onDirChange={(v) => setSortDir(v)}
+              />
             )}
 
             <div className="relative w-72">

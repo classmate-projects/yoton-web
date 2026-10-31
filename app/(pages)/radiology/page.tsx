@@ -201,6 +201,24 @@ export default function RadiologyPage() {
     );
   };
 
+  const handleDeleteImage = (request: RadiologyRequestType, url: string) => {
+    confirmDeleteToast(
+      <span>Remove this scan image for <b className="text-red-500 ml-1">{request.patientName}</b>?</span>,
+      async () => {
+        try {
+          const data = await RadiologyService.deleteImage(request.radiologyRequestId, url);
+          toast.success(data.message || "Image removed");
+          const updated = data.data as RadiologyRequestType | undefined;
+          // Keep the gallery open on the refreshed request, or close it if that was the last image.
+          setGalleryFor(updated && updated.imageUrls.length > 0 ? updated : null);
+          fetchAll();
+        } catch (error) {
+          toast.error(apiErrorMessage(error, "Failed to remove image"));
+        }
+      }
+    );
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatient) {
@@ -750,16 +768,33 @@ export default function RadiologyPage() {
               </button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {galleryFor.imageUrls.map((url, i) => (
-                <a key={i} href={backendAssetUrl(url) ?? "#"} target="_blank" rel="noopener noreferrer">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path */}
-                  <img
-                    src={backendAssetUrl(url) ?? undefined}
-                    alt={`Scan image ${i + 1}`}
-                    className="w-full h-32 object-cover rounded-lg border border-border hover:opacity-80 transition-opacity"
-                  />
-                </a>
-              ))}
+              {galleryFor.imageUrls.map((url, i) => {
+                // A wrong/accidental image can be removed until the study is delivered or billed.
+                const canDeleteImage = !isNurse && galleryFor.status !== "Delivered" && !galleryFor.billStatus;
+                return (
+                  <div key={i} className="relative group">
+                    <a href={backendAssetUrl(url) ?? "#"} target="_blank" rel="noopener noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- backend-hosted, runtime-only path */}
+                      <img
+                        src={backendAssetUrl(url) ?? undefined}
+                        alt={`Scan image ${i + 1}`}
+                        className="w-full h-32 object-cover rounded-lg border border-border hover:opacity-80 transition-opacity"
+                      />
+                    </a>
+                    {canDeleteImage && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteImage(galleryFor, url)}
+                        title="Remove this image"
+                        aria-label="Remove this image"
+                        className="absolute top-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-destructive group-hover:opacity-100 focus:opacity-100"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

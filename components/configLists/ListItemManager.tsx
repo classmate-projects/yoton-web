@@ -15,6 +15,10 @@ import { ConfigListType, ListItemType, ListTemplate } from "@/types/configList.t
 import { TestParameterType } from "@/types/testParameter.type";
 import { confirmDeleteToast } from "@/lib/confirmDeleteToast";
 import TemplateBuilderModal from "@/components/configLists/TemplateBuilderModal";
+import LabTestSpecimenEditor from "@/components/lab/LabTestSpecimenEditor";
+import { ContainerSwatch } from "@/components/lab/SpecimenChips";
+import { LabSpecimenService } from "@/services/labSpecimen.service";
+import type { LabTestSpecimensSummary } from "@/types/labSpecimen.type";
 import { apiErrorMessage } from "@/lib/apiError";
 
 interface ListItemManagerProps {
@@ -39,7 +43,12 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   const [form, setForm] = useState({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isProcedure = listType === "Procedure";
-  const columnCount = isProcedure ? 7 : 4;
+  // Lab tests (CPT rows that become Lab orders, and legacy Investigations) carry their sample
+  // container(s) and result parameters - see LabTestSpecimenEditor.
+  const showContainers = isProcedure || listType === "Investigation";
+  const isLabRow = (item: ListItemType) => listType === "Investigation" || (isProcedure && item.orderCategory === "Lab");
+  const columnCount = (isProcedure ? 7 : 4) + (showContainers ? 1 : 0);
+  const [specimensByItem, setSpecimensByItem] = useState<Record<string, LabTestSpecimensSummary>>({});
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", code: "", sortOrder: "0", department: "", cashPrice: "" });
@@ -88,12 +97,25 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
     setPage(1);
   }, [listType, debouncedSearch]);
 
+  const fetchSpecimens = async (rows: ListItemType[]) => {
+    const labIds = showContainers ? rows.filter(isLabRow).map((i) => i.listItemId) : [];
+    if (labIds.length === 0) return setSpecimensByItem({});
+    try {
+      const res = await LabSpecimenService.getForTests(labIds);
+      setSpecimensByItem(res.data ?? {});
+    } catch {
+      // The column just stays empty - the list itself loaded fine.
+      setSpecimensByItem({});
+    }
+  };
+
   const fetchItems = async () => {
     try {
       setIsLoading(true);
       const res = await ConfigListService.get(listType, debouncedSearch, page, PAGE_SIZE);
       setItems(res.data || []);
       setTotalCount(res.totalCount ?? 0);
+      void fetchSpecimens(res.data || []);
     } catch (error) {
       console.log("error from here: ", error);
       toast.error(apiErrorMessage(error, "Failed to load list"));
@@ -436,6 +458,8 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
   const closeParameters = () => {
     setParametersFor(null);
     setParameters([]);
+    // The test's containers may have changed in the setup modal.
+    void fetchSpecimens(items);
   };
 
   const addParameter = async () => {
@@ -672,6 +696,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
               {isProcedure && <th>Department</th>}
               {isProcedure && <th>Category</th>}
               {isProcedure && <th>Cash Price</th>}
+              {showContainers && <th title="Sample container(s) - lab tests only">Container</th>}
               <th className="text-center">Active</th>
               <th className="text-center">Action</th>
             </tr>
@@ -738,6 +763,7 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                         />
                       </td>
                     )}
+                    {showContainers && <td className="text-xs text-muted-foreground">—</td>}
                     <td className="text-center text-muted-foreground text-xs">—</td>
                     <td className="text-center">
                       <div className="flex justify-center items-center gap-2">
@@ -777,6 +803,30 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                       </td>
                     )}
                     {isProcedure && <td>{item.cashPrice != null ? item.cashPrice : "—"}</td>}
+                    {showContainers && (
+                      <td className="text-xs">
+                        {!isLabRow(item) ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : specimensByItem[item.listItemId]?.specimens.length ? (
+                          <div
+                            className="flex flex-col gap-0.5"
+                            title={specimensByItem[item.listItemId].isAutoAssigned ? "Region default" : "Set by your lab"}
+                          >
+                            {specimensByItem[item.listItemId].specimens.map((sp, i) => (
+                              <span key={i} className="inline-flex items-center gap-1.5 text-foreground/80">
+                                <ContainerSwatch hex={sp.colorHex} size={10} />
+                                <span className="truncate max-w-44">{sp.containerName}</span>
+                                {sp.quantity > 1 && <span className="text-muted-foreground">×{sp.quantity}</span>}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <button onClick={() => openParameters(item)} className="text-amber-600 hover:underline">
+                            Not set
+                          </button>
+                        )}
+                      </td>
+                    )}
                     <td className="text-center">
                       <div className="flex justify-center">
                         <ToggleButton checked={item.isActive} onChange={() => toggleActive(item)} />
@@ -784,10 +834,10 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
                     </td>
                     <td className="text-center">
                       <div className="flex justify-center items-center">
-                        {listType === "Investigation" && (
+                        {isLabRow(item) && (
                           <button
                             onClick={() => openParameters(item)}
-                            title="Manage parameters"
+                            title="Lab test setup - sample containers and result parameters"
                             className="hover:bg-primary/10 ring-transparent hover:ring-primary/20 transition-colors duration-150 rounded-full p-2 cursor-pointer mr-2"
                           >
                             <FlaskConical size={18} className="text-primary" />
@@ -846,13 +896,18 @@ export default function ListItemManager({ listType, itemLabel }: ListItemManager
 
       {parametersFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md">
-          <div className="bg-card w-full max-w-lg rounded-xl border border-border p-6 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-card w-full max-w-2xl rounded-xl border border-border p-6 shadow-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-xl font-semibold text-foreground">Parameters — {parametersFor.name}</h2>
+              <h2 className="text-xl font-semibold text-foreground">Lab test setup — {parametersFor.name}</h2>
               <button onClick={closeParameters} className="text-muted-foreground hover:text-foreground">
                 <X size={20} />
               </button>
             </div>
+            <div className="mb-5 mt-3">
+              <LabTestSpecimenEditor key={parametersFor.listItemId} listItemId={parametersFor.listItemId} />
+            </div>
+
+            <p className="text-sm font-semibold text-foreground border-t border-border pt-4">Result parameters</p>
             <p className="text-sm text-muted-foreground mb-4">
               The lab technician will enter a value against each of these when reporting this test. A value outside
               the normal range shown here is flagged on the result.

@@ -5,6 +5,7 @@ import { ListPlus } from "lucide-react";
 import ListItemManager from "@/components/configLists/ListItemManager";
 import MedicineCatalogManager from "@/components/configLists/MedicineCatalogManager";
 import VaccineMasterManager from "@/components/configLists/VaccineMasterManager";
+import SpecimenContainerManager from "@/components/configLists/SpecimenContainerManager";
 import { ConfigListType } from "@/types/configList.type";
 import { useRegion } from "@/lib/region";
 import type { Region } from "@/types/region.type";
@@ -13,7 +14,7 @@ import type { Region } from "@/types/region.type";
 // Medicine catalog is its own dedicated model (see PharmacyController) - but it's curated
 // here, admin-only, for the same reason Procedure's bulk upload lives here: catalog curation
 // is an admin/IT job, distinct from Pharmacy's day-to-day stock/dispensing work.
-type TabValue = ConfigListType | "Medication" | "FamilyHistory" | "Vaccine";
+type TabValue = ConfigListType | "Medication" | "FamilyHistory" | "Vaccine" | "SpecimenContainer";
 
 const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
   {
@@ -25,6 +26,11 @@ const LIST_TYPES: { value: TabValue; label: string; hint: string }[] = [
     value: "Medication",
     label: "Medication",
     hint: "The medication catalog doctors search when prescribing. Upload the DDC or Riayati medication registry export as-is - columns are matched automatically. Day-to-day stock, pricing overrides, high-risk flagging, and alternatives are managed separately on the Pharmacy page.",
+  },
+  {
+    value: "SpecimenContainer",
+    label: "Specimen Containers",
+    hint: "Every tube, bottle, swab and pot a lab sample is collected in - cap colour, additive, order of draw and handling - and which of them each lab test needs. Seeded from the installation's country; set a test's containers from the flask icon on the Procedure list.",
   },
   { value: "Investigation", label: "Investigation", hint: "Searchable when ordering lab/radiology investigations (legacy - new investigations should use Procedure above instead)" },
   { value: "Treatment", label: "Treatment", hint: "Searchable in the doctor workbench's Treatment section (legacy - new treatments should use Procedure above instead)" },
@@ -58,6 +64,9 @@ function hintFor(type: { value: TabValue; hint: string }, region: Region | null)
       ? `Routine vaccines carry the recommended schedule every pediatric patient gets (seeded from ${region.vaccineScheduleSource} - review it against the current national schedule)`
       : "No national schedule is seeded for this country - give a vaccine a routine schedule here to have it recommended by age";
     return `The vaccine master behind the Pediatric Immunization Schedule. ${schedule}; other categories, such as Influenza, Meningococcal and travel vaccines, are ordered on demand. Add your organization's own vaccines here; a vaccine already on patients' records can be deactivated but not deleted.`;
+  }
+  if (type.value === "SpecimenContainer" && region?.labSpecimenSource) {
+    return `Every tube, bottle, swab and pot a lab sample is collected in - cap colour, additive, order of draw and handling - seeded from ${region.labSpecimenSource} (review it against your own laboratory's guide). Each lab test points at the container(s) its sample goes in: the ${region.country} defaults cover most of the CPT lab catalog, and any test can be set by hand from the flask icon on the Procedure list - those are never overwritten.`;
   }
   return type.hint;
 }
@@ -102,6 +111,8 @@ export default function ConfigListsPage() {
         <MedicineCatalogManager key={listType} />
       ) : listType === "Vaccine" ? (
         <VaccineMasterManager />
+      ) : listType === "SpecimenContainer" ? (
+        <SpecimenContainerManager />
       ) : listType === "FamilyHistory" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <ListItemManager listType="FamilyRelation" itemLabel="Relation" />

@@ -81,6 +81,10 @@ export interface Region {
   regulatory: RegionRegulatory;
   vaccineScheduleSource: string;
   routineVaccineCount: number;
+  // Whose specimen-collection rules the container master follows (HMC in Qatar), and the
+  // labelling / order-of-draw reminders shown with the nurse's collection guide.
+  labSpecimenSource: string;
+  labCollectionNotes: string[];
   features: RegionFeature[];
 }
 
